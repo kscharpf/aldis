@@ -64,6 +64,13 @@ use aldis_ffi::link_gen::{
     aldis_packet_generator_status, aldis_packet_generator_status_t, aldis_packet_generator_step,
     aldis_packet_generator_t,
 };
+use aldis_ffi::link_mux::{
+    ALDIS_CHANNEL_MUX_INPUT_OFFER, ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY, ALDIS_CHANNEL_MUX_WORDS,
+    aldis_channel_mux_actions_t, aldis_channel_mux_config_t, aldis_channel_mux_deinit,
+    aldis_channel_mux_init, aldis_channel_mux_input_t, aldis_channel_mux_status,
+    aldis_channel_mux_status_t, aldis_channel_mux_step, aldis_channel_mux_t,
+    aldis_channel_mux_vc_t,
+};
 use aldis_ffi::link_rx::{
     ALDIS_FRAME_RECEIVER_INPUT_FRAME, ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS,
     ALDIS_FRAME_RECEIVER_WORDS, ALDIS_LINK_CONTENT_PACKETS,
@@ -2212,6 +2219,86 @@ fn link_receiving_handles(t: &mut Tally) {
     }
 }
 
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::large_stack_arrays,
+    reason = "the storage of the handle is 21 KB, within the 256 KB of the exerciser targets"
+)]
+fn link_mux_handle(t: &mut Tally) {
+    let mut det = detail();
+    let mut out = [0_u8; 128];
+    let det_ptr = &raw mut det;
+
+    // ChannelMux, TM: frames of 24 octets with one VC, an offered field, and an OID frame.
+    let mut mx = aldis_channel_mux_t {
+        words: [0; ALDIS_CHANNEL_MUX_WORDS],
+    };
+    let h = &raw mut mx;
+    let mut cfg = aldis_channel_mux_config_t {
+        protocol: ALDIS_LINK_PROTOCOL_TM,
+        scid: 165,
+        frame_len: bb(24),
+        fecf: 1,
+        tm_oid_vc: 1,
+        vc_count: 1,
+        ..aldis_channel_mux_config_t::default()
+    };
+    cfg.vcs[0] = aldis_channel_mux_vc_t {
+        vc_id: 1,
+        role: ALDIS_LINK_CONTENT_PACKETS,
+        ..aldis_channel_mux_vc_t::default()
+    };
+    let field = bb([0x5A_u8; 16]);
+    let offer = aldis_channel_mux_input_t {
+        kind: ALDIS_CHANNEL_MUX_INPUT_OFFER,
+        data: field.as_ptr(),
+        data_len: field.len(),
+        vc_id: 1,
+        scope: 0,
+        ocf: 0,
+        pointer_present: 1,
+        pointer: 0,
+        route_present: 0,
+        map_id: 0,
+        qos: 0,
+        cop_present: 0,
+        cop_vcf_count: 0,
+        cop_bypass: 0,
+        cop_protocol_control: 0,
+        config: cfg,
+    };
+    let opportunity = aldis_channel_mux_input_t {
+        kind: ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY,
+        data: null(),
+        data_len: 0,
+        ..offer
+    };
+    let mut actions = aldis_channel_mux_actions_t::default();
+    let mut status = aldis_channel_mux_status_t::default();
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_channel_mux_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        let a = &raw mut actions;
+        t.check(
+            aldis_channel_mux_step(h, &raw const offer, out.as_mut_ptr(), 128, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 0,
+        );
+        t.check(
+            aldis_channel_mux_step(h, &raw const opportunity, out.as_mut_ptr(), 128, a, det_ptr)
+                == ALDIS_OK
+                && actions.count == 1,
+        );
+        t.check(
+            aldis_channel_mux_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.offers == 1
+                && status.frames_out == 1,
+        );
+        aldis_channel_mux_deinit(h);
+        t.check(aldis_channel_mux_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE);
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -2227,4 +2314,5 @@ pub fn run(t: &mut Tally) {
     fop1_handle(t);
     link_generation_handles(t);
     link_receiving_handles(t);
+    link_mux_handle(t);
 }

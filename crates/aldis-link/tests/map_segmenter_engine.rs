@@ -4,6 +4,7 @@
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
+    clippy::panic_in_result_fn,
     clippy::arithmetic_side_effects,
     unused_must_use,
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"

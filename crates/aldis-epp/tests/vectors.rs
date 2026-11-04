@@ -3,6 +3,7 @@
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
+    clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
     reason = "test-only harness crate: malformed vectors must fail loudly (RS-018)"

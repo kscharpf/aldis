@@ -724,61 +724,69 @@ struct Held {
 /// `V` is the capacity of VCs and `F` the capacity of a frame in octets (GEN-011); a
 /// configuration that needs more is refused with `CapacityExceeded`. The field slots hold
 /// `V × F` octets.
+///
+/// The engine is its [`ChannelMuxHead`] followed by its [`ChannelMuxBuffers`] (`repr(C)`), so
+/// that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
+    head: ChannelMuxHead<P, V>,
+    bufs: ChannelMuxBuffers<V, F>,
+}
+
+/// Everything of a [`ChannelMux`] but its octet buffers (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
     config: ChannelMuxConfig<P, V>,
-    slots: [[u8; F]; V],
     held: [Option<Held>; V],
     vc_ocf: [Option<[u8; OCF_LEN]>; V],
     vc_fsh: [Option<Fsh>; V],
     mc_ocf: Option<[u8; OCF_LEN]>,
     mc_fsh: Option<Fsh>,
-    insert: [u8; F],
     insert_fresh: bool,
-    counts: [VcCounts; VCID_SPACE],
     mc_count: u64,
     selector: Selector,
     oid: OidGenerator,
     status: MuxStatus,
 }
 
-impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
-    /// A mux with no field offered, the counts at 0, and the OID generator at its start
-    /// (LNK-032, LNK-036).
-    ///
-    /// # Errors
-    /// `CapacityExceeded` (`frame_len`) if the frame is longer than `F` octets.
-    pub fn new(config: ChannelMuxConfig<P, V>) -> Result<ChannelMux<P, V, F>> {
-        ChannelMux::<P, V, F>::check_capacity(&config)?;
-        let mut mux = ChannelMux {
-            config,
-            slots: [[0; F]; V],
-            held: [None; V],
-            vc_ocf: [None; V],
-            vc_fsh: [None; V],
-            mc_ocf: None,
-            mc_fsh: None,
-            insert: [0; F],
-            insert_fresh: false,
-            counts: [VcCounts::default(); VCID_SPACE],
-            mc_count: 0,
-            selector: Selector::new(),
-            oid: OidGenerator::new(),
-            status: MuxStatus::default(),
-        };
-        mux.init_slots();
-        Ok(mux)
-    }
+/// The buffers of a [`ChannelMux`]: the field slots, the Insert Zone slot, and the frame counts.
+///
+/// All zero is the empty state of the slots and the counts. The Insert Zone slot starts at the
+/// configured idle pattern (LNK-034): [`with_idle`](Self::with_idle) builds the buffers that
+/// way, and an in-place build writes that pattern at [`INSERT_OFFSET`](Self::INSERT_OFFSET)
+/// (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
+    slots: [[u8; F]; V],
+    insert: [u8; F],
+    /// The frame counts of the VCs, 0 at the start: they are plain integers, and all zero is
+    /// their empty state, so they live here and keep the head small (CABI-040, #240).
+    counts: [VcCounts; VCID_SPACE],
+}
 
-    const fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {
-        if config.frame_len > F {
-            Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::FRAME_LEN))
-        } else {
-            Ok(())
+impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
+    /// The offset of the Insert Zone slot in the buffers, for an in-place build (see
+    /// [`crate::inplace`]).
+    pub const INSERT_OFFSET: usize = core::mem::offset_of!(Self, insert);
+
+    /// Empty slots, and the Insert Zone slot filled with the idle pattern `idle` (LNK-034).
+    #[must_use]
+    pub const fn with_idle(idle: u8) -> Self {
+        Self {
+            slots: [[0; F]; V],
+            insert: [idle; F],
+            counts: [VcCounts {
+                sequence_controlled: 0,
+                expedited: 0,
+            }; VCID_SPACE],
         }
     }
+}
 
-    /// Sets the OCF, Secondary Header, and Insert Zone slots to their configured values.
+impl<P: MuxProtocol, const V: usize> ChannelMuxHead<P, V> {
+    /// Sets the OCF and Secondary Header slots to their configured values.
     fn init_slots(&mut self) {
         self.mc_ocf = P::mc_ocf(&self.config.channel);
         self.mc_fsh = P::mc_fsh(&self.config.channel);
@@ -793,21 +801,79 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             *ocf = params.and_then(|p| P::vc_ocf(&p));
             *fsh = params.and_then(|p| P::vc_fsh(&p));
         }
-        let fill = self.config.idle_pattern;
-        self.insert.fill(fill);
         self.insert_fresh = false;
+    }
+}
+
+impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
+    /// A mux with no field offered, the counts at 0, and the OID generator at its start
+    /// (LNK-032, LNK-036).
+    ///
+    /// # Errors
+    /// `CapacityExceeded` (`frame_len`) if the frame is longer than `F` octets.
+    pub fn new(config: ChannelMuxConfig<P, V>) -> Result<ChannelMux<P, V, F>> {
+        let idle = config.idle_pattern;
+        let head = Self::new_head(config)?;
+        Ok(ChannelMux {
+            head,
+            bufs: ChannelMuxBuffers::with_idle(idle),
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a mux with no field offered: the part of [`Self::new`] that is built from
+    /// the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: ChannelMuxConfig<P, V>) -> Result<ChannelMuxHead<P, V>> {
+        ChannelMux::<P, V, F>::check_capacity(&config)?;
+        let mut head = ChannelMuxHead {
+            config,
+            held: [None; V],
+            vc_ocf: [None; V],
+            vc_fsh: [None; V],
+            mc_ocf: None,
+            mc_fsh: None,
+            insert_fresh: false,
+            mc_count: 0,
+            selector: Selector::new(),
+            oid: OidGenerator::new(),
+            status: MuxStatus::default(),
+        };
+        head.init_slots();
+        Ok(head)
+    }
+
+    /// Puts every slot at its configured value (LNK-033, LNK-034): the head's OCF and Secondary
+    /// Header slots, and the Insert Zone slot at the idle pattern.
+    fn init_slots(&mut self) {
+        self.head.init_slots();
+        self.bufs.insert.fill(self.head.config.idle_pattern);
+    }
+
+    const fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {
+        if config.frame_len > F {
+            Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::FRAME_LEN))
+        } else {
+            Ok(())
+        }
     }
 
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &ChannelMuxConfig<P, V> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &MuxStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057).
@@ -839,16 +905,17 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             MuxInput::Reconfigure(config) => {
                 ChannelMux::<P, V, F>::check_capacity(&config)?;
                 let octets = self
+                    .head
                     .held
                     .iter()
                     .flatten()
                     .fold(0_usize, |n, h| n.saturating_add(h.len));
-                self.config = config;
-                self.held = [None; V];
-                self.selector = Selector::new();
+                self.head.config = config;
+                self.head.held = [None; V];
+                self.head.selector = Selector::new();
                 self.init_slots();
-                self.status.discarded_octets.add(octets);
-                self.status.slots.set(0);
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.slots.set(0);
                 if octets > 0 {
                     actions.push(MuxOutput::Discarded { octets })?;
                 }
@@ -861,14 +928,14 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     fn offer(&mut self, offer: &Offer<'_>) -> Result<()> {
         match self.try_offer(offer) {
             Ok(()) => {
-                self.status.offers.incr();
+                self.head.status.offers.incr();
                 Ok(())
             }
             Err(e) => {
                 if e.kind() == ErrorKind::WouldBlock {
-                    self.status.would_block.incr();
+                    self.head.status.would_block.incr();
                 } else {
-                    self.status.refused.incr();
+                    self.head.status.refused.incr();
                 }
                 Err(e)
             }
@@ -878,6 +945,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     fn try_offer(&mut self, offer: &Offer<'_>) -> Result<()> {
         let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
         let (pos, vc) = self
+            .head
             .config
             .find(offer.vc)
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
@@ -908,10 +976,16 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             Some(c) => (c.bypass(), c.protocol_control(), c.vcf_count()),
         };
         let pointer = P::check_pointer(&vc.params, offer.pointer)?;
-        if offer.field.len() != self.config.data_len(Some(vc), bypass) {
+        if offer.field.len() != self.head.config.data_len(Some(vc), bypass) {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FIELD_LEN));
         }
-        let Some((slot, held)) = self.slots.iter_mut().zip(self.held.iter_mut()).nth(pos) else {
+        let Some((slot, held)) = self
+            .bufs
+            .slots
+            .iter_mut()
+            .zip(self.head.held.iter_mut())
+            .nth(pos)
+        else {
             return Err(Error::new(ErrorKind::InternalError));
         };
         if held.is_some() {
@@ -933,11 +1007,12 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     fn refresh_occupancy(&mut self) {
         let octets = self
+            .head
             .held
             .iter()
             .flatten()
             .fold(0_usize, |n, h| n.saturating_add(h.len));
-        self.status.slots.set(octets);
+        self.head.status.slots.set(octets);
     }
 
     /// The position of the VC of `scope` (`None` for the MC).
@@ -945,6 +1020,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         match scope {
             Scope::Mc => Ok(None),
             Scope::Vc(id) => self
+                .head
                 .config
                 .find(id)
                 .map(|(pos, _)| Some(pos))
@@ -955,8 +1031,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// `SetOcf` (LNK-033).
     fn set_ocf(&mut self, scope: Scope, ocf: [u8; OCF_LEN]) -> Result<()> {
         let slot = match self.scope_pos(scope)? {
-            None => Some(&mut self.mc_ocf),
-            Some(pos) => self.vc_ocf.get_mut(pos),
+            None => Some(&mut self.head.mc_ocf),
+            Some(pos) => self.head.vc_ocf.get_mut(pos),
         };
         match slot {
             Some(slot @ Some(_)) => {
@@ -970,8 +1046,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// `SetFsh` (LNK-033).
     fn set_fsh(&mut self, scope: Scope, data: &[u8]) -> Result<()> {
         let slot = match self.scope_pos(scope)? {
-            None => Some(&mut self.mc_fsh),
-            Some(pos) => self.vc_fsh.get_mut(pos),
+            None => Some(&mut self.head.mc_fsh),
+            Some(pos) => self.head.vc_fsh.get_mut(pos),
         };
         match slot {
             Some(Some(old)) if old.len() == data.len() => {
@@ -985,29 +1061,29 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// `SetInsert` (LNK-034).
     fn set_insert(&mut self, data: &[u8]) -> Result<()> {
-        let len = self.config.insert_len;
+        let len = self.head.config.insert_len;
         if len == 0 {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::INSERT_ZONE_LEN));
         }
         if data.len() != len {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::INSERT_ZONE_LEN));
         }
-        for (d, s) in self.insert.iter_mut().zip(data) {
+        for (d, s) in self.bufs.insert.iter_mut().zip(data) {
             *d = *s;
         }
-        self.insert_fresh = true;
+        self.head.insert_fresh = true;
         Ok(())
     }
 
     /// `Opportunity` (LNK-030…LNK-036).
     fn opportunity(&mut self, out: &mut [u8], actions: &mut MuxActions) -> Result<()> {
-        let frame_len = self.config.frame_len;
+        let frame_len = self.head.config.frame_len;
         if out.len() < frame_len {
             return Err(Error::buffer_too_small(frame_len));
         }
         let (selector, pick) = self.pick()?;
         let fields = self.fields(&pick);
-        let layout = FrameLayout::compute(&self.config.spec(pick.vc.as_ref(), fields.bypass))?;
+        let layout = FrameLayout::compute(&self.head.config.spec(pick.vc.as_ref(), fields.bypass))?;
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1027,21 +1103,21 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             data: out_range(&layout.data()),
             security_trailer: out_range(&layout.security_trailer()),
         }))?;
-        if self.config.insert_len > 0 {
-            if !self.insert_fresh {
-                self.status.insert_repeated.incr();
+        if self.head.config.insert_len > 0 {
+            if !self.head.insert_fresh {
+                self.head.status.insert_repeated.incr();
                 actions.push(MuxOutput::InsertSduRepeated)?;
             }
-            self.insert_fresh = false;
+            self.head.insert_fresh = false;
         }
         Ok(())
     }
 
     /// Chooses the VC of the next frame by the policy, on a copy of the policy state (LNK-031).
     fn pick(&self) -> Result<(Selector, Pick<P>)> {
-        let cfg = &self.config;
-        let held = &self.held;
-        let mut selector = self.selector;
+        let cfg = &self.head.config;
+        let held = &self.head.held;
+        let mut selector = self.head.selector;
         let selected = selector.select(
             cfg.policy,
             cfg.count,
@@ -1074,13 +1150,14 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// The values of the primary header: the counts are those of the frame selected (LNK-032).
     fn fields(&self, pick: &Pick<P>) -> FrameFields {
-        let cfg = &self.config;
+        let cfg = &self.head.config;
         let id = pick
             .vc
             .as_ref()
             .map_or_else(|| P::oid_vcid(&cfg.channel), VcConfig::id);
         let bypass = pick.held.map_or(P::OID_BYPASS, |h| h.bypass);
         let counted = self
+            .bufs
             .counts
             .get(usize::from(id))
             .map_or(0, |c| c.get(bypass));
@@ -1088,7 +1165,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             vc: id,
             oid: pick.held.is_none(),
             frame_len: cfg.frame_len,
-            mc_count: self.mc_count,
+            mc_count: self.head.mc_count,
             vc_count: pick.held.and_then(|h| h.given_count).unwrap_or(counted),
             ocf: cfg.has_ocf(pick.vc.as_ref()),
             secondary: cfg.has_fsh(pick.vc.as_ref()),
@@ -1100,21 +1177,21 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// Takes the offered field, counts the frame, and keeps the policy state (LNK-032).
     fn commit(&mut self, selector: Selector, pick: &Pick<P>, fields: &FrameFields) {
-        self.selector = selector;
-        if let Some(slot) = pick.selected.and_then(|p| self.held.get_mut(p)) {
+        self.head.selector = selector;
+        if let Some(slot) = pick.selected.and_then(|p| self.head.held.get_mut(p)) {
             *slot = None;
         }
         let given = pick.held.is_some_and(|h| h.given_count.is_some());
-        if !given && let Some(c) = self.counts.get_mut(usize::from(fields.vc)) {
+        if !given && let Some(c) = self.bufs.counts.get_mut(usize::from(fields.vc)) {
             c.bump(fields.bypass);
         }
         if P::MC_COUNT {
-            self.mc_count = self.mc_count.wrapping_add(1);
+            self.head.mc_count = self.head.mc_count.wrapping_add(1);
         }
         self.refresh_occupancy();
-        self.status.frames_out.incr();
+        self.head.status.frames_out.incr();
         if fields.oid {
-            self.status.oid_frames.incr();
+            self.head.status.oid_frames.incr();
         }
     }
 
@@ -1131,7 +1208,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .get_mut(layout.primary_header())
             .ok_or(Error::new(ErrorKind::InternalError))?;
         P::write_header(
-            &self.config.channel,
+            &self.head.config.channel,
             pick.vc.as_ref().map(|v| &v.params),
             fields,
             header,
@@ -1141,8 +1218,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let fsh = pick
             .vc_pos
-            .and_then(|p| self.vc_fsh.get(p).copied().flatten())
-            .or(self.mc_fsh);
+            .and_then(|p| self.head.vc_fsh.get(p).copied().flatten())
+            .or(self.head.mc_fsh);
         if let Some(fsh) = fsh {
             let (id, rest) = secondary
                 .split_first_mut()
@@ -1152,7 +1229,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 *d = s;
             }
         } else {
-            for (d, s) in secondary.iter_mut().zip(&self.insert) {
+            for (d, s) in secondary.iter_mut().zip(self.bufs.insert.iter()) {
                 *d = *s;
             }
         }
@@ -1164,11 +1241,11 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 .split_at_mut_checked(P::OID_DATA_HEADER)
                 .ok_or(Error::new(ErrorKind::InternalError))?;
             P::write_oid_data_header(layout.data().len(), head);
-            self.oid.fill(zone);
+            self.head.oid.fill(zone);
         } else {
             let slot = pick
                 .vc_pos
-                .and_then(|p| self.slots.get(p))
+                .and_then(|p| self.bufs.slots.get(p))
                 .ok_or(Error::new(ErrorKind::InternalError))?;
             for (d, s) in data.iter_mut().zip(slot) {
                 *d = *s;
@@ -1176,8 +1253,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         }
         let ocf = pick
             .vc_pos
-            .and_then(|p| self.vc_ocf.get(p).copied().flatten())
-            .or(self.mc_ocf);
+            .and_then(|p| self.head.vc_ocf.get(p).copied().flatten())
+            .or(self.head.mc_ocf);
         if let Some(ocf) = ocf {
             let dst = frame
                 .get_mut(layout.ocf())
@@ -1884,7 +1961,7 @@ mod tests {
         // req: LNK-032, OI-74
         // The mux has no start count (OI-74), so the test sets the counter next to the wrap.
         let mut m = mux(false);
-        m.counts[1] = VcCounts {
+        m.bufs.counts[1] = VcCounts {
             sequence_controlled: 0x00FF_FFFE,
             expedited: 0,
         };
@@ -1905,7 +1982,7 @@ mod tests {
     fn the_aos_vc_frame_count_cycle_counts_the_wraps() {
         // req: LNK-032, OI-74
         let mut m = mux(true);
-        m.counts[1] = VcCounts {
+        m.bufs.counts[1] = VcCounts {
             sequence_controlled: 0x00FF_FFFF,
             expedited: 0,
         };
@@ -1914,7 +1991,7 @@ mod tests {
         // cycle counts the wrap.
         assert_eq!(got, [(0x00FF_FFFF, 0x50), (0, 0x51), (1, 0x51)]);
         // The cycle is 4 bits: it wraps after 16 cycles.
-        m.counts[1] = VcCounts {
+        m.bufs.counts[1] = VcCounts {
             sequence_controlled: (0xF_u64 << 24) | 0x00FF_FFFF,
             expedited: 0,
         };
@@ -1935,7 +2012,7 @@ mod tests {
                     for frames in 1_u64..6 {
                         let start = (k << 24) - off;
                         let mut m = mux(cycle_in_use);
-                        m.counts[1] = VcCounts {
+                        m.bufs.counts[1] = VcCounts {
                             sequence_controlled: start,
                             expedited: 0,
                         };

@@ -13,6 +13,7 @@
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
+    clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects,
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
@@ -3523,3 +3524,22 @@ mod link_recv {
     vector_test!(frame_receiver_uslp, "link", "recv/frame_receiver_uslp");
 }
 // ---- end link receiving engines
+
+// ---- Link ChannelMux (M4 WP-7c): the scenarios of `test-vectors/link/send/channel_mux_*.json`
+// through the C ABI handle.
+mod link_mux {
+    macro_rules! vector_test {
+        ($name:ident, "link", $file:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, CABI-030, CABI-031, CABI-032, CABI-040
+                super::link_engine::run_scenario_file(concat!("link/", $file, ".json"));
+            }
+        };
+    }
+
+    vector_test!(channel_mux_tm, "link", "send/channel_mux_tm");
+    vector_test!(channel_mux_aos, "link", "send/channel_mux_aos");
+    vector_test!(channel_mux_uslp, "link", "send/channel_mux_uslp");
+}
+// ---- end link ChannelMux

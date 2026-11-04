@@ -16,6 +16,7 @@
 
 #![expect(
     clippy::borrow_as_ptr,
+    clippy::large_stack_arrays,
     clippy::too_many_lines,
     reason = "test-only harness: the C calls take references as pointers, one long loop per engine (RS-018)"
 )]
@@ -27,6 +28,7 @@ use aldis::core::{ErrorKind, FieldId};
 use aldis::link::extractor::PacketRun;
 use aldis_ffi::link::*;
 use aldis_ffi::link_gen::*;
+use aldis_ffi::link_mux::*;
 use aldis_ffi::link_rx::*;
 use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
 use aldis_testkit::{ScenarioFile, VectorFile, hex, vectors_dir};
@@ -944,6 +946,283 @@ mod receive {
     }
 }
 
+mod mux {
+    use super::*;
+
+    fn ocf_word(hex_octets: &str) -> u32 {
+        u32::from_be_bytes(hex::decode(hex_octets).unwrap().try_into().unwrap())
+    }
+
+    fn qos_of(name: Option<&str>) -> u32 {
+        match name {
+            None | Some("sequence_controlled") => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+            Some("expedited") => ALDIS_LINK_QOS_EXPEDITED,
+            Some(other) => panic!("unknown qos {other}"),
+        }
+    }
+
+    fn vc(v: &Value) -> aldis_channel_mux_vc_t {
+        let o = v.as_object().unwrap();
+        let mut fsh_init = [0_u8; ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
+        let fsh = o
+            .get("fsh_init_hex")
+            .map(|h| hex::decode(h.as_str().unwrap()).unwrap());
+        if let Some(f) = &fsh {
+            fsh_init[..f.len()].copy_from_slice(f);
+        }
+        aldis_channel_mux_vc_t {
+            vc_id: byte(&o["vcid"]),
+            priority: byte(&o["priority"]),
+            weight: u16::try_from(num(&o["weight"])).unwrap(),
+            sec_header_len: o.get("sec_header_len").map_or(0, size),
+            sec_trailer_len: o.get("sec_trailer_len").map_or(0, size),
+            role: match o["role"].as_str().unwrap() {
+                "packets" => ALDIS_LINK_CONTENT_PACKETS,
+                // The USLP roles are the generators' business; the mux does not read them.
+                "vca" | "mapa" => ALDIS_LINK_CONTENT_VCA,
+                "bitstream" => ALDIS_LINK_CONTENT_BITSTREAM,
+                other => panic!("unknown role {other}"),
+            },
+            ocf: u8::from(o.contains_key("ocf_init_hex")),
+            ocf_init: o
+                .get("ocf_init_hex")
+                .map_or(0, |h| ocf_word(h.as_str().unwrap())),
+            fsh_len: u8::try_from(fsh.map_or(0, |f| f.len())).unwrap(),
+            fsh_init,
+            uslp_map: o.get("map_id").map_or(0, byte),
+            uslp_qos: qos_of(o.get("qos").and_then(Value::as_str)),
+            uslp_vcf_len_sc: o.get("vcf_len_sc").map_or(0, byte),
+            uslp_vcf_len_exp: o.get("vcf_len_exp").map_or(0, byte),
+            uslp_cop: u8::from(o.get("cop").and_then(Value::as_bool).unwrap_or(false)),
+        }
+    }
+
+    pub(super) fn config(c: &Map<String, Value>) -> aldis_channel_mux_config_t {
+        let mut mc_fsh_init = [0_u8; ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
+        let mc_fsh = c
+            .get("mc_fsh_init_hex")
+            .map(|h| hex::decode(h.as_str().unwrap()).unwrap());
+        if let Some(f) = &mc_fsh {
+            mc_fsh_init[..f.len()].copy_from_slice(f);
+        }
+        let mut vcs = [aldis_channel_mux_vc_t::default();
+            aldis_ffi::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS];
+        let listed = c["vcs"].as_array().unwrap();
+        for (slot, v) in vcs.iter_mut().zip(listed) {
+            *slot = vc(v);
+        }
+        aldis_channel_mux_config_t {
+            protocol: protocol(c),
+            scid: u16::try_from(num(&c["scid"])).unwrap(),
+            frame_len: size(&c["frame_len"]),
+            fecf: u8::from(c["fecf"].as_bool().unwrap()),
+            policy: match c["policy"]["kind"].as_str().unwrap() {
+                "fixed_priority" => ALDIS_LINK_MUX_POLICY_FIXED_PRIORITY,
+                "round_robin" => ALDIS_LINK_MUX_POLICY_ROUND_ROBIN,
+                "weighted_round_robin" => ALDIS_LINK_MUX_POLICY_WEIGHTED_ROUND_ROBIN,
+                other => panic!("unknown policy {other}"),
+            },
+            insert_zone_len: c.get("insert_zone_len").map_or(0, size),
+            insert_idle_pattern: c
+                .get("insert_init_hex")
+                .map_or(0, |_| octet(c, "insert_init_hex")),
+            tm_oid_vc: c.get("oid_vc").map_or(0, byte),
+            mc_ocf: u8::from(c.contains_key("mc_ocf_init_hex")),
+            mc_ocf_init: c
+                .get("mc_ocf_init_hex")
+                .map_or(0, |h| ocf_word(h.as_str().unwrap())),
+            mc_fsh_len: u8::try_from(mc_fsh.map_or(0, |f| f.len())).unwrap(),
+            mc_fsh_init,
+            aos_edition: 0,
+            aos_fhec: u8::from(c.get("fhec").and_then(Value::as_bool).unwrap_or(false)),
+            aos_cycle_in_use: u8::from(
+                c.get("cycle_in_use")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            ),
+            uslp_destination: c.get("source_or_destination").map_or(0, byte),
+            uslp_oid_vcf_len: c.get("oid").map_or(0, |o| byte(&o["vcf_len"])),
+            vc_count: listed.len(),
+            vcs,
+        }
+    }
+
+    fn range_of(r: &aldis_ffi::range::aldis_range_t) -> Value {
+        json!([r.offset, r.offset + r.len])
+    }
+
+    fn output(a: &aldis_channel_mux_action_t, area: &[u8]) -> Value {
+        match a.kind {
+            ALDIS_CHANNEL_MUX_ACTION_TRANSMIT => json!({"transmit": {
+                "kind": match a.class {
+                    ALDIS_LINK_FRAME_CLASS_DATA => "data",
+                    ALDIS_LINK_FRAME_CLASS_OID => "oid",
+                    other => panic!("class {other}"),
+                },
+                "vc": a.vc_id,
+                "frame_hex": hex::encode(&area[a.frame.offset..a.frame.offset + a.frame.len]),
+                "security_header": range_of(&a.security_header),
+                "data": range_of(&a.data),
+                "security_trailer": range_of(&a.security_trailer),
+            }}),
+            ALDIS_CHANNEL_MUX_ACTION_INSERT_SDU_REPEATED => {
+                json!({"notify": {"kind": "InsertSduRepeated"}})
+            }
+            ALDIS_CHANNEL_MUX_ACTION_DISCARDED => discarded(a.octets),
+            other => panic!("action kind {other}"),
+        }
+    }
+
+    fn scope(v: &Value, input: &mut aldis_channel_mux_input_t) {
+        match v["scope"].as_str().unwrap() {
+            "mc" => input.scope = ALDIS_LINK_SCOPE_MASTER_CHANNEL,
+            "vc" => {
+                input.scope = ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL;
+                input.vc_id = byte(&v["vc"]);
+            }
+            other => panic!("unknown scope {other}"),
+        }
+    }
+
+    pub(super) fn run_file(name: &str) -> (usize, Vec<String>) {
+        let file = load(name, "channel-mux");
+        let (mut run, mut failures) = (0, Vec::new());
+        for scenario in &file.resolve().unwrap() {
+            if scenario.scenario.superseded.is_some() {
+                continue;
+            }
+            run += 1;
+            let mut storage = Box::new(aldis_channel_mux_t {
+                words: [0xA5A5_A5A5_A5A5_A5A5; ALDIS_CHANNEL_MUX_WORDS],
+            });
+            let mut det = aldis_error_detail_t::default();
+            let cfg = config(scenario.config);
+            // SAFETY: every pointer is to a live local.
+            let status = unsafe { aldis_channel_mux_init(&raw mut *storage, &cfg, &mut det) };
+            assert_eq!(status, ALDIS_OK, "{}", scenario.scenario.id);
+            // The configuration in force, for the default route of a VC.
+            let mut current = scenario.config.clone();
+            for (i, step) in scenario.steps.iter().enumerate() {
+                let (key, v) = step.input.iter().next().unwrap();
+                let data: Vec<u8>;
+                let mut input = aldis_channel_mux_input_t {
+                    kind: 0,
+                    data: null(),
+                    data_len: 0,
+                    vc_id: 0,
+                    scope: 0,
+                    ocf: 0,
+                    pointer_present: 0,
+                    pointer: 0,
+                    route_present: 0,
+                    map_id: 0,
+                    qos: 0,
+                    cop_present: 0,
+                    cop_vcf_count: 0,
+                    cop_bypass: 0,
+                    cop_protocol_control: 0,
+                    config: cfg,
+                };
+                match key.as_str() {
+                    "offer" => {
+                        data = hex::decode(v["field_hex"].as_str().unwrap()).unwrap();
+                        input.kind = ALDIS_CHANNEL_MUX_INPUT_OFFER;
+                        input.data = data.as_ptr();
+                        input.data_len = data.len();
+                        input.vc_id = byte(&v["vc"]);
+                        if let Some(p) = v.get("fhp") {
+                            input.pointer_present = 1;
+                            input.pointer = u16::try_from(num(p)).unwrap();
+                        }
+                        if v.get("map").is_some() || v.get("qos").is_some() {
+                            // The default of a VC is its MAP and QoS (USLP); TM and AOS have none.
+                            let entry = current["vcs"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .find(|e| byte(&e["vcid"]) == input.vc_id)
+                                .unwrap();
+                            input.route_present = 1;
+                            input.map_id = v
+                                .get("map")
+                                .map_or_else(|| entry.get("map_id").map_or(0, byte), byte);
+                            input.qos = qos_of(
+                                v.get("qos")
+                                    .or_else(|| entry.get("qos"))
+                                    .and_then(Value::as_str),
+                            );
+                        }
+                        if let Some(c) = v.get("cop") {
+                            input.cop_present = 1;
+                            input.cop_vcf_count = num(&c["vcf_count"]);
+                            input.cop_bypass = byte(&c["bypass"]);
+                            input.cop_protocol_control = byte(&c["protocol_control"]);
+                        }
+                    }
+                    "opportunity" => input.kind = ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY,
+                    "set_ocf" => {
+                        input.kind = ALDIS_CHANNEL_MUX_INPUT_SET_OCF;
+                        scope(v, &mut input);
+                        input.ocf = ocf_word(v["ocf_hex"].as_str().unwrap());
+                    }
+                    "set_fsh" => {
+                        data = hex::decode(v["data_hex"].as_str().unwrap()).unwrap();
+                        input.kind = ALDIS_CHANNEL_MUX_INPUT_SET_FSH;
+                        scope(v, &mut input);
+                        input.data = data.as_ptr();
+                        input.data_len = data.len();
+                    }
+                    "set_insert" => {
+                        data = hex::decode(v["data_hex"].as_str().unwrap()).unwrap();
+                        input.kind = ALDIS_CHANNEL_MUX_INPUT_SET_INSERT;
+                        input.data = data.as_ptr();
+                        input.data_len = data.len();
+                    }
+                    "reconfigure" => {
+                        input.kind = ALDIS_CHANNEL_MUX_INPUT_RECONFIGURE;
+                        current.clone_from(v["config"].as_object().unwrap());
+                        input.config = config(&current);
+                    }
+                    other => panic!("unknown input {other}"),
+                }
+                let mut area = [0xEE_u8; 2048];
+                let mut actions = aldis_channel_mux_actions_t::default();
+                // SAFETY: every pointer is to a live local.
+                let status = unsafe {
+                    aldis_channel_mux_step(
+                        &raw mut *storage,
+                        &input,
+                        area.as_mut_ptr(),
+                        area.len(),
+                        &mut actions,
+                        &mut det,
+                    )
+                };
+                let got: Vec<Value> = if status == ALDIS_OK {
+                    actions.items[..actions.count]
+                        .iter()
+                        .map(|a| output(a, &area))
+                        .collect()
+                } else {
+                    vec![error(status, &det)]
+                };
+                let want: Vec<Value> = step.expect.iter().cloned().map(Value::Object).collect();
+                if got != want {
+                    failures.push(format!(
+                        "{} step {i} {}: got {} want {}",
+                        scenario.scenario.id,
+                        Value::Object(step.input.clone()),
+                        Value::Array(got),
+                        Value::Array(want)
+                    ));
+                    break;
+                }
+            }
+        }
+        (run, failures)
+    }
+}
+
 /// Runs the scenarios of `name`; the engine is named by the file.
 pub(crate) fn run_scenario_file(name: &str) {
     let (run, skipped, failures) = if name.contains("packet_generator") {
@@ -953,6 +1232,9 @@ pub(crate) fn run_scenario_file(name: &str) {
         (run, 0, failures)
     } else if name.contains("frame_receiver") {
         let (run, failures) = receive::run_file(name);
+        (run, 0, failures)
+    } else if name.contains("channel_mux") {
+        let (run, failures) = mux::run_file(name);
         (run, 0, failures)
     } else if name.contains("access_generator") {
         let (run, failures) = access::run_file(name);

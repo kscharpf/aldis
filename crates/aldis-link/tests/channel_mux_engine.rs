@@ -364,6 +364,13 @@ fn an_engine_refuses_a_frame_longer_than_its_capacity() {
         failure(TmMux::new(long)),
         named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
     );
+    // The in-place head makes the same check (#240).
+    assert_eq!(
+        failure(TmMux::new_head(long)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
+    assert!(TmMux::new_head(tm_config(MuxPolicy::FixedPriority)).is_ok());
+    const { assert!(TmMux::HEAD_OFFSET < TmMux::BUFFERS_OFFSET) };
     let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
     let mut out = [0; F];
     assert_eq!(
@@ -970,4 +977,65 @@ fn a_reconfiguration_puts_the_slots_back_to_the_configured_values() {
     .unwrap();
     mux.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!(&out[18..22], [0xC3; 4]);
+}
+
+#[test]
+fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
+    // req: LNK-003, LNK-076
+    let mut out = [0; F];
+    let mut aos = AosMux::new(aos_config()).unwrap();
+    let field = [7_u8; 20];
+    aos.step(MuxInput::Offer(offer(1, &field, None)), &mut out)
+        .unwrap();
+    let actions = aos
+        .step(MuxInput::Reconfigure(aos_config()), &mut out)
+        .unwrap();
+    assert_eq!(
+        actions.iter().copied().collect::<Vec<_>>(),
+        [MuxOutput::Discarded { octets: 20 }]
+    );
+    let mut uslp = UslpMux::new(uslp_config(false)).unwrap();
+    let field = [7_u8; 21];
+    uslp.step(MuxInput::Offer(offer(1, &field, None)), &mut out)
+        .unwrap();
+    let actions = uslp
+        .step(MuxInput::Reconfigure(uslp_config(false)), &mut out)
+        .unwrap();
+    assert_eq!(
+        actions.iter().copied().collect::<Vec<_>>(),
+        [MuxOutput::Discarded { octets: 21 }]
+    );
+    // An oversize configuration is refused whatever the protocol, and changes nothing.
+    let oversize = ChannelMuxConfig::<Aos, V>::new(
+        aos_channel(),
+        F + 1,
+        true,
+        MuxPolicy::FixedPriority,
+        &[aos_vc(1, 1)],
+    )
+    .unwrap();
+    assert_eq!(
+        failure(aos.step(MuxInput::Reconfigure(oversize), &mut out)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
+    assert_eq!(
+        failure(AosMux::new(oversize)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
+    let oversize = ChannelMuxConfig::<Uslp, V>::new(
+        uslp_channel(),
+        F + 1,
+        true,
+        MuxPolicy::FixedPriority,
+        &[uslp_vc(1, false)],
+    )
+    .unwrap();
+    assert_eq!(
+        failure(uslp.step(MuxInput::Reconfigure(oversize), &mut out)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
+    assert_eq!(
+        failure(UslpMux::new(oversize)),
+        named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
+    );
 }

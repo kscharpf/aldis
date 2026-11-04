@@ -1315,6 +1315,23 @@
 #define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
 
 /**
+ * The most actions one `aldis_channel_mux_step` returns (LNK-074): a frame and the notice that
+ * its Insert Zone repeats the frame before.
+ */
+#define ALDIS_CHANNEL_MUX_MAX_ACTIONS 2
+
+/**
+ * 64-bit words of one `aldis_channel_mux_t` (CABI-031): the tag and the largest of the engines
+ * of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_CHANNEL_MUX_WORDS 2653
+
+/**
+ * The most octets of a Secondary Header's data (132.0 §4.1.3.2.3, Table 5-2).
+ */
+#define ALDIS_CHANNEL_MUX_MAX_FSH_DATA 63
+
+/**
  * The most actions one `aldis_packet_extractor_step` returns (LNK-074): a run of packets, an
  * incomplete packet, a discard, and an error.
  */
@@ -1946,6 +1963,86 @@ typedef uint32_t aldis_bitstream_generator_input;
 #endif // __cplusplus
 
 /**
+ * The kind of an `aldis_channel_mux_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_channel_mux_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The next frame, in `out` (LNK-030).
+   */
+  ALDIS_CHANNEL_MUX_ACTION_TRANSMIT = 0,
+  /**
+   * The Insert Zone holds the value of the frame before (LNK-034).
+   */
+  ALDIS_CHANNEL_MUX_ACTION_INSERT_SDU_REPEATED = 1,
+  /**
+   * A reconfiguration discarded `octets` (LNK-003).
+   */
+  ALDIS_CHANNEL_MUX_ACTION_DISCARDED = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_channel_mux_action aldis_channel_mux_action;
+#else
+typedef uint32_t aldis_channel_mux_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_channel_mux_input_t` (LNK-030, LNK-033, LNK-034, LNK-076, LNK-003;
+ * API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_channel_mux_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A data field for the VC `vc_id` (`data`; LNK-076).
+   */
+  ALDIS_CHANNEL_MUX_INPUT_OFFER = 0,
+  /**
+   * Replace the OCF slot of `scope` (`ocf`; LNK-033).
+   */
+  ALDIS_CHANNEL_MUX_INPUT_SET_OCF = 1,
+  /**
+   * Replace the Secondary Header slot of `scope` (`data`; TM, LNK-033).
+   */
+  ALDIS_CHANNEL_MUX_INPUT_SET_FSH = 2,
+  /**
+   * Replace the Insert Zone slot (`data`; AOS, USLP; LNK-034).
+   */
+  ALDIS_CHANNEL_MUX_INPUT_SET_INSERT = 3,
+  /**
+   * Build the next frame in `out` (LNK-030).
+   */
+  ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY = 4,
+  /**
+   * Replace the configuration (`config`) between data units (LNK-003). The protocol cannot
+   * change.
+   */
+  ALDIS_CHANNEL_MUX_INPUT_RECONFIGURE = 5,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_channel_mux_input aldis_channel_mux_input;
+#else
+typedef uint32_t aldis_channel_mux_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The kind of an `aldis_farm1_action_t` (232.1 §6.2, §6.3; API-057, API-083).
  *
  * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of the
@@ -2568,6 +2665,35 @@ typedef uint32_t aldis_link_discard;
 #endif // __cplusplus
 
 /**
+ * Whether a frame carries the data of a VC or only idle data (LNK-030).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_frame_class
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A frame of the field a VC offered.
+   */
+  ALDIS_LINK_FRAME_CLASS_DATA = 0,
+  /**
+   * An Only Idle Data frame (LNK-030).
+   */
+  ALDIS_LINK_FRAME_CLASS_OID = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_frame_class aldis_link_frame_class;
+#else
+typedef uint32_t aldis_link_frame_class;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
  * The kind of idle packet that completes a field (LNK-013).
  *
  * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
@@ -2622,6 +2748,39 @@ enum aldis_link_idle_policy
 typedef enum aldis_link_idle_policy aldis_link_idle_policy;
 #else
 typedef uint32_t aldis_link_idle_policy;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The multiplexing policy of a `ChannelMux` (LNK-031).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_link_mux_policy
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The offered VC with the highest priority; priorities are unique.
+   */
+  ALDIS_LINK_MUX_POLICY_FIXED_PRIORITY = 0,
+  /**
+   * The next offered VC after the one served last, in ascending VCID order.
+   */
+  ALDIS_LINK_MUX_POLICY_ROUND_ROBIN = 1,
+  /**
+   * Each VC gets up to its weight of consecutive selections per cycle.
+   */
+  ALDIS_LINK_MUX_POLICY_WEIGHTED_ROUND_ROBIN = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_link_mux_policy aldis_link_mux_policy;
+#else
+typedef uint32_t aldis_link_mux_policy;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -5549,6 +5708,344 @@ typedef struct {
    */
   aldis_link_occupancy_t queue;
 } aldis_bitstream_generator_status_t;
+
+/**
+ * A `ChannelMux` in caller storage: the caller declares an object of this type, and the pointer
+ * to it is the handle (LNK-030, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_CHANNEL_MUX_WORDS];
+} aldis_channel_mux_t;
+
+/**
+ * One virtual channel of a `ChannelMux` (132.0 §5.4 Table 5-3; 732.0 §5.4 Table 5-3; 732.1
+ * §5.4 Table 5-3; LNK-031, LNK-033, LNK-035, LNK-076, LNK-082).
+ */
+typedef struct {
+  /**
+   * The VCID: 0 to 7 for TM, 0 to 63 for AOS and USLP. A VC is listed once.
+   */
+  uint8_t vc_id;
+  /**
+   * The priority under fixed priority (LNK-031); the priorities of the VCs are unique then.
+   */
+  uint8_t priority;
+  /**
+   * The weight under weighted round robin, at least 1 (LNK-031).
+   */
+  uint16_t weight;
+  /**
+   * The octets of the VC's Security Header, at most 64 (API-071; LNK-035).
+   */
+  size_t sec_header_len;
+  /**
+   * The octets of the VC's Security Trailer, at most 65 535 (API-071; LNK-035).
+   */
+  size_t sec_trailer_len;
+  /**
+   * TM: `ALDIS_LINK_CONTENT_PACKETS` or `ALDIS_LINK_CONTENT_VCA` (LNK-082), which sets the
+   * data field status of the frames. Read as a constant for every protocol, used by TM.
+   */
+  uint32_t role;
+  /**
+   * TM, AOS: 1 when every frame of the VC has an OCF, with the value `ocf_init` until
+   * `SET_OCF` replaces it (LNK-033), else 0.
+   */
+  uint8_t ocf;
+  /**
+   * TM, AOS: the initial OCF as a big-endian word.
+   */
+  uint32_t ocf_init;
+  /**
+   * TM: the data octets of the Secondary Header, 1 to 63, initially `fsh_init`; 0 for none
+   * (LNK-033).
+   */
+  uint8_t fsh_len;
+  /**
+   * TM: the initial Secondary Header data; the first `fsh_len` octets.
+   */
+  uint8_t fsh_init[ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
+  /**
+   * USLP: the MAP ID of the frames, 0 to 15 (732.1 §4.1.2.5).
+   */
+  uint8_t uslp_map;
+  /**
+   * USLP: `ALDIS_LINK_QOS_*` of an offered field that names no route (732.1 §4.1.2.8).
+   */
+  uint32_t uslp_qos;
+  /**
+   * USLP: the VCF Count Length of sequence-controlled frames, 0 to 7 octets (732.1 §4.1.2.11).
+   */
+  uint8_t uslp_vcf_len_sc;
+  /**
+   * USLP: the VCF Count Length of expedited frames, 0 to 7 octets.
+   */
+  uint8_t uslp_vcf_len_exp;
+  /**
+   * USLP: 1 when COP-1 is in effect on the VC (732.1 Table 5-3), so an offer may carry the
+   * COP block (LNK-076); needs a sequence-controlled VCF Count Length above 0.
+   */
+  uint8_t uslp_cop;
+} aldis_channel_mux_vc_t;
+
+/**
+ * The managed parameters of a `ChannelMux` (132.0 §5.2; 732.0 §5.2; 732.1 §5.2, §5.3;
+ * LNK-030…LNK-035, LNK-078).
+ */
+typedef struct {
+  /**
+   * `ALDIS_LINK_PROTOCOL_*`: TM, AOS, or USLP.
+   */
+  uint32_t protocol;
+  /**
+   * The Spacecraft Identifier: 10 bits for TM and AOS (8 bits in the AOS Issue 4 edition), 16
+   * bits for USLP.
+   */
+  uint16_t scid;
+  /**
+   * The octets of every frame, at most `ALDIS_LINK_MAX_FRAME_OCTETS`.
+   */
+  size_t frame_len;
+  /**
+   * 1 when frames carry a FECF, else 0.
+   */
+  uint8_t fecf;
+  /**
+   * `ALDIS_LINK_MUX_POLICY_*` (LNK-031).
+   */
+  uint32_t policy;
+  /**
+   * AOS, USLP: the octets of the Insert Zone, 0 for none (LNK-034).
+   */
+  size_t insert_zone_len;
+  /**
+   * AOS, USLP: the octet the Insert Zone holds until `SET_INSERT` (LNK-034).
+   */
+  uint8_t insert_idle_pattern;
+  /**
+   * TM: the VC dedicated to OID frames, one of `vcs` (LNK-030).
+   */
+  uint8_t tm_oid_vc;
+  /**
+   * TM, USLP: 1 when every frame of the master channel has an OCF, with the value
+   * `mc_ocf_init` until `SET_OCF` replaces it (LNK-033, OI-76), else 0.
+   */
+  uint8_t mc_ocf;
+  /**
+   * TM, USLP: the initial OCF of the master channel as a big-endian word.
+   */
+  uint32_t mc_ocf_init;
+  /**
+   * TM: the data octets of the master channel's Secondary Header, 1 to 63; 0 for none.
+   */
+  uint8_t mc_fsh_len;
+  /**
+   * TM: the initial Secondary Header data of the master channel; the first `mc_fsh_len`
+   * octets.
+   */
+  uint8_t mc_fsh_init[ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
+  /**
+   * AOS: `ALDIS_AOS_EDITION_*` (AOS-001); 0 is Issue 5.
+   */
+  uint8_t aos_edition;
+  /**
+   * AOS: 1 when frames have an FHEC, which the caller computes (LNK-035), else 0.
+   */
+  uint8_t aos_fhec;
+  /**
+   * AOS: 1 when the VC Frame Count Cycle is in use (732.0 §4.1.2.5.5), else 0.
+   */
+  uint8_t aos_cycle_in_use;
+  /**
+   * USLP: 1 when the SCID is the destination of the frames, 0 for the source (732.1
+   * §4.1.2.3.3).
+   */
+  uint8_t uslp_destination;
+  /**
+   * USLP: the VCF Count Length of VCID 63, the OID frames, 0 to 7 octets (LNK-032).
+   */
+  uint8_t uslp_oid_vcf_len;
+  /**
+   * The number of entries of `vcs`, at most `ALDIS_LINK_MAX_VIRTUAL_CHANNELS`.
+   */
+  size_t vc_count;
+  /**
+   * The virtual channels; those from `vc_count` on are not read.
+   */
+  aldis_channel_mux_vc_t vcs[ALDIS_LINK_MAX_VIRTUAL_CHANNELS];
+} aldis_channel_mux_config_t;
+
+/**
+ * One input of a `ChannelMux` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_CHANNEL_MUX_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `OFFER`, `SET_FSH`, and `SET_INSERT`: the octets, read once and copied (API-060).
+   * `data` is checked on every kind and must not overlap the storage or `out`: `NULL` only
+   * with `data_len` 0. An offered field has the data field length of the VC (LNK-076).
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `OFFER`: the VCID of the field. For `SET_OCF` and `SET_FSH` with the scope
+   * `ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL`: the VCID of the slot.
+   */
+  uint8_t vc_id;
+  /**
+   * For `SET_OCF` and `SET_FSH`: `ALDIS_LINK_SCOPE_*`.
+   */
+  uint32_t scope;
+  /**
+   * For `SET_OCF`: the new OCF as a big-endian word.
+   */
+  uint32_t ocf;
+  /**
+   * For `OFFER`: 1 when `pointer` is the First Header Pointer of a TM frame header, else 0
+   * (required on a TM VC of Packets, refused on a VC of `VCA_SDU`s, ignored by AOS and USLP).
+   */
+  uint8_t pointer_present;
+  /**
+   * For `OFFER`: the raw First Header Pointer (TM).
+   */
+  uint16_t pointer;
+  /**
+   * For `OFFER`: 1 when the field names its MAP and `QoS` (USLP), else 0.
+   */
+  uint8_t route_present;
+  /**
+   * For `OFFER` with a route: the MAP ID, which must be the VC's.
+   */
+  uint8_t map_id;
+  /**
+   * For `OFFER` with a route: `ALDIS_LINK_QOS_*`.
+   */
+  uint32_t qos;
+  /**
+   * For `OFFER`: 1 when the field carries a COP-1 block (a USLP VC with COP-1 in effect;
+   * LNK-076), else 0.
+   */
+  uint8_t cop_present;
+  /**
+   * For `OFFER` with a COP block: the VCF Count of a Type-AD frame (the Frame Sequence
+   * Number); unused when `cop_bypass` is 1.
+   */
+  uint64_t cop_vcf_count;
+  /**
+   * For `OFFER` with a COP block: the Bypass/Sequence Control Flag, 0 or 1.
+   */
+  uint8_t cop_bypass;
+  /**
+   * For `OFFER` with a COP block: the Protocol Control Command Flag, 0 or 1 (1 needs
+   * `cop_bypass` 1: 732.1 Table 4-1).
+   */
+  uint8_t cop_protocol_control;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_channel_mux_config_t config;
+} aldis_channel_mux_input_t;
+
+/**
+ * One action of a `ChannelMux` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_CHANNEL_MUX_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `TRANSMIT`: `ALDIS_LINK_FRAME_CLASS_*`.
+   */
+  uint32_t class_;
+  /**
+   * For `TRANSMIT`: the VCID of the frame.
+   */
+  uint8_t vc_id;
+  /**
+   * For `TRANSMIT`: the whole frame in `out`; the Security Header and Trailer, the FHEC, and
+   * the FECF are zero octets for the caller to fill (LNK-035).
+   */
+  aldis_range_t frame;
+  /**
+   * For `TRANSMIT`: the Security Header (empty if the VC has none).
+   */
+  aldis_range_t security_header;
+  /**
+   * For `TRANSMIT`: the data field, which the SDLS hook protects.
+   */
+  aldis_range_t data;
+  /**
+   * For `TRANSMIT`: the Security Trailer.
+   */
+  aldis_range_t security_trailer;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_channel_mux_action_t;
+
+/**
+ * The actions of one input of a `ChannelMux`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_CHANNEL_MUX_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_channel_mux_action_t items[ALDIS_CHANNEL_MUX_MAX_ACTIONS];
+} aldis_channel_mux_actions_t;
+
+/**
+ * A read-only snapshot of a `ChannelMux` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Frames built, OID frames included.
+   */
+  uint64_t frames_out;
+  /**
+   * OID frames built.
+   */
+  uint64_t oid_frames;
+  /**
+   * Fields accepted.
+   */
+  uint64_t offers;
+  /**
+   * Fields refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Fields refused with `ALDIS_ERR_WOULD_BLOCK` (LNK-076).
+   */
+  uint64_t would_block;
+  /**
+   * Frames whose Insert Zone repeated the slot (LNK-034).
+   */
+  uint64_t insert_repeated;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The offered fields.
+   */
+  aldis_link_occupancy_t slots;
+} aldis_channel_mux_status_t;
 
 /**
  * A `PacketExtractor` in caller storage: the caller declares an object of this type, and the
@@ -8519,6 +9016,88 @@ uint32_t aldis_bitstream_generator_status(aldis_bitstream_generator_t *h,
  * As for [`aldis_bitstream_generator_step`].
  */
 void aldis_bitstream_generator_deinit(aldis_bitstream_generator_t *h);
+
+/**
+ * Places a `ChannelMux` with no field offered in `storage` (LNK-030, LNK-036; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`vc_id`) for a VC listed twice or the OID VC where it is not dedicated, (`vc_priority`) for
+ * equal priorities under fixed priority, (`vc_weight`) for a weight of 0, (`frame_len`) for a
+ * frame that leaves a VC no data field or a TM frame above 4 095 octets, (`ocf_flag`,
+ * `fsh_len`) for an MC and a VC that both have an OCF or a Secondary Header or a Secondary
+ * Header outside 1 to 63 octets, (`insert_zone_len`), (`vcf_count_len`), (`spacecraft_id`)
+ * for an AOS Issue 4 SCID above 255, (`data_field_content`) for a TM role other than
+ * `PACKETS` and `VCA`, (`security_header_len`, `security_trailer_len`) above the limits;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`capacity`) for more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs, (`frame_len`) for a frame
+ * above `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_channel_mux_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_channel_mux_init(aldis_channel_mux_t *storage,
+                                const aldis_channel_mux_config_t *cfg,
+                                aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `ChannelMux` (API-057, CABI-040).
+ *
+ * The octets of the frame of `OPPORTUNITY` go to `out`, which must hold at least the frame
+ * length of the configuration (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a flag or
+ * constant that is none; for `OFFER`: `ALDIS_ERR_UNKNOWN_CHANNEL` (also `map_id`),
+ * `ALDIS_ERR_INVALID_FIELD` (`first_header_pointer`, `map_id`, `cop_in_effect`, `qos`,
+ * `protocol_control_command_flag`), `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`),
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`field_len`), `ALDIS_ERR_WOULD_BLOCK` (LNK-076); for `SET_OCF`
+ * and `SET_FSH`: `ALDIS_ERR_UNKNOWN_CHANNEL`, `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`,
+ * `fsh_flag`), `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`); for `SET_INSERT`:
+ * `ALDIS_ERR_INVALID_FIELD`, `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`); for
+ * `OPPORTUNITY`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_channel_mux_init`,
+ * and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is
+ * unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_channel_mux_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_channel_mux_step(aldis_channel_mux_t *h,
+                                const aldis_channel_mux_input_t *input,
+                                uint8_t *out,
+                                size_t out_cap,
+                                aldis_channel_mux_actions_t *actions,
+                                aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `ChannelMux` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_channel_mux_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_channel_mux_status(aldis_channel_mux_t *h,
+                                  aldis_channel_mux_status_t *status,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_channel_mux_step`].
+ */
+void aldis_channel_mux_deinit(aldis_channel_mux_t *h);
 
 /**
  * Places a `PacketExtractor` that has not yet synchronised in `storage` (LNK-060, LNK-061;
