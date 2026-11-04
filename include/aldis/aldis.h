@@ -5584,7 +5584,7 @@ typedef struct {
  * first member of every link engine configuration.
  *
  * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
- * only; the others ignore them.
+ * only; the others do not use them, but each must be valid (`protocol`).
  */
 typedef struct {
   /**
@@ -5619,7 +5619,7 @@ typedef struct {
  */
 typedef struct {
   /**
-   * The protocol (TC or USLP); the other members of the channel are ignored.
+   * The protocol (TC or USLP); the other members of the channel are not used but must be valid.
    */
   aldis_link_channel_t channel;
   /**
@@ -6267,7 +6267,7 @@ typedef struct {
 typedef struct {
   /**
    * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-   * channel are ignored.
+   * channel are not used but must be valid.
    */
   aldis_link_channel_t channel;
   /**
@@ -6471,8 +6471,8 @@ typedef struct {
  */
 typedef struct {
   /**
-   * The protocol (TC or USLP); the other members of the channel are ignored (each MAP names
-   * its VC).
+   * The protocol (TC or USLP); the other members of the channel are not used but must be
+   * valid (each MAP names its VC).
    */
   aldis_link_channel_t channel;
   /**
