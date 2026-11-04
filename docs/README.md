@@ -27,7 +27,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 [`verification/hazards.md`](verification/hazards.md) and [`verification/assurance-case.md`](verification/assurance-case.md): the hazard and failure-mode analysis, one file per frame codec in [`verification/hazards/`](verification/hazards/), and the assurance case that argues from the library's top claims to its evidence (VER-065, VER-066); [`verification/assurance-evidence.md`](verification/assurance-evidence.md) specifies how `cargo xtask assurance` checks their references.
 
-[`verification/formal-verification.md`](verification/formal-verification.md): the Kani proof harnesses of the formal-verification spike, what they prove and up to which bounds, and the limits found (OI-42).
+[`verification/formal-verification.md`](verification/formal-verification.md): what the compiler proves by types, the link check, and the Kani proof harnesses (OI-42): what each proves and up to which bounds, the trusted base, and the gaps.
 
 ### Process ([`process/`](process/))
 
