@@ -160,7 +160,7 @@ mod cortex_m {
         unsafe_code,
         reason = "the vector table must be placed in its linker section"
     )]
-    // SAFETY: the section is placed at the vector table address by link-cortex-m.x.
+    // Why this is sound: the section is placed at the vector table address by link-cortex-m.x.
     #[unsafe(link_section = ".vector_table.exceptions")]
     #[used]
     static EXCEPTIONS: [extern "C" fn() -> !; 15] = [
@@ -207,8 +207,9 @@ mod cortex_m {
 mod cortex_r {
     #[expect(unsafe_code, reason = "start-up code and vector table")]
     mod startup {
-        // SAFETY: runs once from reset with nothing else live; it sets the stack to the top of
-        // RAM (link-cortex-r.x), enables the VFP, and never returns from the Rust entry point.
+        // Why this is sound: runs once from reset with nothing else live; it sets the stack to
+        // the top of RAM (link-cortex-r.x), enables the VFP, and never returns from the Rust
+        // entry point.
         core::arch::global_asm!(
             ".section .vector_table, \"ax\", %progbits",
             ".arm",
@@ -267,8 +268,9 @@ mod cortex_r {
 mod riscv {
     #[expect(unsafe_code, reason = "start-up code and trap vector")]
     mod startup {
-        // SAFETY: runs once from reset with nothing else live; it sets the stack to the top of
-        // RAM (link-riscv.x), installs the trap vector, and never returns from the Rust entry point.
+        // Why this is sound: runs once from reset with nothing else live; it sets the stack to
+        // the top of RAM (link-riscv.x), installs the trap vector, and never returns from the
+        // Rust entry point.
         core::arch::global_asm!(
             ".section .text._start, \"ax\", @progbits",
             ".global _start",
@@ -382,13 +384,13 @@ mod leon3 {
         /// Window 1 invalid: with CWP = 0, the next six `save`s use windows 7 to 2.
         const WIM_START: u32 = 2;
 
-        // SAFETY: `_start` runs once from reset with nothing else live: it sets the processor
-        // state, the stack (top of RAM, link-leon3.x, with the 96-byte minimum frame), and the
-        // trap table, and never returns from the Rust entry point. The window handlers run with
-        // traps disabled in the invalid window, touch only its locals, %g1 (saved and restored),
-        // WIM, and the 64-byte register save area of the window they spill or fill, which the
-        // SPARC ABI reserves at that window's %sp. Every other trap restarts from a fresh stack
-        // in `aldis_exerciser_fault`, which never returns.
+        // Why this is sound: `_start` runs once from reset with nothing else live: it sets the
+        // processor state, the stack (top of RAM, link-leon3.x, with the 96-byte minimum frame),
+        // and the trap table, and never returns from the Rust entry point. The window handlers run
+        // with traps disabled in the invalid window, touch only its locals, %g1 (saved and
+        // restored), WIM, and the 64-byte register save area of the window they spill or fill,
+        // which the SPARC ABI reserves at that window's %sp. Every other trap restarts from a fresh
+        // stack in `aldis_exerciser_fault`, which never returns.
         core::arch::global_asm!(
             ".section .text._start, \"ax\", @progbits",
             ".global _start",

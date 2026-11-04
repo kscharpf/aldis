@@ -121,9 +121,12 @@ fn go(f: &Engine, input: Fop1Input<'_>) -> (Engine, Option<Vec<u8>>, Vec<Fop1Out
     let decision = next.decide(input, NOW, &mut out).unwrap();
     let actions = next.commit(decision);
     let actions: Vec<Fop1Output> = actions.iter().copied().collect();
-    let frame = actions.iter().find_map(|a| match a {
-        Fop1Output::Transmit { frame, .. } => Some(frame.slice(&out).unwrap().to_vec()),
-        _ => None,
+    let frame = actions.iter().find_map(|a| {
+        if let Fop1Output::Transmit { frame, .. } = a {
+            Some(frame.slice(&out).unwrap().to_vec())
+        } else {
+            None
+        }
     });
     (next, frame, actions)
 }
@@ -569,9 +572,12 @@ fn type_bc_frames_carry_the_control_commands_as_protocol_control() {
     let again = decision
         .actions()
         .iter()
-        .find_map(|a| match a {
-            Fop1Output::Transmit { frame, .. } => frame.slice(&out),
-            _ => None,
+        .find_map(|a| {
+            if let Fop1Output::Transmit { frame, .. } = a {
+                frame.slice(&out)
+            } else {
+                None
+            }
         })
         .unwrap();
     assert_eq!(again, &frame[..]);
@@ -608,6 +614,10 @@ fn farm_frame<'a>(frame: &UslpFrame<'a>) -> Farm1Frame<'a> {
 
 /// Feeds `input` to the ground end, then the Transmit Responses its frames cause; the frames go to
 /// `link` and the Positive Confirms to `confirmed`.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "only the outputs the loss link carries matter; the rest need no handling"
+)]
 fn feed(
     ground: &mut Engine,
     link: &mut Vec<Vec<u8>>,

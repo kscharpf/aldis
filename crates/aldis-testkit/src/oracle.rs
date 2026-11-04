@@ -119,16 +119,16 @@ pub mod fhec {
                     add(e);
                 }
             }
-            for i in 0..SYMBOLS {
-                for j in i + 1..SYMBOLS {
-                    for v in 1..16 {
-                        for w in 1..16 {
-                            let mut e = [0; SYMBOLS];
-                            e[i] = v;
-                            e[j] = w;
-                            add(e);
-                        }
-                    }
+            for ij in 0..SYMBOLS * SYMBOLS {
+                let (i, j) = (ij / SYMBOLS, ij % SYMBOLS);
+                if j <= i {
+                    continue;
+                }
+                for vw in 0..15 * 15 {
+                    let mut e = [0; SYMBOLS];
+                    e[i] = vw / 15 + 1;
+                    e[j] = vw % 15 + 1;
+                    add(e);
                 }
             }
             let mut parity: Vec<Option<u16>> = vec![None; 1 << 16];

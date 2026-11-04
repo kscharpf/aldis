@@ -165,7 +165,9 @@ proptest! {
                         prop_assert_eq!((kind, n_s.get()), (FduKind::Bd, 0));
                         prop_assert_eq!(range.slice(&out), Some(data.as_slice()));
                     }
-                    _ => prop_assert!(false, "delivery for {op:?}"),
+                    Op::Bc(_) | Op::Invalid | Op::Release | Op::Physical(..) | Op::Ad(..) => {
+                        prop_assert!(false, "delivery for {op:?}");
+                    }
                 }
             }
             // The FARM-B Counter counts valid Type-B frames (COP-034).

@@ -936,6 +936,10 @@ fn the_replay_flag_is_passed_on_every_delivered_part() {
     let out = feed(&mut rx, &aos_frame(1, 0, None, true, Some(CLCW), &[0, 0]));
     assert_eq!(out.len(), 3);
     for o in &out {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "a test names the output kinds it expects; any other fails the test"
+        )]
         let replay = match o {
             ReceiverOutput::InsertSdu { replay, .. }
             | ReceiverOutput::Ocf { replay, .. }
@@ -1250,6 +1254,10 @@ fn check_out<P: Plained, const V: usize>(
         Ok(actions) => {
             prop_assert!(actions.len() <= FRAME_RECEIVER_MAX_ACTIONS);
             for o in actions.iter() {
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    reason = "a property reads the range of the outputs that carry one"
+                )]
                 let range = match o {
                     ReceiverOutput::DataField { data, .. } => Some(*data),
                     ReceiverOutput::FshSdu { sdu, .. } | ReceiverOutput::InsertSdu { sdu, .. } => {

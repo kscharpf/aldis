@@ -59,6 +59,7 @@ unreachable_pub = "warn"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 # Selected restriction lints (GEN-010, GEN-020, GEN-030, GEN-070)
 unwrap_used = "deny"
 expect_used = "deny"
@@ -81,6 +82,15 @@ infinite_loop = "deny"
 mem_forget = "deny"
 as_pointer_underscore = "deny"
 lossy_float_literal = "deny"
+# Selected restriction lints for code structure (the table below)
+allow_attributes = "deny"
+wildcard_enum_match_arm = "deny"
+unnecessary_safety_doc = "deny"
+unnecessary_safety_comment = "deny"
+unnecessary_rest_pattern = "deny"
+shadow_same = "deny"
+excessive_nesting = "deny"         # threshold 6 in clippy.toml
+else_if_without_else = "deny"      # "allow" in xtask only
 # Selected nursery lints (RS-019). The nursery group itself stays off.
 missing_const_for_fn = "deny"
 derive_partial_eq_without_eq = "deny"
@@ -94,6 +104,23 @@ needless_pass_by_ref_mut = "deny"
 large_stack_frames = "deny"
 collection_is_never_read = "deny"
 ```
+
+The `cargo` group is denied at the lowest priority in every lint table. The lints below the restriction block are decided one by one; `undocumented_unsafe_blocks` and `too_many_lines` were already denied. The tooling profile of `xtask` takes the same lints (`else_if_without_else` is `allow` there, the maintainer's decision),; `fuzz/`, `crosscheck/`, `aldis-testkit`, and the reference application's tooling crates keep the tooling profile of RS-017 without them. A lint is relaxed only as RS-016 says, with `#[expect(clippy::<lint>, reason = "…")]` on the smallest item; `allow_attributes` makes any `#[allow]` an error, so `#[expect]` is the only form left.
+
+| Restriction lint | Decision | Reason |
+|---|---|---|
+| `cargo` (group) | Denied | Manifest hygiene (metadata, wildcard dependency versions, duplicate versions) fails the build instead of a review. No finding when adopted. |
+| `allow_attributes` | Denied | RS-016 in code: `#[expect]` fails when the exception becomes unnecessary, `#[allow]` never does. |
+| `wildcard_enum_match_arm` | Denied | RS-021: a `match` on an enum names every variant, so a variant added later is a compile error at every match that must decide it. Where the arm is right, `#[expect]` on the smallest item with the reason: a foreign `#[non_exhaustive]` enum (`ErrorDetail`, `DiscardReason` in `aldis-ffi`), or a test that looks at one variant of a JSON value. A test that wants one variant of an enum writes `if let` rather than a `match` with a wildcard. |
+| `unnecessary_safety_doc` | Denied | A `# Safety` section belongs to `unsafe fn`, so it stays true to the signature. |
+| `unnecessary_safety_comment` | Denied | A `// SAFETY:` comment is a claim about an `unsafe` block (GEN-070). On a `safe fn` in an `unsafe extern` block, or on `#[unsafe(no_mangle)]`, it is not, and a comment that reads like one dilutes the real ones; those places say it in other words. |
+| `unnecessary_rest_pattern` | Denied | A `..` that matches nothing hides that a pattern names every field. |
+| `shadow_same` | Denied | `let x = x;` and `let mut x = x;` add nothing a `mut` on the first binding or a new name does not: the name of the value keeps one meaning in a scope. |
+| `excessive_nesting` | Denied, threshold 6 | `excessive-nesting-threshold` in `clippy.toml`, which every workspace reads. Measured on the code base, all targets and workspaces, counted per block: threshold 4 reported 232, 5 reported 62, 6 reported 15. Six is the smallest value that leaves a small number of real findings: exhaustive parameter sweeps in tests, which carry `#[expect]` with that reason, and a few loops split into helpers. |
+| `else_if_without_else` | Denied; `allow` in `xtask` | An `else if` chain ends in an `else` that says what the remaining case is (RS-021); a chain that has none either returns early or gets an `else` with a comment. `xtask` is the tooling profile, which the maintainer chose to leave out. |
+| `unwrap_in_result` | Not adopted | It reports `unwrap` in test helpers (functions outside `#[test]` that return `Result` or `Option`, in integration-test crates): about 70 findings with `allow-unwrap-in-tests` set, in the helpers of a dozen integration-test crates. `clippy.toml` has no option that exempts them, and an `#[expect]` per helper is the noise RS-018 avoids. Library code is covered by `unwrap_used` and `panic_in_result_fn`. |
+| `shadow_unrelated` | Not adopted | Maintainer's decision: not adopted, so that a value refined from another may keep its name (RS-020). |
+| `absolute_paths` | Not adopted | Maintainer's decision: not adopted, so that a path used once may be written in full instead of imported. |
 
 The Clippy `nursery` group holds lints that are still under development and may report false positives, so it is not enabled as a group. Individual nursery lints are adopted once they have been checked against this code base (RS-019):
 

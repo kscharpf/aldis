@@ -174,7 +174,6 @@ fn a_master_channel_holds_vcids_0_to_62() {
     let mut mc = mc();
     mc.pc.fhec = 0;
     mc.pc.insert_zone_len = 0;
-    let mc = mc;
     let one = aldis_aos_vc_config_t {
         content: ALDIS_AOS_CONTENT_VCA_SDU,
         ..aldis_aos_vc_config_t::default()

@@ -118,21 +118,27 @@ impl Val {
     pub const fn num(self) -> Option<u64> {
         match self {
             Val::Num(n) => Some(n),
-            _ => None,
+            Val::Null | Val::Bool(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
+                None
+            }
         }
     }
 
     pub const fn bool(self) -> Option<bool> {
         match self {
             Val::Bool(b) => Some(b),
-            _ => None,
+            Val::Null | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
+                None
+            }
         }
     }
 
     pub const fn str(self) -> Option<&'static str> {
         match self {
             Val::Str(s) => Some(s),
-            _ => None,
+            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
+                None
+            }
         }
     }
 
@@ -141,21 +147,25 @@ impl Val {
         match self {
             Val::Bytes(b) => Some(b),
             Val::Str(s) => Some(s.as_bytes()),
-            _ => None,
+            Val::Null | Val::Bool(_) | Val::Num(_) | Val::List(_) | Val::Obj(_) => None,
         }
     }
 
     pub const fn list(self) -> Option<&'static [Val]> {
         match self {
             Val::List(l) => Some(l),
-            _ => None,
+            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::Obj(_) => {
+                None
+            }
         }
     }
 
     pub const fn obj(self) -> Option<Map> {
         match self {
             Val::Obj(m) => Some(m),
-            _ => None,
+            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) => {
+                None
+            }
         }
     }
 

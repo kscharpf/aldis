@@ -113,7 +113,7 @@ proptest! {
         let items: Vec<Delimited<'_>> = FrameDelimiter::new(&u.octets, 6).collect();
         let frames: Vec<&[u8]> = items
             .iter()
-            .filter_map(|i| match i { Delimited::Frame(f) => Some(*f), _ => None })
+            .filter_map(|i| if let Delimited::Frame(f) = i { Some(*f) } else { None })
             .collect();
         let expected: Vec<&[u8]> = u.frames.iter().map(Vec::as_slice).collect();
         prop_assert_eq!(frames, expected);

@@ -985,7 +985,7 @@ mod tests {
     /// #70 with a decision (approved by its last word at 13:54:12), stacked on #69, whose head m2
     /// it merged; #69 was first reviewed at 14:30, after #70's approval.
     fn stacked() -> Vec<Pr> {
-        let top = compute(&pr::tests::decided()).unwrap();
+        let mut top = compute(&pr::tests::decided()).unwrap();
         let mut raw = pr::tests::fixture();
         raw.pull["number"] = json!(69);
         raw.pull["head"] = json!({"ref": "m2/base", "sha": "m2"});
@@ -1000,7 +1000,6 @@ mod tests {
         raw.records.clear();
         raw.runs.clear();
         let base = compute(&raw).unwrap();
-        let mut top = top;
         top.base = "main".to_owned();
         vec![top, base]
     }

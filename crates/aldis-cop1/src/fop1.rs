@@ -1399,7 +1399,11 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         store: &mut Fop1Store<Q, F>,
         decision: Fop1Decision<'_, Q, F, N>,
     ) -> Fop1Actions<N> {
-        let Fop1Decision { core, actions, fdu } = decision;
+        let Fop1Decision {
+            mut core,
+            actions,
+            fdu,
+        } = decision;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
         for (p, sent) in core.sent.iter().enumerate() {
@@ -1446,7 +1450,6 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         }
         // At rest, an entry's octets are at its own position and the `Wait_Queue` octets are in
         // place.
-        let mut core = core;
         for (p, sent) in core.sent.iter_mut().enumerate() {
             if let Some(sent) = sent {
                 sent.origin = Origin::Base(p);
@@ -1662,6 +1665,8 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
                 } else if let Some(handle) = self.core.pending_initiate.take() {
                     // The Confirm of S4 and S5 with E1 completes the Initiate AD directive.
                     self.actions.push(directive(handle, status))?;
+                } else {
+                    // No Initiate AD directive is pending: nothing to notify.
                 }
             }
         }
@@ -1773,12 +1778,12 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
             .find(|s| matches!(s.kind, SentKind::Ad(_)) && s.to_be_retransmitted)
         {
             sent.to_be_retransmitted = false;
-            let sent = *sent;
-            let range = self.emit_sent(base, &sent, out)?;
+            let snapshot = *sent;
+            let range = self.emit_sent(base, &snapshot, out)?;
             self.core.ad_out_ready = false;
             self.actions.push(Fop1Output::Transmit {
                 kind: FrameKind::Ad,
-                sequence_number: sent.sequence_number,
+                sequence_number: snapshot.sequence_number,
                 retransmission: true,
                 repetitions,
                 frame: range,
@@ -1895,12 +1900,12 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
             .find(|s| matches!(s.kind, SentKind::Bc) && s.to_be_retransmitted)
         {
             sent.to_be_retransmitted = false;
-            let sent = *sent;
-            let range = self.emit_sent(base, &sent, out)?;
+            let snapshot = *sent;
+            let range = self.emit_sent(base, &snapshot, out)?;
             self.core.bc_out_ready = false;
             self.actions.push(Fop1Output::Transmit {
                 kind: FrameKind::Bc,
-                sequence_number: sent.sequence_number,
+                sequence_number: snapshot.sequence_number,
                 retransmission: true,
                 repetitions,
                 frame: range,
@@ -2163,18 +2168,22 @@ mod tests {
         assert_eq!(listed, committed);
         committed
             .iter()
-            .filter_map(|o| match o {
-                Fop1Output::Transmit {
+            .filter_map(|o| {
+                if let Fop1Output::Transmit {
                     sequence_number,
                     retransmission,
                     frame,
                     ..
-                } => Some((
-                    sequence_number.get(),
-                    *retransmission,
-                    frame.slice(&out).unwrap().to_vec(),
-                )),
-                _ => None,
+                } = o
+                {
+                    Some((
+                        sequence_number.get(),
+                        *retransmission,
+                        frame.slice(&out).unwrap().to_vec(),
+                    ))
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -2514,7 +2523,7 @@ mod tests {
                 ..
             })
         ));
-        let (f, _) = go(
+        let (mut f, _) = go(
             &f,
             Fop1Input::TransmitDone {
                 kind: FrameKind::Bc,
@@ -2523,7 +2532,6 @@ mod tests {
             1,
         );
         let mut area = [0u8; F];
-        let mut f = f;
         let decision = f
             .decide(
                 clcw(false, false, false, 0),
@@ -2896,9 +2904,12 @@ mod tests {
         let a = active();
         let event_of = |input: Fop1Input<'static>| -> Option<Fop1Event> {
             let (_, out) = go(&a, input, 1);
-            out.iter().find_map(|o| match o {
-                Fop1Output::Alert(alert) => Some(alert.event),
-                _ => None,
+            out.iter().find_map(|o| {
+                if let Fop1Output::Alert(alert) = o {
+                    Some(alert.event)
+                } else {
+                    None
+                }
             })
         };
         let word = |lockout: bool, n_r: u8, pattern_ok: bool| -> Fop1Input<'static> {
@@ -2907,7 +2918,14 @@ mod tests {
                     cop_in_effect: CopInEffect::new(2).unwrap(),
                     ..c
                 }),
-                other => other,
+                other @ (Fop1Input::Clcw(_)
+                | Fop1Input::InvalidClcw
+                | Fop1Input::Timeout
+                | Fop1Input::RequestAd { .. }
+                | Fop1Input::RequestBd { .. }
+                | Fop1Input::Directive { .. }
+                | Fop1Input::InvalidDirective { .. }
+                | Fop1Input::TransmitDone { .. }) => other,
             }
         };
         assert_eq!(event_of(word(true, 5, false)), Some(Fop1Event::E15));
@@ -2921,11 +2939,15 @@ mod tests {
         // req: COP-016
         let reps = |out: &[Fop1Output]| -> Vec<(FrameKind, u8)> {
             out.iter()
-                .filter_map(|o| match *o {
-                    Fop1Output::Transmit {
+                .filter_map(|o| {
+                    if let Fop1Output::Transmit {
                         kind, repetitions, ..
-                    } => Some((kind, repetitions)),
-                    _ => None,
+                    } = *o
+                    {
+                        Some((kind, repetitions))
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         };
@@ -3107,8 +3129,7 @@ mod tests {
             },
             1,
         );
-        let (s5r, _) = go(&s5r, Fop1Input::Timeout, 100);
-        let mut s5r = s5r;
+        let (mut s5r, _) = go(&s5r, Fop1Input::Timeout, 100);
         s5r.fop.core.bc_out_ready = true;
         // A Sent_Queue full beyond what K admits: a broken invariant (InternalError).
         let mut jammed = a2.clone();
@@ -3150,9 +3171,12 @@ mod tests {
     /// The Alert reasons in `list`, in order.
     fn alerts(list: &Fop1Actions<N>) -> Vec<AlertReason> {
         list.iter()
-            .filter_map(|o| match *o {
-                Fop1Output::Alert(a) => Some(a.reason),
-                _ => None,
+            .filter_map(|o| {
+                if let Fop1Output::Alert(a) = *o {
+                    Some(a.reason)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -3162,9 +3186,12 @@ mod tests {
         cell(state, event)
             .actions
             .iter()
-            .filter_map(|a| match *a {
-                Fop1Action::Alert(r) => Some(r),
-                _ => None,
+            .filter_map(|a| {
+                if let Fop1Action::Alert(r) = *a {
+                    Some(r)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -3201,6 +3228,14 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+    )]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "only the inputs that carry a directive or an N(R) set the context; the rest leave it"
+    )]
     fn every_failure_of_a_cell_leaves_the_state_unchanged() {
         // req: API-058, API-061, API-083, COP-006, COP-017
         let events = {

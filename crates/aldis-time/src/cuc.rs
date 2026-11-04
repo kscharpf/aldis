@@ -195,7 +195,13 @@ impl CucFormat {
         let first = pfield.first();
         let epoch = match pfield.id() {
             TimeCodeId::CucLevel1 => CucEpoch::Tai1958,
-            _ => CucEpoch::Agency,
+            TimeCodeId::CucLevel2
+            | TimeCodeId::Cds
+            | TimeCodeId::Ccs
+            | TimeCodeId::Agency
+            | TimeCodeId::Reserved000
+            | TimeCodeId::Reserved011
+            | TimeCodeId::Reserved111 => CucEpoch::Agency,
         };
         let coarse = ((first >> 2) & 0b11).wrapping_add(1);
         let fine = first & 0b11;
