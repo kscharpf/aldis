@@ -196,7 +196,8 @@ pub struct CltuStatus {
     pub pending: Occupancy,
 }
 
-/// The unit in progress (RS-021: the frames of the caller decide the next state).
+/// The unit in progress (RS-021: the frame sizes of `CltuInput::AddFrame` decide the next state, so a closed
+/// enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Unit {
     /// No frame is held.
@@ -384,13 +385,13 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
 
     /// Writes the unit in progress to `out` at `at`, and empties it (LNK-044).
     fn emit(&mut self, out: &mut [u8], at: usize) -> Result<Option<DataUnit>> {
-        let Unit::Open {
-            frames,
-            repetitions,
-            truncated,
-        } = self.unit
-        else {
-            return Ok(None);
+        let (frames, repetitions, truncated) = match self.unit {
+            Unit::Open {
+                frames,
+                repetitions,
+                truncated,
+            } => (frames, repetitions, truncated),
+            Unit::Empty => return Ok(None),
         };
         let end = at.saturating_add(self.len);
         let dst = out.get_mut(at..end).ok_or(Error::buffer_too_small(end))?;
