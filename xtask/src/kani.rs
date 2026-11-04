@@ -1,11 +1,11 @@
 //! `cargo xtask kani`: runs the Kani proof harnesses and prints each one's result and time
-//! (docs/verification/formal-proofs.md, OI-42). The non-gating check `kani` of
+//! (docs/verification/formal-verification.md, OI-42). The non-gating check `kani` of
 //! `cargo xtask verify` runs it in the verification image (maintainer decision 2026-10-23, #92);
 //! nothing gates on it.
 //!
 //! The harnesses are `#[kani::proof]` functions in a `#[cfg(kani)] mod proofs` of each crate in
 //! [`RUNS`]. Kani is pinned to [`KANI_VERSION`]; another version is refused, since the trusted
-//! base of a proof includes the tool (formal-proofs.md §4).
+//! base of a proof includes the tool (formal-verification.md §5).
 
 use std::process::Command;
 use std::time::Instant;
@@ -202,9 +202,10 @@ mod tests {
 
     #[test]
     fn the_spike_documents_the_pinned_version() {
-        let doc =
-            crate::repo::read(&crate::repo::root().join("docs/verification/formal-proofs.md"))
-                .unwrap();
+        let doc = crate::repo::read(
+            &crate::repo::root().join("docs/verification/formal-verification.md"),
+        )
+        .unwrap();
         assert!(doc.contains(&format!("Kani {KANI_VERSION}")));
     }
 }
