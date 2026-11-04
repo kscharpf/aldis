@@ -178,10 +178,7 @@ impl From<Option<Route>> for RouteFields {
         route.map_or_else(RouteFields::default, |r| RouteFields {
             present: 1,
             map_id: r.map.get(),
-            qos: match r.qos {
-                Qos::SequenceControlled => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
-                Qos::Expedited => ALDIS_LINK_QOS_EXPEDITED,
-            },
+            qos: qos_code(r.qos),
         })
     }
 }
@@ -233,11 +230,30 @@ pub(crate) fn uslp_params(channel: &aldis_link_channel_t) -> Result<UslpParams> 
         31,
         u64::from(channel.uslp_upid),
     ))?;
-    let qos = match parse::<aldis_link_qos>(channel.uslp_qos)? {
+    UslpParams::new(
+        upid,
+        MapId::<4>::try_from(channel.uslp_map)?,
+        qos(channel.uslp_qos)?,
+    )
+}
+
+/// The `ALDIS_LINK_QOS_*` constant of a quality of service (LNK-043).
+pub(crate) const fn qos_code(qos: Qos) -> u32 {
+    match qos {
+        Qos::SequenceControlled => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        Qos::Expedited => ALDIS_LINK_QOS_EXPEDITED,
+    }
+}
+
+/// The quality of service of a C constant (LNK-043).
+///
+/// # Errors
+/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_QOS_*` constant.
+pub(crate) fn qos(value: u32) -> Result<Qos> {
+    Ok(match parse::<aldis_link_qos>(value)? {
         aldis_link_qos::ALDIS_LINK_QOS_SEQUENCE_CONTROLLED => Qos::SequenceControlled,
         aldis_link_qos::ALDIS_LINK_QOS_EXPEDITED => Qos::Expedited,
-    };
-    UslpParams::new(upid, MapId::<4>::try_from(channel.uslp_map)?, qos)
+    })
 }
 
 /// The valid PVN set of two flags: Space Packets (PVN 0) and Encapsulation Packets (PVN 7).
