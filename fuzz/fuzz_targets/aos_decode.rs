@@ -1,8 +1,8 @@
 //! `AosFrame::decode`, `AosPrimaryHeader::decode`, `Mpdu::decode`, `Bpdu::decode`, and
 //! `peek_length` on a virtual channel table and frame octets drawn from the input, in both
 //! modes: no panic, every field inside the frame and the fields covering it in wire order, every
-//! pointer inside its zone, strict ⊆ lenient, and a strict data frame with nothing corrected
-//! re-encodes to the same octets (GEN-020, API-010, API-020, API-030, CMN-040).
+//! pointer inside its zone, strict ⊆ lenient, and a strict data frame of a configured channel with
+//! nothing corrected re-encodes to the same octets (GEN-020, API-010, API-020, API-030, CMN-040).
 #![no_main]
 
 // req: GEN-020, API-010, API-012, API-013, API-020, API-030, API-032, AOS-010, AOS-011, AOS-014, AOS-017, VER-022
@@ -10,7 +10,7 @@
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
     AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu, CorrectedSymbols,
-    DataFieldContent, DataUnit, Mpdu, PacketPointer, PduHeader, VcTable, encode,
+    DataFieldContent, DataUnit, Mpdu, PacketPointer, PduHeader, VcLookup, VcTable, encode,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -121,6 +121,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     }
     if let Ok(f) = strict
         && !f.is_oid()
+        && vcs_table.vc(f.scid(), f.vcid()).is_some()
         && f.corrected_symbols() == CorrectedSymbols::Zero
     {
         let fields = AosFrameFields {

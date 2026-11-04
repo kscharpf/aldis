@@ -1,7 +1,8 @@
 //! Arbitrary octets through `UslpFrame::decode`, `peek_length`, `validate_frame`, and the
 //! delimiter on channels drawn from the input: no panic; the input unchanged; strict ⊆ lenient;
-//! `peek_length` agrees with `decode`; the USLP Frame Validation Checks accept exactly the
-//! decoded frame; the delimiter's first frame is the decoded one; and a strict decode re-encodes,
+//! `peek_length` agrees with `decode`; the USLP Frame Validation Checks accept the decoded frame
+//! of a configured channel and reject that of an unknown one; the delimiter's first frame is the
+//! decoded one; and a strict decode of a configured channel re-encodes,
 //! with its Security Header and Trailer, to the same octets (USLP-001…USLP-007, USLP-014…USLP-016,
 //! API-020, GEN-020, GEN-042).
 #![no_main]
@@ -12,10 +13,10 @@ use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
-    Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
-    TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId,
-    UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode_truncated, next_frame,
-    validate_frame_lenient,
+    Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
+    SecurityScope, TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode_truncated,
+    next_frame, validate_frame_lenient,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -193,14 +194,25 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         Ok(f) => {
             assert_eq!(f.octets(), &bytes[..f.len()]);
             assert_eq!(UslpFrame::peek_length(&bytes, &table), Ok(f.len()));
-            let v = validate_frame_lenient(f.octets(), &table).unwrap();
-            assert_eq!(&**v, &**f);
+            // The decoder reads a frame of an unknown channel; the checks reject it (RS-023).
+            match validate_frame_lenient(f.octets(), &table) {
+                Ok(v) => {
+                    assert_eq!(&**v, &**f);
+                    assert!(
+                        matches!(next_frame(&bytes, &table, usize::MAX), Some(Delimited::Frame(d)) if d == f.octets())
+                    );
+                }
+                Err(r) => assert!(
+                    matches!(
+                        r.reason(),
+                        Reason::UnexpectedSpacecraft | Reason::InvalidVcid | Reason::InvalidMapId
+                    ) && r.error().kind() == ErrorKind::UnknownChannel,
+                    "{r:?}"
+                ),
+            }
             if f.len() < bytes.len() {
                 assert!(validate_frame_lenient(&bytes, &table).is_err());
             }
-            assert!(
-                matches!(next_frame(&bytes, &table, usize::MAX), Some(Delimited::Frame(d)) if d == f.octets())
-            );
         }
         Err(e) => {
             assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
@@ -211,7 +223,9 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             }
         }
     }
-    if let Ok(f) = strict {
+    if let Ok(f) = strict
+        && validate_frame_lenient(f.octets(), &table).is_ok()
+    {
         re_encode(&table, &f);
     }
     Ok(())
