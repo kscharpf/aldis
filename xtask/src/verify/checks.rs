@@ -468,7 +468,7 @@ fn rust() -> Vec<Check> {
             ..check("rust-sparc-leon3", c, false, 67, RUST_LEON3)
         },
     ));
-    // The Kani proof harnesses (OI-42, docs/verification/formal-proofs.md): reported, not gating,
+    // The Kani proof harnesses (OI-42, docs/verification/formal-verification.md): reported, not gating,
     // and run only at night (maintainer decision 2026-10-24).
     out.push(Check {
         gating: false,

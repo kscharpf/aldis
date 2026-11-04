@@ -1,4 +1,4 @@
-//! Kani proof harnesses for FOP-1 (docs/verification/formal-proofs.md, OI-42).
+//! Kani proof harnesses for FOP-1 (docs/verification/formal-verification.md, OI-42).
 //!
 //! Compiled only by `cargo kani` (`cfg(kani)`); not part of the library, the tests, or the
 //! coverage run. The expected results are written from Table 5-1 and §5.1 of CCSDS 232.1-B-2 and
@@ -13,7 +13,7 @@
 //!
 //! The inductive step of the invariant over the engine's inputs and the engine's cell check
 //! (`decide_event` for every state and event) were written and did not finish within 5 minutes
-//! of CBMC time each (formal-proofs.md §8), so they are not harnesses.
+//! of CBMC time each (formal-verification.md §9), so they are not harnesses.
 
 use core::num::NonZeroU8;
 
