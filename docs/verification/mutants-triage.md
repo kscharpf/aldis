@@ -1,6 +1,6 @@
 # Mutation testing triage (VER-025)
 
-Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
+Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 -p aldis-link --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
 ## 2026-11-04, branch `m4/wp-8-gates` (M4 WP-8, `aldis-link`)
 

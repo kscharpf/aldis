@@ -697,7 +697,7 @@ fn the_receiver_steps_and_reconfigures() {
 
 #[test]
 fn every_protocol_refuses_a_bad_extractor_configuration_and_serves_loss_and_discard() {
-    // req: LNK-001, CABI-040, CABI-022, LNK-003, LNK-053, API-058
+    // req: LNK-001, CABI-040, CABI-022, LNK-080
     let mut d = detail();
     let mut out = [0_u8; 64];
     let mut actions = aldis_frame_receiver_actions_t::default();
@@ -738,7 +738,7 @@ fn every_protocol_refuses_a_bad_extractor_configuration_and_serves_loss_and_disc
             fr_step(&mut s, &discard, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_FIELD
         );
-        // A reconfiguration with a configuration the engine refuses changes nothing.
+        // A configuration the engine refuses is an error for a reconfiguration and for init.
         cfg.frame_len = 0;
         let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
         re.config = cfg;

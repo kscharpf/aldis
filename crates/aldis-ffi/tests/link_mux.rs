@@ -990,8 +990,8 @@ fn every_protocol_refuses_a_bad_member_and_reports_its_status() {
         // A VC of no valid identifier, whatever the protocol.
         let mut bad = cfg;
         bad.vcs[0].vc_id = 200;
-        let (code, _) = refused(&bad);
-        assert_ne!(code, 0);
+        let (code, field) = refused(&bad);
+        assert_eq!((code, field), (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID));
         // More VCs than the array holds.
         let mut bad = cfg;
         bad.vc_count = aldis_ffi::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS + 1;

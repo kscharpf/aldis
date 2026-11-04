@@ -997,7 +997,7 @@ fn the_bitstream_generator_builds_b_pdus() {
 
 #[test]
 fn every_protocol_takes_a_release_deadline_and_refuses_a_bad_configuration() {
-    // req: LNK-015, LNK-001, CABI-022, CABI-040
+    // req: LNK-001, CABI-022, CABI-040
     for (protocol, field_len) in [
         (ALDIS_LINK_PROTOCOL_TM, 16),
         (ALDIS_LINK_PROTOCOL_AOS, 18),
