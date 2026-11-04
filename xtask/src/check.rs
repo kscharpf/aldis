@@ -873,6 +873,24 @@ const EXERCISER_RUN_LIMIT: Duration = Duration::from_secs(120);
 /// How often a step with a limit is looked at.
 const POLL: Duration = Duration::from_millis(200);
 
+/// The arguments of `kill` that send SIGKILL to the process group `pgid`. The signal is named with
+/// `-s` and the group follows `--`, so that no `kill` reads `-<pgid>` as an option or a signal and
+/// none can fall back to a group other than the child's (the caller's group, or every process).
+fn group_kill_args(pgid: u32) -> Option<[String; 4]> {
+    // A group of 0 or 1 is the caller's group or init's: never signal it.
+    (pgid > 1).then(|| ["-s".into(), "KILL".into(), "--".into(), format!("-{pgid}")])
+}
+
+/// Sends SIGKILL to the process group `pgid`; whether `kill` reported success.
+fn group_kill(pgid: u32) -> bool {
+    group_kill_args(pgid).is_some_and(|args| {
+        Command::new("kill")
+            .args(args)
+            .status()
+            .is_ok_and(|s| s.success())
+    })
+}
+
 /// Runs `item`; whether it succeeded. A step with a limit runs in a process group of its own and
 /// is killed with its children (QEMU) when the limit passes, which fails the step. A Ctrl-C ends
 /// this process, not the group: cargo and QEMU keep running without a limit (forwarding the
@@ -898,9 +916,7 @@ fn run_item(item: &Item) -> Result<bool, String> {
             return Ok(status.success());
         }
         if Instant::now() >= deadline {
-            let _ = Command::new("kill")
-                .args(["-KILL", &format!("-{}", child.id())])
-                .status();
+            let _ = group_kill(child.id());
             let _ = child.kill();
             let _ = child.wait();
             println!(
@@ -1239,6 +1255,28 @@ mod tests {
             Some(Duration::from_secs(120)),
             "the gate's timeout 120"
         );
+    }
+
+    #[test]
+    fn a_group_kill_cannot_reach_the_callers_group() {
+        // req: VER-068
+        assert_eq!(
+            super::group_kill_args(4242),
+            Some(["-s", "KILL", "--", "-4242"].map(String::from))
+        );
+        assert_eq!(super::group_kill_args(0), None);
+        assert_eq!(super::group_kill_args(1), None);
+        // A sibling in this process's group survives the kill of a step's group.
+        let mut sibling = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let mut slow = super::cmd("slow", "sleep", &["30"]);
+        slow.limit = Some(Duration::from_millis(300));
+        assert_eq!(super::run_item(&slow), Ok(false));
+        assert!(sibling.try_wait().unwrap().is_none(), "sibling was killed");
+        sibling.kill().unwrap();
+        sibling.wait().unwrap();
     }
 
     #[test]
