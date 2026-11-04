@@ -359,9 +359,9 @@ fn a_uslp_packer_keeps_truncated_frames_apart() {
 #[test]
 fn the_members_of_the_channel_are_read_whatever_the_protocol() {
     // req: CABI-040, CABI-022, LNK-001
+    type Set = fn(&mut aldis_link_channel_t);
     let mut s = storage();
     let mut d = detail();
-    type Set = fn(&mut aldis_link_channel_t);
     let sets: [(Set, u32); 4] = [
         (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
         (|c| c.aos_edition = 9, ALDIS_ERR_INVALID_FIELD),

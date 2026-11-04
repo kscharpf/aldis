@@ -998,9 +998,9 @@ fn the_bitstream_generator_builds_b_pdus() {
 #[test]
 fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol() {
     // req: CABI-040, CABI-022, LNK-001
-    let mut s = pg_storage();
-    let mut d = detail();
     type Set = fn(&mut aldis_link_channel_t);
+    let mut store = pg_storage();
+    let mut det = detail();
     let sets: [(Set, u32); 3] = [
         (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
         (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
@@ -1014,11 +1014,13 @@ fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol()
         ] {
             let mut cfg = pg_config(protocol, 32);
             set(&mut cfg.channel);
-            // SAFETY: every pointer is to a live local.
-            assert_eq!(
-                unsafe { aldis_packet_generator_init(&mut *s, &cfg, &mut d) },
-                want
-            );
+            let status = {
+                let (h, c, e): (*mut _, *const _, *mut _) =
+                    (&raw mut *store, &raw const cfg, &raw mut det);
+                // SAFETY: every pointer is to a live local.
+                unsafe { aldis_packet_generator_init(h, c, e) }
+            };
+            assert_eq!(status, want);
         }
     }
 }

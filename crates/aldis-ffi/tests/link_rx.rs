@@ -698,9 +698,9 @@ fn the_receiver_steps_and_reconfigures() {
 #[test]
 fn the_extractor_reads_the_members_of_the_channel_whatever_the_protocol() {
     // req: CABI-040, CABI-022, LNK-001
+    type Set = fn(&mut aldis_link_channel_t);
     let mut s = pe_storage();
     let mut d = detail();
-    type Set = fn(&mut aldis_link_channel_t);
     let sets: [(Set, u32); 3] = [
         (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
         (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
