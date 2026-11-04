@@ -389,7 +389,8 @@ pub struct ReassemblerStatus {
     pub assembly: Occupancy,
 }
 
-/// The SDU in progress of a MAP (RS-021: the segment flags passed in decide the next state, so a closed enum).
+/// The SDU in progress of a MAP (RS-021: the segment flags passed in decide the next state, so a
+/// closed enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Assembly {
     /// No SDU is in progress.
@@ -593,7 +594,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                 Unit::Last(data) => {
                     let held = match self.slots.get(index) {
                         Some(Assembly::Building { len }) => *len,
-                        _ => 0,
+                        Some(Assembly::Idle) => 0,
+                        None => return Err(Error::new(ErrorKind::InternalError)),
                     };
                     let buf = self
                         .bufs
