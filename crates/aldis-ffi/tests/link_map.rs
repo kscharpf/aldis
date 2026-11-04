@@ -991,3 +991,37 @@ fn the_reassembler_serves_uslp_streams_and_gaps() {
         ALDIS_ERR_INVALID_FIELD
     );
 }
+
+#[test]
+fn the_members_of_the_channel_are_read_whatever_the_protocol() {
+    // req: CABI-040, CABI-022, LNK-001
+    let mut s = sg_storage();
+    let mut r = ra_storage();
+    let mut d = detail();
+    type Set = fn(&mut aldis_link_channel_t);
+    let sets: [(Set, u32); 4] = [
+        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.aos_edition = 9, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
+        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    ];
+    for (set, want) in sets {
+        for mut cfg in [tc_sg(), uslp_sg()] {
+            set(&mut cfg.channel);
+            assert_eq!(sg_init(&mut s, &cfg, &mut d), want);
+        }
+        for mut cfg in [tc_ra(), uslp_ra()] {
+            set(&mut cfg.channel);
+            assert_eq!(ra_init(&mut r, &cfg, &mut d), want);
+        }
+        // A reconfiguration reads them too.
+        assert_eq!(sg_init(&mut s, &tc_sg(), &mut d), 0);
+        let mut reconf = sg_input(ALDIS_MAP_SEGMENTER_INPUT_RECONFIGURE);
+        set(&mut reconf.config.channel);
+        let mut actions = aldis_map_segmenter_actions_t::default();
+        assert_eq!(
+            sg_step(&mut s, &reconf, 0, &mut [], &mut actions, &mut d),
+            want
+        );
+    }
+}

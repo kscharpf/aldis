@@ -694,3 +694,31 @@ fn the_receiver_steps_and_reconfigures() {
     let mut small = [0_u8; 8];
     assert_ne!(fr_step(&mut s, &input, &mut small, &mut actions, &mut d), 0);
 }
+
+#[test]
+fn the_extractor_reads_the_members_of_the_channel_whatever_the_protocol() {
+    // req: CABI-040, CABI-022, LNK-001
+    let mut s = pe_storage();
+    let mut d = detail();
+    type Set = fn(&mut aldis_link_channel_t);
+    let sets: [(Set, u32); 3] = [
+        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
+        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    ];
+    for (set, want) in sets {
+        for protocol in [
+            ALDIS_LINK_PROTOCOL_TM,
+            ALDIS_LINK_PROTOCOL_AOS,
+            ALDIS_LINK_PROTOCOL_USLP,
+        ] {
+            let mut cfg = pe_config(protocol);
+            set(&mut cfg.channel);
+            // SAFETY: every pointer is to a live local.
+            assert_eq!(
+                unsafe { aldis_packet_extractor_init(&mut *s, &cfg, &mut d) },
+                want
+            );
+        }
+    }
+}

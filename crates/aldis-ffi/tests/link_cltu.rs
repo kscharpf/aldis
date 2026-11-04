@@ -355,3 +355,29 @@ fn a_uslp_packer_keeps_truncated_frames_apart() {
         (1, 1)
     );
 }
+
+#[test]
+fn the_members_of_the_channel_are_read_whatever_the_protocol() {
+    // req: CABI-040, CABI-022, LNK-001
+    let mut s = storage();
+    let mut d = detail();
+    type Set = fn(&mut aldis_link_channel_t);
+    let sets: [(Set, u32); 4] = [
+        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.aos_edition = 9, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
+        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    ];
+    for (set, want) in sets {
+        for protocol in [ALDIS_LINK_PROTOCOL_TC, ALDIS_LINK_PROTOCOL_USLP] {
+            let mut cfg = config(protocol);
+            set(&mut cfg.channel);
+            assert_eq!(init(&mut s, &cfg, &mut d), want);
+        }
+        assert_eq!(init(&mut s, &config(ALDIS_LINK_PROTOCOL_TC), &mut d), 0);
+        let mut reconf = input(ALDIS_CLTU_PACKER_INPUT_RECONFIGURE);
+        set(&mut reconf.config.channel);
+        let mut actions = aldis_cltu_packer_actions_t::default();
+        assert_eq!(step(&mut s, &reconf, &mut [], &mut actions, &mut d), want);
+    }
+}

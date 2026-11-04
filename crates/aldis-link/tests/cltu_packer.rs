@@ -279,6 +279,11 @@ fn frames_and_configurations_are_checked() {
         (e.kind(), e.field()),
         (ErrorKind::CapacityExceeded, Some(field::MAX_UNIT_LEN))
     );
+    let e = UslpPacker::new(config::<Uslp>(2, 65)).unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::CapacityExceeded, Some(field::MAX_UNIT_LEN))
+    );
     assert_eq!(Repetitions::new(0), None);
     assert_eq!(Repetitions::ONE.get(), 1);
     let mut p = TcPacker::new(config(2, 20)).unwrap();

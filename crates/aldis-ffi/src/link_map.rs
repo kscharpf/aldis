@@ -12,15 +12,17 @@
 //!
 //! **Protocol.** The first member of a configuration is an `aldis_link_channel_t` whose
 //! `protocol` names the protocol: TC or USLP for both engines (TM and AOS are
-//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`). The segmenter reads the `vc_id` of the channel
-//! (the VC it serves); the reassembler reads a VC for each MAP. A reconfiguration cannot change
-//! the protocol (LNK-003).
+//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`). The other members of the channel are not
+//! used, but an `aos_edition`, `uslp_qos`, `uslp_upid`, or `uslp_map` that is none or out of
+//! range fails in any protocol. The segmenter reads the `vc_id` of the channel (the VC it
+//! serves); the reassembler reads a VC for each MAP. A reconfiguration cannot change the
+//! protocol (LNK-003).
 //!
-//! **Members.** The members of the other protocol are ignored, but a flag that is not 0 or 1, a
-//! constant that is none are `InvalidField`, and a USLP count length or UPID out of range is
-//! `InvalidConfig` or `OutOfRange`, in any protocol (`check_members`, as for the `ChannelMux`). The MAP table is
-//! `map_count` entries of `maps`; the segmenter of a TC VC without a Segment Header takes none
-//! (it has the implicit MAP 0, LNK-040).
+//! **Members.** The members of the other protocol are not used, but a flag that is not 0 or 1 or
+//! a constant that is none is `InvalidField`, and a USLP count length or UPID out of range is
+//! `InvalidConfig` or `OutOfRange`, in any protocol (`sg_check_members`, as for the
+//! `ChannelMux`). The MAP table is `map_count` entries of `maps`; the segmenter of a TC VC
+//! without a Segment Header takes none (it has the implicit MAP 0, LNK-040).
 //!
 //! **Capacities.** The segmenter's queue is `ALDIS_LINK_PACKET_QUEUE_OCTETS` octets, four of
 //! them for each queued entry (LNK-015). The reassembler holds `ALDIS_LINK_MAX_MAP_CHANNELS`
@@ -310,7 +312,7 @@ pub struct aldis_map_segmenter_map_t {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_segmenter_config_t {
     /// The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-    /// channel are ignored.
+    /// channel are not used but must be valid.
     pub channel: aldis_link_channel_t,
     /// The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
     /// USLP: at most 65 535).
@@ -1012,8 +1014,8 @@ pub struct aldis_map_reassembler_map_t {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_reassembler_config_t {
-    /// The protocol (TC or USLP); the other members of the channel are ignored (each MAP names
-    /// its VC).
+    /// The protocol (TC or USLP); the other members of the channel are not used but must be
+    /// valid (each MAP names its VC).
     pub channel: aldis_link_channel_t,
     /// TC: 1 when the FDUs have a Segment Header, else 0 (every FDU is then whole user data of
     /// MAP 0).
