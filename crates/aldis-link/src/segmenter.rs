@@ -493,7 +493,7 @@ impl Entry {
     }
 }
 
-/// The SDU in progress (RS-021: the next state follows from the events of the caller, so a
+/// The SDU in progress (RS-021: the SDU length passed in decides the next state, so a
 /// closed enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Progress {

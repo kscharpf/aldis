@@ -389,7 +389,7 @@ pub struct ReassemblerStatus {
     pub assembly: Occupancy,
 }
 
-/// The SDU in progress of a MAP (RS-021: the segments decide the next state).
+/// The SDU in progress of a MAP (RS-021: the segment flags passed in decide the next state, so a closed enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Assembly {
     /// No SDU is in progress.

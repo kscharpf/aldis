@@ -196,7 +196,7 @@ pub struct CltuStatus {
     pub pending: Occupancy,
 }
 
-/// The unit in progress (RS-021: the frames of the caller decide the next state).
+/// The unit in progress (RS-021: the frame sizes passed in decide the next state, so a closed enum).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Unit {
     /// No frame is held.
