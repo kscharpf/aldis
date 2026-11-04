@@ -8,7 +8,7 @@
 //! The harnesses of table exhaustiveness (`every_cell_matches_table_6_1`) and window arithmetic
 //! (`window_constructors_accept_exactly_table_7_2`, `ad_frame_classification_modulo_256`) take
 //! every state, event, V(R), N(S), and window, with no bound. The step harness
-//! (`step_preserves_invariant_and_obeys_table_6_1`) starts from an arbitrary state (any State,
+//! (`step_obeys_table_6_1`) starts from an arbitrary state (any State,
 //! V(R), Retransmit Flag, and FARM-B Counter, with a window that Table 7-2 allows) and checks one
 //! input of any kind against Table 6-1: next state, V(R), counter, flags, and actions. Its
 //! `invariant` is only the window constraint, which is configuration and which a step cannot
@@ -321,7 +321,7 @@ fn new_satisfies_invariant() {
 /// Counter counts the Type-B frames accepted, modulo 4; the CLCW flags follow the State.
 #[kani::proof]
 #[kani::unwind(6)]
-fn step_preserves_invariant_and_obeys_table_6_1() {
+fn step_obeys_table_6_1() {
     // req: COP-002, COP-030, COP-031, COP-033, COP-034, COP-037, API-058
     let before: Farm1 = kani::any();
     let (buf, len) = fdu_buffer();

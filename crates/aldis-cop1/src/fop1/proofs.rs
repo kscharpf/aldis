@@ -8,7 +8,8 @@
 //! - **Table exhaustiveness** (`table_5_1_next_states`, `table_5_1_alerts`): every state and
 //!   every event, no bound.
 //! - **Modulo-256 arithmetic** (`clcw_event_modulo_256`): every V(S), NN(R), N(R), flag
-//!   combination, and COP pattern, on a `Core` without `invariant`, no bound. The base case of the invariant is `new_satisfies_invariant`.
+//!   combination, and COP pattern, on a `Core` without `invariant`, no bound.
+//!   The base case of the invariant is `new_satisfies_invariant`.
 //!
 //! The inductive step of the invariant over the engine's inputs and the engine's cell check
 //! (`decide_event` for every state and event) were written and did not finish within 5 minutes
@@ -353,55 +354,53 @@ impl kani::Arbitrary for Core<Q> {
 
 /// Any `Core` whatever, without `invariant`: V(S), NN(R), and every other field unrestricted.
 fn any_core() -> Core<Q> {
-    {
-        let t1 = kani::any::<u64>();
-        kani::assume(t1 > 0);
-        let limit = NonZeroU8::new(kani::any());
-        kani::assume(limit.is_some());
-        let Some(transmission_limit) = limit else {
-            unreachable!()
-        };
-        let sent = [
-            if kani::any() { Some(any_sent(0)) } else { None },
-            if kani::any() { Some(any_sent(1)) } else { None },
-        ];
-        let wait = if kani::any() {
-            Some(Waiting {
-                handle: kani::any(),
-                len: kani::any(),
-                fresh: false,
-            })
+    let t1 = kani::any::<u64>();
+    kani::assume(t1 > 0);
+    let limit = NonZeroU8::new(kani::any());
+    kani::assume(limit.is_some());
+    let Some(transmission_limit) = limit else {
+        unreachable!()
+    };
+    let sent = [
+        if kani::any() { Some(any_sent(0)) } else { None },
+        if kani::any() { Some(any_sent(1)) } else { None },
+    ];
+    let wait = if kani::any() {
+        Some(Waiting {
+            handle: kani::any(),
+            len: kani::any(),
+            fresh: false,
+        })
+    } else {
+        None
+    };
+    Core {
+        t1_initial: Duration::from_micros(t1),
+        transmission_limit,
+        timeout_type: if kani::any() {
+            TimeoutType::Tt0
+        } else {
+            TimeoutType::Tt1
+        },
+        k: kani::any(),
+        ad_repetitions: kani::any(),
+        bc_repetitions: kani::any(),
+        state: any_state(),
+        v_s: FrameSeqNum::new(kani::any()),
+        nn_r: FrameSeqNum::new(kani::any()),
+        sent,
+        wait,
+        ad_out_ready: kani::any(),
+        bc_out_ready: kani::any(),
+        bd_out: if kani::any() { Some(kani::any()) } else { None },
+        pending_initiate: if kani::any() { Some(kani::any()) } else { None },
+        deadline: if kani::any() {
+            Some(Instant::from_micros(kani::any()))
         } else {
             None
-        };
-        Core {
-            t1_initial: Duration::from_micros(t1),
-            transmission_limit,
-            timeout_type: if kani::any() {
-                TimeoutType::Tt0
-            } else {
-                TimeoutType::Tt1
-            },
-            k: kani::any(),
-            ad_repetitions: kani::any(),
-            bc_repetitions: kani::any(),
-            state: any_state(),
-            v_s: FrameSeqNum::new(kani::any()),
-            nn_r: FrameSeqNum::new(kani::any()),
-            sent,
-            wait,
-            ad_out_ready: kani::any(),
-            bc_out_ready: kani::any(),
-            bd_out: if kani::any() { Some(kani::any()) } else { None },
-            pending_initiate: if kani::any() { Some(kani::any()) } else { None },
-            deadline: if kani::any() {
-                Some(Instant::from_micros(kani::any()))
-            } else {
-                None
-            },
-            transmission_count: kani::any(),
-            suspend_state: any_suspend(),
-        }
+        },
+        transmission_count: kani::any(),
+        suspend_state: any_suspend(),
     }
 }
 
