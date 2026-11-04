@@ -4,7 +4,7 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 
 ## 2026-11-04, branch `m4/wp-8-gates` (M4 WP-8, `aldis-link`)
 
-`cargo mutants -p aldis-link --all-features -j 4` (cargo-mutants 27.1.0, local run on a loaded machine, 20 s test timeout): 1 517 mutants: 459 caught, 317 unviable, 4 missed, 737 timeouts. The timeouts are mostly the machine's load (the build took 100 s or more and the suite hit the 20 s limit), not hung engines; they were re-run with `--iterate --timeout 90` and `PROPTEST_CASES=32` and their result is **not yet triaged** (open at the end of the work package; the nightly job `mutants` runs the crate with the same flags as the other crates). The four survivors:
+`cargo mutants -p aldis-link --all-features -j 4` (cargo-mutants 27.1.0, local run on a loaded machine, 20 s test timeout): 1 517 mutants: 459 caught, 317 unviable, 4 missed, 737 timeouts. The timeouts are mostly the machine's load (the build took 100 s or more and the suite hit the 20 s limit), not hung engines; they were re-run with `--iterate --timeout 90` and `PROPTEST_CASES=32` and their result is **not triaged** in WP-8: the maintainer decided (2026-11-04) that WP-8 closes with the timeouts untriaged and that they are triaged at WP-9 from the nightly `mutants` report, which is the reference (the nightly job runs the crate with the same flags as the other crates). The four survivors:
 
 | Mutant | Verdict | Action |
 |---|---|---|

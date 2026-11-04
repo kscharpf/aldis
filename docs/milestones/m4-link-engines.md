@@ -111,11 +111,13 @@ WP-6 needs more than WP-1 and `aldis-cop1`: its segmentation scenarios (LNK-040�
 
 ### WP-8 Gates & hazards (M) — VER-010, VER-011, VER-022…025, VER-065, VER-066
 - 100 % coverage, mutants triaged, fuzz targets, stack bounds at the `capacities.toml` sizes, QEMU on three targets.
+- The survivors of `aldis-link` are triaged in WP-8; its mutation timeouts are triaged in WP-9 from the nightly `mutants` report (maintainer, 2026-11-04).
 - The `stack` check measures the engines at those sizes (the engines of WP-3 to WP-6 are built at them in WP-7).
 - Hazard analysis `docs/verification/hazards/link.md` and the assurance case.
 
 ### WP-9 Exit (S) — LNK-001, VER-020, RS-015
 - The inspection record of LNK-001 (one frame protocol per engine, method I) in `docs/verification/records/`, in the format of [analysis-records.md](../verification/analysis-records.md).
+- The triage of the `aldis-link` mutation timeouts, from the nightly `mutants` report ([mutants-triage.md](../verification/mutants-triage.md); deferred from WP-8).
 - `cargo xtask trace --scope m4 --strict` replaces the non-strict run (VER-020); rustdoc citations (RS-015); roadmap, README, and open issues.
 - The release `v0.5.0-m4` is the maintainer's.
 
