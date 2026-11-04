@@ -994,3 +994,28 @@ fn the_bitstream_generator_builds_b_pdus() {
         );
     }
 }
+
+#[test]
+fn every_protocol_takes_a_release_deadline_and_refuses_a_bad_configuration() {
+    // req: LNK-015, LNK-001, CABI-022, CABI-040
+    for (protocol, field_len) in [
+        (ALDIS_LINK_PROTOCOL_TM, 16),
+        (ALDIS_LINK_PROTOCOL_AOS, 18),
+        (ALDIS_LINK_PROTOCOL_USLP, 27),
+    ] {
+        let mut d = detail();
+        let mut s = pg_storage();
+        let mut cfg = pg_config(protocol, field_len);
+        cfg.release_deadline_us = 500;
+        // SAFETY: every pointer is to a live local.
+        let status =
+            unsafe { aldis_packet_generator_init(&raw mut *s, &raw const cfg, &raw mut d) };
+        assert_eq!(status, 0, "{protocol}");
+        // A packet length of no octet is refused whatever the protocol.
+        cfg.max_packet_len = 0;
+        // SAFETY: every pointer is to a live local.
+        let status =
+            unsafe { aldis_packet_generator_init(&raw mut *s, &raw const cfg, &raw mut d) };
+        assert_eq!(status, ALDIS_ERR_INVALID_CONFIG, "{protocol}");
+    }
+}

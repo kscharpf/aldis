@@ -694,3 +694,55 @@ fn the_receiver_steps_and_reconfigures() {
     let mut small = [0_u8; 8];
     assert_ne!(fr_step(&mut s, &input, &mut small, &mut actions, &mut d), 0);
 }
+
+#[test]
+fn every_protocol_refuses_a_bad_extractor_configuration_and_serves_loss_and_discard() {
+    // req: LNK-001, CABI-040, CABI-022, LNK-003, LNK-053, API-058
+    let mut d = detail();
+    let mut out = [0_u8; 64];
+    let mut actions = aldis_frame_receiver_actions_t::default();
+    for protocol in [
+        ALDIS_LINK_PROTOCOL_TM,
+        ALDIS_LINK_PROTOCOL_AOS,
+        ALDIS_LINK_PROTOCOL_USLP,
+    ] {
+        // A packet length of no octet is refused in the engine's own configuration, whatever
+        // the protocol.
+        let mut s = pe_storage();
+        let mut cfg = pe_config(protocol);
+        cfg.max_packet_len = 0;
+        // SAFETY: every pointer is to a live local.
+        let status = unsafe { aldis_packet_extractor_init(&mut *s, &cfg, &mut d) };
+        assert_eq!(status, ALDIS_ERR_INVALID_CONFIG, "{protocol}");
+    }
+    for protocol in [
+        ALDIS_LINK_PROTOCOL_TM,
+        ALDIS_LINK_PROTOCOL_TC,
+        ALDIS_LINK_PROTOCOL_AOS,
+        ALDIS_LINK_PROTOCOL_USLP,
+    ] {
+        let mut s = fr_storage();
+        let mut cfg = fr_config(protocol);
+        assert_eq!(fr_init(&mut s, &cfg, &mut d), 0, "{protocol}");
+        let mut loss = fr_input(ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS);
+        loss.config = cfg;
+        assert_eq!(fr_step(&mut s, &loss, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(actions.items[0].kind, ALDIS_FRAME_RECEIVER_ACTION_LOSS_FLAG);
+        let mut discard = fr_input(ALDIS_FRAME_RECEIVER_INPUT_CALLER_DISCARD);
+        discard.config = cfg;
+        discard.reason = ALDIS_LINK_DISCARD_CRC_MISMATCH;
+        assert_eq!(fr_step(&mut s, &discard, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(actions.items[0].reason, ALDIS_LINK_DISCARD_CRC_MISMATCH);
+        discard.reason = ALDIS_LINK_DISCARD_NOT_SERVED;
+        assert_eq!(
+            fr_step(&mut s, &discard, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_INVALID_FIELD
+        );
+        // A reconfiguration with a configuration the engine refuses changes nothing.
+        cfg.frame_len = 0;
+        let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
+        re.config = cfg;
+        assert_ne!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+        assert_ne!(fr_init(&mut s, &cfg, &mut d), 0);
+    }
+}

@@ -80,6 +80,10 @@ fn an_access_configuration_the_blue_books_forbid_is_refused() {
         named(config.with_max_sdu_len(65_536)),
         invalid(field::MAX_SDU_LEN.name())
     );
+    assert_eq!(
+        config.with_max_sdu_len(65_535).unwrap().max_sdu_len(),
+        65_535
+    );
     assert_eq!(config.with_max_sdu_len(40).unwrap().max_sdu_len(), 40);
     let config = tm(12).unwrap();
     assert_eq!(
