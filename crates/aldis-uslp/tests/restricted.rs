@@ -294,6 +294,10 @@ fn vcf_count_edges_fit_their_length() {
 /// variable-length channel with `InvalidConfig` (`insert_zone_len`); a frame of every accepted
 /// length up to 48 octets, and of 65 536, encodes and decodes (USLP-003, USLP-008).
 #[test]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+)]
 fn physical_channel_frame_length_is_the_spec_range() {
     // restricted: PhysicalChannelConfig
     // req: USLP-003, USLP-008, API-040, VER-023

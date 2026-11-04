@@ -58,7 +58,9 @@ fn normalize(path: &std::path::Path) -> std::path::PathBuf {
                 out.pop();
             }
             std::path::Component::CurDir => {}
-            other => out.push(other),
+            other @ (std::path::Component::Prefix(_)
+            | std::path::Component::RootDir
+            | std::path::Component::Normal(_)) => out.push(other),
         }
     }
     out

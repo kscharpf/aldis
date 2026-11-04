@@ -533,7 +533,7 @@ impl EncapsulationHeader {
     pub const fn ccsds_defined(&self) -> Option<u16> {
         match self.header_len {
             HeaderLen::Eight => Some(self.ccsds_defined),
-            _ => None,
+            HeaderLen::One | HeaderLen::Two | HeaderLen::Four => None,
         }
     }
 

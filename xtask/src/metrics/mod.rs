@@ -162,7 +162,7 @@ fn gh_list(path: &str, fields: &[(&str, &str)]) -> Result<Vec<Value>, String> {
                     }
                 }
             }
-            _ => {}
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
     }
     Ok(out)

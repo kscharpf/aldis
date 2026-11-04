@@ -210,7 +210,9 @@ fn tc(t: &mut Tally) {
                             t.check(n == count && count == 2);
                             delivered = delivered.saturating_add(1);
                         }
-                        _ => t.check(false),
+                        ReassemblerOutput::Event { .. }
+                        | ReassemblerOutput::StreamData { .. }
+                        | ReassemblerOutput::Discarded { .. } => t.check(false),
                     }
                 }
             }
@@ -224,9 +226,12 @@ fn tc(t: &mut Tally) {
     let events = |reas: &mut MapReassembler<Tc, 2, S>, data: &[u8], area: &mut [u8; 64]| {
         reas.step(ReassemblerInput::Fdu(FduIn { vc, meta: (), data }), area)
             .map(|a| {
-                a.iter().find_map(|o| match o {
-                    ReassemblerOutput::Event { event, .. } => Some(*event),
-                    _ => None,
+                a.iter().find_map(|o| {
+                    if let ReassemblerOutput::Event { event, .. } = o {
+                        Some(*event)
+                    } else {
+                        None
+                    }
                 })
             })
     };
@@ -478,7 +483,9 @@ fn uslp(t: &mut Tally) {
                         t.check(data.slice(&area).is_some_and(|s| s.len() == 3) && !after_gap);
                         seen = seen.saturating_add(1);
                     }
-                    _ => t.check(false),
+                    ReassemblerOutput::Event { .. }
+                    | ReassemblerOutput::Packets { .. }
+                    | ReassemblerOutput::Discarded { .. } => t.check(false),
                 }
             }
         }

@@ -66,10 +66,18 @@ fn table(case: &CodecCase) -> Result<Table, Error> {
         let vcid = UslpVcId::try_from(num::<u8>(&v["vcid"]))?;
         let seq = VcfCountLen::new(num(&v["vcf_count_len_sequence"]))?;
         let exp = VcfCountLen::new(num(&v["vcf_count_len_expedited"]))?;
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+        )]
         let truncated = match &v["truncated_frame_len"] {
             Value::Null => None,
             t => Some(TruncatedFrameLen::new(num(t))?),
         };
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+        )]
         let security = match &v["security"] {
             Value::String(s) if s == "per_map" => SecurityScope::PerMap,
             s => SecurityScope::Vc(SecurityLayout::new(
@@ -134,7 +142,11 @@ fn pointer_kind(rule: TfdzRule) -> Value {
         | TfdzRule::SduContinuation(LastValidOctet::At(_)) => json!("last_valid_octet"),
         TfdzRule::SduStart(LastValidOctet::SduContinues)
         | TfdzRule::SduContinuation(LastValidOctet::SduContinues) => json!("sdu_continues"),
-        _ => Value::Null,
+        TfdzRule::OctetStream
+        | TfdzRule::StartingSegment
+        | TfdzRule::ContinuingSegment
+        | TfdzRule::LastSegment
+        | TfdzRule::NoSegmentation => Value::Null,
     }
 }
 

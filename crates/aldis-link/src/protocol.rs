@@ -287,7 +287,7 @@ mod aos_impl {
             };
             match pointer {
                 Pointer::StartsAt(n) => classified.to_raw(params.edition).ok_or(out_of_range(n)),
-                _ => classified
+                Pointer::NoStart | Pointer::OnlyIdle => classified
                     .to_raw(params.edition)
                     .ok_or(Error::new(ErrorKind::InternalError)),
             }

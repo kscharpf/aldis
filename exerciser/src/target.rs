@@ -160,7 +160,7 @@ mod cortex_m {
         unsafe_code,
         reason = "the vector table must be placed in its linker section"
     )]
-    // SAFETY: the section is placed at the vector table address by link-cortex-m.x.
+    // Why this is sound: the section is placed at the vector table address by link-cortex-m.x.
     #[unsafe(link_section = ".vector_table.exceptions")]
     #[used]
     static EXCEPTIONS: [extern "C" fn() -> !; 15] = [

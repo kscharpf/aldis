@@ -181,7 +181,10 @@ impl FrameCtx {
             FrameCtx::Uslp {
                 map_id: Some(map), ..
             } => Some(map.get()),
-            _ => None,
+            FrameCtx::Tm { .. }
+            | FrameCtx::Aos { .. }
+            | FrameCtx::Tc { map_id: None, .. }
+            | FrameCtx::Uslp { map_id: None, .. } => None,
         }
     }
 }

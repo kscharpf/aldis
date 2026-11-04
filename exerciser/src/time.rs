@@ -791,7 +791,9 @@ fn convert(case: &Case, o: &mut Out) -> Run {
         code => match code_of(format_of(code, from.obj("format")?)?, from.obj("value")?)? {
             TimeCode::Cds(c) => UtcInstant::from_cds(&c, bb(epoch))?,
             TimeCode::Ccs(c) => UtcInstant::from_ccs(&c),
-            _ => return Err(Fail::Vector),
+            TimeCode::Cuc(_) | TimeCode::Agency(_) | TimeCode::Unknown(_) => {
+                return Err(Fail::Vector);
+            }
         },
     };
     let to = p.obj("to")?;
@@ -811,7 +813,7 @@ fn convert(case: &Case, o: &mut Out) -> Run {
             let code = match format_of(code, to)? {
                 TimeFormat::Cds(f) => TimeCode::Cds(instant.to_cds(bb(f), bb(epoch))?),
                 TimeFormat::Ccs(f) => TimeCode::Ccs(instant.to_ccs(bb(f))?),
-                _ => return Err(Fail::Vector),
+                TimeFormat::Cuc(_) | TimeFormat::Agency(_) => return Err(Fail::Vector),
             };
             value_fields(o, "value", &code);
             Ok(())

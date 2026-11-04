@@ -47,7 +47,7 @@ pub(crate) const fn classify_masked(bits: u8, prev: u64, next: u64) -> Continuit
     match d {
         0 => Continuity::Repeat,
         1 => Continuity::InSequence,
-        d if d <= half => Continuity::Gap {
+        _ if d <= half => Continuity::Gap {
             missing: d.wrapping_sub(1),
         },
         _ => Continuity::Backwards,

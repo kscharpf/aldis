@@ -560,7 +560,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         for map in config.maps() {
             let (longest, f) = match map.service {
                 MapService::OctetStream { .. } => (zone, field::MAX_FDU_LEN),
-                _ => match map.max_sdu_len {
+                MapService::Any | MapService::Packets | MapService::Sdu => match map.max_sdu_len {
                     Some(max) => (max, field::MAX_SDU_LEN),
                     // No segmentation: one FDU holds the longest SDU.
                     None => (zone, field::MAX_SDU_LEN),
@@ -808,7 +808,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::PACKET_VERSION))?;
             match packet::length(packet_kind, data) {
                 Length::Total(n) if n == data.len() => {}
-                _ => {
+                Length::Total(_) | Length::More | Length::Invalid => {
                     return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN));
                 }
             }
@@ -907,6 +907,24 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
 
     /// The FDU of the SDU or packets of `head`, written into `zone`; returns its framing and the
     /// octets written (LNK-040, LNK-041, LNK-042).
+    /// The octets and the count of the packets of the queue that block with `head` into one
+    /// Whole FDU of at most `capacity` octets: `head` and the packets of its MAP behind it.
+    fn blocked_run(&self, head: &Entry, capacity: usize) -> (usize, usize) {
+        let (mut total, mut blocked) = (head.len, 1_usize);
+        let mut at = head.end();
+        // bound: each pass moves `at` past one entry of the queue.
+        while let Some(next) = self.entry_at(at) {
+            let fits = total.saturating_add(next.len) <= capacity;
+            if next.kind != Kind::Packet || next.map != head.map || !fits {
+                break;
+            }
+            total = total.saturating_add(next.len);
+            blocked = blocked.saturating_add(1);
+            at = next.end();
+        }
+        (total, blocked)
+    }
+
     fn sdu_fdu(
         &mut self,
         head: &Entry,
@@ -918,20 +936,9 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         let unsupported = || Error::new(ErrorKind::InvalidField).with_field(field::QOS);
         match self.progress {
             Progress::Idle if head.len <= capacity => {
-                let mut total = head.len;
-                let mut blocked = 1_usize;
+                let (mut total, mut blocked) = (head.len, 1_usize);
                 if head.kind == Kind::Packet && map.blocking {
-                    let mut at = head.end();
-                    // bound: each pass moves `at` past one entry of the queue.
-                    while let Some(next) = self.entry_at(at) {
-                        let fits = total.saturating_add(next.len) <= capacity;
-                        if next.kind != Kind::Packet || next.map != head.map || !fits {
-                            break;
-                        }
-                        total = total.saturating_add(next.len);
-                        blocked = blocked.saturating_add(1);
-                        at = next.end();
-                    }
+                    (total, blocked) = self.blocked_run(head, capacity);
                 }
                 if !P::allows(&self.config.channel, qos, Framing::Whole, blocked > 1) {
                     return Err(unsupported());
