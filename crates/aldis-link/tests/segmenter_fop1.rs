@@ -75,11 +75,12 @@ impl Link {
         let mut out = [0_u8; F];
         let decision = self.fop.decide(&self.store, input, NOW, &mut out).unwrap();
         let actions = self.fop.commit(&mut self.store, decision);
-        actions.iter().find_map(|a| match a {
-            Fop1Output::Transmit { kind, frame, .. } => {
+        actions.iter().find_map(|a| {
+            if let Fop1Output::Transmit { kind, frame, .. } = a {
                 Some((*kind, frame.slice(&out).unwrap().to_vec()))
+            } else {
+                None
             }
-            _ => None,
         })
     }
 

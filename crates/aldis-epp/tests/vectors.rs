@@ -69,6 +69,10 @@ fn any_config() -> EppConfig {
     EppConfig::new(0, aldis_epp::config::MAX_DATA_LEN, epis, ext).unwrap()
 }
 
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+)]
 fn header_size(case: &CodecCase) -> HeaderSize {
     match param(case, "header_size") {
         Value::String(s) if s == "auto" => HeaderSize::Auto,

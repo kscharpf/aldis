@@ -401,6 +401,10 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
         "decode_stream" => Ok(decode_stream(case)),
         "split" => {
             let bytes = input(case);
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+            )]
             let layout = match param(case, "secondary_header_len") {
                 Value::Null => SecondaryHeaderLayout::Absent,
                 v => SecondaryHeaderLayout::Opaque(

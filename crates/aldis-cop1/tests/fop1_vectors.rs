@@ -314,10 +314,10 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
         .join("cop1/scenarios")
         .join(name);
     let text = std::fs::read_to_string(&path).unwrap();
-    let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&text) else {
+    let Ok(VectorFile::EngineScenario(parsed)) = VectorFile::from_json(&text) else {
         panic!("{name}: not an engine scenario file");
     };
-    let file: ScenarioFile = file;
+    let file: ScenarioFile = parsed;
     assert_eq!(file.engine, "fop1");
     let mut failures = Vec::new();
     let resolved = file.resolve().unwrap();

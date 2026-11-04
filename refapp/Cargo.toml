@@ -35,6 +35,7 @@ unreachable_pub = "warn"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
@@ -56,6 +57,14 @@ infinite_loop = "deny"
 mem_forget = "deny"
 as_pointer_underscore = "deny"
 lossy_float_literal = "deny"
+allow_attributes = "deny"
+wildcard_enum_match_arm = "deny"
+unnecessary_safety_doc = "deny"
+unnecessary_safety_comment = "deny"
+unnecessary_rest_pattern = "deny"
+shadow_same = "deny"
+excessive_nesting = "deny"
+else_if_without_else = "deny"
 # Selected nursery lints (RS-019). The nursery group itself stays off.
 missing_const_for_fn = "deny"
 derive_partial_eq_without_eq = "deny"

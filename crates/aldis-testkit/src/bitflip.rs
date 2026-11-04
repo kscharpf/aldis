@@ -231,6 +231,30 @@ pub fn find_double(
     run_parallel(frame, true, &check)
 }
 
+/// Flips bit `i` of `work` and checks it alone, or with `doubles` with every later bit; the
+/// first pair `check` rejects, with `work` restored.
+fn scan_first_bit(
+    work: &mut [u8],
+    i: usize,
+    doubles: bool,
+    check: &(dyn Fn(usize, usize, &[u8]) -> bool + Sync),
+) -> Option<(usize, usize)> {
+    let bits = work.len() * 8;
+    flip(work, i);
+    if !doubles && !check(i, i, work) {
+        return Some((i, i));
+    }
+    for j in (i + 1..bits).filter(|_| doubles) {
+        flip(work, j);
+        if !check(i, j, work) {
+            return Some((i, j));
+        }
+        flip(work, j);
+    }
+    flip(work, i);
+    None
+}
+
 /// The parallel runs: every single-bit error (`check` gets `j` = `i`), or with `doubles` every
 /// double-bit error.
 fn run_parallel(
@@ -246,28 +270,15 @@ fn run_parallel(
         for t in 0..threads {
             let (failed, found) = (&failed, &found);
             s.spawn(move || {
-                let fail = |i, j| {
-                    failed.store(true, Ordering::Relaxed);
-                    *found.lock().expect("not poisoned") = Some((i, j));
-                };
                 // Interleaved first bits: the pairs of a low first bit are the most numerous.
                 let mut work = frame.to_vec();
-                for i in (t..bits).step_by(threads) {
-                    if failed.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    flip(&mut work, i);
-                    if !doubles && !check(i, i, &work) {
-                        return fail(i, i);
-                    }
-                    for j in (i + 1..bits).filter(|_| doubles) {
-                        flip(&mut work, j);
-                        if !check(i, j, &work) {
-                            return fail(i, j);
-                        }
-                        flip(&mut work, j);
-                    }
-                    flip(&mut work, i);
+                let firsts = (t..bits).step_by(threads);
+                let pair = firsts
+                    .take_while(|_| !failed.load(Ordering::Relaxed))
+                    .find_map(|i| scan_first_bit(&mut work, i, doubles, check));
+                if pair.is_some() {
+                    failed.store(true, Ordering::Relaxed);
+                    *found.lock().expect("not poisoned") = pair;
                 }
             });
         }

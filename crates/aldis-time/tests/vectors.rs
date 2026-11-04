@@ -366,7 +366,9 @@ fn convert(case: &CodecCase) -> Result<Value, Error> {
             match code_of(format, get(from, "value"))? {
                 TimeCode::Cds(c) => UtcInstant::from_cds(&c, epoch)?,
                 TimeCode::Ccs(c) => UtcInstant::from_ccs(&c),
-                other => panic!("{}: cannot convert {other:?}", case.id),
+                other @ (TimeCode::Cuc(_) | TimeCode::Agency(_) | TimeCode::Unknown(_)) => {
+                    panic!("{}: cannot convert {other:?}", case.id)
+                }
             }
         }
     };
@@ -390,7 +392,9 @@ fn convert(case: &CodecCase) -> Result<Value, Error> {
         let code = match format_of(to)? {
             TimeFormat::Cds(f) => TimeCode::Cds(instant.to_cds(f, epoch)?),
             TimeFormat::Ccs(f) => TimeCode::Ccs(instant.to_ccs(f)?),
-            other => panic!("{}: cannot convert to {other:?}", case.id),
+            other @ (TimeFormat::Cuc(_) | TimeFormat::Agency(_)) => {
+                panic!("{}: cannot convert to {other:?}", case.id)
+            }
         };
         json!({ "value": describe(&code).2 })
     })

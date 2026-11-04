@@ -144,6 +144,20 @@ struct FnItem {
     method: Option<(String, bool)>,
 }
 
+/// A provided method of trait `tr`, public when the trait is.
+fn provided_fn(krate: &str, tr: &str, name: String, public: bool) -> FnItem {
+    FnItem {
+        key: Key::Provided {
+            krate: krate.to_owned(),
+            tr: tr.to_owned(),
+            name,
+        },
+        vis: if public { Vis::Pub } else { Vis::Private },
+        mod_public: true,
+        method: None,
+    }
+}
+
 /// What one file contributes before the types are known.
 #[derive(Debug, Default)]
 struct Raw {
@@ -180,7 +194,7 @@ fn scan_file(krate: &str, path: &str, public: bool, src: &str, raw: &mut Raw) {
             .rev()
             .find_map(|(s, _)| match s {
                 Scope::Mod { path, public } => Some((path.clone(), *public)),
-                _ => None,
+                Scope::Impl { .. } | Scope::Trait { .. } | Scope::Opaque | Scope::Other => None,
             })
             .unwrap_or_else(|| (path.to_owned(), public));
         let opaque = open.iter().any(|(s, _)| matches!(s, Scope::Opaque));
@@ -296,16 +310,7 @@ fn scan_file(krate: &str, path: &str, public: bool, src: &str, raw: &mut Raw) {
                         }),
                         Some((Scope::Trait { name: tr, public }, _)) => {
                             if t.get(j).is_some_and(|t| t.text == "{") {
-                                raw.fns.push(FnItem {
-                                    key: Key::Provided {
-                                        krate: krate.to_owned(),
-                                        tr: tr.clone(),
-                                        name,
-                                    },
-                                    vis: if *public { Vis::Pub } else { Vis::Private },
-                                    mod_public: true,
-                                    method: None,
-                                });
+                                raw.fns.push(provided_fn(krate, tr, name, *public));
                             }
                         }
                         Some(_) => {}

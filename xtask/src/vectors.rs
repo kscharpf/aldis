@@ -35,7 +35,7 @@ fn check_hex(value: &Value, key: &str, at: &str, problems: &mut Vec<String>) {
         }
         Value::Array(items) => items.iter().for_each(|v| check_hex(v, key, at, problems)),
         Value::Object(map) => map.iter().for_each(|(k, v)| check_hex(v, k, at, problems)),
-        _ => {}
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 

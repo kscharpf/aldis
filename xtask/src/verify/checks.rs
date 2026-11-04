@@ -923,7 +923,9 @@ mod tests {
                     out.pop();
                 }
                 std::path::Component::CurDir => {}
-                other => out.push(other),
+                other @ (std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::Normal(_)) => out.push(other),
             }
         }
         crate::repo::rel(&out)

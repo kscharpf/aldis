@@ -727,6 +727,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "only the two flag actions matter here; the other actions leave the flags alone"
+    )]
     fn flag_actions_of_every_cell_agree_with_the_next_state() {
         // req: COP-002, COP-003, RS-021
         // The Lockout and Wait Flags are functions of the State (232.1 §6.1.3, §6.1.4; OI-64).
