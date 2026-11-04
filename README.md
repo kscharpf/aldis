@@ -50,7 +50,7 @@ Aldis is built to the practices of safety- and mission-critical software. It is 
 - **Test vectors with provenance**, shared by every implementation and run through both the Rust API and the C ABI. Each hand-derived file is computed by an **independent model** written from the Blue Book by an author who has not read the implementation (TV-023).
 - **Cross-checks** against independent implementations where they exist (NASA cFE for Space Packets) ([cross-checks](docs/verification/cross-checks.md)).
 - **Property tests** from shared strategies (VER-023, VER-054), **fuzzing** of every decoder and of the C ABI against the Rust decoders (VER-022), and **mutation testing** with every surviving mutant triaged (VER-025).
-- **Bounded model checking** with Kani for selected kernels, nightly (OI-42, [formal-proofs](docs/verification/formal-proofs.md)).
+- **Bounded model checking** with Kani for selected kernels, nightly (OI-42, [formal-verification](docs/verification/formal-verification.md)).
 - The bare-metal exerciser runs every public API and every vector on Cortex-M4F, Cortex-R5F, and RV32IMAC under QEMU; a big-endian (s390x) build runs the tests.
 
 **Traceability and the merge gate**

@@ -1092,6 +1092,10 @@ pub unsafe extern "C" fn aldis_tc_stream_next(
                     *offset_ref = current_offset
                         .checked_add(len)
                         .ok_or_else(invalid_argument)?;
+                    #[expect(
+                        clippy::wildcard_enum_match_arm,
+                        reason = "`DiscardReason` is `#[non_exhaustive]`: only one variant carries a length"
+                    )]
                     let declared_len = match reason {
                         aldis::tc::DiscardReason::TruncatedFrame { declared_len } => declared_len,
                         _ => 0,

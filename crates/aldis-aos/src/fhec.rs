@@ -483,6 +483,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+    )]
     fn every_pattern_of_one_or_two_symbol_errors_is_corrected() {
         // req: AOS-013, AOS-014
         let mut patterns = 0;

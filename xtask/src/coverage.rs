@@ -337,7 +337,7 @@ fn check_crate(
     let data = report
         .pointer("/data/0")
         .ok_or_else(|| format!("{}: no data", repo::rel(&json)))?;
-    let waived = if gated { waivers(krate)? } else { [0; 4] };
+    let mut waived = if gated { waivers(krate)? } else { [0; 4] };
 
     let status = if gated {
         "gated at 100 %"
@@ -385,7 +385,6 @@ fn check_crate(
         .collect();
     let _ = writeln!(md, "| **total** | {} |", cells.join(" | "));
 
-    let mut waived = waived;
     if gated && shrink {
         let missed: [u64; 4] =
             std::array::from_fn(|i| count_totals[i].saturating_sub(covered_totals[i]));

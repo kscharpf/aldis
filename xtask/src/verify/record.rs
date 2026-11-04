@@ -133,7 +133,9 @@ fn write_canonical(value: &Value, out: &mut String) {
             }
             out.push('}');
         }
-        scalar => out.push_str(&scalar.to_string()),
+        scalar @ (Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)) => {
+            out.push_str(&scalar.to_string());
+        }
     }
 }
 

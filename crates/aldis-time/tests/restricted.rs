@@ -415,7 +415,9 @@ fn cds_wire(format: CdsFormat, ms: u32, sub: u32) -> Result<CdsValue, Error> {
     });
     match decode_implicit(&t, &TimeFormat::Cds(format))?.code() {
         TimeCode::Cds(c) => Ok(c.value()),
-        _ => Err(Error::new(ErrorKind::Malformed)),
+        TimeCode::Cuc(_) | TimeCode::Ccs(_) | TimeCode::Agency(_) | TimeCode::Unknown(_) => {
+            Err(Error::new(ErrorKind::Malformed))
+        }
     }
 }
 
@@ -509,6 +511,10 @@ const fn spec_max_day(day: CdsDayLen) -> u32 {
 /// format's resolution (§3.3.2 bits 6–7). Every day length and resolution pair, at the day
 /// boundaries; the property tests below draw the rest.
 #[test]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+)]
 fn cds_values_fit_exactly_their_format() {
     // restricted: Cds
     // req: TIME-020, TIME-021, GEN-041, VER-023

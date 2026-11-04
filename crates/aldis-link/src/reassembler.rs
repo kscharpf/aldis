@@ -907,7 +907,9 @@ fn single_packet(head: &[u8], tail: &[u8]) -> Result<()> {
         .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::PACKET_VERSION))?;
     match packet::length(kind, start) {
         Length::Total(total) if total == head.len().saturating_add(tail.len()) => Ok(()),
-        _ => Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN)),
+        Length::Total(_) | Length::More | Length::Invalid => {
+            Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN))
+        }
     }
 }
 

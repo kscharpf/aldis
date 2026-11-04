@@ -1014,6 +1014,10 @@ fn spp_run(case: &CodecCase) -> R<Value> {
         "decode_stream" => Ok(decode_stream(case)),
         "split" => {
             let bytes = input(case);
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+            )]
             let layout = match param(case, "secondary_header_len") {
                 Value::Null => spp_layout(ALDIS_SPP_SECONDARY_ABSENT),
                 v => aldis_spp_secondary_layout_t {
@@ -1073,6 +1077,10 @@ fn epp_fields(p: &Value) -> aldis_epp_fields_t {
     }
 }
 
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "a JSON value is matched on the one variant that selects, the rest are parameters"
+)]
 fn header_size(p: &Value) -> u32 {
     match get(p, "header_size") {
         Value::String(s) if s == "auto" => ALDIS_EPP_HEADER_AUTO,
@@ -1548,6 +1556,8 @@ fn aos_json(v: &aldis_aos_frame_t, bytes: &[u8], pc: &aldis_aos_config_t, mode: 
         call(|e| unsafe {
             aldis_aos_bpdu_decode(data.as_ptr(), data.len(), mode, &raw mut alone, e)
         })?;
+    } else {
+        // The other contents have no standalone decoder.
     }
     assert_eq!(alone, *p);
     assert_eq!(v.anomalies & p.anomalies, p.anomalies);

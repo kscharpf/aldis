@@ -420,6 +420,10 @@ fn bitstream_pointer_classifies_every_raw_value() {
 /// editions, rejects the shorter ones with `InvalidConfig` (`frame_len`) and the minimum, and a
 /// frame of every accepted length up to 64 octets encodes and decodes (AOS-001, AOS-015).
 #[test]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+)]
 fn physical_channel_frame_length_has_its_minimum() {
     // restricted: AosPhysicalChannelConfig
     // req: AOS-001, AOS-015, API-040, GEN-041, VER-023

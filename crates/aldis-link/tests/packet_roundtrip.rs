@@ -145,6 +145,10 @@ fn extract<P: PacketProtocol, const EM: usize, const ED: usize>(
     match extractor.step(input, &mut area) {
         Ok(actions) => {
             for a in actions.iter() {
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    reason = "a test collects the Packets outputs; any other output is a problem"
+                )]
                 match a {
                     ExtractorOutput::Packets { run, .. } => trip
                         .received

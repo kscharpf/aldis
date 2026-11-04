@@ -112,7 +112,7 @@ commands:
   fuzz smoke [<target>...]     run a smoke pass (-runs=1 -max_total_time=2) on all fuzz targets
                                (or those named) to catch broken assertions before merge (VER-022)
   kani                         run the Kani proof harnesses and print each one's result and
-                               time; a spike, not a gate (docs/verification/formal-proofs.md,
+                               time; a spike, not a gate (docs/verification/formal-verification.md,
                                OI-42; needs the pinned Kani)
   changelog                    print the unreleased changes, generated from the titles of the
                                merged pull requests after the base of CHANGELOG.md (GEN-080)

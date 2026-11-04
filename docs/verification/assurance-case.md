@@ -252,7 +252,7 @@ graph TD
 |---|---|---|
 | `check:spec`; `record:GEN-022` | `cargo xtask loops` finds every loop of library code: one over a slice, an array, or a closed range is bounded by what it iterates; every `while`, `while let`, `loop`, and open or endless iteration carries a `// bound:` comment with its bound, and the check fails on a missing comment or one that is not above a loop | GEN-022 |
 | `check:stack`; `record:VER-011` | Object-level static analysis confirming recursion freedom and entry-point stack depth | GEN-022 |
-| `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `nightly-check:kani`; `file:docs/verification/formal-proofs.md` | A machine proof of one loop's bound, and of the CRC and bit-field loops up to their input lengths; nightly only (`df:DF-2`) | GEN-022 |
+| `proof:crates/aldis-core/src/proofs.rs::error_kind_lookup_is_bounded`; `nightly-check:kani`; `file:docs/verification/formal-verification.md` | A machine proof of one loop's bound, and of the CRC and bit-field loops up to their input lengths; nightly only (`df:DF-2`) | GEN-022 |
 | `test:crates/aldis-cop1/src/farm1.rs::a_list_without_room_fails_at_every_push_and_never_drops_an_action`; `test:crates/aldis-cop1/tests/fop1_vectors.rs::the_action_bound_target_and_classification_at_run_time` | The loops of the COP-1 engines run over the Sent_Queue capacity, and the action bounds are derived from the tables at compile time, so no input does work beyond them (`hz:HZ-COP1-10`) | COP-006, GEN-022 |
 
 ### AC-3.2 Nothing recurses

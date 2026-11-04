@@ -587,9 +587,9 @@ mod tests {
             assert!(Ccs::from_t(f, &t, DecodeMode::Strict, &mut flags).is_ok());
             for i in 0..t.len() {
                 for bad in [0x0A, 0xA0] {
-                    let mut t = t;
-                    t[i] = (t[i] & if bad == 0x0A { 0xF0 } else { 0x0F }) | bad;
-                    let r = Ccs::from_t(f, &t, DecodeMode::Lenient, &mut flags);
+                    let mut corrupted = t;
+                    corrupted[i] = (t[i] & if bad == 0x0A { 0xF0 } else { 0x0F }) | bad;
+                    let r = Ccs::from_t(f, &corrupted, DecodeMode::Lenient, &mut flags);
                     if variation == CcsVariation::DayOfYear && i == 2 && bad == 0xA0 {
                         // The DOY high nibble is the unused nibble: flagged, not BCD (TIME-034).
                         assert!(r.is_ok() && flags.contains(TimeAnomaly::NonZeroDoyHighNibble));

@@ -775,7 +775,9 @@ fn convert(
         match code_in(time_format(&from.format)?, &from.value)? {
             TimeCode::Cds(c) => UtcInstant::from_cds(&c, epoch)?,
             TimeCode::Ccs(c) => UtcInstant::from_ccs(&c),
-            _ => return Err(invalid_argument()),
+            TimeCode::Cuc(_) | TimeCode::Agency(_) | TimeCode::Unknown(_) => {
+                return Err(invalid_argument());
+            }
         }
     };
     if cfg.to.code == ALDIS_TIME_ASCII {
@@ -794,7 +796,7 @@ fn convert(
     let code = match time_format(&cfg.to)? {
         TimeFormat::Cds(f) => TimeCode::Cds(instant.to_cds(f, epoch)?),
         TimeFormat::Ccs(f) => TimeCode::Ccs(instant.to_ccs(f)?),
-        _ => return Err(invalid_argument()),
+        TimeFormat::Cuc(_) | TimeFormat::Agency(_) => return Err(invalid_argument()),
     };
     Ok(aldis_time_instant_t {
         format: code
