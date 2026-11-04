@@ -7,8 +7,8 @@
 //!
 //! - **Table exhaustiveness** (`table_5_1_next_states`, `table_5_1_alerts`): every state and
 //!   every event, no bound.
-//! - **Modulo-256 arithmetic** (`clcw_event_modulo_256`): every V(S), NN(R), N(R), and flag
-//!   combination, no bound. The base case of the invariant is `new_satisfies_invariant`.
+//! - **Modulo-256 arithmetic** (`clcw_event_modulo_256`): every V(S), NN(R), N(R), flag
+//!   combination, and COP pattern, on a `Core` without `invariant`, no bound. The base case of the invariant is `new_satisfies_invariant`.
 //!
 //! The inductive step of the invariant over the engine's inputs and the engine's cell check
 //! (`decide_event` for every state and event) were written and did not finish within 5 minutes
@@ -345,6 +345,15 @@ fn any_sent(position: usize) -> Sent {
 impl kani::Arbitrary for Core<Q> {
     /// Any `Core` with `invariant` assumed; the only assumption.
     fn any() -> Core<Q> {
+        let core = any_core();
+        kani::assume(invariant(&core));
+        core
+    }
+}
+
+/// Any `Core` whatever, without `invariant`: V(S), NN(R), and every other field unrestricted.
+fn any_core() -> Core<Q> {
+    {
         let t1 = kani::any::<u64>();
         kani::assume(t1 > 0);
         let limit = NonZeroU8::new(kani::any());
@@ -365,7 +374,7 @@ impl kani::Arbitrary for Core<Q> {
         } else {
             None
         };
-        let core = Core {
+        Core {
             t1_initial: Duration::from_micros(t1),
             transmission_limit,
             timeout_type: if kani::any() {
@@ -392,9 +401,7 @@ impl kani::Arbitrary for Core<Q> {
             },
             transmission_count: kani::any(),
             suspend_state: any_suspend(),
-        };
-        kani::assume(invariant(&core));
-        core
+        }
     }
 }
 
@@ -447,15 +454,17 @@ fn clcw(report: u8, lockout: bool, wait: bool, retransmit: bool, cop: CopInEffec
 #[kani::proof]
 fn clcw_event_modulo_256() {
     // req: COP-012, GEN-024
-    let core: Core<Q> = kani::any();
-    let fop = engine_with(core);
+    let fop = engine_with(any_core());
     let (n_r, lockout, wait, retransmit): (u8, bool, bool, bool) =
         (kani::any(), kani::any(), kani::any(), kani::any());
     let cop_ok: bool = kani::any();
     let cop = if cop_ok {
         CopInEffect::COP_1
     } else {
-        CopInEffect::new(kani::any::<u8>() & 0b10).unwrap_or(CopInEffect::COP_1)
+        // The three invalid patterns (0, 2, 3); 1 is COP-1 in effect.
+        let pattern = kani::any::<u8>() & 0b11;
+        kani::assume(pattern != 1);
+        CopInEffect::new(pattern).unwrap_or(CopInEffect::COP_1)
     };
     let c = clcw(n_r, lockout, wait, retransmit, cop);
     let got = fop.clcw_event(&c);

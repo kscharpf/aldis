@@ -7,11 +7,13 @@
 //!
 //! The harnesses of table exhaustiveness (`every_cell_matches_table_6_1`) and window arithmetic
 //! (`window_constructors_accept_exactly_table_7_2`, `ad_frame_classification_modulo_256`) take
-//! every state, event, V(R), N(S), and window, with no bound. The inductive step
-//! (`step_preserves_invariant_and_obeys_table_6_1`) starts from an arbitrary state that satisfies
-//! `invariant` and checks one input, so together with the base case (`new_satisfies_invariant`)
-//! the invariant holds for runs of any length. Buffers: the FDU is 0 to 2 octets and the output
-//! area 2 octets.
+//! every state, event, V(R), N(S), and window, with no bound. The step harness
+//! (`step_preserves_invariant_and_obeys_table_6_1`) starts from an arbitrary state (any State,
+//! V(R), Retransmit Flag, and FARM-B Counter, with a window that Table 7-2 allows) and checks one
+//! input of any kind against Table 6-1: next state, V(R), counter, flags, and actions. Its
+//! `invariant` is only the window constraint, which is configuration and which a step cannot
+//! change, so the harness is a one-step check from every state, not an inductive proof of a state
+//! invariant. Buffers: the FDU is 0 to 2 octets and the output area 2 octets.
 
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
