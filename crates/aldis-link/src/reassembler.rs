@@ -434,12 +434,35 @@ impl Cx<'_> {
 /// `M` is the number of MAPs and `S` the capacity of the assembly buffer of each, which is the
 /// longest SDU it can assemble (LNK-073, GEN-011); a configuration with a longer maximum SDU
 /// length is refused with `CapacityExceeded`.
+///
+/// The engine is its [`MapReassemblerHead`] followed by its [`MapReassemblerBuffers`]
+/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct MapReassembler<P: ReassemblerProtocol, const M: usize, const S: usize> {
+    head: MapReassemblerHead<P, M>,
+    bufs: MapReassemblerBuffers<M, S>,
+}
+
+/// Everything of a [`MapReassembler`] but its assembly buffers (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
     config: MapReassemblerConfig<P, M>,
-    bufs: [[u8; S]; M],
     slots: [Assembly; M],
     status: ReassemblerStatus,
+}
+
+/// The assembly buffers of a [`MapReassembler`]: `S` octets for each of `M` MAPs, valid when all
+/// zero, which is the empty state (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
+    maps: [[u8; S]; M],
+}
+
+impl<const M: usize, const S: usize> MapReassemblerBuffers<M, S> {
+    /// Empty buffers.
+    pub const ZERO: Self = Self { maps: [[0; S]; M] };
 }
 
 impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M, S> {
@@ -448,10 +471,26 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// # Errors
     /// `CapacityExceeded` (`max_sdu_len`) if a MAP's maximum SDU length exceeds `S` (LNK-073).
     pub fn new(config: MapReassemblerConfig<P, M>) -> Result<MapReassembler<P, M, S>> {
-        MapReassembler::<P, M, S>::check_capacity(&config)?;
         Ok(MapReassembler {
+            head: Self::new_head(config)?,
+            bufs: MapReassemblerBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a reassembler with no SDU in progress: the part of [`Self::new`] that is
+    /// built from the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: MapReassemblerConfig<P, M>) -> Result<MapReassemblerHead<P, M>> {
+        MapReassembler::<P, M, S>::check_capacity(&config)?;
+        Ok(MapReassemblerHead {
             config,
-            bufs: [[0; S]; M],
             slots: [Assembly::Idle; M],
             status: ReassemblerStatus::default(),
         })
@@ -471,13 +510,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &MapReassemblerConfig<P, M> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &ReassemblerStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057). The reassembler has no timer (API-053).
@@ -504,11 +543,11 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             ReassemblerInput::Reconfigure(config) => {
                 MapReassembler::<P, M, S>::check_capacity(&config)?;
                 let mut actions = Actions::new();
-                let octets = self.slots.iter().map(|s| s.held()).sum::<usize>();
-                self.config = config;
-                self.slots = [Assembly::Idle; M];
-                self.status.discarded_octets.add(octets);
-                self.status.assembly.set(0);
+                let octets = self.head.slots.iter().map(|s| s.held()).sum::<usize>();
+                self.head.config = config;
+                self.head.slots = [Assembly::Idle; M];
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.assembly.set(0);
                 if octets > 0 {
                     actions.push(ReassemblerOutput::Discarded { octets })?;
                 }
@@ -519,19 +558,19 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
 
     /// `Fdu` (LNK-070…LNK-072).
     fn fdu(&mut self, input: &FduIn<'_, P>, out: &mut [u8]) -> Result<ReassemblerActions> {
-        let parsed = match P::parse(&self.config.channel, &input.meta, input.data) {
+        let parsed = match P::parse(&self.head.config.channel, &input.meta, input.data) {
             Ok(parsed) => parsed,
             Err(e) => {
-                self.status.refused.incr();
+                self.head.status.refused.incr();
                 return Err(e);
             }
         };
         let vc = raw(input.vc);
-        let found = self.config.find(vc, parsed.map);
+        let found = self.head.config.find(vc, parsed.map);
         if let Some(index) = found
             && let Err(e) = self.check(index, &parsed, out.len())
         {
-            self.status.refused.incr();
+            self.head.status.refused.incr();
             return Err(e);
         }
         // From here on nothing fails except an internal inconsistency.
@@ -539,7 +578,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             out,
             actions: Actions::new(),
         };
-        self.status.fdus_in.incr();
+        self.head.status.fdus_in.incr();
         if parsed.gap {
             self.gap_discard(vc, parsed.map, found, &mut cx)?;
         }
@@ -553,6 +592,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// The checks of an FDU for a configured MAP that precede any change (API-058).
     fn check(&self, index: usize, parsed: &Parsed<'_>, area: usize) -> Result<()> {
         let map = self
+            .head
             .config
             .maps
             .get(index)
@@ -592,12 +632,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                     count_packets(data)?;
                 }
                 Unit::Last(data) => {
-                    let held = self.slots.get(index).map(|slot| match slot {
+                    let held = self.head.slots.get(index).map(|slot| match slot {
                         Assembly::Building { len } => *len,
                         Assembly::Idle => 0,
                     });
                     let (held, buf) = self
                         .bufs
+                        .maps
                         .get(index)
                         .zip(held)
                         .and_then(|(whole, held)| whole.get(..held).map(|buf| (held, buf)))
@@ -625,7 +666,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         let field_had = found.is_some_and(|i| self.held(i) > 0);
         let mut total = 0_usize;
         let mut first = None;
-        for (slot, entry) in self.slots.iter_mut().zip(self.config.maps.iter()) {
+        for (slot, entry) in self.head.slots.iter_mut().zip(self.head.config.maps.iter()) {
             let Some(entry) = entry else { continue };
             if raw(entry.vc) != vc || slot.held() == 0 {
                 continue;
@@ -635,7 +676,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             *slot = Assembly::Idle;
         }
         let Some(first) = first else { return Ok(()) };
-        self.status.discarded_octets.add(total);
+        self.head.status.discarded_octets.add(total);
         self.refresh_occupancy();
         let named = if field_had { map } else { first };
         self.event(ReassemblyEvent::GapDiscard, vc, named, cx)
@@ -644,26 +685,26 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// Counts and returns an event.
     fn event(&mut self, event: ReassemblyEvent, vc: u8, map: u8, cx: &mut Cx<'_>) -> Result<()> {
         match event {
-            ReassemblyEvent::GapDiscard => self.status.gap_discards.incr(),
-            ReassemblyEvent::SequenceViolation => self.status.sequence_violations.incr(),
-            ReassemblyEvent::UnknownMap => self.status.unknown_maps.incr(),
-            ReassemblyEvent::SduTooLong => self.status.sdus_too_long.incr(),
+            ReassemblyEvent::GapDiscard => self.head.status.gap_discards.incr(),
+            ReassemblyEvent::SequenceViolation => self.head.status.sequence_violations.incr(),
+            ReassemblyEvent::UnknownMap => self.head.status.unknown_maps.incr(),
+            ReassemblyEvent::SduTooLong => self.head.status.sdus_too_long.incr(),
         }
         cx.actions.push(ReassemblerOutput::Event { event, vc, map })
     }
 
     fn refresh_occupancy(&mut self) {
-        let held = self.slots.iter().map(|s| s.held()).sum::<usize>();
-        self.status.assembly.set(held);
+        let held = self.head.slots.iter().map(|s| s.held()).sum::<usize>();
+        self.head.status.assembly.set(held);
     }
 
     /// Drops the SDU in progress of a MAP, counting its octets; returns whether there was one.
     fn drop_partial(&mut self, index: usize) -> bool {
         let held = self.held(index);
-        if let Some(slot) = self.slots.get_mut(index) {
+        if let Some(slot) = self.head.slots.get_mut(index) {
             *slot = Assembly::Idle;
         }
-        self.status.discarded_octets.add(held);
+        self.head.status.discarded_octets.add(held);
         self.refresh_occupancy();
         held > 0
     }
@@ -671,6 +712,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// Takes the unit of a configured MAP (LNK-070, LNK-071, LNK-072).
     fn apply(&mut self, index: usize, vc: u8, parsed: &Parsed<'_>, cx: &mut Cx<'_>) -> Result<()> {
         let map = self
+            .head
             .config
             .maps
             .get(index)
@@ -691,7 +733,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             Unit::Idle => Ok(()),
             Unit::Stream(data) => {
                 let range = cx.write(&[], data)?;
-                self.status.delivered.incr();
+                self.head.status.delivered.incr();
                 cx.actions.push(ReassemblerOutput::StreamData {
                     vc,
                     map: id,
@@ -739,12 +781,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                 }
                 let buf = self
                     .bufs
+                    .maps
                     .get(index)
                     .and_then(|b| b.get(..held))
                     .ok_or(Error::new(ErrorKind::InternalError))?;
                 let result =
-                    Self::deliver_from(&mut self.status, map.service, (vc, id), buf, data, cx);
-                if let Some(slot) = self.slots.get_mut(index) {
+                    Self::deliver_from(&mut self.head.status, map.service, (vc, id), buf, data, cx);
+                if let Some(slot) = self.head.slots.get_mut(index) {
                     *slot = Assembly::Idle;
                 }
                 self.refresh_occupancy();
@@ -754,7 +797,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     fn held(&self, index: usize) -> usize {
-        self.slots.get(index).map_or(0, |s| s.held())
+        self.head.slots.get(index).map_or(0, |s| s.held())
     }
 
     /// Appends `data` to the SDU of a MAP, which holds `held` octets.
@@ -762,13 +805,14 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         let end = held.saturating_add(data.len());
         let dst = self
             .bufs
+            .maps
             .get_mut(index)
             .and_then(|b| b.get_mut(held..end))
             .ok_or(Error::new(ErrorKind::InternalError))?;
         for (d, s) in dst.iter_mut().zip(data) {
             *d = *s;
         }
-        if let Some(slot) = self.slots.get_mut(index) {
+        if let Some(slot) = self.head.slots.get_mut(index) {
             *slot = Assembly::Building { len: end };
         }
         self.refresh_occupancy();
@@ -785,7 +829,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         tail: &[u8],
         cx: &mut Cx<'_>,
     ) -> Result<()> {
-        Self::deliver_from(&mut self.status, service, (vc, map), head, tail, cx)
+        Self::deliver_from(&mut self.head.status, service, (vc, map), head, tail, cx)
     }
 
     fn deliver_from(

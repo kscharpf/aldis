@@ -124,7 +124,7 @@ mirror!(pub aldis_link_idle_packet: u32 {
 /// first member of every link engine configuration.
 ///
 /// `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
-/// only; the others ignore them.
+/// only; the others do not use them, but each must be valid (`protocol`).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_link_channel_t {
@@ -178,19 +178,30 @@ impl From<Option<Route>> for RouteFields {
         route.map_or_else(RouteFields::default, |r| RouteFields {
             present: 1,
             map_id: r.map.get(),
-            qos: match r.qos {
-                Qos::SequenceControlled => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
-                Qos::Expedited => ALDIS_LINK_QOS_EXPEDITED,
-            },
+            qos: qos_code(r.qos),
         })
     }
 }
 
-/// The protocol of `channel` (LNK-001).
+/// The protocol of `channel` (LNK-001), after every member of the channel has been read.
+///
+/// The members of the other protocols are read whatever the protocol (CABI-040), as the members
+/// of a configuration are: `aos_edition`, `uslp_upid`, `uslp_map`, and `uslp_qos` each must be
+/// valid, so a caller cannot hide an invalid value behind the protocol that ignores it.
 ///
 /// # Errors
-/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_PROTOCOL_*` constant.
+/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_PROTOCOL_*` constant, an
+/// `aos_edition` or `uslp_qos` that is no constant; `OutOfRange` (`upid`, `map_id`) for a
+/// `uslp_upid` above 31 or a `uslp_map` above 15.
 pub(crate) fn protocol(channel: &aldis_link_channel_t) -> Result<aldis_link_protocol> {
+    parse::<aldis_aos_edition>(channel.aos_edition)?;
+    Upid::from_bits(channel.uslp_upid).ok_or(Error::out_of_range(
+        field::UPID,
+        31,
+        u64::from(channel.uslp_upid),
+    ))?;
+    MapId::<4>::try_from(channel.uslp_map)?;
+    qos(channel.uslp_qos)?;
     parse::<aldis_link_protocol>(channel.protocol)
 }
 
@@ -233,11 +244,30 @@ pub(crate) fn uslp_params(channel: &aldis_link_channel_t) -> Result<UslpParams> 
         31,
         u64::from(channel.uslp_upid),
     ))?;
-    let qos = match parse::<aldis_link_qos>(channel.uslp_qos)? {
+    UslpParams::new(
+        upid,
+        MapId::<4>::try_from(channel.uslp_map)?,
+        qos(channel.uslp_qos)?,
+    )
+}
+
+/// The `ALDIS_LINK_QOS_*` constant of a quality of service (LNK-043).
+pub(crate) const fn qos_code(qos: Qos) -> u32 {
+    match qos {
+        Qos::SequenceControlled => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        Qos::Expedited => ALDIS_LINK_QOS_EXPEDITED,
+    }
+}
+
+/// The quality of service of a C constant (LNK-043).
+///
+/// # Errors
+/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_QOS_*` constant.
+pub(crate) fn qos(value: u32) -> Result<Qos> {
+    Ok(match parse::<aldis_link_qos>(value)? {
         aldis_link_qos::ALDIS_LINK_QOS_SEQUENCE_CONTROLLED => Qos::SequenceControlled,
         aldis_link_qos::ALDIS_LINK_QOS_EXPEDITED => Qos::Expedited,
-    };
-    UslpParams::new(upid, MapId::<4>::try_from(channel.uslp_map)?, qos)
+    })
 }
 
 /// The valid PVN set of two flags: Space Packets (PVN 0) and Encapsulation Packets (PVN 7).

@@ -214,13 +214,36 @@ enum Unit {
 ///
 /// `U` is the capacity of the unit in octets (GEN-011); a configuration whose Maximum Length of
 /// Data Unit exceeds it is refused with `CapacityExceeded`.
+///
+/// The engine is its [`CltuPackerHead`] followed by its [`CltuPackerBuffers`] (`repr(C)`), so
+/// that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct CltuPacker<P: CltuProtocol, const U: usize> {
+    head: CltuPackerHead<P>,
+    bufs: CltuPackerBuffers<U>,
+}
+
+/// Everything of a [`CltuPacker`] but its unit buffer (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CltuPackerHead<P: CltuProtocol> {
     config: CltuPackerConfig<P>,
-    buf: [u8; U],
     len: usize,
     unit: Unit,
     status: CltuStatus,
+}
+
+/// The unit buffer of a [`CltuPacker`]: `U` octets, valid when all zero, which is the empty
+/// state (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct CltuPackerBuffers<const U: usize> {
+    unit: [u8; U],
+}
+
+impl<const U: usize> CltuPackerBuffers<U> {
+    /// An empty unit.
+    pub const ZERO: Self = Self { unit: [0; U] };
 }
 
 impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
@@ -229,10 +252,26 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     /// # Errors
     /// `CapacityExceeded` (`max_unit_len`) if the Maximum Length of Data Unit exceeds `U`.
     pub fn new(config: CltuPackerConfig<P>) -> Result<CltuPacker<P, U>> {
-        CltuPacker::<P, U>::check_capacity(&config)?;
         Ok(CltuPacker {
+            head: Self::new_head(config)?,
+            bufs: CltuPackerBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a packer with no frame held: the part of [`Self::new`] that is built from the
+    /// configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: CltuPackerConfig<P>) -> Result<CltuPackerHead<P>> {
+        CltuPacker::<P, U>::check_capacity(&config)?;
+        Ok(CltuPackerHead {
             config,
-            buf: [0; U],
             len: 0,
             unit: Unit::Empty,
             status: CltuStatus::default(),
@@ -250,13 +289,13 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &CltuPackerConfig<P> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &CltuStatus {
-        &self.status
+        &self.head.status
     }
 
     /// Runs one input (API-057). The packer has no timer (API-053).
@@ -276,7 +315,7 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
         match input {
             CltuInput::AddFrame(frame) => self.add_frame(&frame, out, &mut actions)?,
             CltuInput::Flush => {
-                let area = self.config.max_unit_len;
+                let area = self.head.config.max_unit_len;
                 if out.len() < area {
                     return Err(Error::buffer_too_small(area));
                 }
@@ -286,12 +325,12 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             }
             CltuInput::Reconfigure(config) => {
                 CltuPacker::<P, U>::check_capacity(&config)?;
-                let octets = self.len;
-                self.config = config;
-                self.unit = Unit::Empty;
-                self.len = 0;
-                self.status.discarded_octets.add(octets);
-                self.status.pending.set(0);
+                let octets = self.head.len;
+                self.head.config = config;
+                self.head.unit = Unit::Empty;
+                self.head.len = 0;
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.pending.set(0);
                 if octets > 0 {
                     actions.push(CltuOutput::Discarded { octets })?;
                 }
@@ -307,14 +346,14 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
         out: &mut [u8],
         actions: &mut CltuActions,
     ) -> Result<()> {
-        let max = self.config.max_unit_len;
+        let max = self.head.config.max_unit_len;
         let refuse = |status: &mut CltuStatus, e: Error| {
             status.refused.incr();
             e
         };
         if input.frame.is_empty() {
             let e = Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN);
-            return Err(refuse(&mut self.status, e));
+            return Err(refuse(&mut self.head.status, e));
         }
         if input.frame.len() > max {
             let e = Error::out_of_range(
@@ -322,11 +361,11 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
                 u64::try_from(max).unwrap_or(u64::MAX),
                 u64::try_from(input.frame.len()).unwrap_or(u64::MAX),
             );
-            return Err(refuse(&mut self.status, e));
+            return Err(refuse(&mut self.head.status, e));
         }
         if input.truncated && !P::TRUNCATED_FRAMES {
             let e = Error::new(ErrorKind::InvalidField).with_field(field::TRUNCATED_FRAME_LEN);
-            return Err(refuse(&mut self.status, e));
+            return Err(refuse(&mut self.head.status, e));
         }
         let area = max.saturating_mul(2);
         if out.len() < area {
@@ -336,7 +375,7 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             Qos::Expedited => Repetitions::ONE,
             Qos::SequenceControlled => input.repetitions,
         };
-        let fits = match self.unit {
+        let fits = match self.head.unit {
             Unit::Empty => true,
             Unit::Open {
                 frames,
@@ -345,8 +384,8 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             } => {
                 held == repetitions
                     && truncated == input.truncated
-                    && frames < self.config.max_frames
-                    && self.len.saturating_add(input.frame.len()) <= max
+                    && frames < self.head.config.max_frames
+                    && self.head.len.saturating_add(input.frame.len()) <= max
             }
         };
         let mut used = 0;
@@ -355,27 +394,28 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             actions.push(CltuOutput::DataUnit(unit))?;
         }
         // Append the frame to the unit in progress.
-        let frames = match self.unit {
+        let frames = match self.head.unit {
             Unit::Empty => 1,
             Unit::Open { frames, .. } => frames.saturating_add(1),
         };
-        let end = self.len.saturating_add(input.frame.len());
+        let end = self.head.len.saturating_add(input.frame.len());
         let dst = self
-            .buf
-            .get_mut(self.len..end)
+            .bufs
+            .unit
+            .get_mut(self.head.len..end)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         for (d, s) in dst.iter_mut().zip(input.frame) {
             *d = *s;
         }
-        self.len = end;
-        self.unit = Unit::Open {
+        self.head.len = end;
+        self.head.unit = Unit::Open {
             frames,
             repetitions,
             truncated: input.truncated,
         };
-        self.status.frames_in.incr();
-        self.status.pending.set(self.len);
-        if (frames >= self.config.max_frames || self.len >= max)
+        self.head.status.frames_in.incr();
+        self.head.status.pending.set(self.head.len);
+        if (frames >= self.head.config.max_frames || self.head.len >= max)
             && let Some(unit) = self.emit(out, used)?
         {
             actions.push(CltuOutput::DataUnit(unit))?;
@@ -385,7 +425,7 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
 
     /// Writes the unit in progress to `out` at `at`, and empties it (LNK-044).
     fn emit(&mut self, out: &mut [u8], at: usize) -> Result<Option<DataUnit>> {
-        let (frames, repetitions, truncated) = match self.unit {
+        let (frames, repetitions, truncated) = match self.head.unit {
             Unit::Open {
                 frames,
                 repetitions,
@@ -393,19 +433,20 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             } => (frames, repetitions, truncated),
             Unit::Empty => return Ok(None),
         };
-        let end = at.saturating_add(self.len);
+        let end = at.saturating_add(self.head.len);
         let dst = out.get_mut(at..end).ok_or(Error::buffer_too_small(end))?;
         let src = self
-            .buf
-            .get(..self.len)
+            .bufs
+            .unit
+            .get(..self.head.len)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         for (d, s) in dst.iter_mut().zip(src) {
             *d = *s;
         }
-        self.len = 0;
-        self.unit = Unit::Empty;
-        self.status.units_out.incr();
-        self.status.pending.set(0);
+        self.head.len = 0;
+        self.head.unit = Unit::Empty;
+        self.head.status.units_out.incr();
+        self.head.status.pending.set(0);
         Ok(Some(DataUnit {
             unit: OutRange::new(at, end.saturating_sub(at)),
             frames,

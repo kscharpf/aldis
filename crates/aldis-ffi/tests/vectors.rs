@@ -3553,3 +3553,24 @@ mod link_mux {
     vector_test!(channel_mux_uslp, "link", "send/channel_mux_uslp");
 }
 // ---- end link ChannelMux
+
+// ---- Link MapSegmenter and MapReassembler (M4 WP-7d): the scenarios of
+// `test-vectors/link/send/map_segmenter_*.json` and `test-vectors/link/recv/map_reassembler_*.json`
+// through the C ABI handles.
+mod link_map {
+    macro_rules! vector_test {
+        ($name:ident, "link", $file:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, CABI-030, CABI-031, CABI-032, CABI-040
+                super::link_engine::run_scenario_file(concat!("link/", $file, ".json"));
+            }
+        };
+    }
+
+    vector_test!(map_segmenter_tc, "link", "send/map_segmenter_tc");
+    vector_test!(map_segmenter_uslp, "link", "send/map_segmenter_uslp");
+    vector_test!(map_reassembler_tc, "link", "recv/map_reassembler_tc");
+    vector_test!(map_reassembler_uslp, "link", "recv/map_reassembler_uslp");
+}
+// ---- end link MapSegmenter and MapReassembler

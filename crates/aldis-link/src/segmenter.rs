@@ -525,15 +525,38 @@ impl StreamTimer {
 /// `M` is the number of MAPs of its configuration and `Q` the capacity of the queue in octets,
 /// four octets of kind, MAP, and length included for each entry (GEN-011, LNK-015); a
 /// configuration whose longest SDU does not fit is refused with `CapacityExceeded`.
+///
+/// The engine is its [`MapSegmenterHead`] followed by its [`MapSegmenterBuffers`] (`repr(C)`), so
+/// that a caller can build it in place (see [`crate::inplace`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct MapSegmenter<P: SegmenterProtocol, const M: usize, const Q: usize> {
+    head: MapSegmenterHead<P, M>,
+    bufs: MapSegmenterBuffers<Q>,
+}
+
+/// Everything of a [`MapSegmenter`] but its queue (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapSegmenterHead<P: SegmenterProtocol, const M: usize> {
     config: MapSegmenterConfig<P, M>,
-    queue: [u8; Q],
     queue_len: usize,
     progress: Progress,
     octets: usize,
     streams: [StreamTimer; M],
     status: SegmenterStatus,
+}
+
+/// The queue of a [`MapSegmenter`]: `Q` octets, valid when all zero, which is the empty state
+/// (see [`crate::inplace`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct MapSegmenterBuffers<const Q: usize> {
+    queue: [u8; Q],
+}
+
+impl<const Q: usize> MapSegmenterBuffers<Q> {
+    /// An empty queue.
+    pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
 impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q> {
@@ -543,10 +566,26 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// `CapacityExceeded` (`max_sdu_len`, `max_fdu_len`) if the queue cannot hold the longest SDU
     /// of a MAP, or a TFDZ of an octet stream, with the four octets of its entry.
     pub fn new(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenter<P, M, Q>> {
-        MapSegmenter::<P, M, Q>::check_capacity(&config)?;
         Ok(MapSegmenter {
+            head: Self::new_head(config)?,
+            bufs: MapSegmenterBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of a segmenter with an empty queue: the part of [`Self::new`] that is built from
+    /// the configuration (see [`crate::inplace`]).
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    pub fn new_head(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenterHead<P, M>> {
+        MapSegmenter::<P, M, Q>::check_capacity(&config)?;
+        Ok(MapSegmenterHead {
             config,
-            queue: [0; Q],
             queue_len: 0,
             progress: Progress::Idle,
             octets: 0,
@@ -576,13 +615,13 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// The configuration in force.
     #[must_use]
     pub const fn config(&self) -> &MapSegmenterConfig<P, M> {
-        &self.config
+        &self.head.config
     }
 
     /// The status snapshot: counters and occupancy (API-056, LNK-002).
     #[must_use]
     pub const fn status(&self) -> &SegmenterStatus {
-        &self.status
+        &self.head.status
     }
 
     /// The earliest instant at which `Timeout` must be fed: the earliest release deadline of a
@@ -595,13 +634,13 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
 
     /// The instant at which the TFDZ of the stream MAP at position `i` is due, if it is waiting.
     fn deadline_of(&self, i: usize) -> Option<Instant> {
-        let map = self.config.maps.get(i)?.as_ref()?;
+        let map = self.head.config.maps.get(i)?.as_ref()?;
         let MapService::OctetStream { release_deadline } = map.service else {
             return None;
         };
-        let timer = self.streams.get(i)?;
+        let timer = self.head.streams.get(i)?;
         let held = self.stream_entry(raw(map.id)).map_or(0, |e| e.len);
-        if timer.due || held >= self.config.zone_len() {
+        if timer.due || held >= self.head.config.zone_len() {
             None
         } else {
             Some(timer.started?.saturating_add(release_deadline))
@@ -656,7 +695,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             SegmenterInput::Timeout => {
                 for i in 0..M {
                     if self.deadline_of(i).is_some_and(|due| now >= due)
-                        && let Some(timer) = self.streams.get_mut(i)
+                        && let Some(timer) = self.head.streams.get_mut(i)
                     {
                         timer.due = true;
                     }
@@ -664,14 +703,14 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             }
             SegmenterInput::Reconfigure(config) => {
                 MapSegmenter::<P, M, Q>::check_capacity(&config)?;
-                let octets = self.octets;
-                self.config = config;
-                self.queue_len = 0;
-                self.progress = Progress::Idle;
-                self.octets = 0;
-                self.streams = [StreamTimer::IDLE; M];
-                self.status.discarded_octets.add(octets);
-                self.status.queue.set(0);
+                let octets = self.head.octets;
+                self.head.config = config;
+                self.head.queue_len = 0;
+                self.head.progress = Progress::Idle;
+                self.head.octets = 0;
+                self.head.streams = [StreamTimer::IDLE; M];
+                self.head.status.discarded_octets.add(octets);
+                self.head.status.queue.set(0);
                 if octets > 0 {
                     actions.push(SegmenterOutput::Discarded { octets })?;
                 }
@@ -682,10 +721,10 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
 
     /// The entry that starts at `at`, or `None` past the end of the queue.
     fn entry_at(&self, at: usize) -> Option<Entry> {
-        if at >= self.queue_len {
+        if at >= self.head.queue_len {
             return None;
         }
-        let head = self.queue.get(at..at.checked_add(PREFIX)?)?;
+        let head = self.bufs.queue.get(at..at.checked_add(PREFIX)?)?;
         let [tag, map, hi, lo] = *head else {
             return None;
         };
@@ -727,7 +766,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// `SubmitPacket`, `SubmitSdu`, `SubmitOctets` (LNK-040, LNK-042).
     fn submit(&mut self, kind: Kind, map: u8, data: &[u8], now: Instant) -> Result<()> {
         if let Err(e) = self.check_submit(kind, map, data) {
-            self.status.refused.incr();
+            self.head.status.refused.incr();
             return Err(e);
         }
         let existing = if kind == Kind::Octets {
@@ -741,8 +780,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             None => data.len().saturating_add(PREFIX),
         };
         let merged = existing.map_or(0, |e| e.len).saturating_add(data.len());
-        if needed > Q.saturating_sub(self.queue_len) || merged > MAX_ENTRY {
-            self.status.would_block.incr();
+        if needed > Q.saturating_sub(self.head.queue_len) || merged > MAX_ENTRY {
+            self.head.status.would_block.incr();
             return Err(Error::new(ErrorKind::WouldBlock));
         }
         if let Some(e) = existing {
@@ -753,15 +792,16 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 .ok()
                 .ok_or(Error::new(ErrorKind::InternalError))?
                 .to_be_bytes();
-            self.insert_at(self.queue_len, &[kind.tag(), map, hi, lo]);
-            self.insert_at(self.queue_len, data);
+            self.insert_at(self.head.queue_len, &[kind.tag(), map, hi, lo]);
+            self.insert_at(self.head.queue_len, data);
             if kind == Kind::Octets {
                 // The first octet of a TFDZ starts it (LNK-012).
                 let index = self
+                    .head
                     .config
                     .position(map)
                     .ok_or(Error::new(ErrorKind::InternalError))?;
-                if let Some(timer) = self.streams.get_mut(index) {
+                if let Some(timer) = self.head.streams.get_mut(index) {
                     *timer = StreamTimer {
                         started: Some(now),
                         due: false,
@@ -769,15 +809,16 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 }
             }
         }
-        self.octets = self.octets.saturating_add(data.len());
-        self.status.submitted.incr();
-        self.status.queue.set(self.octets);
+        self.head.octets = self.head.octets.saturating_add(data.len());
+        self.head.status.submitted.incr();
+        self.head.status.queue.set(self.head.octets);
         Ok(())
     }
 
     /// The checks of a submission that depend on the input only (LNK-040, LNK-042).
     fn check_submit(&self, kind: Kind, map: u8, data: &[u8]) -> Result<()> {
         let entry = self
+            .head
             .config
             .map(map)
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
@@ -822,9 +863,10 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         }
         match entry.max_sdu_len {
             Some(max) if data.len() > max => Err(out_of_range(field::MAX_SDU_LEN, max)),
-            None if data.len() > self.config.zone_len() => {
-                Err(out_of_range(field::MAX_FDU_LEN, self.config.zone_len()))
-            }
+            None if data.len() > self.head.config.zone_len() => Err(out_of_range(
+                field::MAX_FDU_LEN,
+                self.head.config.zone_len(),
+            )),
             Some(_) | None => Ok(()),
         }
     }
@@ -832,11 +874,12 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// Whether the entry is the TFDZ of a stream that `NextFdu` may hand out: full, or due
     /// (LNK-012).
     fn stream_ready(&self, entry: &Entry) -> bool {
-        entry.len >= self.config.zone_len()
+        entry.len >= self.head.config.zone_len()
             || self
+                .head
                 .config
                 .position(entry.map)
-                .and_then(|i| self.streams.get(i))
+                .and_then(|i| self.head.streams.get(i))
                 .is_some_and(|t| t.due)
     }
 
@@ -844,7 +887,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// first packet or SDU, or stream TFDZ that is ready. A stream TFDZ that is not ready does
     /// not hold the entries behind it (LNK-041, LNK-012).
     fn eligible(&self) -> Option<Entry> {
-        if matches!(self.progress, Progress::Sending { .. }) {
+        if matches!(self.head.progress, Progress::Sending { .. }) {
             return self.first_sdu();
         }
         let mut at = 0;
@@ -866,20 +909,21 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         now: Instant,
         out: &mut [u8],
     ) -> Result<Option<SegmentedFdu>> {
-        let l = self.config.max_fdu_len;
+        let l = self.head.config.max_fdu_len;
         let area = out.get_mut(..l).ok_or(Error::buffer_too_small(l))?;
         let Some(head) = self.eligible() else {
-            return if self.queue_len == 0 || self.first_sdu().is_none() {
+            return if self.head.queue_len == 0 || self.first_sdu().is_none() {
                 Ok(None)
             } else {
                 Err(Error::new(ErrorKind::InternalError))
             };
         };
         let map = *self
+            .head
             .config
             .map(head.map)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let header_len = P::header_len(&self.config.channel);
+        let header_len = P::header_len(&self.head.config.channel);
         let (header, zone) = area
             .split_at_mut_checked(header_len)
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -888,13 +932,13 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         } else {
             self.sdu_fdu(&head, &map, qos, zone)?
         };
-        P::write_header(&self.config.channel, &map, framing, header);
-        self.status.fdus_out.incr();
-        self.status.queue.set(self.octets);
+        P::write_header(&self.head.config.channel, &map, framing, header);
+        self.head.status.fdus_out.incr();
+        self.head.status.queue.set(self.head.octets);
         Ok(Some(SegmentedFdu {
             handle,
-            vc: raw(self.config.vc),
-            map: if P::implicit_map(&self.config.channel).is_some() {
+            vc: raw(self.head.config.vc),
+            map: if P::implicit_map(&self.head.config.channel).is_some() {
                 None
             } else {
                 Some(head.map)
@@ -934,13 +978,13 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     ) -> Result<(Framing, usize)> {
         let capacity = zone.len();
         let unsupported = || Error::new(ErrorKind::InvalidField).with_field(field::QOS);
-        match self.progress {
+        match self.head.progress {
             Progress::Idle if head.len <= capacity => {
                 let (mut total, mut blocked) = (head.len, 1_usize);
                 if head.kind == Kind::Packet && map.blocking {
                     (total, blocked) = self.blocked_run(head, capacity);
                 }
-                if !P::allows(&self.config.channel, qos, Framing::Whole, blocked > 1) {
+                if !P::allows(&self.head.config.channel, qos, Framing::Whole, blocked > 1) {
                     return Err(unsupported());
                 }
                 // Write the entries, then drop them from the queue.
@@ -955,19 +999,19 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                     at = e.end();
                 }
                 self.remove_range(head.at, at.saturating_sub(head.at));
-                self.octets = self.octets.saturating_sub(total);
+                self.head.octets = self.head.octets.saturating_sub(total);
                 Ok((Framing::Whole, total))
             }
             Progress::Idle => {
-                if !P::allows(&self.config.channel, qos, Framing::First, false) {
+                if !P::allows(&self.head.config.channel, qos, Framing::First, false) {
                     return Err(unsupported());
                 }
                 self.copy_payload(head, 0, capacity, zone, 0)?;
-                self.progress = Progress::Sending {
+                self.head.progress = Progress::Sending {
                     sent: capacity,
                     qos,
                 };
-                self.octets = self.octets.saturating_sub(capacity);
+                self.head.octets = self.head.octets.saturating_sub(capacity);
                 Ok((Framing::First, capacity))
             }
             Progress::Sending { sent, qos: begun } => {
@@ -978,16 +1022,16 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 if remaining <= capacity {
                     self.copy_payload(head, sent, remaining, zone, 0)?;
                     self.remove_range(head.at, PREFIX.saturating_add(head.len));
-                    self.progress = Progress::Idle;
-                    self.octets = self.octets.saturating_sub(remaining);
+                    self.head.progress = Progress::Idle;
+                    self.head.octets = self.head.octets.saturating_sub(remaining);
                     Ok((Framing::Last, remaining))
                 } else {
                     self.copy_payload(head, sent, capacity, zone, 0)?;
-                    self.progress = Progress::Sending {
+                    self.head.progress = Progress::Sending {
                         sent: sent.saturating_add(capacity),
                         qos: begun,
                     };
-                    self.octets = self.octets.saturating_sub(capacity);
+                    self.head.octets = self.head.octets.saturating_sub(capacity);
                     Ok((Framing::Continuing, capacity))
                 }
             }
@@ -1001,6 +1045,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         let take = head.len.min(zone.len());
         self.copy_payload(head, 0, take, zone, 0)?;
         let index = self
+            .head
             .config
             .position(head.map)
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1015,10 +1060,10 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 due: false,
             }
         };
-        if let Some(slot) = self.streams.get_mut(index) {
+        if let Some(slot) = self.head.streams.get_mut(index) {
             *slot = timer;
         }
-        self.octets = self.octets.saturating_sub(take);
+        self.head.octets = self.head.octets.saturating_sub(take);
         Ok(take)
     }
 
@@ -1038,6 +1083,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             .get_mut(to..end)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let src = self
+            .bufs
             .queue
             .get(start..start.saturating_add(n))
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1054,6 +1100,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             .ok_or(Error::new(ErrorKind::InternalError))?
             .to_be_bytes();
         let slots = self
+            .bufs
             .queue
             .get_mut(at.saturating_add(2)..at.saturating_add(PREFIX))
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1066,35 +1113,38 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// Removes `n` octets from `at` of the queue and closes the gap, octet by octet (a slice
     /// method that moves a range could panic).
     fn remove_range(&mut self, at: usize, n: usize) {
-        let left = self.queue_len.saturating_sub(at.saturating_add(n));
+        let left = self.head.queue_len.saturating_sub(at.saturating_add(n));
         for i in 0..left {
             let from = at.saturating_add(n).saturating_add(i);
-            let octet = self.queue.get(from).copied();
-            if let (Some(octet), Some(dst)) = (octet, self.queue.get_mut(at.saturating_add(i))) {
+            let octet = self.bufs.queue.get(from).copied();
+            if let (Some(octet), Some(dst)) = (octet, self.bufs.queue.get_mut(at.saturating_add(i)))
+            {
                 *dst = octet;
             }
         }
-        self.queue_len = at.saturating_add(left).min(self.queue_len);
+        self.head.queue_len = at.saturating_add(left).min(self.head.queue_len);
     }
 
     /// Inserts `data` at `at` of the queue, which has room for it, moving the octets after `at`
     /// up, last first, octet by octet.
     fn insert_at(&mut self, at: usize, data: &[u8]) {
         let n = data.len();
-        let tail = self.queue_len.saturating_sub(at);
+        let tail = self.head.queue_len.saturating_sub(at);
         for i in (0..tail).rev() {
-            let octet = self.queue.get(at.saturating_add(i)).copied();
+            let octet = self.bufs.queue.get(at.saturating_add(i)).copied();
             if let (Some(octet), Some(dst)) = (
                 octet,
-                self.queue.get_mut(at.saturating_add(i).saturating_add(n)),
+                self.bufs
+                    .queue
+                    .get_mut(at.saturating_add(i).saturating_add(n)),
             ) {
                 *dst = octet;
             }
         }
-        for (d, s) in self.queue.iter_mut().skip(at).zip(data) {
+        for (d, s) in self.bufs.queue.iter_mut().skip(at).zip(data) {
             *d = *s;
         }
-        self.queue_len = self.queue_len.saturating_add(n).min(Q);
+        self.head.queue_len = self.head.queue_len.saturating_add(n).min(Q);
     }
 }
 

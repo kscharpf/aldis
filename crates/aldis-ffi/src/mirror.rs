@@ -85,10 +85,16 @@ mod tests {
     use crate::link::{
         aldis_link_idle_packet, aldis_link_idle_policy, aldis_link_protocol, aldis_link_qos,
     };
+    use crate::link_cltu::{aldis_cltu_packer_action, aldis_cltu_packer_input};
     use crate::link_gen::{
         aldis_access_generator_action, aldis_access_generator_input,
         aldis_bitstream_generator_action, aldis_bitstream_generator_input,
         aldis_packet_generator_action, aldis_packet_generator_input,
+    };
+    use crate::link_map::{
+        aldis_map_framing, aldis_map_reassembler_action, aldis_map_reassembler_input,
+        aldis_map_reassembly_event, aldis_map_segmenter_action, aldis_map_segmenter_input,
+        aldis_map_service,
     };
     use crate::link_mux::{
         aldis_channel_mux_action, aldis_channel_mux_input, aldis_link_frame_class,
@@ -222,6 +228,15 @@ mod tests {
             header,
             &mut seen,
         );
+        check::<aldis_cltu_packer_action>("aldis_cltu_packer_action", header, &mut seen);
+        check::<aldis_cltu_packer_input>("aldis_cltu_packer_input", header, &mut seen);
+        check::<aldis_map_framing>("aldis_map_framing", header, &mut seen);
+        check::<aldis_map_reassembler_action>("aldis_map_reassembler_action", header, &mut seen);
+        check::<aldis_map_reassembler_input>("aldis_map_reassembler_input", header, &mut seen);
+        check::<aldis_map_reassembly_event>("aldis_map_reassembly_event", header, &mut seen);
+        check::<aldis_map_segmenter_action>("aldis_map_segmenter_action", header, &mut seen);
+        check::<aldis_map_segmenter_input>("aldis_map_segmenter_input", header, &mut seen);
+        check::<aldis_map_service>("aldis_map_service", header, &mut seen);
         check::<aldis_channel_mux_action>("aldis_channel_mux_action", header, &mut seen);
         check::<aldis_channel_mux_input>("aldis_channel_mux_input", header, &mut seen);
         check::<aldis_link_frame_class>("aldis_link_frame_class", header, &mut seen);

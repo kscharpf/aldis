@@ -184,6 +184,13 @@ fn configurations_are_checked() {
         (e.kind(), e.field()),
         (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN))
     );
+    let big = ReassemblerMap::<Uslp>::sdu(vc(1), um(1), S + 1).unwrap();
+    let config = MapReassemblerConfig::<Uslp, M>::new((), &[big]).unwrap();
+    let e = UslpEngine::new(config).unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::CapacityExceeded, Some(field::MAX_SDU_LEN))
+    );
     // The accessors.
     assert_eq!(big.max_sdu_len(), Some(S + 1));
     assert_eq!(
