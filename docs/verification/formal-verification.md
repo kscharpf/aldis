@@ -1,8 +1,41 @@
-# Formal proofs with Kani (spike, OI-42)
+# Formal verification: the type system and Kani
 
-A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker Kani takes Aldis toward proven properties. It adds proof harnesses to `aldis-core`, `aldis-spp`, and `aldis-time`, and the command `cargo xtask kani`, which the non-gating check `kani` of `cargo xtask verify` runs (§7). Nothing gates on it, and no requirement's verification method changes. The choice of method and tool is [OI-42](../09-open-issues.md).
+Two kinds of evidence in Aldis argue for a property of all inputs, not of sampled ones. The compiler proves what the types encode (§1), and the link check proves one property, absence of panics, for the whole exercised library (last row of §1). The model checker Kani proves value-level properties of selected functions, for every input or up to a stated bound (§2 onward, [OI-42](../09-open-issues.md)). None of them replaces the tests, vectors, and fuzzing, which sample the input space. No requirement's verification method changes with this file.
 
-## 1. Tool
+## 1. Properties proven by the compiler
+
+A property is proven by the compiler when a program that violates it is rejected at build time, for every input and every call sequence, with no bound. The table lists what Aldis relies on, the requirement that demands it, and where it stops. Line numbers are those of the commit this file was written on.
+
+| Property | Mechanism | Requirement | Trusted base | Limit |
+|---|---|---|---|---|
+| Operations happen in the order the standard allows: a frame is finished (`Unprotected`, then `Protected`, then `Finalized`) and only a `Finalized` frame exposes its octets; on reception a frame is `Checked` before it is `Plain`, and an engine takes only `Plain` | Typestate: each state is a type, each transition consumes the value and returns the next type, and the state set is sealed (the trait `FrameState` is sealed, `file:crates/aldis-core/src/finishing.rs`, lines 28 to 30 and 67 to 83; `TmFrameWriter<'b, S: FrameState = Unprotected>`, `file:crates/aldis-tm/src/writer.rs`, line 186; a decode that skips the FECF returns a different type, `UncheckedTmFrame`, `file:crates/aldis-tm/src/view.rs`, line 398) | RS-021, RS-023 | rustc's type checker and move semantics | Only the sequences that are modelled as types. RS-021 demands typestate for every caller-driven lifecycle; this table claims it only for the frame finishing and reception of RS-023 that the files cited implement, and a lifecycle elsewhere rests on review of the pull request that adds it. That the states and their order are the ones the Blue Book gives is inspection, not proof (§1.3) |
+| A constructed value or configuration is valid, and no code re-checks a value that is already built | Parse, don't validate: a restricted field is its own type with a checked constructor, and a type whose fields constrain each other keeps them private (`SppConfig` holds a private `max_packet_len`, `file:crates/aldis-spp/src/config.rs`, lines 16 to 19). A bare integer in a public field of a codec crate is flagged by `cargo xtask rs020` unless `file:xtask/rs020-exemptions.toml` exempts it with a reason, and each restricted type has a property test (`cargo xtask restricted`) | RS-020, GEN-060 | rustc's privacy and type rules | The constructor is ordinary code. That it accepts exactly the values a Blue Book table allows is shown by tests, vectors, and for some constructors a Kani harness (§2 onward), not by the compiler. A field that an exemption names can hold a value the standard does not allow |
+| An event-driven state machine (FOP-1, FARM-1) has no state outside the table, and a branch on the state names every state | Closed `enum` (`Fop1State` with six states, `file:crates/aldis-cop1/src/fop1_table.rs`, line 31; `Farm1State`, `file:crates/aldis-cop1/src/farm1_table.rs`, line 23), whose transition is a table with one cell per state and event, checked against the Blue Book cell by cell (COP-003); RS-021 requires an exhaustive `match` with no wildcard arm wherever code branches on the state. Enforced by clippy where the lint profile denies the clippy lint `wildcard_enum_match_arm` (`docs/profiles/rust.md` §5); where it does not, by review | RS-021, COP-003 | rustc's exhaustiveness check; clippy where that lint is denied | Exhaustiveness shows that every case is handled, not that the case does what Table 5-1 or 6-1 says: that is the cell-by-cell check and the Kani harnesses of §9. A `_` arm in a match that is not over a protocol state is allowed (for example over `Farm1Action`, `file:crates/aldis-cop1/src/farm1.rs`, line 747) |
+| No undefined behaviour in the library: no data race, use after free, out-of-bounds access, or invalid value | Memory safety of safe Rust. `unsafe_code = "forbid"` in the workspace lints (`file:Cargo.toml`, line 35); `aldis-ffi` sets `deny` (`file:crates/aldis-ffi/Cargo.toml`, line 35) and allows each entry point and pointer check with `#[expect(unsafe_code, reason = "…")]` (`file:crates/aldis-ffi/src/lib.rs`, line 91); every block carries a `// SAFETY:` comment (`undocumented_unsafe_blocks = "deny"`, `docs/profiles/rust.md` §5; for example `file:crates/aldis-ffi/src/abi.rs`, line 82) | GEN-070, GEN-071 | rustc's borrow checker, and the soundness of safe Rust and of `core`; the `unsafe` blocks of `aldis-ffi`, of the differential-test bridge, and of the C-oracle cross-check module (GEN-071) | The `unsafe` blocks rest on comments that reviewers read, not on proof, and the C side of the ABI is outside the compiler's view. Miri over `aldis-ffi` does not run yet (VER-026, milestone M5; issue #71) |
+| No allocation in Layers 0 to 2 | `#![no_std]` (`file:crates/aldis-core/src/lib.rs`, line 26): `Vec`, `Box`, and `String` are absent unless `extern crate alloc` is linked, which only the optional `alloc` feature does (line 31); storage is a caller-provided buffer or a container with a const generic capacity (GEN-011); `alloc_instead_of_core` is denied | GEN-010, GEN-011 | rustc, and the bare-metal builds (checks `no-std-<target>`, record GEN-010) | A crate built with the optional `alloc` feature may allocate; the claim is for the default feature set, which the bare-metal builds use. That a capacity is large enough for the limits of the Blue Book is a matter of tests, not types |
+| Absence of panics in the whole exercised library | Not a type property but a link property: the exerciser's release build links a panic handler that calls the undefined symbol aldis_panic_is_unreachable (`file:exerciser/src/main.rs`, line 5; [glossary](../glossary.md#panic-freedom-link-check)), and the link succeeds only if the optimizer removed every panic path | VER-010, GEN-021, with the lints that deny `unwrap`, indexing, and unchecked arithmetic (GEN-020) | rustc, LLVM's optimizer, and the linker; the set of calls the exerciser makes | Only the code the exerciser calls (VER-010: "in the exercised code"), in the release profile. It shows that no panic is reachable, not that the result is correct |
+
+### 1.1 How this differs from Kani
+
+The compiler proves a property for all inputs, with no bound and no run time, but only the property the types encode: a transition order, the shape of a value, the closure of a set of states. It says nothing about what a function computes. Kani (§2 onward) reasons about values: it checks that a function returns the right result for every input of its arguments or up to a stated length, and it can state arithmetic facts such as a modulo-2^n distance. Its proofs are bounded by tool run time (§7) and hold for the harness inputs. The two complement each other: the types make an invalid state unrepresentable, and a harness shows that the code that builds a valid state computes the right one.
+
+### 1.2 Trusted base
+
+1. **rustc's type checker and borrow checker,** at the toolchain pinned by RS-001. A soundness bug in them could let a rejected program through.
+2. **The soundness of safe Rust and of `core`.** A type guards its invariant only if no safe code can break it.
+3. **The `unsafe` code of `aldis-ffi`,** and of the dev-only bridge and cross-check module that GEN-071 allows. It is outside the guarantee and rests on its `// SAFETY:` comments and, once the job exists, on Miri (issue #71).
+4. **LLVM and the linker,** for the panic-freedom link check.
+
+### 1.3 Gaps
+
+- **Whether the types encode the Blue Book's rule is inspection.** The compiler enforces the order the types give. That it is the order of 355.0-B-2 §2.3, 232.0, or 232.1 is checked by a person (method I of RS-021 and RS-023).
+- **Rejected transitions are not yet demonstrated.** The only `compile_fail` doctests in the repository are two cases of `anomaly_flags!` (`file:crates/aldis-core/src/anomaly.rs`, lines 70 and 80). There is none for a forbidden transition, such as finalizing a writer that is not `Protected`, or passing a `Checked` frame to an engine. `compile_fail` cases for each forbidden transition are planned as follow-up work, with no date. Until then, the statement that an out-of-order operation does not compile rests on the shape of the types.
+
+## Kani spike (OI-42)
+
+A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker Kani takes Aldis toward proven properties. It adds proof harnesses to `aldis-core`, `aldis-spp`, and `aldis-time`, and the command `cargo xtask kani`, which the non-gating check `kani` of `cargo xtask verify` runs (§8). Nothing gates on it, and no requirement's verification method changes. The choice of method and tool is [OI-42](../09-open-issues.md).
+
+## 2. Tool
 
 | | |
 |---|---|
@@ -12,9 +45,9 @@ A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker
 | Footprint | 352 MB in `~/.kani/kani-0.68.0` (release bundle, 109 MB download for `aarch64-apple-darwin`) and 1.3 GB for the nightly in `~/.rustup/toolchains`; the Linux bundles are 139 MB (`aarch64`) and 140 MB (`x86_64`) |
 | Host of the measurements | Apple silicon, 8 cores, 8 GB, macOS; other sessions shared the machine, so the times are indicative (±50 %) |
 
-`cargo xtask kani` checks that `cargo kani --version` reports the pinned 0.68.0 and refuses another version, then runs every harness and prints a table of result and CBMC time per harness. The non-gating check `kani` of `cargo xtask verify` runs it (§7).
+`cargo xtask kani` checks that `cargo kani --version` reports the pinned 0.68.0 and refuses another version, then runs every harness and prints a table of result and CBMC time per harness. The non-gating check `kani` of `cargo xtask verify` runs it (§8).
 
-## 2. Harnesses
+## 3. Harnesses
 
 Each harness is a Kani proof function in a `#[cfg(kani)] mod proofs` of its crate, with a `// req:` comment (VER-020); `cargo xtask trace` lists them as `proof` artefacts, apart from tests, since no gate runs them. Inputs are Kani's `any`; Kani's `assume` states only preconditions of the function under proof (a slice length within the buffer, a width that a type guarantees). The expected results are written from the requirement text and the wire format tables, not from the code: CRC-16 from the shift-register definition, the counter rules from CMN-031, the header fields from the bit positions of space-packet.md §1, the CUC properties from TIME-011.
 
@@ -35,7 +68,7 @@ Each harness is a Kani proof function in a `#[cfg(kani)] mod proofs` of its crat
 | `aldis-time` `cuc_to_ns_truncates_fine{1,2,3}` | the conversion to seconds and nanoseconds | seconds = coarse; nanoseconds = ⌊fraction × 10⁹⌋ | **every** value; 1, 2, 3 fine octets | TIME-011, GEN-020 | 0.3 s / 2.5 s / 3.0–4.8 s |
 | `aldis-time` `cuc_round_trip_value_fine{1,2}` | value → ns → value | exact if and only if the value is a multiple of 2⁻⁹ s (always with 1 fine octet), otherwise exactly one unit of the last fine octet lower: the statement of TIME-011 | **every** value and coarse width; 1 and 2 fine octets | TIME-011, GEN-020 | 1.9 s / 62–87 s |
 
-Every harness verifies on the code of `main` at 46bfe0f; the `aldis-time` harnesses were run again on 2026-10-23, alone on the host, with a 30-minute limit each. Where two times are given, they are the two runs. Three CUC properties have no harness, because CBMC did not finish them within the limit (§6). Kani found no defect (§5).
+Every harness verifies on the code of `main` at 46bfe0f; the `aldis-time` harnesses were run again on 2026-10-23, alone on the host, with a 30-minute limit each. Where two times are given, they are the two runs. Three CUC properties have no harness, because CBMC did not finish them within the limit (§7). Kani found no defect (§6).
 
 ### Bounds and unwinding
 
@@ -51,24 +84,24 @@ A loop is unrolled to the bound of its unwind attribute, and Kani adds an *unwin
 | `error_kind_lookup_is_bounded` | 19 | the lookup of the error-kind lookup by code runs over the 18 kinds of the catalogue, for every code: the GEN-022 bound of that loop (added 2026-10-24, M2 WP-7; 9 s) |
 | the others | none | no loops |
 
-## 3. What is proven, and up to what
+## 4. What is proven, and up to what
 
-- **For every input, with no bound:** the CMN-031 classification and the counter constructor for every width 1–64 and every count; the Space Packet primary header decode for all 2⁴⁸ headers, with decode→encode identity on the accepted ones; encode→decode for every valid header field combination; the CUC conversion to nanoseconds for 1–3 fine octets, and the conversion from nanoseconds and the value round trip of TIME-011 for 1 and 2 fine octets, every coarse width and epoch, and every `seconds` and `nanos`. Not proven: the conversion from nanoseconds and the value round trip for 3 fine octets, and the nanoseconds round trip of TIME-011 for 4 or more (§6); tests, vectors, and the `time_cuc` fuzz target still cover them.
+- **For every input, with no bound:** the CMN-031 classification and the counter constructor for every width 1–64 and every count; the Space Packet primary header decode for all 2⁴⁸ headers, with decode→encode identity on the accepted ones; encode→decode for every valid header field combination; the CUC conversion to nanoseconds for 1–3 fine octets, and the conversion from nanoseconds and the value round trip of TIME-011 for 1 and 2 fine octets, every coarse width and epoch, and every `seconds` and `nanos`. Not proven: the conversion from nanoseconds and the value round trip for 3 fine octets, and the nanoseconds round trip of TIME-011 for 4 or more (§7); tests, vectors, and the `time_cuc` fuzz target still cover them.
 - **For every value up to a length:** CRC-16 (0–8 octets), the FECF methods (0–8), the bit fields (buffers of 0–9 octets, but every offset and width), the packet decode (every header, 0–8 octets: the packets with a Packet Data Length of 0 or 1 are decoded in full, and all others reach the `Incomplete` branch, which is also proven), and whole-packet encode and decode (parts of 0–3 octets).
 - The length bounds are not a proof for longer inputs. For the CRC the step is the same for every octet, so the bound covers each code path, but not each data length. Tests, vectors, and fuzzing still cover the long inputs.
 - No panic: every harness also proves that the code it calls cannot panic, overflow, or index out of bounds on its inputs (Kani checks these by default). This is GEN-020 for those functions and inputs; the exerciser link check (VER-010) remains the whole-library argument.
 
-## 4. Trusted base
+## 5. Trusted base
 
 A proof holds only as far as these are right:
 
-1. **Kani and CBMC:** the translation of MIR to CBMC's goto programs, and CBMC with CaDiCaL. A soundness bug in either could make a false property pass. The canaries (§4.1) show that the harnesses can fail, not that the tool is sound.
+1. **Kani and CBMC:** the translation of MIR to CBMC's goto programs, and CBMC with CaDiCaL. A soundness bug in either could make a false property pass. The canaries (§5.1) show that the harnesses can fail, not that the tool is sound.
 2. **The compiler that Kani uses:** `nightly-2026-08-21`, not the pinned 1.99.1. The proof is about the MIR of that compiler; the shipped code is built by another.
 3. **The model of `core`:** Kani verifies the standard library's own code where it can and replaces some functions (memory intrinsics, `memcmp`) with models. Kani reported two unsupported constructs in `aldis-core`, `caller_location` (panic locations) and one foreign function; a harness that reaches an unsupported construct fails, so none is on a proven path.
-4. **The harness itself:** its expected results and its assumptions. An `assume` that is stronger than the precondition hides inputs, and a wrong reference proves the wrong thing. They are written from the requirement text (§2) and must be reviewed like tests. The canaries show the properties are not vacuous.
+4. **The harness itself:** its expected results and its assumptions. An `assume` that is stronger than the precondition hides inputs, and a wrong reference proves the wrong thing. They are written from the requirement text (§3) and must be reviewed like tests. The canaries show the properties are not vacuous.
 5. **Target width:** Kani models the host, a 64-bit target. `usize` properties (the offsets of `bit_fields`) are proven for 64-bit `usize`, not for the 32-bit targets of the matrix.
 
-### 4.1 Canaries
+### 5.1 Canaries
 
 A mutation was planted in a scratch edit of the library, the harness run, and the edit reverted; no mutation is in the tree. Counterexamples are from `-Z concrete-playback --concrete-playback=print`.
 
@@ -78,11 +111,11 @@ A mutation was planted in a scratch edit of the library, the harness run, and th
 | `file:crates/aldis-core/src/counter.rs`: gap rule `d <= half` → `d < half` | `counter_classification` | FAILED, 10.4 s | 9-bit counter, previous 0, next 256: forward distance 256 = modulus/2 must be `Gap { missing: 255 }`, the mutant says `Backwards` |
 | `file:crates/aldis-spp/src/view.rs`: the Idle Packet check drops `&& has_secondary_header()` | `decode_rejects_exactly_per_spec` | FAILED, 16.6 s | `17 FF C0 00 00 00 00 00` (telecommand, flag 0, APID 2047, PDL 0), 8 octets, lenient: the mutant raises `IdleWithSecondaryHeader` for a packet without the flag |
 
-## 5. Findings
+## 6. Findings
 
-No proof failed on the real code. The CMN-031, SPP-001/002/004, and TIME-011 statements hold as written for the inputs of §3; in particular the TIME-011 statement on the value round trip ("one unit of the last fractional octet earlier") is exact: never two units.
+No proof failed on the real code. The CMN-031, SPP-001/002/004, and TIME-011 statements hold as written for the inputs of §4; in particular the TIME-011 statement on the value round trip ("one unit of the last fractional octet earlier") is exact: never two units.
 
-## 6. Limits found
+## 7. Limits found
 
 - **Arithmetic cost.** CBMC bit-blasts arithmetic. With the number of fine octets symbolic (1–3), the CUC harnesses shift and divide `u128` values by symbolic amounts, and CBMC did not finish `cuc_round_trip_value` within an hour or `cuc_round_trip_nanos` (4–10 octets) within 10 minutes. Fixing the count per harness (macros generate one harness per count) brought 1 and 2 fine octets to seconds or minutes. With 3 fine octets, `from_seconds_nanos` and the value round trip still did not finish within 30 minutes, nor did the nanoseconds round trip with 4 (2026-10-23, alone on the host; an earlier attempt at 4 ran more than an hour under load). The 128-bit products and divisions by 10⁹ grow with the fraction width, and so do the SAT problems; these three have no harness. 5–10 fine octets were not tried.
 - **Unbounded loops.** `decode_rejects_exactly_per_spec` without an unwind bound ran 24 minutes and was stopped: CBMC kept unrolling the comparison of the data field, whose length it could not bound from the buffer. With unwind 9 it finishes in 4 s. Every harness with a slice comparison or iterator needs an explicit bound.
@@ -92,9 +125,9 @@ No proof failed on the real code. The CMN-031, SPP-001/002/004, and TIME-011 sta
 - **Scope of the tool.** Kani proves properties of bounded executions. Stateful engines (COP-1, the link receivers) can be checked for a bounded number of steps from a symbolic state, but invariants over unbounded runs need loop or function contracts, which are still unstable in Kani, or a deductive tool (OI-42 option (b)).
 - **Not a coverage artefact.** The harnesses compile only under `cfg(kani)`, so the coverage run (VER-024) and clippy never see them; their code is linted by the Kani compiler's rustc warnings only.
 
-## 7. The non-gating, nightly-only check `kani`
+## 8. The non-gating, nightly-only check `kani`
 
-The maintainer accepted OI-42 option (a) as far as a non-gating check (2026-10-23, #92), and on 2026-10-24 moved it to the nightly run only. The check `kani` of `cargo xtask verify` (`file:xtask/src/verify/checks.rs`) runs `cargo xtask kani` in the verification image with `gating: false` and `nightly: true`. It runs only with `--all`, which the nightly verification run uses on `x86_64` and `aarch64` (VER-059); every other run, among them the pull-request runs of `verify --publish`, records it as `not-run` with the reason "nightly only (VER-059)", never as skipped or reused, and never takes it as a source (VER-056). In the nightly run, `cargo xtask verify nightly` fails the job when it did not pass, so a failing harness opens the nightly-failure issue; the other non-gating checks fail no run. Its inputs are `RUN` and the crates with harnesses (`KANI`: `crates/aldis-core/**`, `crates/aldis-spp/**`, `crates/aldis-time/**`, `crates/aldis-tc/**`, `crates/aldis-cop1/**`). It takes about 32 minutes of CPU time (§2: about 8 for `aldis-core`, 9 for `aldis-spp`, and 3 for `aldis-time`; §8: about 12 for `aldis-cop1`); in the GitHub-hosted runs of 2026-10-24 it took 10 to 18 minutes.
+The maintainer accepted OI-42 option (a) as far as a non-gating check (2026-10-23, #92), and on 2026-10-24 moved it to the nightly run only. The check `kani` of `cargo xtask verify` (`file:xtask/src/verify/checks.rs`) runs `cargo xtask kani` in the verification image with `gating: false` and `nightly: true`. It runs only with `--all`, which the nightly verification run uses on `x86_64` and `aarch64` (VER-059); every other run, among them the pull-request runs of `verify --publish`, records it as `not-run` with the reason "nightly only (VER-059)", never as skipped or reused, and never takes it as a source (VER-056). In the nightly run, `cargo xtask verify nightly` fails the job when it did not pass, so a failing harness opens the nightly-failure issue; the other non-gating checks fail no run. Its inputs are `RUN` and the crates with harnesses (`KANI`: `crates/aldis-core/**`, `crates/aldis-spp/**`, `crates/aldis-time/**`, `crates/aldis-tc/**`, `crates/aldis-cop1/**`). It takes about 32 minutes of CPU time (§3: about 8 for `aldis-core`, 9 for `aldis-spp`, and 3 for `aldis-time`; §9: about 12 for `aldis-cop1`); in the GitHub-hosted runs of 2026-10-24 it took 10 to 18 minutes.
 
 The image (`xtask/verify/Containerfile`, last layer, `KANI_HOME=/opt/kani`):
 
@@ -104,7 +137,7 @@ The image (`xtask/verify/Containerfile`, last layer, `KANI_HOME=/opt/kani`):
 
 Still open in OI-42: making the check gating, and a verification method for the requirements a harness proves (the letter **F** is taken).
 
-## 8. COP-1 harnesses (M4)
+## 9. COP-1 harnesses (M4)
 
 Harnesses for `aldis-cop1` are in `file:crates/aldis-cop1/src/farm1/proofs.rs` and `file:crates/aldis-cop1/src/fop1/proofs.rs`, run by `cargo xtask kani` like the others (Kani 0.68.0, `aarch64-apple-darwin`, 2026-11-03, other sessions on the host). The expected results are written from Table 5-1 and §5.1 (FOP-1) and Table 6-1, Table 7-2, and §6.1.8 (FARM-1) of CCSDS 232.1-B-2 (`SPEC_NEXT`, `spec`, `spec_alert`), not from `FOP1_TABLE`, `FARM1_TABLE`, or the code of the actions. The FARM-1 buffers are 0 to 2 octets for the FDU and 2 for the output area; the FOP-1 model has a Sent_Queue of 2 entries and frames of 12 octets. Every state, event, V(R), N(S), count, and window is unrestricted, except in the step harness of FARM-1 (the window satisfies Table 7-2) and the FOP-1 base-case harness; `clcw_event_modulo_256` builds its `Core` without the invariant, so V(S) and NN(R) are unrestricted.
 

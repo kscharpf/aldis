@@ -1,4 +1,4 @@
-//! Kani proof harnesses for FARM-1 (docs/verification/formal-proofs.md, OI-42).
+//! Kani proof harnesses for FARM-1 (docs/verification/formal-verification.md, OI-42).
 //!
 //! Compiled only by `cargo kani` (`cfg(kani)`); not part of the library, the tests, or the
 //! coverage run. The expected results are written from Table 6-1 and §6.1.8 of CCSDS 232.1-B-2

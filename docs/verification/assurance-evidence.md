@@ -7,7 +7,7 @@ What `cargo xtask assurance` checks in the [hazard analysis](hazards.md) and the
 - `docs/verification/hazards.md`, the **cross-codec file**, codec `X`;
 - every `.md` file of `docs/verification/hazards/`, the **codec files**: `tm.md` (codec `TM`), `tc.md` (`TC`), `aos.md` (`AOS`), `uslp.md` (`USLP`), `cop1.md` (`COP1`); any other file there is a problem;
 - `docs/verification/assurance-case.md`, the **case**;
-- the **prose files**, which only the references (§2) and the code-name rule (§2.5) apply to: every `.md` file of `docs/verification/records/`, `docs/verification/cross-checks.md`, and `docs/verification/formal-proofs.md`.
+- the **prose files**, which only the references (§2) and the code-name rule (§2.5) apply to: every `.md` file of `docs/verification/records/`, `docs/verification/cross-checks.md`, and `docs/verification/formal-verification.md`.
 
 Together they are the **analysed files**. Dated history is not analysed, because it describes the code as it was: `docs/verification/reviews/` and `docs/milestones/`. Line numbers in messages are 1-based lines of the file.
 
