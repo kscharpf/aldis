@@ -592,15 +592,15 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                     count_packets(data)?;
                 }
                 Unit::Last(data) => {
-                    let held = match self.slots.get(index) {
-                        Some(Assembly::Building { len }) => *len,
-                        Some(Assembly::Idle) => 0,
-                        None => return Err(Error::new(ErrorKind::InternalError)),
-                    };
-                    let buf = self
+                    let held = self.slots.get(index).map(|slot| match slot {
+                        Assembly::Building { len } => *len,
+                        Assembly::Idle => 0,
+                    });
+                    let (held, buf) = self
                         .bufs
                         .get(index)
-                        .and_then(|b| b.get(..held))
+                        .zip(held)
+                        .and_then(|(whole, held)| whole.get(..held).map(|buf| (held, buf)))
                         .ok_or(Error::new(ErrorKind::InternalError))?;
                     // A packet that is too long is the event `SduTooLong`, not an error.
                     if held.saturating_add(data.len()) <= map.max_sdu_len && held > 0 {
