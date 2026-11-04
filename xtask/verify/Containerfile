@@ -92,7 +92,7 @@ RUN case "$TARGETARCH" in \
  && rm -rf /tmp/shellcheck.tar.xz /tmp/shellcheck-v0.11.0 \
  && shellcheck --version | grep -q '^version: 0\.11\.0$'
 
-# Kani for the non-gating check kani (OI-42, docs/verification/formal-proofs.md §7). The release
+# Kani for the non-gating check kani (OI-42, docs/verification/formal-verification.md §8). The release
 # bundle (kani-compiler and CBMC) is checked against the SHA-256 that GitHub records for the
 # release asset, then installed from the local file, so that `cargo kani setup` downloads only
 # the nightly it is built against, through rustup. The driver comes from crates.io with its lock

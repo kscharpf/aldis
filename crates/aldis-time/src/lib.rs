@@ -47,7 +47,7 @@ pub mod field;
 pub mod pfield;
 mod util;
 
-// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-proofs.md).
+// Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-verification.md).
 #[cfg(kani)]
 mod proofs;
 

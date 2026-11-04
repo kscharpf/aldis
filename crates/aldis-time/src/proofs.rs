@@ -1,11 +1,11 @@
-//! Kani proof harnesses (spike, docs/verification/formal-proofs.md, OI-42).
+//! Kani proof harnesses (spike, docs/verification/formal-verification.md, OI-42).
 //!
 //! Compiled only by `cargo kani` (`cfg(kani)`); not part of the library, the tests, or the
 //! coverage run. The properties are those TIME-011 states (docs/standards/time-codes.md).
 //!
 //! The number of fine octets is fixed per harness and the coarse octets, epoch, and values are
 //! symbolic. With a symbolic fine count the 128-bit shifts and divisions take symbolic amounts,
-//! and CBMC did not finish one such harness in 10 minutes (formal-proofs.md §6); with a fixed
+//! and CBMC did not finish one such harness in 10 minutes (formal-verification.md §7); with a fixed
 //! count of 1 or 2 each finishes in seconds or minutes, and 3 only for `to_seconds_nanos`. No
 //! harness has a loop.
 
@@ -121,7 +121,7 @@ fn round_trip_value(fine: u8) {
 
 // One harness per fine-octet count that CBMC finishes within 30 minutes; the counts that did not
 // (3 for the floor and the value round trip, 4 for the nanoseconds round trip) have none
-// (formal-proofs.md §6).
+// (formal-verification.md §7).
 
 macro_rules! from_ns_harnesses {
     ($($fine:literal: $name:ident;)*) => {$(
