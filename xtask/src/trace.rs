@@ -75,7 +75,7 @@ fn artefacts(spec: &Spec) -> Result<BTreeMap<String, BTreeSet<String>>, String> 
         "crosscheck",
     ] {
         for path in repo::files(dir, &["rs"]) {
-            // Kani harnesses (docs/verification/formal-proofs.md) are labelled apart: no check
+            // Kani harnesses (docs/verification/formal-verification.md) are labelled apart: no check
             // of the verification run proves them (OI-42).
             let kind = if dir == "fuzz" {
                 "fuzz"

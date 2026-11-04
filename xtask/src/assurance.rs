@@ -22,7 +22,7 @@ const RECORD_DIR: &str = "docs/verification/records";
 /// Files outside the hazard analysis whose prose the code-name rule also covers (§2.5).
 const PROSE_FILES: [&str; 2] = [
     "docs/verification/cross-checks.md",
-    "docs/verification/formal-proofs.md",
+    "docs/verification/formal-verification.md",
 ];
 const HEADER: &str = "include/aldis/aldis.h";
 const CODECS: [&str; 7] = ["X", "TM", "TC", "AOS", "USLP", "COP1", "LINK"];
