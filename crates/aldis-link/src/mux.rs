@@ -2004,6 +2004,10 @@ mod tests {
     /// The sweep takes every start next to each wrap of the 24 bits and of the cycle, and runs
     /// frames across it, in both modes (LNK-032).
     #[test]
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "an exhaustive sweep over independent parameters: each loop is one dimension"
+    )]
     fn the_vc_frame_count_and_cycle_follow_the_number_of_frames() {
         // req: LNK-032
         for cycle_in_use in [false, true] {

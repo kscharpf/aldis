@@ -47,6 +47,10 @@ pub struct aldis_error_detail_t {
 }
 
 impl From<Error> for aldis_error_detail_t {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ErrorDetail` is `#[non_exhaustive]`: a detail a later version adds falls back to the base (GEN-081)"
+    )]
     fn from(e: Error) -> aldis_error_detail_t {
         let base = aldis_error_detail_t {
             kind: u32::from(e.kind().code()),

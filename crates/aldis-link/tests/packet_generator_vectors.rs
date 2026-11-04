@@ -155,10 +155,10 @@ fn run_scenarios<P: Proto, const Q: usize>(
 fn run_file(name: &str) -> (usize, Vec<String>) {
     let path = aldis_testkit::vectors_dir().join(name);
     let text = std::fs::read_to_string(&path).unwrap();
-    let Ok(VectorFile::EngineScenario(file)) = VectorFile::from_json(&text) else {
+    let Ok(VectorFile::EngineScenario(parsed)) = VectorFile::from_json(&text) else {
         panic!("{name}: not an engine scenario file");
     };
-    let file: ScenarioFile = file;
+    let file: ScenarioFile = parsed;
     assert_eq!(file.engine, "packet-generator");
     let resolved = file.resolve().unwrap();
     let mut failures = Vec::new();

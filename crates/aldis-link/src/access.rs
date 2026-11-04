@@ -368,11 +368,12 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     /// The checks of `SubmitSdu` that depend on the SDU only (LNK-020).
     fn check_sdu(&self, sdu: &[u8]) -> Result<()> {
         let mismatch = Error::new(ErrorKind::LengthMismatch).with_field(field::SDU_LEN);
-        if P::SPANNING {
-            if sdu.is_empty() {
-                return Err(mismatch);
-            }
-        } else if sdu.len() != self.head.config.field_len {
+        let wrong_len = if P::SPANNING {
+            sdu.is_empty()
+        } else {
+            sdu.len() != self.head.config.field_len
+        };
+        if wrong_len {
             return Err(mismatch);
         }
         if sdu.len() > self.head.config.max_sdu_len {

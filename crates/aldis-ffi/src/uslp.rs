@@ -1219,6 +1219,10 @@ pub unsafe extern "C" fn aldis_uslp_stream_next(
                     *offset_ref = current_offset
                         .checked_add(len)
                         .ok_or_else(invalid_argument)?;
+                    #[expect(
+                        clippy::wildcard_enum_match_arm,
+                        reason = "`DiscardReason` is `#[non_exhaustive]`: only one variant carries a length"
+                    )]
                     let declared_len = match reason {
                         aldis::uslp::DiscardReason::IncompleteFrame { declared_len } => {
                             declared_len

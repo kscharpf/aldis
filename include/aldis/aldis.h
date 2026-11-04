@@ -1283,6 +1283,18 @@
 #define ALDIS_FOP1_WORDS 2283
 
 /**
+ * The most actions one `aldis_cltu_packer_step` returns (LNK-074): the unit the frame did not
+ * fit and the new unit if the frame fills it.
+ */
+#define ALDIS_CLTU_PACKER_MAX_ACTIONS 2
+
+/**
+ * 64-bit words of one `aldis_cltu_packer_t` (CABI-031): the tag and the larger of the engines of
+ * TC and USLP at the build capacity; the build fails when it outgrows it.
+ */
+#define ALDIS_CLTU_PACKER_WORDS 270
+
+/**
  * The most actions one `aldis_packet_generator_step` returns (LNK-074): a data field or the
  * octets a reconfiguration discarded.
  */
@@ -1313,6 +1325,29 @@
  * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
  */
 #define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
+
+/**
+ * The most actions one `aldis_map_segmenter_step` returns (LNK-074): an FDU or the octets a
+ * reconfiguration discarded.
+ */
+#define ALDIS_MAP_SEGMENTER_MAX_ACTIONS 1
+
+/**
+ * The most actions one `aldis_map_reassembler_step` returns (LNK-074): two events, or an event
+ * and a delivery.
+ */
+#define ALDIS_MAP_REASSEMBLER_MAX_ACTIONS 2
+
+/**
+ * 64-bit words of one `aldis_map_segmenter_t` (CABI-031): the tag and the larger of the engines
+ * of TC and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_MAP_SEGMENTER_WORDS 1168
+
+/**
+ * 64-bit words of one `aldis_map_reassembler_t` (CABI-031).
+ */
+#define ALDIS_MAP_REASSEMBLER_WORDS 4174
 
 /**
  * The most actions one `aldis_channel_mux_step` returns (LNK-074): a frame and the notice that
@@ -2039,6 +2074,70 @@ enum aldis_channel_mux_input
 typedef enum aldis_channel_mux_input aldis_channel_mux_input;
 #else
 typedef uint32_t aldis_channel_mux_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_cltu_packer_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_cltu_packer_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A data unit for the coding sublayer, in `out` (LNK-044).
+   */
+  ALDIS_CLTU_PACKER_ACTION_DATA_UNIT = 0,
+  /**
+   * A reconfiguration discarded `octets` of the unit in progress (LNK-003).
+   */
+  ALDIS_CLTU_PACKER_ACTION_DISCARDED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_cltu_packer_action aldis_cltu_packer_action;
+#else
+typedef uint32_t aldis_cltu_packer_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_cltu_packer_input_t` (LNK-044, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_cltu_packer_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The next frame (`data`, `qos`, `repetitions`, `truncated`), in the order of transmission
+   * (LNK-044).
+   */
+  ALDIS_CLTU_PACKER_INPUT_ADD_FRAME = 0,
+  /**
+   * Return the unit in progress, if any (LNK-044).
+   */
+  ALDIS_CLTU_PACKER_INPUT_FLUSH = 1,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the frames of the
+   * unit in progress (LNK-003). The protocol cannot change.
+   */
+  ALDIS_CLTU_PACKER_INPUT_RECONFIGURE = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_cltu_packer_input aldis_cltu_packer_input;
+#else
+typedef uint32_t aldis_cltu_packer_input;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -2910,6 +3009,269 @@ enum aldis_link_service
 typedef enum aldis_link_service aldis_link_service;
 #else
 typedef uint32_t aldis_link_service;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * How an FDU or TFDF relates to the SDU it carries (232.0 Table 4-2; 732.1 Table 4-3;
+ * LNK-041).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_framing
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A whole SDU, or several whole packets: flags `11` (TC), rule `111` (USLP).
+   */
+  ALDIS_MAP_FRAMING_WHOLE = 0,
+  /**
+   * The first portion of an SDU: flags `01`, rule `100`.
+   */
+  ALDIS_MAP_FRAMING_FIRST = 1,
+  /**
+   * A continuing portion: flags `00`, rule `101`.
+   */
+  ALDIS_MAP_FRAMING_CONTINUING = 2,
+  /**
+   * The last portion: flags `10`, rule `110`.
+   */
+  ALDIS_MAP_FRAMING_LAST = 3,
+  /**
+   * A TFDZ of an octet stream: rule `011` (USLP).
+   */
+  ALDIS_MAP_FRAMING_STREAM = 4,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_framing aldis_map_framing;
+#else
+typedef uint32_t aldis_map_framing;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_map_reassembler_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_reassembler_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A reassembly event (`event`, `vc_id`, `map_id`): LNK-070, LNK-073.
+   */
+  ALDIS_MAP_REASSEMBLER_ACTION_EVENT = 0,
+  /**
+   * An SDU, whole, in `out` (`data`): LNK-070.
+   */
+  ALDIS_MAP_REASSEMBLER_ACTION_SDU = 1,
+  /**
+   * Complete packets, one after the other in `out` (`data`, `count`): LNK-071.
+   */
+  ALDIS_MAP_REASSEMBLER_ACTION_PACKETS = 2,
+  /**
+   * Octets of a stream, as they arrived, in `out` (`data`, `after_gap`): LNK-072.
+   */
+  ALDIS_MAP_REASSEMBLER_ACTION_STREAM_DATA = 3,
+  /**
+   * A reconfiguration discarded `octets` of the SDUs in progress (LNK-003).
+   */
+  ALDIS_MAP_REASSEMBLER_ACTION_DISCARDED = 4,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_reassembler_action aldis_map_reassembler_action;
+#else
+typedef uint32_t aldis_map_reassembler_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_map_reassembler_input_t` (LNK-070, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_reassembler_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * An FDU (TC) or TFDF (USLP) of a VC (`vc_id`, `map_id`, `gap`, `data`): LNK-070.
+   */
+  ALDIS_MAP_REASSEMBLER_INPUT_FDU = 0,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the SDUs in progress
+   * (LNK-003). The protocol cannot change.
+   */
+  ALDIS_MAP_REASSEMBLER_INPUT_RECONFIGURE = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_reassembler_input aldis_map_reassembler_input;
+#else
+typedef uint32_t aldis_map_reassembler_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * A reassembly event (LNK-070, LNK-073; docs/04-engines.md §5).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_reassembly_event
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The SDUs in progress were discarded because of a gap in the VCF Count.
+   */
+  ALDIS_MAP_REASSEMBLY_EVENT_GAP_DISCARD = 0,
+  /**
+   * A segment broke the sequence of the flags or rules; a partial SDU was discarded.
+   */
+  ALDIS_MAP_REASSEMBLY_EVENT_SEQUENCE_VIOLATION = 1,
+  /**
+   * An FDU for a MAP that is not configured was discarded.
+   */
+  ALDIS_MAP_REASSEMBLY_EVENT_UNKNOWN_MAP = 2,
+  /**
+   * An SDU would exceed the maximum SDU length of its MAP and was discarded.
+   */
+  ALDIS_MAP_REASSEMBLY_EVENT_SDU_TOO_LONG = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_reassembly_event aldis_map_reassembly_event;
+#else
+typedef uint32_t aldis_map_reassembly_event;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_map_segmenter_action_t` (API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_segmenter_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * An FDU or TFDF, in `out` (LNK-043).
+   */
+  ALDIS_MAP_SEGMENTER_ACTION_FDU = 0,
+  /**
+   * A reconfiguration discarded `octets` of the unsent queue (LNK-003).
+   */
+  ALDIS_MAP_SEGMENTER_ACTION_DISCARDED = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_segmenter_action aldis_map_segmenter_action;
+#else
+typedef uint32_t aldis_map_segmenter_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_map_segmenter_input_t` (LNK-040…LNK-043, LNK-012, LNK-003; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_segmenter_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A whole packet (`data`) for the MAP `map_id` (LNK-040, LNK-042).
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_PACKET = 0,
+  /**
+   * A whole SDU (`data`) for the MAP `map_id` (LNK-040, LNK-042).
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU = 1,
+  /**
+   * Octets of the stream (`data`) of the MAP `map_id` (USLP; LNK-042).
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_OCTETS = 2,
+  /**
+   * The next FDU or TFDF for the request `handle` with the quality of service `qos`
+   * (LNK-043).
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU = 3,
+  /**
+   * The release deadline of a started stream TFDZ may have passed (API-053, LNK-012).
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_TIMEOUT = 4,
+  /**
+   * Replace the configuration (`config`) between data units, discarding the unsent octets
+   * (LNK-003). The protocol cannot change.
+   */
+  ALDIS_MAP_SEGMENTER_INPUT_RECONFIGURE = 5,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_segmenter_input aldis_map_segmenter_input;
+#else
+typedef uint32_t aldis_map_segmenter_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * What a MAP carries (232.0 §5.3 Table 5-3; 732.1 §5.4 Table 5-4; LNK-040, LNK-042, LNK-070).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_map_service
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Packets and SDUs alike: a MAP of a TC VC (the segmenter only; the reassembler has none).
+   */
+  ALDIS_MAP_SERVICE_ANY = 0,
+  /**
+   * Packets (USLP; the reassembler also on TC).
+   */
+  ALDIS_MAP_SERVICE_PACKETS = 1,
+  /**
+   * `MAP_SDUs` or `MAPA_SDUs`.
+   */
+  ALDIS_MAP_SERVICE_SDU = 2,
+  /**
+   * An octet stream (USLP rule `011`).
+   */
+  ALDIS_MAP_SERVICE_OCTET_STREAM = 3,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_map_service aldis_map_service;
+#else
+typedef uint32_t aldis_map_service;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -5207,22 +5569,22 @@ typedef struct {
 } aldis_fop1_status_t;
 
 /**
- * A `PacketGenerator` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-010, CABI-031, CABI-032). The words are the library's.
+ * A `CltuPacker` in caller storage: the caller declares an object of this type, and the pointer
+ * to it is the handle (LNK-044, CABI-031, CABI-032). The words are the library's.
  */
 typedef struct {
   /**
    * The slot of [`handle`]: the tag, then the state.
    */
-  uint64_t words[ALDIS_PACKET_GENERATOR_WORDS];
-} aldis_packet_generator_t;
+  uint64_t words[ALDIS_CLTU_PACKER_WORDS];
+} aldis_cltu_packer_t;
 
 /**
  * The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
  * first member of every link engine configuration.
  *
  * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
- * only; the others ignore them.
+ * only; the others do not use them, but each must be valid (`protocol`).
  */
 typedef struct {
   /**
@@ -5250,6 +5612,162 @@ typedef struct {
    */
   uint32_t uslp_qos;
 } aldis_link_channel_t;
+
+/**
+ * The managed parameters of a `CltuPacker` (232.0 §5.1 Table 5-1; 732.1 §5.1 Table 5-1;
+ * LNK-044, LNK-078).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP); the other members of the channel are not used but must be valid.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The Maximum Number of Transfer Frames Given to the Coding Sublayer as a Single Data
+   * Unit, at least 1.
+   */
+  size_t max_frames;
+  /**
+   * The Maximum Length of Data Unit in octets (TC; for USLP the project's bound on a unit),
+   * at least 1 and at most `ALDIS_LINK_MAX_FRAME_OCTETS`.
+   */
+  size_t max_unit_len;
+} aldis_cltu_packer_config_t;
+
+/**
+ * One input of a `CltuPacker` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_CLTU_PACKER_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `ADD_FRAME`: the whole frame, FECF included, read once and copied (API-060). `data`
+   * is checked on every kind and must not overlap the storage or `out`: `NULL` only with
+   * `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `ADD_FRAME`: `ALDIS_LINK_QOS_*`; the expedited service is transferred once whatever
+   * `repetitions` says (LNK-044).
+   */
+  uint32_t qos;
+  /**
+   * For `ADD_FRAME`: the Repetitions value of the VC for this frame, at least 1 (232.0
+   * Table 5-3; 732.1 Table 5-3).
+   */
+  uint16_t repetitions;
+  /**
+   * For `ADD_FRAME`: 1 for a truncated USLP frame (732.1 Annex D), else 0.
+   */
+  uint8_t truncated;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_cltu_packer_config_t config;
+} aldis_cltu_packer_input_t;
+
+/**
+ * One action of a `CltuPacker` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_CLTU_PACKER_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_UNIT`: where the frames are in `out`, one after the other.
+   */
+  aldis_range_t unit;
+  /**
+   * For `DATA_UNIT`: how many frames the unit holds.
+   */
+  size_t frames;
+  /**
+   * For `DATA_UNIT`: the Repetitions parameter to request, 1 for the expedited service.
+   */
+  uint16_t repetitions;
+  /**
+   * For `DATA_UNIT`: 1 when the frames are truncated USLP frames.
+   */
+  uint8_t truncated;
+  /**
+   * For `DISCARDED`: the octets of the frames held.
+   */
+  size_t octets;
+} aldis_cltu_packer_action_t;
+
+/**
+ * The actions of one input of a `CltuPacker`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_CLTU_PACKER_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_cltu_packer_action_t items[ALDIS_CLTU_PACKER_MAX_ACTIONS];
+} aldis_cltu_packer_actions_t;
+
+/**
+ * A queue or buffer in octets: the current fill and the highest it has been (API-056,
+ * API-060).
+ */
+typedef struct {
+  /**
+   * The octets held now.
+   */
+  size_t current;
+  /**
+   * The most octets held since the engine was initialized.
+   */
+  size_t high_water;
+} aldis_link_occupancy_t;
+
+/**
+ * A read-only snapshot of a `CltuPacker` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Frames taken.
+   */
+  uint64_t frames_in;
+  /**
+   * Data units returned.
+   */
+  uint64_t units_out;
+  /**
+   * Frames refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Octets discarded by `RECONFIGURE` (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The unit in progress, in octets.
+   */
+  aldis_link_occupancy_t pending;
+} aldis_cltu_packer_status_t;
+
+/**
+ * A `PacketGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-010, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_PACKET_GENERATOR_WORDS];
+} aldis_packet_generator_t;
 
 /**
  * The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
@@ -5372,21 +5890,6 @@ typedef struct {
    */
   aldis_packet_generator_action_t items[ALDIS_PACKET_GENERATOR_MAX_ACTIONS];
 } aldis_packet_generator_actions_t;
-
-/**
- * A queue or buffer in octets: the current fill and the highest it has been (API-056,
- * API-060).
- */
-typedef struct {
-  /**
-   * The octets held now.
-   */
-  size_t current;
-  /**
-   * The most octets held since the engine was initialized.
-   */
-  size_t high_water;
-} aldis_link_occupancy_t;
 
 /**
  * A read-only snapshot of a `PacketGenerator` (API-056, LNK-002).
@@ -5708,6 +6211,416 @@ typedef struct {
    */
   aldis_link_occupancy_t queue;
 } aldis_bitstream_generator_status_t;
+
+/**
+ * A `MapSegmenter` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-040, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_MAP_SEGMENTER_WORDS];
+} aldis_map_segmenter_t;
+
+/**
+ * One MAP of a `MapSegmenter` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-040, LNK-042).
+ */
+typedef struct {
+  /**
+   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
+   */
+  uint8_t map_id;
+  /**
+   * `ALDIS_MAP_SERVICE_*`: `ANY` on TC; `PACKETS`, `SDU`, or `OCTET_STREAM` on USLP.
+   */
+  uint32_t service;
+  /**
+   * 1 when SDUs longer than one FDU are segmented, else 0 (not for a stream).
+   */
+  uint8_t segmentation;
+  /**
+   * The maximum `MAP_SDU` length when `segmentation` is 1, from 1 to 65 535 and at most the
+   * queue less four octets; ignored otherwise.
+   */
+  size_t max_sdu_len;
+  /**
+   * 1 when packets of the MAP may share an FDU (blocking), else 0 (not for a stream).
+   */
+  uint8_t blocking;
+  /**
+   * USLP: the UPID of the TFDFs of the MAP, 0 to 31 but not "Only Idle Data" (732.1
+   * §4.1.4.2.3).
+   */
+  uint8_t uslp_upid;
+  /**
+   * USLP, `OCTET_STREAM`: the release deadline of a started TFDZ in microseconds (732.1 §5.4
+   * Table 5-3 note 4; LNK-012).
+   */
+  uint64_t release_deadline_us;
+} aldis_map_segmenter_map_t;
+
+/**
+ * The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
+ * LNK-042, LNK-078).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
+   * channel are not used but must be valid.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
+   * USLP: at most 65 535).
+   */
+  size_t max_fdu_len;
+  /**
+   * TC: 1 when every FDU has a Segment Header, else 0.
+   */
+  uint8_t tc_segment_header;
+  /**
+   * TC: 1 when the Physical Channel has a FECF, else 0.
+   */
+  uint8_t tc_fecf;
+  /**
+   * TC without a Segment Header: 1 when the packets of the implicit MAP 0 may be blocked.
+   */
+  uint8_t tc_blocking;
+  /**
+   * USLP: the VCF Count Length of sequence-controlled frames, 0 to 7 octets (732.1
+   * §4.1.2.11).
+   */
+  uint8_t uslp_vcf_len_sc;
+  /**
+   * USLP: the VCF Count Length of expedited frames, 0 to 7 octets.
+   */
+  uint8_t uslp_vcf_len_exp;
+  /**
+   * The entries of `maps` in use: none for a TC VC without a Segment Header, else 1 to
+   * `ALDIS_LINK_MAX_MAP_CHANNELS`.
+   */
+  size_t map_count;
+  /**
+   * The MAPs; the first `map_count` are read.
+   */
+  aldis_map_segmenter_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
+} aldis_map_segmenter_config_t;
+
+/**
+ * One input of a `MapSegmenter` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_SEGMENTER_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_*`: the packet, SDU, or octets, read once and copied (API-060). `data` is
+   * checked on every kind and must not overlap the storage or `out`: `NULL` only with
+   * `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `SUBMIT_*`: the MAP ID (on a TC VC without a Segment Header, 0).
+   */
+  uint8_t map_id;
+  /**
+   * For `NEXT_FDU`: the handle of the request, echoed in the FDU (API-054).
+   */
+  uint32_t handle;
+  /**
+   * For `NEXT_FDU`: `ALDIS_LINK_QOS_*`; sequence-controlled for FOP-1 `RequestAd`, expedited
+   * for `RequestBd`.
+   */
+  uint32_t qos;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_map_segmenter_config_t config;
+} aldis_map_segmenter_input_t;
+
+/**
+ * One action of a `MapSegmenter` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_SEGMENTER_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `FDU`: the handle of the request.
+   */
+  uint32_t handle;
+  /**
+   * For `FDU`: the VCID of the segmenter.
+   */
+  uint8_t vc_id;
+  /**
+   * For `FDU`: 1 when the FDU has a MAP ID, 0 on a TC VC without a Segment Header.
+   */
+  uint8_t map_present;
+  /**
+   * For `FDU`: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `FDU`: `ALDIS_LINK_QOS_*` of the request.
+   */
+  uint32_t qos;
+  /**
+   * For `FDU`: `ALDIS_MAP_FRAMING_*`.
+   */
+  uint32_t framing;
+  /**
+   * For `FDU`: where the FDU or TFDF is in `out`, its header included.
+   */
+  aldis_range_t fdu;
+  /**
+   * For `DISCARDED`: the octets of the unsent queue.
+   */
+  size_t octets;
+} aldis_map_segmenter_action_t;
+
+/**
+ * The actions of one input of a `MapSegmenter`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_MAP_SEGMENTER_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_map_segmenter_action_t items[ALDIS_MAP_SEGMENTER_MAX_ACTIONS];
+} aldis_map_segmenter_actions_t;
+
+/**
+ * A read-only snapshot of a `MapSegmenter` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Packets, SDUs, and runs of stream octets taken.
+   */
+  uint64_t submitted;
+  /**
+   * FDUs and TFDFs handed out.
+   */
+  uint64_t fdus_out;
+  /**
+   * Inputs refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Inputs refused with `WouldBlock` (LNK-015).
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by `RECONFIGURE` (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The queue: the unsent user octets.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_map_segmenter_status_t;
+
+/**
+ * A `MapReassembler` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-070, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_MAP_REASSEMBLER_WORDS];
+} aldis_map_reassembler_t;
+
+/**
+ * One MAP of a `MapReassembler` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-070,
+ * LNK-073).
+ */
+typedef struct {
+  /**
+   * The VCID of the MAP, 0 to 63.
+   */
+  uint8_t vc_id;
+  /**
+   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
+   */
+  uint8_t map_id;
+  /**
+   * `ALDIS_MAP_SERVICE_PACKETS`, `SDU`, or `OCTET_STREAM`.
+   */
+  uint32_t service;
+  /**
+   * The longest SDU or packet of the MAP in octets (LNK-073), from 1 to
+   * `ALDIS_LINK_MAX_FRAME_OCTETS`; ignored for an octet stream.
+   */
+  size_t max_sdu_len;
+} aldis_map_reassembler_map_t;
+
+/**
+ * The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP); the other members of the channel are not used but must be
+   * valid (each MAP names its VC).
+   */
+  aldis_link_channel_t channel;
+  /**
+   * TC: 1 when the FDUs have a Segment Header, else 0 (every FDU is then whole user data of
+   * MAP 0).
+   */
+  uint8_t tc_segment_header;
+  /**
+   * The entries of `maps` in use, 1 to `ALDIS_LINK_MAX_MAP_CHANNELS`.
+   */
+  size_t map_count;
+  /**
+   * The MAPs; the first `map_count` are read.
+   */
+  aldis_map_reassembler_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
+} aldis_map_reassembler_config_t;
+
+/**
+ * One input of a `MapReassembler` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_REASSEMBLER_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `FDU`: the Frame Data Field with its Segment Header (TC) or the TFDF (USLP), read
+   * once and copied (API-060). `data` is checked on every kind and must not overlap the
+   * storage or `out`: `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `FDU`: the VCID of the frame.
+   */
+  uint8_t vc_id;
+  /**
+   * For `FDU`, USLP: the MAP ID of the frame.
+   */
+  uint8_t map_id;
+  /**
+   * For `FDU`, USLP: 1 when a frame gap was flagged on the field (LNK-051), else 0.
+   */
+  uint8_t gap;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_map_reassembler_config_t config;
+} aldis_map_reassembler_input_t;
+
+/**
+ * One action of a `MapReassembler` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_REASSEMBLER_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `EVENT`: `ALDIS_MAP_REASSEMBLY_EVENT_*`.
+   */
+  uint32_t event;
+  /**
+   * For every kind but `DISCARDED`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For every kind but `DISCARDED`: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `SDU`, `PACKETS`, `STREAM_DATA`: where the delivery is in `out`; for `PACKETS`, each
+   * packet is as long as its own length field says.
+   */
+  aldis_range_t data;
+  /**
+   * For `PACKETS`: how many packets the run holds.
+   */
+  size_t count;
+  /**
+   * For `STREAM_DATA`: 1 when a gap was flagged on the field that carried the octets.
+   */
+  uint8_t after_gap;
+  /**
+   * For `DISCARDED`: the octets of the partial SDUs.
+   */
+  size_t octets;
+} aldis_map_reassembler_action_t;
+
+/**
+ * The actions of one input of a `MapReassembler`.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_MAP_REASSEMBLER_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_map_reassembler_action_t items[ALDIS_MAP_REASSEMBLER_MAX_ACTIONS];
+} aldis_map_reassembler_actions_t;
+
+/**
+ * A read-only snapshot of a `MapReassembler` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * FDUs taken.
+   */
+  uint64_t fdus_in;
+  /**
+   * SDUs and packets delivered (a run counts each packet).
+   */
+  uint64_t delivered;
+  /**
+   * FDUs refused as unreadable.
+   */
+  uint64_t refused;
+  /**
+   * Events `GAP_DISCARD`.
+   */
+  uint64_t gap_discards;
+  /**
+   * Events `SEQUENCE_VIOLATION`.
+   */
+  uint64_t sequence_violations;
+  /**
+   * Events `UNKNOWN_MAP`.
+   */
+  uint64_t unknown_maps;
+  /**
+   * Events `SDU_TOO_LONG`.
+   */
+  uint64_t sdus_too_long;
+  /**
+   * Octets of partial SDUs discarded by an event or `RECONFIGURE` (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The assembly buffers: the octets of the SDUs in progress.
+   */
+  aldis_link_occupancy_t assembly;
+} aldis_map_reassembler_status_t;
 
 /**
  * A `ChannelMux` in caller storage: the caller declares an object of this type, and the pointer
@@ -8798,6 +9711,75 @@ uint32_t aldis_fop1_status(aldis_fop1_t *h, aldis_fop1_status_t *status, aldis_e
 void aldis_fop1_deinit(aldis_fop1_t *h);
 
 /**
+ * Places a `CltuPacker` with no frame held in `storage` (LNK-044; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg` or a constant that is
+ * none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and AOS, (`max_frames_per_unit`) for
+ * 0 frames, (`max_unit_len`) for 0 octets; `ALDIS_ERR_CAPACITY_EXCEEDED` (`max_unit_len`) above
+ * `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_cltu_packer_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_cltu_packer_init(aldis_cltu_packer_t *storage,
+                                const aldis_cltu_packer_config_t *cfg,
+                                aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `CltuPacker` (API-057, CABI-040).
+ *
+ * The frames of a unit go to `out`, which must hold at least twice `max_unit_len` octets for
+ * `ADD_FRAME` and `max_unit_len` for `FLUSH` (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, a constant that is none, or 0 `repetitions`; for `ADD_FRAME`:
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_unit_len`),
+ * `ALDIS_ERR_INVALID_FIELD` (`truncated_frame_len`), `ALDIS_ERR_BUFFER_TOO_SMALL`; for
+ * `FLUSH`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_cltu_packer_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_cltu_packer_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_cltu_packer_step(aldis_cltu_packer_t *h,
+                                const aldis_cltu_packer_input_t *input,
+                                uint8_t *out,
+                                size_t out_cap,
+                                aldis_cltu_packer_actions_t *actions,
+                                aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `CltuPacker` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_cltu_packer_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_cltu_packer_status(aldis_cltu_packer_t *h,
+                                  aldis_cltu_packer_status_t *status,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_cltu_packer_step`].
+ */
+void aldis_cltu_packer_deinit(aldis_cltu_packer_t *h);
+
+/**
  * Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
  * CABI-032).
  *
@@ -9016,6 +9998,174 @@ uint32_t aldis_bitstream_generator_status(aldis_bitstream_generator_t *h,
  * As for [`aldis_bitstream_generator_step`].
  */
 void aldis_bitstream_generator_deinit(aldis_bitstream_generator_t *h);
+
+/**
+ * Places a `MapSegmenter` with an empty queue in `storage` (LNK-040, LNK-042; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and
+ * AOS, (`max_fdu_len`, `map_id`, `data_field_content`, `blocking`, `segmentation`,
+ * `max_sdu_len`, `vcf_count_len`, `upid`) for a value the configuration relations refuse;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`, `upid`);
+ * `ALDIS_ERR_CAPACITY_EXCEEDED` (`map_id`) for more MAPs than
+ * `ALDIS_LINK_MAX_MAP_CHANNELS`, (`max_sdu_len`, `max_fdu_len`) for an SDU or a TFDZ the queue
+ * cannot hold.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_map_segmenter_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_map_segmenter_init(aldis_map_segmenter_t *storage,
+                                  const aldis_map_segmenter_config_t *cfg,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `MapSegmenter` (API-057, CABI-040).
+ *
+ * `now_us` is the time in microseconds (API-003). The FDU goes to `out`, which must hold at
+ * least `max_fdu_len` octets for `NEXT_FDU` (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
+ * that is none; `ALDIS_ERR_OUT_OF_RANGE` (`map_id`) above the MAP IDs of the protocol; for
+ * `SUBMIT_*`: `ALDIS_ERR_UNKNOWN_CHANNEL`, `ALDIS_ERR_INVALID_FIELD` (`data_field_content`,
+ * `packet_version`), `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`, `sdu_len`),
+ * `ALDIS_ERR_OUT_OF_RANGE` (`max_sdu_len`, `max_fdu_len`), `ALDIS_ERR_WOULD_BLOCK` (the queue
+ * cannot take it whole, LNK-015); for `NEXT_FDU`: `ALDIS_ERR_BUFFER_TOO_SMALL`,
+ * `ALDIS_ERR_INVALID_FIELD` (`qos`); for `RECONFIGURE`: as `aldis_map_segmenter_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_map_segmenter_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_map_segmenter_step(aldis_map_segmenter_t *h,
+                                  const aldis_map_segmenter_input_t *input,
+                                  uint64_t now_us,
+                                  uint8_t *out,
+                                  size_t out_cap,
+                                  aldis_map_segmenter_actions_t *actions,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Reads the release deadline of the started stream TFDZs (LNK-012, API-053, CABI-040).
+ *
+ * While a deadline is pending, `armed` is 1 and `deadline_us` the instant in microseconds at
+ * which the caller is to feed the `TIMEOUT` input; otherwise both are 0. It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_map_segmenter_step`]; `armed` and `deadline_us` are valid for one write each.
+ */
+uint32_t aldis_map_segmenter_next_deadline(aldis_map_segmenter_t *h,
+                                           uint8_t *armed,
+                                           uint64_t *deadline_us,
+                                           aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `MapSegmenter` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_map_segmenter_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_map_segmenter_status(aldis_map_segmenter_t *h,
+                                    aldis_map_segmenter_status_t *status,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_map_segmenter_step`].
+ */
+void aldis_map_segmenter_deinit(aldis_map_segmenter_t *h);
+
+/**
+ * Places a `MapReassembler` with no SDU in progress in `storage` (LNK-070, LNK-073; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and
+ * AOS, (`map_id`) for no MAP or two MAPs of one VC with one MAP ID, (`data_field_content`) for
+ * the service `ANY`, (`max_sdu_len`) for 0; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`);
+ * `ALDIS_ERR_CAPACITY_EXCEEDED` (`map_id`) for more MAPs than `ALDIS_LINK_MAX_MAP_CHANNELS`,
+ * (`max_sdu_len`) above `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_map_reassembler_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_map_reassembler_init(aldis_map_reassembler_t *storage,
+                                    const aldis_map_reassembler_config_t *cfg,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `MapReassembler` (API-057, CABI-040). The engine has no timer
+ * (API-053), so the call takes no time.
+ *
+ * The octets of the delivery go to `out`, which must hold at least `max_sdu_len − 1` plus the
+ * user data of the FDU (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, or a constant that is none; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); for
+ * `FDU`: the errors of the protocol's reading (`ALDIS_ERR_INVALID_FIELD`
+ * (`frame_data_field`, `tfdz_construction_rule`, `packet_version`), `ALDIS_ERR_MALFORMED`
+ * (`fhp_lvo_pointer`), `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`)), and
+ * `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_map_reassembler_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_map_reassembler_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_map_reassembler_step(aldis_map_reassembler_t *h,
+                                    const aldis_map_reassembler_input_t *input,
+                                    uint8_t *out,
+                                    size_t out_cap,
+                                    aldis_map_reassembler_actions_t *actions,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `MapReassembler` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_map_reassembler_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_map_reassembler_status(aldis_map_reassembler_t *h,
+                                      aldis_map_reassembler_status_t *status,
+                                      aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_map_reassembler_step`].
+ */
+void aldis_map_reassembler_deinit(aldis_map_reassembler_t *h);
 
 /**
  * Places a `ChannelMux` with no field offered in `storage` (LNK-030, LNK-036; CABI-031,

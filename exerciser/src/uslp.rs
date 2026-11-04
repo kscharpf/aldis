@@ -438,12 +438,20 @@ fn vc_config(v: Map) -> Result<VcConfig, Fail> {
     let vcid = vcid_of(v, "vcid")?;
     let seq = VcfCountLen::new(v.num("vcf_count_len_sequence")?)?;
     let exp = VcfCountLen::new(v.num("vcf_count_len_expedited")?)?;
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "a vector value is matched on the one variant that selects, the rest are parameters"
+    )]
     let truncated_frame_len = match v.val("truncated_frame_len")? {
         Val::Null => None,
         t => Some(TruncatedFrameLen::new(
             usize::try_from(need(t.num())?).map_err(|_| Fail::Vector)?,
         )?),
     };
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "a vector value is matched on the one variant that selects, the rest are parameters"
+    )]
     let security = match v.val("security")? {
         Val::Str("per_map") => SecurityScope::PerMap,
         s => {
@@ -545,7 +553,11 @@ const fn pointer_kind(rule: TfdzRule) -> Option<&'static str> {
         | TfdzRule::SduContinuation(LastValidOctet::At(_)) => Some("last_valid_octet"),
         TfdzRule::SduStart(LastValidOctet::SduContinues)
         | TfdzRule::SduContinuation(LastValidOctet::SduContinues) => Some("sdu_continues"),
-        _ => None,
+        TfdzRule::OctetStream
+        | TfdzRule::StartingSegment
+        | TfdzRule::ContinuingSegment
+        | TfdzRule::LastSegment
+        | TfdzRule::NoSegmentation => None,
     }
 }
 
@@ -630,6 +642,10 @@ fn tfdf(p: Map) -> Result<TfdfHeader, Fail> {
     })
 }
 
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "a vector value is matched on the one variant that selects, the rest are parameters"
+)]
 fn ocf(p: Map) -> Result<Option<Ocf>, Fail> {
     match p.val("ocf_hex")? {
         Val::Null => Ok(None),

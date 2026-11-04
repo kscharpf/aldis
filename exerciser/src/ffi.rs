@@ -44,7 +44,14 @@ use aldis_ffi::fop1::{
 };
 use aldis_ffi::link::{
     ALDIS_LINK_IDLE_PACKET_ENCAPSULATION, ALDIS_LINK_IDLE_POLICY_OID, ALDIS_LINK_PROTOCOL_AOS,
-    ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_QOS_SEQUENCE_CONTROLLED, aldis_link_channel_t,
+    ALDIS_LINK_PROTOCOL_TC, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+    aldis_link_channel_t,
+};
+use aldis_ffi::link_cltu::{
+    ALDIS_CLTU_PACKER_INPUT_ADD_FRAME, ALDIS_CLTU_PACKER_INPUT_FLUSH, ALDIS_CLTU_PACKER_WORDS,
+    aldis_cltu_packer_actions_t, aldis_cltu_packer_config_t, aldis_cltu_packer_deinit,
+    aldis_cltu_packer_init, aldis_cltu_packer_input_t, aldis_cltu_packer_status,
+    aldis_cltu_packer_status_t, aldis_cltu_packer_step, aldis_cltu_packer_t,
 };
 use aldis_ffi::link_gen::{
     ALDIS_ACCESS_GENERATOR_INPUT_RELEASE, ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU,
@@ -63,6 +70,18 @@ use aldis_ffi::link_gen::{
     aldis_packet_generator_input_t, aldis_packet_generator_next_deadline,
     aldis_packet_generator_status, aldis_packet_generator_status_t, aldis_packet_generator_step,
     aldis_packet_generator_t,
+};
+use aldis_ffi::link_map::{
+    ALDIS_MAP_REASSEMBLER_INPUT_FDU, ALDIS_MAP_REASSEMBLER_WORDS,
+    ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
+    ALDIS_MAP_SEGMENTER_WORDS, ALDIS_MAP_SERVICE_ANY, ALDIS_MAP_SERVICE_SDU,
+    aldis_map_reassembler_actions_t, aldis_map_reassembler_config_t, aldis_map_reassembler_deinit,
+    aldis_map_reassembler_init, aldis_map_reassembler_input_t, aldis_map_reassembler_map_t,
+    aldis_map_reassembler_status, aldis_map_reassembler_status_t, aldis_map_reassembler_step,
+    aldis_map_reassembler_t, aldis_map_segmenter_actions_t, aldis_map_segmenter_config_t,
+    aldis_map_segmenter_deinit, aldis_map_segmenter_init, aldis_map_segmenter_input_t,
+    aldis_map_segmenter_map_t, aldis_map_segmenter_next_deadline, aldis_map_segmenter_status,
+    aldis_map_segmenter_status_t, aldis_map_segmenter_step, aldis_map_segmenter_t,
 };
 use aldis_ffi::link_mux::{
     ALDIS_CHANNEL_MUX_INPUT_OFFER, ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY, ALDIS_CHANNEL_MUX_WORDS,
@@ -2299,6 +2318,243 @@ fn link_mux_handle(t: &mut Tally) {
     }
 }
 
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::large_stack_arrays,
+    reason = "the storages of the handles are 9 KB and 33 KB, within the 256 KB of the exerciser targets"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one call sequence per engine, as the other handle groups"
+)]
+fn link_map_handles(t: &mut Tally) {
+    let mut det = detail();
+    let mut out = [0_u8; 128];
+    let det_ptr = &raw mut det;
+    let tc = aldis_link_channel_t {
+        protocol: ALDIS_LINK_PROTOCOL_TC,
+        vc_id: 1,
+        aos_edition: 0,
+        uslp_upid: 0,
+        uslp_map: 0,
+        uslp_qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+    };
+
+    // MapSegmenter, TC: a VC with a Segment Header and the MAP 1; an SDU of 3 octets is one FDU.
+    let mut sg = aldis_map_segmenter_t {
+        words: [0; ALDIS_MAP_SEGMENTER_WORDS],
+    };
+    let h = &raw mut sg;
+    let mut cfg = aldis_map_segmenter_config_t {
+        channel: tc,
+        max_fdu_len: bb(16),
+        tc_segment_header: 1,
+        map_count: 1,
+        ..aldis_map_segmenter_config_t::default()
+    };
+    cfg.maps[0] = aldis_map_segmenter_map_t {
+        map_id: 1,
+        service: ALDIS_MAP_SERVICE_ANY,
+        ..aldis_map_segmenter_map_t::default()
+    };
+    let sdu = bb([1_u8, 2, 3]);
+    let submit = aldis_map_segmenter_input_t {
+        kind: ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
+        data: sdu.as_ptr(),
+        data_len: sdu.len(),
+        map_id: 1,
+        handle: 0,
+        qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        config: cfg,
+    };
+    let next = aldis_map_segmenter_input_t {
+        kind: ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU,
+        data: null(),
+        data_len: 0,
+        handle: 7,
+        ..submit
+    };
+    let mut actions = aldis_map_segmenter_actions_t::default();
+    let mut status = aldis_map_segmenter_status_t::default();
+    let (mut armed, mut deadline) = (1_u8, 1_u64);
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_map_segmenter_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        t.check(
+            aldis_map_segmenter_step(
+                h,
+                &raw const submit,
+                0,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 0,
+        );
+        t.check(
+            aldis_map_segmenter_step(
+                h,
+                &raw const next,
+                0,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1
+                && actions.items[0].handle == 7
+                && out[..4] == [0xC1, 1, 2, 3],
+        );
+        t.check(
+            aldis_map_segmenter_next_deadline(h, &raw mut armed, &raw mut deadline, det_ptr)
+                == ALDIS_OK
+                && armed == 0,
+        );
+        t.check(
+            aldis_map_segmenter_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.submitted == 1
+                && status.fdus_out == 1,
+        );
+        aldis_map_segmenter_deinit(h);
+        t.check(
+            aldis_map_segmenter_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+
+    // MapReassembler, TC: the same FDU gives the SDU back.
+    let mut ra = aldis_map_reassembler_t {
+        words: [0; ALDIS_MAP_REASSEMBLER_WORDS],
+    };
+    let h = &raw mut ra;
+    let mut cfg = aldis_map_reassembler_config_t {
+        channel: tc,
+        tc_segment_header: 1,
+        map_count: 1,
+        ..aldis_map_reassembler_config_t::default()
+    };
+    cfg.maps[0] = aldis_map_reassembler_map_t {
+        vc_id: 1,
+        map_id: 1,
+        service: ALDIS_MAP_SERVICE_SDU,
+        max_sdu_len: bb(16),
+    };
+    let fdu = bb([0xC1_u8, 1, 2, 3]);
+    let input = aldis_map_reassembler_input_t {
+        kind: ALDIS_MAP_REASSEMBLER_INPUT_FDU,
+        data: fdu.as_ptr(),
+        data_len: fdu.len(),
+        vc_id: 1,
+        map_id: 0,
+        gap: 0,
+        config: cfg,
+    };
+    let mut actions = aldis_map_reassembler_actions_t::default();
+    let mut status = aldis_map_reassembler_status_t::default();
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_map_reassembler_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        t.check(
+            aldis_map_reassembler_step(
+                h,
+                &raw const input,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1
+                && out[..3] == [1, 2, 3],
+        );
+        t.check(
+            aldis_map_reassembler_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.delivered == 1,
+        );
+        aldis_map_reassembler_deinit(h);
+        t.check(
+            aldis_map_reassembler_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE,
+        );
+    }
+}
+
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+fn link_cltu_handle(t: &mut Tally) {
+    let mut det = detail();
+    let mut out = [0_u8; 128];
+    let det_ptr = &raw mut det;
+
+    // CltuPacker, TC: one frame is held until the caller flushes the unit.
+    let mut cp = aldis_cltu_packer_t {
+        words: [0; ALDIS_CLTU_PACKER_WORDS],
+    };
+    let h = &raw mut cp;
+    let cfg = aldis_cltu_packer_config_t {
+        channel: aldis_link_channel_t {
+            protocol: ALDIS_LINK_PROTOCOL_TC,
+            vc_id: 0,
+            aos_edition: 0,
+            uslp_upid: 0,
+            uslp_map: 0,
+            uslp_qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        },
+        max_frames: bb(2),
+        max_unit_len: bb(32),
+    };
+    let frame = bb([0x20_u8, 0x01, 0x00, 0x08, 0xAA, 0xBB, 0xCC, 0xDD]);
+    let add = aldis_cltu_packer_input_t {
+        kind: ALDIS_CLTU_PACKER_INPUT_ADD_FRAME,
+        data: frame.as_ptr(),
+        data_len: frame.len(),
+        qos: ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+        repetitions: 1,
+        truncated: 0,
+        config: cfg,
+    };
+    let flush = aldis_cltu_packer_input_t {
+        kind: ALDIS_CLTU_PACKER_INPUT_FLUSH,
+        data: null(),
+        data_len: 0,
+        ..add
+    };
+    let mut actions = aldis_cltu_packer_actions_t::default();
+    let mut status = aldis_cltu_packer_status_t::default();
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_cltu_packer_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        t.check(
+            aldis_cltu_packer_step(
+                h,
+                &raw const add,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 0,
+        );
+        t.check(
+            aldis_cltu_packer_step(
+                h,
+                &raw const flush,
+                out.as_mut_ptr(),
+                128,
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1
+                && actions.items[0].frames == 1
+                && out[..8] == frame[..],
+        );
+        t.check(
+            aldis_cltu_packer_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.frames_in == 1
+                && status.units_out == 1,
+        );
+        aldis_cltu_packer_deinit(h);
+        t.check(aldis_cltu_packer_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE);
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -2315,4 +2571,6 @@ pub fn run(t: &mut Tally) {
     link_generation_handles(t);
     link_receiving_handles(t);
     link_mux_handle(t);
+    link_map_handles(t);
+    link_cltu_handle(t);
 }

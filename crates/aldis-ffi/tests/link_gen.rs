@@ -1019,3 +1019,33 @@ fn every_protocol_takes_a_release_deadline_and_refuses_a_bad_configuration() {
         assert_eq!(status, ALDIS_ERR_INVALID_CONFIG, "{protocol}");
     }
 }
+
+#[test]
+fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol() {
+    // req: CABI-040, CABI-022, LNK-001
+    type Set = fn(&mut aldis_link_channel_t);
+    let mut store = pg_storage();
+    let mut det = detail();
+    let sets: [(Set, u32); 3] = [
+        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
+        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    ];
+    for (set, want) in sets {
+        for protocol in [
+            ALDIS_LINK_PROTOCOL_TM,
+            ALDIS_LINK_PROTOCOL_AOS,
+            ALDIS_LINK_PROTOCOL_USLP,
+        ] {
+            let mut cfg = pg_config(protocol, 32);
+            set(&mut cfg.channel);
+            let status = {
+                let (h, c, e): (*mut _, *const _, *mut _) =
+                    (&raw mut *store, &raw const cfg, &raw mut det);
+                // SAFETY: every pointer is to a live local.
+                unsafe { aldis_packet_generator_init(h, c, e) }
+            };
+            assert_eq!(status, want);
+        }
+    }
+}

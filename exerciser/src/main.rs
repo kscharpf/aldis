@@ -43,7 +43,7 @@ mod vectors;
 /// The Rust entry point: the reset handler on Cortex-M, called by the start-up code of
 /// `target.rs` on Cortex-R and RISC-V once the stack is set.
 #[expect(unsafe_code, reason = "the entry symbol must not be mangled")]
-// SAFETY: `aldis_exerciser_main` is the only definition of this symbol in the image.
+// Why this is sound: `aldis_exerciser_main` is the only definition of this symbol in the image.
 #[unsafe(no_mangle)]
 pub extern "C" fn aldis_exerciser_main() -> ! {
     let tally = exercise::run();
@@ -57,7 +57,7 @@ pub extern "C" fn aldis_exerciser_main() -> ! {
     unsafe_code,
     reason = "the fault symbol is referenced from the vector tables"
 )]
-// SAFETY: `aldis_exerciser_fault` is the only definition of this symbol in the image.
+// Why this is sound: `aldis_exerciser_fault` is the only definition of this symbol in the image.
 #[unsafe(no_mangle)]
 pub extern "C" fn aldis_exerciser_fault() -> ! {
     target::exit(false)

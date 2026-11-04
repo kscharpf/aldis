@@ -28,7 +28,7 @@
 //!
 //! `no_std` without `std`, no heap, no threads (CABI-004). This is the only library crate with
 //! `unsafe` code: each entry point and each pointer check carries `#[expect(unsafe_code)]`
-//! and every `unsafe` block a `// SAFETY:` comment (GEN-070, GEN-071).
+//! and every `unsafe` block a `SAFETY` comment (GEN-070, GEN-071).
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
@@ -43,7 +43,9 @@ pub mod field;
 pub mod fop1;
 pub mod handle;
 pub mod link;
+pub mod link_cltu;
 pub mod link_gen;
+pub mod link_map;
 pub mod link_mux;
 pub mod link_rx;
 mod mirror;
@@ -183,8 +185,8 @@ fn trap() {
     reason = "declares the deliberately undefined symbol of the link check"
 )]
 fn panic(_info: &core::panic::PanicInfo<'_>) -> ! {
-    // SAFETY: never called in a successful link: the symbol does not exist, so a reachable
-    // call fails the link (VER-010).
+    // Never called in a successful link: the symbol does not exist, so a reachable call fails
+    // the link (VER-010).
     unsafe extern "C" {
         /// Defined nowhere: any reachable panic makes the final link fail (VER-010).
         safe fn aldis_panic_is_unreachable() -> !;

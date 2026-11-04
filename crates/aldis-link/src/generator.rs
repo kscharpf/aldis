@@ -499,7 +499,9 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::PACKET_VERSION))?;
         match packet::length(kind, packet) {
             Length::Total(n) if n == packet.len() => {}
-            _ => return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN)),
+            Length::Total(_) | Length::More | Length::Invalid => {
+                return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::PACKET_LEN));
+            }
         }
         if packet.len() > self.head.config.max_packet_len {
             return Err(Error::out_of_range(

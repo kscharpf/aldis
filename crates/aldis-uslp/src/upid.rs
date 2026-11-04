@@ -50,9 +50,10 @@ mod tests {
         for bits in 0..=31_u8 {
             let upid = Upid::from_bits(bits).unwrap();
             assert_eq!(upid.bits(), bits);
-            match upid {
-                Upid::Other(u) => assert_eq!(UnassignedUpid::new(bits), Some(u)),
-                _ => assert_eq!(UnassignedUpid::new(bits), None),
+            if let Upid::Other(u) = upid {
+                assert_eq!(UnassignedUpid::new(bits), Some(u));
+            } else {
+                assert_eq!(UnassignedUpid::new(bits), None);
             }
         }
         for bits in 32..=255_u8 {
