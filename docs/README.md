@@ -70,6 +70,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [AOS frames](standards/aos-frame.md) | 732.0-B-5 |
 | [USLP frames](standards/uslp-frame.md) | 732.1-B-3 |
 | [COP-1](standards/cop1.md) | 232.1-B-2 (+Cor. 1) |
+| [TM synchronization](standards/tm-sync.md) | 131.0-B-6 §9 (ASM, CADU) and §10 (pseudo-randomizer) |
 
 ### Profiles ([`profiles/`](profiles/))
 
