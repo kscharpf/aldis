@@ -19,7 +19,7 @@ The full report of the `mutants` job ([run 41949461901](https://github.com/kscha
 | `aldis-cop1` | 223 | 156 | 4 | 63 | 0 | All 4 equivalent, as in the 2026-10-31 entry (`farm1.rs` now at 540 and 541) |
 | `aldis-link` | 1 524 | 1 135 | 56 | 323 | 10 | 31 test-gap mutants fixed; the other 35 are equivalent or hangs, below |
 
-Test gaps fixed, re-run with `cargo mutants -p <crate> --all-features -F <the sites>` (the 66 `aldis-link` mutants; `aldis-core` `engine.rs:100`, `aldis-spp` `segment.rs:434` and `:456`, `aldis-uslp` `stream.rs:370`: all caught):
+Test gaps fixed, re-run with `cargo mutants -p <crate> --all-features -F <the sites>` (the 31 `aldis-link` test gaps among its 66 survivors, and `aldis-core` `engine.rs:100`, `aldis-spp` `segment.rs:434` and `:456`, `aldis-uslp` `stream.rs:370`: each now caught):
 
 | Mutant | Test |
 |---|---|
