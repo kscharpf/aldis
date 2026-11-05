@@ -124,7 +124,9 @@ mod semihosting {
 
     /// `SYS_WRITE0`: write a NUL-terminated string to the debug console.
     const SYS_WRITE0: usize = 0x04;
-    /// `SYS_EXIT`: on a 32-bit target the argument is the reason code itself.
+    /// `SYS_EXIT`: on a 32-bit target the argument is the reason code itself; on a 64-bit target
+    /// it is the address of a block of two words, the reason code and a subcode (the Arm
+    /// semihosting specification, `SYS_EXIT`).
     const SYS_EXIT: usize = 0x18;
     /// `ADP_Stopped_ApplicationExit`: QEMU exits with status 0.
     const APPLICATION_EXIT: usize = 0x2_0026;
@@ -143,7 +145,13 @@ mod semihosting {
         } else {
             RUNTIME_ERROR
         };
+        #[cfg(target_pointer_width = "32")]
         let _ = arch::call(SYS_EXIT, reason);
+        #[cfg(target_pointer_width = "64")]
+        {
+            let block = [reason, 0];
+            let _ = arch::call(SYS_EXIT, block.as_ptr().addr());
+        }
         // Only reached without a semihosting host (real hardware, no debugger).
         loop {
             core::hint::spin_loop();
