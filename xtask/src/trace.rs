@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::md::{scan_ids, tables};
 use crate::repo;
-use crate::spec::{CPP_EXTENSIONS, DEFERRED_AREAS, Spec, in_v1};
+use crate::spec::{CPP_EXTENSIONS, DEFERRED_AREAS, Spec, in_v1, is_withdrawn};
 
 fn add(
     map: &mut BTreeMap<String, BTreeSet<String>>,
@@ -211,9 +211,26 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
     ids.retain(|id| {
         spec.requirements
             .get(id)
-            .is_none_or(|r| !crate::spec::is_withdrawn(&r.text))
+            .is_none_or(|r| !is_withdrawn(&r.text))
     });
     Ok(ids)
+}
+
+/// The unscoped trace: the live (not withdrawn) v1 requirement IDs, the number of live
+/// requirements of deferred areas, and the number of withdrawn rows (00-introduction.md §5.2).
+fn unscoped_counts(spec: &Spec) -> (BTreeSet<String>, usize, usize) {
+    let mut v1 = BTreeSet::new();
+    let (mut deferred, mut withdrawn) = (0, 0);
+    for r in spec.requirements.values() {
+        if is_withdrawn(&r.text) {
+            withdrawn += 1;
+        } else if in_v1(&r.area) {
+            v1.insert(r.id.clone());
+        } else {
+            deferred += 1;
+        }
+    }
+    (v1, deferred, withdrawn)
 }
 
 /// Runs the trace. Returns the number of in-scope requirements without artefacts when
@@ -221,20 +238,12 @@ fn scope_ids(spec: &Spec, scope: &str) -> Result<BTreeSet<String>, String> {
 pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
     let spec = Spec::load()?;
     let arts = artefacts(&spec)?;
+    let (v1, deferred, withdrawn) = unscoped_counts(&spec);
     let in_scope: BTreeSet<String> = match scope {
         Some(s) => scope_ids(&spec, s)?,
-        None => spec
-            .requirements
-            .values()
-            .filter(|r| in_v1(&r.area))
-            .map(|r| r.id.clone())
-            .collect(),
+        None => v1,
     };
-    let deferred = if scope.is_none() {
-        spec.requirements.len() - in_scope.len()
-    } else {
-        0
-    };
+    let deferred = if scope.is_none() { deferred } else { 0 };
 
     let mut md = format!(
         "# Trace matrix{}\n\n| ID | Verif. | Status | Artefacts |\n|---|---|---|---|\n",
@@ -281,6 +290,9 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
             areas.join(", ")
         );
     }
+    if scope.is_none() && withdrawn > 0 {
+        println!("withdrawn, not counted: {withdrawn}");
+    }
     if !untraced.is_empty() {
         println!("untraced: {}", untraced.join(", "));
     }
@@ -289,7 +301,7 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CPP_LABEL, golden_requirements, req_annotations};
+    use super::{CPP_LABEL, golden_requirements, req_annotations, scope_ids, unscoped_counts};
     use crate::md::{IdRef, scan_ids};
     use crate::spec::CPP_EXTENSIONS;
 
@@ -341,6 +353,29 @@ mod tests {
             "cop1/scenarios/fop1_table.json"
         ));
         assert!(!crate::consistency::awaiting_runner("tc/ad.json"));
+    }
+
+    #[test]
+    fn withdrawn_requirements_are_not_traced() {
+        // req: VER-020
+        let spec = crate::spec::Spec::load().unwrap();
+        let withdrawn: Vec<&String> = spec
+            .requirements
+            .values()
+            .filter(|r| crate::spec::is_withdrawn(&r.text))
+            .map(|r| &r.id)
+            .collect();
+        assert!(withdrawn.len() > 1, "the spec has withdrawn rows");
+        let (v1, deferred, count) = unscoped_counts(&spec);
+        assert!(withdrawn.iter().all(|w| !v1.contains(*w)));
+        assert_eq!(count, withdrawn.len());
+        assert_eq!(v1.len() + deferred + count, spec.requirements.len());
+        // No milestone scope contains a withdrawn ID, even one its exit table names.
+        for scope in ["m0", "m1", "m2", "m3", "m4", "m5"] {
+            if let Ok(ids) = scope_ids(&spec, scope) {
+                assert!(withdrawn.iter().all(|w| !ids.contains(*w)), "{scope}");
+            }
+        }
     }
 
     #[test]
