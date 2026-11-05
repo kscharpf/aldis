@@ -3,7 +3,7 @@
 **Goal:** the link-layer engines of CCSDS frame generation and reception in `aldis-link`, as deterministic sans-I/O step functions with compile-time capacities: the PacketGenerator, the AOS BitstreamGenerator and VC Access generator, the ChannelMux with its multiplexing policies, the FrameReceiver, the PacketExtractor, the MapSegmenter and MapReassembler, and the CLTU packer, for TM, TC, AOS, and USLP. Each engine has its C ABI handle in `aldis-ffi`. Placement of the First Header Pointer and reassembly are verified by blind vectors and by property tests. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M3](m3-cop1.md) (`v0.4.0-m3`) · **Release:** `v0.5.0-m4`
 
-**Status: in progress.** Entry gate: M3 (roadmap §1), met by PR #211 (`v0.4.0-m3`); decisions D1–D5 (§2) accepted (maintainer, 2026-11-01).
+**Status: exit criteria met except the triage of the `aldis-link` mutation timeouts (pending the nightly `mutants` report); the release `v0.5.0-m4` is the maintainer's.** Entry gate: M3 (roadmap §1), met by PR #211 (`v0.4.0-m3`); decisions D1–D5 (§2) accepted (maintainer, 2026-11-01).
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -25,6 +25,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 History:
 - 2026-11-01: plan drafted following the M3 release.
 - 2026-11-02: WP-1b added for the maintainer's decisions on the blind models' open cases.
+- 2026-11-04: WP-9: LNK-001 inspected, `trace --scope m4 --strict` enforced, RS-015 citations completed, `ALDIS_ABI_VERSION_MINOR` raised to 11, exit criteria filled.
 
 ## 1. Starting point
 
@@ -127,21 +128,21 @@ Milestone 4 is complete when every item below is green on `main`. The results co
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Common engine behavior | LNK-001…003, LNK-074, LNK-075, LNK-078, RS-021 | |
-| PacketGenerator | LNK-010…015 | |
-| Access and Bitstream generators | LNK-020, LNK-021 | |
-| ChannelMux | LNK-030…036, LNK-076, LNK-082 | |
-| Segmenter and CLTU packer | LNK-040…044 | |
-| FrameReceiver | LNK-050…054, LNK-077, LNK-079…081 | |
-| PacketExtractor | LNK-060…064 | |
-| Reassembler | LNK-070…073 | |
-| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-052, API-053, API-056, API-057, API-060, API-062, API-074, RS-020, RS-023 | |
-| C ABI handles | CABI-030…033, CABI-040, API-082 | |
-| Panic freedom & resources | VER-010, VER-011, GEN-020…024 | |
-| Portability | GEN-005…007, VER-030, VER-031 | |
-| Verification gates | VER-022…025, VER-054 | |
-| Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021, VER-023 | |
-| Hazards & assurance case | VER-065, VER-066 | |
+| Common engine behavior | LNK-001…003, LNK-074, LNK-075, LNK-078, RS-021 | **Met.** LNK-001 by inspection ([records/LNK-001.md](../verification/records/LNK-001.md)); housekeeping (LNK-002, LNK-003, LNK-078) in `crates/aldis-link/tests/engine_housekeeping.rs`; the action bound of every input driven to its worst case and the output-area bound checked before any change (LNK-074, LNK-075; [assurance case](../verification/assurance-case.md)); the in-progress units of the CltuPacker, MapSegmenter, and MapReassembler are closed enums (RS-021) |
+| PacketGenerator | LNK-010…015 | **Met.** The blind vectors `test-vectors/link/send/packet_generator_*.json` pass (`packet_generator_vectors.rs`); the round-trip property test `packet_roundtrip.rs` (VER-023) and the fuzz target `link_packet_roundtrip` |
+| Access and Bitstream generators | LNK-020, LNK-021 | **Met.** `access_generator_*.json` and `bitstream_generator_aos.json` pass (`access_generator_vectors.rs`, `bitstream_generator_vectors.rs`); the engine tests in `generators_engine.rs` |
+| ChannelMux | LNK-030…036, LNK-076, LNK-082 | **Met.** `channel_mux_{tm,aos,uslp}.json` pass (`channel_mux_vectors.rs`); the engine tests in `channel_mux_engine.rs`; the fuzz target `link_mux` |
+| Segmenter and CLTU packer | LNK-040…044 | **Met.** `map_segmenter_{tc,uslp}.json` pass (`map_segmenter_vectors.rs`); FDUs fed to FOP-1 in `segmenter_fop1.rs`; `cltu_packer.rs`; the round-trip property test `map_roundtrip.rs` and the fuzz targets `link_map_roundtrip` and `link_map_inputs` |
+| FrameReceiver | LNK-050…054, LNK-077, LNK-079…081 | **Met.** `frame_receiver_{tm,tc,aos,uslp}.json` pass (`frame_receiver_vectors.rs`); the engine tests in `frame_receiver.rs`; the fuzz target `link_frame_receiver` |
+| PacketExtractor | LNK-060…064 | **Met.** `packet_extractor_{tm,aos,uslp}.json` pass (`packet_extractor_vectors.rs`); the round trip with the PacketGenerator in `packet_roundtrip.rs` |
+| Reassembler | LNK-070…073 | **Met.** `map_reassembler_{tc,uslp}.json` pass (`map_reassembler_vectors.rs`); `map_reassembler_engine.rs`; the round trip with the segmenter in `map_roundtrip.rs` |
+| Engine contract & sans-I/O | GEN-011, GEN-015, GEN-030…032, API-050, API-052, API-053, API-056, API-057, API-060, API-062, API-074, RS-020, RS-023 | **Met.** All traced (`trace --scope m4 --strict` passes in `cargo xtask ci`); API-062 by inspection ([records/API-062.md](../verification/records/API-062.md)): each of the nine engines states its per-input bound in the module docs; the receiver takes only the codec's `Plain` frame (RS-023) |
+| C ABI handles | CABI-030…033, CABI-040, API-082 | **Met.** One handle per engine, built in place in the caller's storage at the `[link]` sizes of `capacities.toml` (#240): generators (#239), extractor and receiver (#246), mux (#247), segmenter, reassembler, and packer (#260); the tests `crates/aldis-ffi/tests/link_*.rs`; `ALDIS_ABI_VERSION_MINOR` raised to 11 for the handles (maintainer, 2026-11-04) |
+| Panic freedom & resources | VER-010, VER-011, GEN-020…024 | **Met.** The exerciser links every engine and every C ABI function on the three bare-metal targets (VER-010); stack sizes of the handles measured by `cargo xtask stack` within the budgets ([records/VER-011.md](../verification/records/VER-011.md)) |
+| Portability | GEN-005…007, VER-030, VER-031 | **Met.** The checks `features`, `big-endian` (s390x), and the exerciser on three QEMU targets run in the verification run |
+| Verification gates | VER-022…025, VER-054 | **Met, one item pending.** Coverage at 100 % with the `aldis-link` waivers of `coverage-waivers.toml`; five link fuzz targets in the nightly; mutation survivors triaged in WP-8 ([mutants-triage.md](../verification/mutants-triage.md)). **Pending:** the triage of the `aldis-link` mutation timeouts, from the first nightly `mutants` report after this pull request (maintainer, 2026-11-04) |
+| Vectors and trace | TV-001…003, TV-010…012, TV-020, TV-021, TV-023, VER-020, VER-021, VER-023 | **Met.** The scenarios validate against `engine-scenario.schema.json`; the blind Python models `test-vectors/models/link_send.py` and `link_recv.py` are the cross-check (TV-023), with the VER-040 search of [cross-checks.md](../verification/cross-checks.md) §6, accepted by the maintainer 2026-11-05; the property tests of VER-023 are `packet_roundtrip.rs` and `map_roundtrip.rs`; `trace --scope m4 --strict` passes (WP-9) |
+| Hazards & assurance case | VER-065, VER-066 | **Met.** [hazards/link.md](../verification/hazards/link.md) and the link claims of the [assurance case](../verification/assurance-case.md) (#257) |
 
 Property tests for FHP placement and reassembly (VER-023) are part of the roadmap exit. The release `v0.5.0-m4` is the maintainer's.
 

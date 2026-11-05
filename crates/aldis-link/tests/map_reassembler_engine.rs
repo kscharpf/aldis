@@ -482,6 +482,16 @@ fn an_sdu_longer_than_its_maximum_is_discarded_with_an_event() {
             Got::Event(SduTooLong, 1, 3)
         ])
     );
+    // A first segment of exactly 6 is kept, and so is a continuation that brings the SDU to
+    // exactly 6.
+    let mut e = tc_engine();
+    assert_eq!(tc(&mut e, &[0x43, 1, 2, 3, 4, 5, 6]), Ok(vec![]));
+    assert_eq!(e.status().assembly.current(), 6);
+    let mut e = tc_engine();
+    tc(&mut e, &[0x43, 1, 2, 3, 4]);
+    assert_eq!(tc(&mut e, &[0x03, 5, 6]), Ok(vec![]));
+    assert_eq!(e.status().assembly.current(), 6);
+    assert_eq!(e.status().sdus_too_long.get(), 0);
 }
 
 #[test]

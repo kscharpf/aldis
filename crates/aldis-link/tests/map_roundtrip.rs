@@ -297,6 +297,11 @@ fn uslp_trip(
     let mut count = 0;
     // bound: every FDU takes octets off the queue, and a step with nothing to give ends the loop.
     loop {
+        // A Timeout that leaves a deadline in force would turn up again at once.
+        count += 1;
+        if count > 10_000 {
+            return Err("no end".to_owned());
+        }
         if fresh {
             qos = qos_of(bits.next().unwrap());
         }
@@ -332,10 +337,6 @@ fn uslp_trip(
         });
         let r = reas.step(input, &mut out).map_err(|e| format!("fdu {e}"))?;
         collect(&r, &out, &mut delivered);
-        count += 1;
-        if count > 10_000 {
-            return Err("no end".to_owned());
-        }
     }
     Ok((delivered, sent))
 }

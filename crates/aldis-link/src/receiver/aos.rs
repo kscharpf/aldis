@@ -28,6 +28,8 @@ pub struct AosChannel {
 impl AosChannel {
     /// The channel with an Insert Zone of `insert_zone_len` octets (0 for none) and a Frame
     /// Header Error Control if `fhec`.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn new(insert_zone_len: usize, fhec: bool) -> AosChannel {
         AosChannel {
@@ -37,12 +39,16 @@ impl AosChannel {
     }
 
     /// The octets of the Insert Zone.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn insert_zone_len(&self) -> usize {
         self.insert_zone_len
     }
 
     /// Whether frames have an FHEC.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn fhec(&self) -> bool {
         self.fhec
@@ -80,18 +86,24 @@ pub struct AosVc {
 
 impl AosVc {
     /// A VC with `content`, whose frames carry an OCF if `ocf` (the `VC_OCF` service).
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn new(content: AosContent, ocf: bool) -> AosVc {
         AosVc { content, ocf }
     }
 
     /// What the VC carries.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn content(&self) -> AosContent {
         self.content
     }
 
     /// Whether its frames have an OCF.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn ocf(&self) -> bool {
         self.ocf

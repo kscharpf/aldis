@@ -194,6 +194,8 @@ pub struct aldis_cltu_packer_action_t {
 }
 
 /// The actions of one input of a `CltuPacker`.
+///
+/// Requirements: LNK-044, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_cltu_packer_actions_t {

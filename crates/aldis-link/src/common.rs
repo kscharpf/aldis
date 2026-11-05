@@ -68,6 +68,8 @@ impl Occupancy {
     }
 
     /// Records that the store now holds `octets`, and raises the high-water mark if needed.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     pub const fn set(&mut self, octets: usize) {
         self.current = octets;
         if octets > self.high_water {
@@ -102,16 +104,22 @@ pub struct ValidPvns {
 
 impl ValidPvns {
     /// Space Packets only.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     pub const SPACE: ValidPvns = ValidPvns {
         space: true,
         encapsulation: false,
     };
     /// Encapsulation Packets only.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     pub const ENCAPSULATION: ValidPvns = ValidPvns {
         space: false,
         encapsulation: true,
     };
     /// Space Packets and Encapsulation Packets.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     pub const BOTH: ValidPvns = ValidPvns {
         space: true,
         encapsulation: true,
@@ -152,12 +160,16 @@ impl ValidPvns {
     }
 
     /// Whether Space Packets are valid.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     #[must_use]
     pub const fn space(self) -> bool {
         self.space
     }
 
     /// Whether Encapsulation Packets are valid.
+    ///
+    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
     #[must_use]
     pub const fn encapsulation(self) -> bool {
         self.encapsulation

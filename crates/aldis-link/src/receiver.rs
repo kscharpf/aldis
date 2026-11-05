@@ -20,10 +20,12 @@
 //! ([`ReceiverOutput::TcFrame`]) for FARM-1 (LNK-081). The octets of an FSH, an Insert Zone, or
 //! a data field are copied to the output area, and the action names the range.
 //!
-//! **Bounds (LNK-074, LNK-075).** One input returns at most [`FRAME_RECEIVER_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** One input returns at most [`FRAME_RECEIVER_MAX_ACTIONS`]
 //! actions, and `Frame` writes at most [`FrameReceiverConfig::area_len`] octets to the output
 //! area; a shorter area fails the input with `BufferTooSmall` before any state change. The
-//! per-protocol worst cases are argued at [`FRAME_RECEIVER_MAX_ACTIONS`].
+//! per-protocol worst cases are argued at [`FRAME_RECEIVER_MAX_ACTIONS`]. `RawFrame` writes the
+//! Insert Zone `IN_SDU`, at most the Insert Zone length of the channel; `FrameLoss`,
+//! `CallerDiscard`, and `Reconfigure` write nothing.
 //!
 //! **No state change on a refusal (API-058).** A frame is parsed completely before any count or
 //! flag changes, so a frame the receiver refuses (`LengthMismatch`, `Malformed`, `ReservedValue`,
@@ -302,18 +304,24 @@ pub struct VcEntry<P: ReceiveProtocol> {
 
 impl<P: ReceiveProtocol> VcEntry<P> {
     /// The VC `vc` with `params`.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn new(vc: P::Vc, params: P::VcParams) -> VcEntry<P> {
         VcEntry { vc, params }
     }
 
     /// The VC.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The parameters of the VC.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn params(&self) -> P::VcParams {
         self.params
@@ -454,24 +462,32 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     }
 
     /// The frame length of the physical channel.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn frame_len(&self) -> usize {
         self.frame_len
     }
 
     /// Whether frames carry a FECF.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn fecf(&self) -> bool {
         self.fecf
     }
 
     /// The parameters of the physical channel.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn channel(&self) -> &P::Channel {
         &self.channel
     }
 
     /// The configured VCs, in the order they were given.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     pub fn vcs(&self) -> impl Iterator<Item = &VcEntry<P>> {
         self.vcs.iter().flatten()
     }
@@ -890,6 +906,8 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn config(&self) -> &FrameReceiverConfig<P, V> {
         &self.config
