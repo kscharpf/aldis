@@ -131,7 +131,26 @@ fn matrix_crates(workflow: &str, job: &str) -> Option<BTreeSet<String>> {
 }
 
 /// The crates of the nightly `mutants` job: from its `matrix.crate` list, or `-p` on the `cargo mutants` line.
+/// The crates of the `include:` entries (`- { crate: <name>, … }`) of the workflow job `job`,
+/// where a crate may appear once per shard.
+fn include_crates(workflow: &str, job: &str) -> BTreeSet<String> {
+    workflow
+        .lines()
+        .skip_while(|l| l.trim_end() != format!("  {job}:"))
+        .skip(1)
+        .take_while(|l| l.is_empty() || l.starts_with("   "))
+        .filter_map(|l| l.trim().strip_prefix("- { crate:"))
+        .filter_map(|rest| rest.split([',', '}']).next())
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
 fn mutants_crates(workflow: &str) -> Result<BTreeSet<String>, String> {
+    let included = include_crates(workflow, "mutants");
+    if !included.is_empty() {
+        return Ok(included);
+    }
     if let Some(crates) = matrix_crates(workflow, "mutants") {
         return Ok(crates);
     }
@@ -1164,6 +1183,11 @@ mod tests {
         assert_eq!(
             mutants_crates(yml_matrix).unwrap(),
             names(&["aldis-core", "aldis-aos"])
+        );
+        let yml_shards = "jobs:\n  mutants:\n    strategy:\n      matrix:\n        include:\n          - { crate: aldis-core, shard: 0, shards: 1 }\n          - { crate: aldis-link, shard: 0, shards: 2 }\n          - { crate: aldis-link, shard: 1, shards: 2 }\n  other:\n    strategy:\n      matrix:\n        include:\n          - { crate: aldis-tm }\n";
+        assert_eq!(
+            mutants_crates(yml_shards).unwrap(),
+            names(&["aldis-core", "aldis-link"])
         );
         assert!(mutants_crates("no such line").is_err());
         let toml = "[package]\nname = \"aldis-fuzz\"\n\n[dependencies]\naldis-core = { path = \"x\" }\nlibfuzzer-sys = \"1\"\n\n[[bin]]\nname = \"a_decode\"\npath = \"a.rs\"\n\n[[bin]]\nname = \"b_roundtrip\"\n";
