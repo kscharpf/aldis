@@ -783,11 +783,12 @@ fn a_tc_reassembler_has_no_gap_to_see() {
     // Type-BD frames at once, so a TC `Fdu` has no count and no gap flag. A lost segment shows
     // only as far as the flags show it.
     let mut e = tc_engine();
-    // A lost first segment, or a lost last one, is a sequence violation.
+    // A lost first segment is a sequence violation (a last segment with none in progress).
     assert_eq!(
         tc(&mut e, &[0x81, 3, 4]),
         Ok(vec![Got::Event(SequenceViolation, 1, 1)])
     );
+    // A lost last segment: the next first segment finds the SDU in progress, which it discards.
     tc(&mut e, &[0x41, 1, 2]);
     assert_eq!(
         tc(&mut e, &[0x41, 5]),

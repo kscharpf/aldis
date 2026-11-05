@@ -901,9 +901,21 @@ fn only_the_pvns_of_the_two_packet_standards_are_packets() {
     assert_eq!(tc.status().submitted.get(), 0);
     assert_eq!(us.status().submitted.get(), 0);
     assert_eq!(tc.status().refused.get(), 6);
-    // PVN 0 and 7 are accepted.
+    assert_eq!(us.status().refused.get(), 6);
+    // PVN 0 and 7 are accepted, on TC and on USLP.
     submit_packet(&mut tc, &spp(8, 1)).unwrap();
     submit_packet(&mut tc, &[0xE5, 0x03, 7]).unwrap();
+    for packet in [spp(8, 1), vec![0xE5, 0x03, 7]] {
+        let r = run(
+            &mut us,
+            SegmenterInput::SubmitPacket {
+                map: MapId::<4>::new(1).unwrap(),
+                packet: &packet,
+            },
+        );
+        assert!(r.is_ok(), "{packet:?}");
+    }
+    assert_eq!(us.status().submitted.get(), 2);
 }
 
 fn submit_packet(s: &mut TcSeg, packet: &[u8]) -> Result<(), aldis_core::Error> {
@@ -951,6 +963,19 @@ fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segme
         &mut out,
     )
     .unwrap();
+    let a = s
+        .step(SegmenterInput::NextFdu { handle: 1, qos: SC }, T0, &mut out)
+        .unwrap();
+    assert_eq!(a.len(), 1);
+    let Some(SegmenterOutput::Fdu(f)) = a.get(0) else {
+        panic!("{a:?}")
+    };
+    assert_eq!((f.map, f.framing), (None, Framing::Whole));
+    assert_eq!(f.fdu.slice(&out).unwrap(), &[3; 1017][..]);
+    let a = s
+        .step(SegmenterInput::NextFdu { handle: 2, qos: SC }, T0, &mut out)
+        .unwrap();
+    assert_eq!(a.len(), 0);
     let r = s.step(
         SegmenterInput::SubmitSdu {
             map: MapId::<6>::new(0).unwrap(),

@@ -105,6 +105,6 @@ The decisions of [OI-78](../../../docs/09-open-issues.md) that an input can show
 * The AOS VC Frame Count wrap with the Cycle in use: the mux has no start count (OI-74 (2)), so a scenario would need 2^24 frames; a unit test covers it.
 * The other segmenter decisions of OI-78 are not in this round: a PVN other than 0 and 7 (OI-78 names no error), a TC VC without a Segment Header and its FDU limit, the VCF Count of a QoS for a VC that segments (the segmenter configuration has no count length), the order of a waiting stream TFDZ and the SDUs behind it, and the CLTU packer (no vector file).
 
-OI-79 read these cases against the Blue Books (M5 WP-8b) and pinned them by unit tests (`map_segmenter_engine.rs`, `cltu_packer.rs`); a vector for one needs a new blind-model round (TV-023).
+OI-79 read these cases against the Blue Books (M5 WP-8b) and pinned them by unit tests (`map_segmenter_engine.rs`; the CLTU packer cases were already pinned by the existing tests of `cltu_packer.rs`); a vector for one needs a new blind-model round (TV-023).
 
 Several master channels on one physical channel are deferred by OI-75.
