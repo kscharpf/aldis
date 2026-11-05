@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [thumbv7em-none-eabihf, armv7r-none-eabihf, riscv32imac-unknown-none-elf]
+        target: [thumbv7em-none-eabihf, armv7r-none-eabihf, riscv32imac-unknown-none-elf, riscv64gc-unknown-none-elf]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

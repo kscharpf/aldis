@@ -43,6 +43,7 @@
 | `thumbv7em-none-eabihf` | Cortex-M4/M7 | no features | exerciser + vectors under QEMU |
 | `armv7r-none-eabihf` | Cortex-R | no features | exerciser + vectors under QEMU |
 | `riscv32imac-unknown-none-elf` | RISC-V MCU | no features | exerciser + vectors under QEMU |
+| `riscv64gc-unknown-none-elf` | RISC-V application class (NOEL-V, PolarFire SoC) | no features | exerciser + vectors under QEMU `virt` (RV64) |
 | `sparc-unknown-none-elf` | LEON3/4 (tier 3; `-C target-cpu=leon3`) | no features (tooling nightly, `-Z build-std=core`) | exerciser link check + vectors under QEMU `leon3_generic`; non-gating check `rust-sparc-leon3` ([open issues](09-open-issues.md) OI-08) |
 
 The check `big-endian` runs `cargo test --workspace --all-features` on `s390x-unknown-linux-gnu` under QEMU user mode (`BIG_ENDIAN` in `xtask/src/verify/checks.rs`). `xtask` is a member of the workspace, so its tests run on a big-endian target too.

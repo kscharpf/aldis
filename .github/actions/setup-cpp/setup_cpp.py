@@ -141,6 +141,7 @@ def tools(lock: dict[str, str]) -> dict[str, Tool]:
                 version_cmds=[
                     ["qemu-system-arm", "--version"],
                     ["qemu-system-riscv32", "--version"],
+                    ["qemu-system-riscv64", "--version"],
                     ["qemu-s390x", "--version"],
                 ],
             ),

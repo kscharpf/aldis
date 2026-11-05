@@ -652,6 +652,10 @@ const GATE_ONLY: &[(&str, &str)] = &[
         "not mirrored: only the thumbv7em clippy line runs, so a failure that is specific to this target is found only by the gate",
     ),
     (
+        "no-std-riscv64gc-unknown-none-elf",
+        "not mirrored: only the thumbv7em clippy line runs, so a failure that is specific to this target is found only by the gate",
+    ),
+    (
         "layers",
         "partly: `xtask ci` runs `layers` and `refapp-deps`, not `symbols`",
     ),
@@ -673,6 +677,10 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "exerciser-riscv32imac-unknown-none-elf",
+        "not mirrored: the build, clippy, canary, and QEMU run for this target; the thumbv7em steps check the same code for another target",
+    ),
+    (
+        "exerciser-riscv64gc-unknown-none-elf",
         "not mirrored: the build, clippy, canary, and QEMU run for this target; the thumbv7em steps check the same code for another target",
     ),
     (

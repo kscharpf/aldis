@@ -10,6 +10,7 @@
 //! | `thumbv7em-none-eabihf` | `mps2-an386` (Cortex-M4) | vector table, reset = [`aldis_exerciser_main`](crate::aldis_exerciser_main) | semihosting, `bkpt 0xAB` |
 //! | `armv7r-none-eabihf` | `none` with `-cpu cortex-r5f`; also `mps3-an536` (Cortex-R52, QEMU ≥ 9.0) | `_start`: stack, VFP on | semihosting, `svc 0x123456` (A32) |
 //! | `riscv32imac-unknown-none-elf` | `virt` (RV32) | `_start`: stack, `mtvec` | semihosting, `slli`/`ebreak`/`srai` |
+//! | `riscv64gc-unknown-none-elf` | `virt` (RV64) | the same as RV32 | the same as RV32 |
 //! | `sparc-unknown-none-elf` (`-C target-cpu=leon3`) | `leon3_generic` | `_start`: PSR, WIM, TBR, stack | APBUART; `ta` with traps disabled |
 //!
 //! QEMU loads the ELF and zero-fills memory, so no copy or clear loop is needed.
@@ -262,7 +263,7 @@ mod cortex_r {
     }
 }
 
-/// RV32 on QEMU `virt` (machine mode, `-bios none`): `_start` sets the stack and points `mtvec`
+/// RV32 and RV64 on QEMU `virt` (machine mode, `-bios none`): `_start` sets the stack and points `mtvec`
 /// at a handler that exits with failure.
 #[cfg(riscv)]
 mod riscv {
