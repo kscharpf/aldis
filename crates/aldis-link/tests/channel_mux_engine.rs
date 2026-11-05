@@ -698,7 +698,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
 
 #[test]
 fn an_opportunity_needs_the_whole_frame_and_changes_nothing_without() {
-    // req: LNK-075, LNK-030, API-058
+    // req: LNK-075, LNK-030, API-058, API-054
     let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
     let mut out = [0; F];
     mux.step(MuxInput::Offer(offer(1, &[1; 16], Some(0))), &mut out)
