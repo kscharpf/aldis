@@ -7,7 +7,10 @@
 //! includes anything but `<stdint.h>`, `<stddef.h>`, and `<stdbool.h>` or lacks its
 //! `extern "C"` block. `--write` regenerates them. `cargo xtask header c-smoke <cc> <c++>`
 //! builds the static and shared libraries and compiles, links, and runs a C program with them,
-//! as C99 against the static library and as C++11 against the shared one (CABI-001, CABI-003).
+//! as C99, C11, and C23 against the static library and as C++11 and C++17 against the shared one,
+//! with `-Wall -Wextra -Wpedantic -Werror` (CABI-001, CABI-003, VER-050).
+//! `cargo xtask header c-tidy <clang-tidy>` runs the CERT C checks of clang-tidy over the C code
+//! of `crates/aldis-ffi/tests/c/` and the README example (VER-051).
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -28,6 +31,11 @@ pub const CAPACITIES_RS: &str = "crates/aldis-ffi/src/capacities.rs";
 const SMOKE: &str = "crates/aldis-ffi/tests/c/smoke.c";
 /// Its first `c` block is the usage example that `c-smoke` compiles against the header.
 const README: &str = "crates/aldis-ffi/README.md";
+/// The C standards the header and the smoke program compile as (VER-050); `c2x` is C23 under the
+/// spelling of the compilers before `c23`.
+const C_STANDARDS: [&str; 3] = ["c99", "c11", "c2x"];
+/// The C++ standards likewise (VER-050).
+const CXX_STANDARDS: [&str; 2] = ["c++11", "c++17"];
 /// The only headers `aldis.h` may include (CABI-003).
 const INCLUDES: [&str; 3] = ["<stdint.h>", "<stddef.h>", "<stdbool.h>"];
 
@@ -341,8 +349,8 @@ fn native_static_libs(note: &str) -> Vec<String> {
         .collect()
 }
 
-/// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C23,
-/// and C++11 (CABI-003), through a C program that calls the library. The C23 build takes the
+/// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C11,
+/// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The C23 build takes the
 /// branch of each enumeration that declares its underlying type (c-abi.md §12.3, spike 1); a
 /// compiler that does not define `__STDC_VERSION__` as C23 yet compiles the C99 branch.
 pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
@@ -382,21 +390,26 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let include = root.join("include");
     let smoke = root.join(SMOKE);
-    let warnings = ["-pedantic", "-Wall", "-Wextra", "-Werror"];
-    // C99 against the static library.
-    let c_exe = out_dir.join("smoke-c99");
-    run_cmd(
-        Command::new(cc)
-            .args(["-std=c99"])
-            .args(warnings)
-            .arg("-I")
-            .arg(&include)
-            .arg(&smoke)
-            .arg(lib_dir.join("libaldis_ffi.a"))
-            .args(native_static_libs(&note))
-            .arg("-o")
-            .arg(&c_exe),
-    )?;
+    let warnings = ["-Wpedantic", "-Wall", "-Wextra", "-Werror"];
+    // C99, C11, and C23 (`-std=c2x` for the compilers before the spelling `c23`) against the
+    // static library.
+    let mut exes = Vec::new();
+    for std in C_STANDARDS {
+        let exe = out_dir.join(format!("smoke-{std}"));
+        run_cmd(
+            Command::new(cc)
+                .arg(format!("-std={std}"))
+                .args(warnings)
+                .arg("-I")
+                .arg(&include)
+                .arg(&smoke)
+                .arg(lib_dir.join("libaldis_ffi.a"))
+                .args(native_static_libs(&note))
+                .arg("-o")
+                .arg(&exe),
+        )?;
+        exes.push(exe);
+    }
     // The usage example of the README is C99 that the header accepts: a field it names that the
     // header lacks fails here.
     let example = out_dir.join("readme-example.c");
@@ -415,39 +428,79 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
             .arg(&example),
     )
     .map_err(|e| format!("{README}: the example does not compile against the header:\n{e}"))?;
-    // C23 (`-std=c2x` for the compilers before the spelling `c23`) against the static library.
-    let c23_exe = out_dir.join("smoke-c23");
-    run_cmd(
-        Command::new(cc)
-            .args(["-std=c2x"])
-            .args(warnings)
-            .arg("-I")
-            .arg(&include)
-            .arg(&smoke)
-            .arg(lib_dir.join("libaldis_ffi.a"))
-            .args(native_static_libs(&note))
-            .arg("-o")
-            .arg(&c23_exe),
-    )?;
-    // C++11 against the shared library.
-    let cxx_exe = out_dir.join("smoke-cxx11");
-    run_cmd(
-        Command::new(cxx)
-            .args(["-x", "c++", "-std=c++11"])
-            .args(warnings)
-            .arg("-I")
-            .arg(&include)
-            .arg(&smoke)
-            .args(["-x", "none"])
-            .arg(lib_dir.join(shared))
-            .arg(format!("-Wl,-rpath,{}", lib_dir.display()))
-            .arg("-o")
-            .arg(&cxx_exe),
-    )?;
-    for exe in [&c_exe, &c23_exe, &cxx_exe] {
+    // C++11 and C++17 against the shared library.
+    for std in CXX_STANDARDS {
+        let exe = out_dir.join(format!("smoke-{std}"));
+        run_cmd(
+            Command::new(cxx)
+                .args(["-x", "c++"])
+                .arg(format!("-std={std}"))
+                .args(warnings)
+                .arg("-I")
+                .arg(&include)
+                .arg(&smoke)
+                .args(["-x", "none"])
+                .arg(lib_dir.join(shared))
+                .arg(format!("-Wl,-rpath,{}", lib_dir.display()))
+                .arg("-o")
+                .arg(&exe),
+        )?;
+        exes.push(exe);
+    }
+    for exe in &exes {
         print!("{}", run_cmd(&mut Command::new(exe))?);
     }
-    println!("c-smoke: {cc} (C99 and C23, static) and {cxx} (C++11, shared) passed");
+    println!(
+        "c-smoke: {cc} ({}, static) and {cxx} ({}, shared) passed",
+        C_STANDARDS.join(", "),
+        CXX_STANDARDS.join(", ")
+    );
+    Ok(0)
+}
+
+/// The clang-tidy checks of the CERT C rules (VER-051; OI-22): every `cert-*-c` check.
+const CERT_C_CHECKS: &str = "-*,cert-*-c";
+
+/// `xtask header c-tidy <clang-tidy>`: the CERT C checks of clang-tidy over every `.c` file of
+/// `crates/aldis-ffi/tests/c/` and the C example of the README, each finding an error (VER-051).
+/// A deviation is a `NOLINT` with its reason in the source and a row in
+/// `docs/verification/records/VER-051.md`.
+pub fn c_tidy(tidy: &str) -> Result<usize, String> {
+    let root = repo::root();
+    let dir = root.join(Path::new(SMOKE).parent().unwrap_or(Path::new(".")));
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "c"))
+        .collect();
+    files.sort();
+    let out_dir = root.join("target/header");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let example = out_dir.join("readme-example.c");
+    let readme = repo::read(&root.join(README))?;
+    std::fs::write(
+        &example,
+        example_unit(&readme).map_err(|e| format!("{README}: {e}"))?,
+    )
+    .map_err(|e| e.to_string())?;
+    files.push(example);
+    for file in &files {
+        run_cmd(
+            Command::new(tidy)
+                .arg(format!("-checks={CERT_C_CHECKS}"))
+                .arg("--warnings-as-errors=*")
+                .arg("--quiet")
+                .arg(file)
+                .args(["--", "-std=c99", "-I"])
+                .arg(root.join("include")),
+        )
+        .map_err(|e| format!("{}: CERT C (VER-051):\n{e}", file.display()))?;
+    }
+    println!(
+        "c-tidy: {tidy}: CERT C checks passed on {} files",
+        files.len()
+    );
     Ok(0)
 }
 

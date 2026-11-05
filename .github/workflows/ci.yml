@@ -74,7 +74,7 @@ jobs:
       - run: cargo xtask features
 
   header:
-    name: C header, host libraries, C99 and C++11 (CABI-001..003)
+    name: C header, host libraries, C99/C11/C++11/C++17, CERT C (CABI-001..003, VER-050, VER-051)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,9 +84,14 @@ jobs:
       - name: Install the pinned cbindgen (CABI-002; xtask/src/header.rs)
         run: cargo install --locked cbindgen@0.29.4
       - run: cargo xtask header
-      # The runner's GCC and Clang; the verification image runs the pinned ones (CABI-003).
+      # The runner's GCC; the verification image runs the pinned one (CABI-003, VER-050).
       - run: cargo xtask header c-smoke gcc g++
+      # The pinned LLVM: Clang for the smoke build and clang-tidy for CERT C (VER-050, VER-051).
+      - uses: ./.github/actions/setup-cpp
+        with:
+          tools: llvm
       - run: cargo xtask header c-smoke clang clang++
+      - run: cargo xtask header c-tidy clang-tidy
 
   no-std:
     name: no_std ${{ matrix.target }} (GEN-005)
