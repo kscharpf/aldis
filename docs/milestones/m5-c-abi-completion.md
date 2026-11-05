@@ -3,7 +3,7 @@
 **Goal:** the last milestone of track R for v1. A new Layer 1 crate for CADUs and the TM pseudo-randomizer (ASM attach and search, 131.0 §9–10; OI-12), with its C ABI; a C test harness run under AddressSanitizer and UBSan, and the C ABI under Miri (VER-026); header compile checks across C and C++ standards and compilers (VER-050); the header-only C++20 wrapper `aldis.hpp` (CABI-072); and every v1 requirement of track R traced. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M4](m4-link-engines.md) (`v0.5.0-m4`) · **Release:** `v0.6.0-m5`; v1.0 follows when M5 and A6 have exited (roadmap §5)
 
-**Status: plan drafted; decisions D1–D8 (§2) await the maintainer.** Entry gate: M4 (roadmap §1), met by `v0.5.0-m4`.
+**Status: plan accepted; decisions D1–D8 (§2) accepted (maintainer, 2026-11-05).** Entry gate: M4 (roadmap §1), met by `v0.5.0-m4`.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -23,7 +23,7 @@
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
 
 History:
-- 2026-11-05: plan drafted following the M4 exit; OI-12 resolved into M5 by the maintainer the same day.
+- 2026-11-05: plan drafted following the M4 exit; OI-12 resolved into M5 by the maintainer the same day; D1–D8 accepted.
 
 ## 1. Starting point
 
@@ -40,14 +40,14 @@ History:
 
 | # | Decision | Choice (recommended) | Status |
 |---|---|---|---|
-| D1 | Trace scope | Add `--scope m5` from §4 to `cargo xtask ci`, the `spec` check, and `ci.yml`, without `--strict`, in this plan's PR; `--strict` at the M5 exit (as M4 D1) | Proposed |
-| D2 | Sync crate | `aldis-sync`, Layer 1, depending on `aldis-core` only; requirement area **SYNC** in a new `docs/standards/tm-sync.md`; field-code block **250–299** reserved for it ([03](../03-api-model.md) §9.1) | Proposed |
-| D3 | Sync scope | ASM attach and the pseudo-randomizer as stateless codec functions over a caller's buffer; ASM search as a sans-I/O engine over octet chunks that finds the ASM at any bit offset with a configured number of tolerated bit errors, its states a closed enum (RS-021). The values (ASM patterns, the randomizer polynomial and seed) come from 131.0, read in WP-1, never from memory. No frame-sync flywheel or lock thresholds beyond what WP-1 finds in 131.0; anything else becomes an OI | Proposed |
-| D4 | Where Miri and the sanitizers run | Two checks of `cargo xtask verify`, `ffi-miri` and `c-sanitizers`, in the gate when `aldis-ffi` or `include/` change (VER-056 inputs); if Miri over the `aldis-ffi` tests exceeds about 10 min, it runs nightly-only as `kani` does (VER-059) and the plan records that | Proposed |
-| D5 | `aldis.hpp` | Hand-written (not generated) at `include/aldis/aldis.hpp`, C++20, no exceptions, on GCC and Clang; its tests run the shared vectors through it in `crates/aldis-ffi/tests/cpp/`; compiled and run by the `header` check | Proposed |
-| D6 | ABI version at v1.0 | `ALDIS_ABI_VERSION_MAJOR` stays 0 through `v0.6.0-m5` (incompatible changes bump the minor, CABI-033); it becomes 1.0.0 with the v1.0 release, after which CABI-060 and GEN-080 apply in full | Proposed |
-| D7 | Withdrawn rows in the trace | `cargo xtask trace` leaves rows that start `Withdrawn:` out of the count and the untraced list (`spec.rs` already recognises them); a small `xtask` PR of WP-0 | Proposed |
-| D8 | Process freeze | None (as M4 D5): a process fix is its own pull request | Proposed |
+| D1 | Trace scope | Add `--scope m5` from §4 to `cargo xtask ci`, the `spec` check, and `ci.yml`, without `--strict`, in this plan's PR; `--strict` at the M5 exit (as M4 D1) | Accepted (maintainer, 2026-11-05) |
+| D2 | Sync crate | `aldis-sync`, Layer 1, depending on `aldis-core` only; requirement area **SYNC** in a new `docs/standards/tm-sync.md`; field-code block **250–299** reserved for it ([03](../03-api-model.md) §9.1) | Accepted (maintainer, 2026-11-05) |
+| D3 | Sync scope | ASM attach and the pseudo-randomizer as stateless codec functions over a caller's buffer; ASM search as a sans-I/O engine over octet chunks that finds the ASM at any bit offset with a configured number of tolerated bit errors, its states a closed enum (RS-021). The values (ASM patterns, the randomizer polynomial and seed) come from 131.0, read in WP-1, never from memory. No frame-sync flywheel or lock thresholds beyond what WP-1 finds in 131.0; anything else becomes an OI | Accepted (maintainer, 2026-11-05) |
+| D4 | Where Miri and the sanitizers run | Two checks of `cargo xtask verify`, `ffi-miri` and `c-sanitizers`, in the gate when `aldis-ffi` or `include/` change (VER-056 inputs); if Miri over the `aldis-ffi` tests exceeds about 10 min, it runs nightly-only as `kani` does (VER-059) and the plan records that | Accepted (maintainer, 2026-11-05) |
+| D5 | `aldis.hpp` | Hand-written (not generated) at `include/aldis/aldis.hpp`, C++20, no exceptions, on GCC and Clang; its tests run the shared vectors through it in `crates/aldis-ffi/tests/cpp/`; compiled and run by the `header` check | Accepted (maintainer, 2026-11-05) |
+| D6 | ABI version at v1.0 | `ALDIS_ABI_VERSION_MAJOR` stays 0 through `v0.6.0-m5` (incompatible changes bump the minor, CABI-033); it becomes 1.0.0 with the v1.0 release, after which CABI-060 and GEN-080 apply in full | Accepted (maintainer, 2026-11-05) |
+| D7 | Withdrawn rows in the trace | `cargo xtask trace` leaves rows that start `Withdrawn:` out of the count and the untraced list (`spec.rs` already recognises them); a small `xtask` PR of WP-0 | Accepted (maintainer, 2026-11-05) |
+| D8 | Process freeze | None (as M4 D5): a process fix is its own pull request | Accepted (maintainer, 2026-11-05) |
 
 ## 3. Work packages
 
