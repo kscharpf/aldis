@@ -1,12 +1,14 @@
-//! The COP-1 engines are plain data that can move between threads and have no interior
-//! mutability (GEN-033, RS-013). A `Cell` or `RefCell` makes a type not `Sync`; a raw pointer
-//! makes it neither `Send` nor `Sync`. The crate forbids `unsafe` (GEN-070), so no manual
-//! implementation can override the compiler.
+//! The COP-1 engines can move between threads and can be shared by reference (GEN-033, RS-013). `Send`
+//! and `Sync` hold only for a type without a `Cell`, a `RefCell`, or a raw pointer, so the
+//! assertions below fail to compile for any of them; they do not exclude a `Mutex` or an atomic
+//! field, which are `Sync`. The crate forbids `unsafe` (GEN-070), so no manual `Send` or `Sync`
+//! implementation can override the compiler. No check keeps a `Mutex` or an atomic out of the
+//! library crates; `no_std` has no `Mutex`, and GEN-030 to GEN-032 forbid global state.
 
 use aldis_cop1::{Farm1, Fop1, Fop1Store};
 
-/// `T` can move to another thread, can be shared by reference (so it holds no `Cell`), and owns
-/// its data.
+/// `T` can move to another thread, can be shared by reference (so it holds no `Cell` or
+/// `RefCell`), and owns its data.
 const fn plain_engine<T: Send + Sync + Clone + 'static>() {}
 
 #[test]

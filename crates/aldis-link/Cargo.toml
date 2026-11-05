@@ -128,7 +128,7 @@ required-features = ["spp", "epp", "tc", "uslp"]
 name = "segmenter_fop1"
 required-features = ["spp", "epp", "tc", "uslp"]
 
-# GEN-033, RS-013: every engine is `Send` and `Sync` by construction.
+# GEN-033, RS-013: every engine is `Send`, `Sync`, and `Clone` by construction.
 [[test]]
 name = "engine_contract"
 required-features = ["spp", "epp", "tm", "tc", "aos", "uslp"]

@@ -11,7 +11,7 @@ use aldis_core::oid::OidGenerator;
 
 #[test]
 fn an_oid_frame_with_data_that_is_not_the_sequence_decodes() {
-    // req: CMN-024, AOS-016
+    // req: CMN-024
     let pc = AosPhysicalChannelConfig::new(40, false, 0, false, AosEdition::Issue5).unwrap();
     let scid = SpacecraftId::new(0x42).unwrap();
     let vc =

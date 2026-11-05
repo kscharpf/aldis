@@ -3,11 +3,6 @@
 //! engine, since one handle type serves them all (CABI-032). The values here are the ones
 //! released in `include/aldis/aldis.h`; a change of one fails this test.
 
-#![expect(
-    clippy::as_conversions,
-    reason = "the point of the test is the numeric value of each `repr(u32)` variant"
-)]
-
 use aldis_ffi::farm1::aldis_farm1_action::*;
 use aldis_ffi::fop1::aldis_fop1_action::*;
 use aldis_ffi::link_cltu::aldis_cltu_packer_action::*;
@@ -21,6 +16,10 @@ use aldis_ffi::link_rx::aldis_frame_receiver_action::*;
 use aldis_ffi::link_rx::aldis_packet_extractor_action::*;
 
 #[test]
+#[expect(
+    clippy::as_conversions,
+    reason = "the point of the test is the numeric value of each `repr(u32)` variant"
+)]
 fn the_action_codes_are_stable() {
     // req: API-080
     assert_eq!(

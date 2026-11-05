@@ -1,7 +1,9 @@
-//! Engines are plain data that can move between threads and have no interior mutability
-//! (GEN-033, RS-013). A type with a `Cell` or `RefCell` is not `Sync`, and one with a raw pointer
-//! is neither `Send` nor `Sync`; the assertions below fail to compile for either. The crate
-//! forbids `unsafe` (GEN-070), so no manual `Send` or `Sync` implementation can override them.
+//! Engines can move between threads and can be shared by reference (GEN-033, RS-013). `Send`
+//! and `Sync` hold only for a type without a `Cell`, a `RefCell`, or a raw pointer, so the
+//! assertions below fail to compile for any of them; they do not exclude a `Mutex` or an atomic
+//! field, which are `Sync`. The crate forbids `unsafe` (GEN-070), so no manual `Send` or `Sync`
+//! implementation can override the compiler. No check keeps a `Mutex` or an atomic out of the
+//! library crates; `no_std` has no `Mutex`, and GEN-030 to GEN-032 forbid global state.
 
 use aldis_link::access::AccessGenerator;
 use aldis_link::bitstream::BitstreamGenerator;
@@ -14,8 +16,8 @@ use aldis_link::reassembler::MapReassembler;
 use aldis_link::receiver::FrameReceiver;
 use aldis_link::segmenter::MapSegmenter;
 
-/// `T` can move to another thread, can be shared by reference (so it holds no `Cell`), and owns
-/// its data.
+/// `T` can move to another thread, can be shared by reference (so it holds no `Cell` or
+/// `RefCell`), and owns its data.
 const fn plain_engine<T: Send + Sync + Clone + 'static>() {}
 
 #[test]
