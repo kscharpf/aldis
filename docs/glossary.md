@@ -330,7 +330,7 @@ Areas CPP and APP belong to tracks C and A; the others are shared ([08 §6](08-r
 | <a id="ccsds-133-0-b-2"></a>133.0-B-2 | Space Packet Protocol | Yes (v1) | [Space Packet](standards/space-packet.md) |
 | <a id="ccsds-133-1-b-3"></a>133.1-B-3 | Encapsulation Packet Protocol | Yes (v1) | [Encapsulation Packet](standards/encapsulation-packet.md) |
 | <a id="ccsds-301-0-b-4"></a>301.0-B-4 | Time Code Formats | Yes (v1) | [Time codes](standards/time-codes.md) |
-| <a id="ccsds-131-0-b-6"></a>131.0-B-6 | TM Synchronization and Channel Coding | Yes (ref) | Out of v1 scope; roadmap §7 |
+| <a id="ccsds-131-0-b-6"></a>131.0-B-6 | TM Synchronization and Channel Coding | Yes (ref) | §9 (ASM/CSM, CADU) and §10 (pseudo-randomizer) in v1, M5 (OI-12); the rest out of v1, roadmap §7 |
 | <a id="ccsds-231-0-b-4"></a>231.0-B-4 | TC Synchronization and Channel Coding | Yes (ref) | Out of v1 scope; roadmap §7; OI-35 item 8 |
 | <a id="ccsds-355-0-b-2"></a>355.0-B-2 | Space Data Link Security Protocol | Yes (ref) | SDLS hooks: API-070…075 |
 | <a id="ccsds-355-1-b-1"></a>355.1-B-1 | Space Data Link Security Protocol — Extended Procedures (as cited by 132.0 ref. [11] and 732.1 ref. [16]) | No | Defines the FSR; SDLS is roadmap v2 |
