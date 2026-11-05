@@ -2,9 +2,59 @@
 
 Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-epp -p aldis-spp -p aldis-aos -p aldis-tm -p aldis-tc -p aldis-uslp -p aldis-cop1 -p aldis-link --all-features`) (cargo-mutants 27.1.0), triaged per VER-025. The nightly job `mutants` publishes the full report. Update this file when a new survivor appears.
 
+## 2026-11-05, Nightly run 41949461901 (M4 WP-9 exit)
+
+The full report of the `mutants` job ([run 41949461901](https://github.com/kscharpf/aldis/actions/runs/41949461901)), the first with every `aldis-link` mutant tested (cargo-mutants 27.1.0, `PROPTEST_CASES=32`; `aldis-link` in 4 shards, `aldis-time` and `aldis-aos` in 2). It ran on branch `ci/mutants-shards` at d3372d2f, which differed from `main` 87c74c02 only in `.github/workflows/nightly.yml` and `xtask/`: the mutated crates are those of `main` at that commit. The line numbers of the report are those of that tree; `aldis-link/src` has since gained comment-only changes (M4 WP-9), so the `path:line` below are the lines of this branch, and the mutants are identified by their operator and function. This closes the pending note of the [WP-8 entry](#2026-11-04-branch-m4wp-8-gates-m4-wp-8-aldis-link) (its 737 timeouts were load; the complete run has 10).
+
+| Crate | Total | Caught | Missed | Unviable | Timeouts | Status |
+|---|---|---|---|---|---|---|
+| `aldis-core` | 638 | 345 | 8 | 285 | 0 | 6 equivalent as triaged M0 and 2026-10-31 (`bits.rs`, `oid.rs`, `Actions::get`); `OutRange::start` → 1 was a test gap, fixed |
+| `aldis-time` | 654 | 511 | 15 | 128 | 0 | All 15 equivalent, as in the 2026-10-27 entry |
+| `aldis-epp` | 222 | 164 | 3 | 55 | 0 | All 3 equivalent, as in the 2026-10-27 entry |
+| `aldis-spp` | 231 | 148 | 6 | 77 | 0 | 4 equivalent (`header.rs`); `ReassemblerState::resume` `<` → `<=` and `is_assembling` → `false` were test gaps, fixed |
+| `aldis-aos` | 480 | 293 | 10 | 177 | 0 | All 10 equivalent, as in the 2026-10-27 entry |
+| `aldis-tm` | 355 | 187 | 15 | 153 | 0 | All 15 equivalent, as in the 2026-10-27 entry |
+| `aldis-tc` | 406 | 220 | 11 | 175 | 0 | All 11 equivalent, as in the 2026-10-27 entry |
+| `aldis-uslp` | 589 | 337 | 11 | 241 | 0 | 10 equivalent, as in the 2026-10-27 entry; `Intake::next_in` `<` → `<=` (`stream.rs`) was a test gap, fixed |
+| `aldis-cop1` | 223 | 156 | 4 | 63 | 0 | All 4 equivalent, as in the 2026-10-31 entry (`farm1.rs` now at 540 and 541) |
+| `aldis-link` | 1 524 | 1 135 | 56 | 323 | 10 | 31 test-gap mutants fixed; the other 35 are equivalent or hangs, below |
+
+Test gaps fixed, re-run with `cargo mutants -p <crate> --all-features -F <the sites>` (the 66 `aldis-link` mutants; `aldis-core` `engine.rs:100`, `aldis-spp` `segment.rs:434` and `:456`, `aldis-uslp` `stream.rs:370`: all caught):
+
+| Mutant | Test |
+|---|---|
+| `aldis-core` `OutRange::start` → 1 | `engine.rs` unit test checks `start()` of a range that starts at 5 |
+| `aldis-spp` `ReassemblerState::resume` `<` → `<=`, `is_assembling` → `false` | `segment.rs` unit test resumes with a buffer of exactly the filled length and checks `is_assembling()` after the first segment |
+| `aldis-uslp` `Intake::next_in` `<` → `<=` | `stream.rs` unit test discards a 7-octet frame of version 0 |
+| `aldis-link` accessors `ChannelMuxConfig::fecf`, `AosChannel::fhec`, `::cycle_in_use`, `UslpVc::cop` (mux and receiver), `UslpVc::served`, `AosVc::ocf`, `TmVc::ocf`, `FrameReceiverConfig::raw_frames`, `TcSegmenterParams::segment_header`, `::fecf` → a constant | `channel_mux_engine.rs`, `frame_receiver.rs`, `map_segmenter_engine.rs`: each accessor is checked on the value the other tests did not use |
+| `aldis-link` frame-length bounds: `mux.rs` `check_capacity`, `opportunity`; `Aos::fits`, `Uslp::fits` (`receiver/*.rs`); `generator.rs` `checked`, `check_capacity`; `extractor.rs` `data_field`; `reassembler.rs` `apply` (two); `MapEntry::with_segmentation` | One test per bound accepts the exact limit: `a_frame_of_the_capacity_is_accepted`, `a_frame_too_short_for_its_parts_is_refused_by_the_configuration`, the exact output area of an opportunity, a generator of exactly `zone + Q`, a first segment and a continuation of exactly the maximum, a SDU of 65 535 |
+| `aldis-link` `Uslp::check_pointer` → `Ok(1)`; `receive` `count_len > 0` → `>=` | `the_protocols_without_cop_have_no_vcf_count_to_take` (the pointer 0); `a_uslp_frame_without_a_count_leaves_the_expected_count_alone` |
+| `aldis-link` `tm_impl` `write_header` `<<` → `>>` (SCID), `uslp_impl` `write_header` `<<` → `>>` (Source-or-Destination) | `a_tm_frame_carries_all_ten_bits_of_the_scid`, `a_uslp_frame_names_the_destination_when_the_channel_is_one` |
+| `aldis-link` `FrameContext::put_bits` delete the arms for 5 and 6 valid bits | `the_valid_bits_of_a_bpdu_are_delivered_and_the_idle_bits_dropped` checks the idle bits of the last octet are zero for every count |
+| `aldis-link` `PacketExtractor::place` guard `fill == 0` → `false` | `no_packet_starts_in_a_field_that_follows_a_packet_boundary` |
+| `aldis-link` `MapSegmenter::next_deadline`, `deadline_of` → `Some(Default::default())`, `step` (Timeout) `>=` → `<` | `uslp_trip` in `map_roundtrip.rs` counted its steps after the `Timeout` that `continue`s, so a deadline that never cleared looped without end (a timeout); the count is now at the top of the loop and the round trip fails with `no end` |
+
+The mutants that remain, `aldis-link`:
+
+| Mutant | Verdict | Action |
+|---|---|---|
+| `cltu.rs:413` `add_frame` `frames < max_frames` → `<=` | Equivalent: as in the WP-8 entry, an open unit with `max_frames` frames is closed when its last frame is added | None possible |
+| `common.rs:75` `Occupancy::set` `>` → `>=` | Equivalent: the branch assigns the value it compares equal to (WP-8 entry) | None possible |
+| `extractor.rs:603` `run` `self.head.total > 0` → `<`, `==`, `>=` | Equivalent: `want` is only how many octets one pass takes. With `total` 0 (`> 0` false) it is 1 either way (`0.saturating_sub(fill).max(1)`); with `total` > 0 the packet needs `total - fill` more octets, and taking one at a time reaches `fill >= total` (`look`, line 669) at the same octet, so the same packets, errors, and `Run` result come out, only slower | None possible |
+| `mux.rs` `write_header` `\|` → `^`, 17: TM 1508, 1509 (two), 1513 (three); AOS 1705, 1706, 1711 (two); USLP 1925 to 1928 and 1933 to 1935 | Equivalent: each joins fields masked or bounded to disjoint bits (TM: SCID, VCID, OCF Flag, flags, Segment Length Identifier, pointer; AOS: version `<< 6` and `scid8 >> 2`, `spare << 4` and the cycle `& 0x0F`; USLP: TFVN `<< 28`, SCID `<< 12`, `<< 11`, VCID `<< 5`, MAP `<< 1`, and the flags `<< 7`, `<< 6`, `<< 3`, `& 0b111`), so OR and XOR agree | None possible |
+| `policy.rs:104` `Selector::select` `p > b` → `>=` | Equivalent: it matters only for two offered VCs of equal priority, which `ChannelMuxConfig::checked` refuses under fixed priority (`mux.rs:573` to `:579`, `vc_priority`), and `select` is called only by the mux (`mux.rs:1165`) | None possible |
+| `reassembler.rs:652` `check` guard `map.service == Service::OctetStream` → `true` | Equivalent: `max_sdu_len()` is `None` only for an octet stream (`reassembler.rs:224` to `:229`), so the guard is true wherever it is reached and the arm after it is unreachable | None possible |
+| `receiver/uslp.rs:197` and `:219` `\|` → `^` | Equivalent: the VCID joins `(t2 & 0x07) << 3` and `t3 >> 5`, disjoint bits; the count fold joins `count << 8` and one octet, whose low eight bits are zero | None possible |
+| `receiver/uslp.rs:199` `bypass` `!= 0` → `== 0` | Equivalent: `bypass` only chooses which of the two counters of a VC `count_vc` advances (`receiver.rs:682` to `:686`); inverted, the same two classes of frames count on the same two counters, and nothing else reads either (`expect_sequence` is reset only by the AOS Cycle Use Flag, `receiver.rs:708`) | None possible |
+| `segmenter.rs:953` `next_fdu` `queue_len == 0` → `!=` | Equivalent: `eligible` returns `None` only when `first_sdu` does (`segmenter.rs:927` to `:939`: while sending it returns `first_sdu`, else it returns the first entry that is not an octet stream, as `first_sdu` does), so `first_sdu().is_none()` is true wherever the condition is reached, and the `Err` arm is unreachable | None possible |
+| `generator.rs` `pull_from_queue`: `:717` `<` → `<=` and `&&` → `\|\|`, `:719` `>` → `==` and `>=`; `move_queue_to_zone` → `()` (`:749`) | Timeout, a hang: each leaves a pass that moves no octet (`room` 0, or the `tail > 0` branch taken with `tail` 0, or nothing moved), so `fill < zone_len && queue_len > 0` stays true for ever. The `// bound:` comment of the loop states the progress these remove | Acceptable: a sans-I/O engine that loops without progress cannot report it; the run's timeout detects it (VER-025) |
+| `segmenter.rs:509` `Entry::end` → 0, → 1 | Timeout, a hang: `eligible` and `first_sdu` step with `at = e.end()` (`segmenter.rs:933` to `:938`, `:795` to `:800`), which then never moves past the first entry | Acceptable, as above |
+
+The ten timeouts of the report are therefore three that the suite now fails by itself (the `Timeout` input mutants of the segmenter, which looped in the round-trip test, not in the engine) and seven genuine hangs of the engine, caught by the run's timeout. The 35 survivors left (28 missed, 7 timeouts) are equivalent or hangs; `aldis-link` has no test gap open.
+
 ## 2026-11-04, branch `m4/wp-8-gates` (M4 WP-8, `aldis-link`)
 
-`cargo mutants -p aldis-link --all-features -j 4` (cargo-mutants 27.1.0, local run on a loaded machine, 20 s test timeout): 1 517 mutants: 459 caught, 317 unviable, 4 missed, 737 timeouts. The timeouts are mostly the machine's load (the build took 100 s or more and the suite hit the 20 s limit), not hung engines; they were re-run with `--iterate --timeout 90` and `PROPTEST_CASES=32` and their result is **not triaged** in WP-8: the maintainer decided (2026-11-04) that WP-8 closes with the timeouts untriaged and that they are triaged at WP-9 from the nightly `mutants` report, which is the reference (the nightly job runs the crate with the same flags as the other crates). **Pending the nightly (M4 WP-9):** the triage of the 737 timeouts is not done; the coordinator adds it here from the first nightly `mutants` report of `aldis-link` on `main` after WP-9 merges. The four survivors:
+`cargo mutants -p aldis-link --all-features -j 4` (cargo-mutants 27.1.0, local run on a loaded machine, 20 s test timeout): 1 517 mutants: 459 caught, 317 unviable, 4 missed, 737 timeouts. The timeouts were mostly the machine's load (the build took 100 s or more and the suite hit the 20 s limit), not hung engines, and their result was not triaged in WP-8: the maintainer decided (2026-11-04) that WP-8 closes with them untriaged and that they are triaged at WP-9 from the nightly `mutants` report. **Triaged in the [2026-11-05 entry](#2026-11-05-nightly-run-41949461901-m4-wp-9-exit)** from the complete nightly report: 10 timeouts and 56 missed, none of them load. The four survivors:
 
 | Mutant | Verdict | Action |
 |---|---|---|
