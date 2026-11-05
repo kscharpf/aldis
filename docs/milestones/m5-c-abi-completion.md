@@ -23,7 +23,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 
 History:
 - 2026-11-05: plan drafted following the M4 exit; OI-12 resolved into M5 by the maintainer the same day; D1–D8 accepted.
-- 2026-11-05: WP-7 narrowed to the engine handles; WP-7a cut (maintainer).
+- 2026-11-05: WP-7 narrowed to the engine handles; WP-7a cut (maintainer); step calls of `aldis.hpp` return a `[[nodiscard]] enum class aldis::Status`, no `expected`-like type (maintainer).
 
 ## 1. Starting point
 
@@ -44,7 +44,7 @@ History:
 | D2 | Sync crate | `aldis-sync`, Layer 1, depending on `aldis-core` only; requirement area **SYNC** in a new `docs/standards/tm-sync.md`; field-code block **250–299** reserved for it ([03](../03-api-model.md) §9.1) | Accepted (maintainer, 2026-11-05) |
 | D3 | Sync scope | ASM attach and the pseudo-randomizer as stateless codec functions over a caller's buffer; ASM search as a sans-I/O engine over octet chunks that finds the ASM at any bit offset with a configured number of tolerated bit errors, its states a closed enum (RS-021). The values (ASM patterns, the randomizer polynomial and seed) come from 131.0, read in WP-1, never from memory. No frame-sync flywheel or lock thresholds beyond what WP-1 finds in 131.0; anything else becomes an OI | Accepted (maintainer, 2026-11-05) |
 | D4 | Where Miri and the sanitizers run | Two checks of `cargo xtask verify`, `ffi-miri` and `c-sanitizers`, in the gate when `aldis-ffi` or `include/` change (VER-056 inputs); if Miri over the `aldis-ffi` tests exceeds about 10 min, it runs nightly-only as `kani` does (VER-059) and the plan records that | Accepted (maintainer, 2026-11-05) |
-| D5 | `aldis.hpp` | Wraps the engine handles only (codecs are called through the C header); hand-written (not generated) at `include/aldis/aldis.hpp`, C++20, no exceptions, on GCC and Clang; its tests run the shared vectors through it in `crates/aldis-ffi/tests/cpp/`; compiled and run by the `header` check | Accepted (maintainer, 2026-11-05) |
+| D5 | `aldis.hpp` | Wraps the engine handles only (codecs are called through the C header); hand-written (not generated) at `include/aldis/aldis.hpp`, C++20, no exceptions, on GCC and Clang; the engine step calls take `std::span` buffers and return a `[[nodiscard]] enum class aldis::Status` that mirrors the C status codes, with no `expected`-like type; its tests run the shared vectors through it in `crates/aldis-ffi/tests/cpp/`; compiled and run by the `header` check | Accepted (maintainer, 2026-11-05) |
 | D6 | ABI version at v1.0 | `ALDIS_ABI_VERSION_MAJOR` stays 0 through `v0.6.0-m5` (incompatible changes bump the minor, CABI-033); it becomes 1.0.0 with the v1.0 release, after which CABI-060 and GEN-080 apply in full | Accepted (maintainer, 2026-11-05) |
 | D7 | Withdrawn rows in the trace | `cargo xtask trace` leaves rows that start `Withdrawn:` out of the count and the untraced list (`spec.rs` already recognises them); a small `xtask` PR of WP-0 | Accepted (maintainer, 2026-11-05) |
 | D8 | Process freeze | None (as M4 D5): a process fix is its own pull request | Accepted (maintainer, 2026-11-05) |
@@ -95,7 +95,7 @@ The sync chain and the C/C++ chain are independent and run in parallel. If WP-4 
 
 ### WP-7 `aldis.hpp`: engine handles (L) — CABI-072, CABI-030, CABI-031
 - RAII handle types for the engine handles, with storage in the typed storage structs (CABI-031); capacities as template parameters with `static_assert` against `ALDIS_*_MAX_*` (CABI-030, OI-20); no exceptions (D5).
-- The step calls take `std::span` views of the input and output buffers and return the C status code; there is no `expected`-like result type, since the C status code and error out-parameter already carry the result.
+- The step calls take `std::span` views of the input and output buffers and return a typed `enum class aldis::Status` mirroring the C status codes, marked `[[nodiscard]]` (D5); there is no `expected`-like result type.
 - No codec wrapper: C++ callers use the codec functions of the C header, which compiles as C++11 and C++17 (VER-050). Wrapping them would only restate the C API.
 - The engine-scenario vectors (COP-1, link) pass via `aldis.hpp`.
 
