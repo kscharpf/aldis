@@ -48,7 +48,8 @@ if (rc == ALDIS_ERR_INCOMPLETE) {
 cargo install --locked cbindgen@0.29.4
 cargo xtask header --write            # regenerate after changing src/ or capacities.toml
 cargo xtask header                    # check: what the verify check `header` runs
-cargo xtask header c-smoke cc c++     # libraries built; the header as C99 and C++11 (CABI-001, CABI-003)
+cargo xtask header c-smoke cc c++     # libraries built; the header as C99, C11, C23, C++11, C++17 (CABI-001, CABI-003, VER-050)
+cargo xtask header c-tidy clang-tidy  # CERT C checks of the C code (VER-051)
 ```
 
 On a merge conflict in the header, merge the sources and regenerate ([M2 plan](../../docs/milestones/m2-frame-codecs.md) §3).
