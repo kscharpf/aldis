@@ -67,6 +67,7 @@ The sync chain and the C/C++ chain are independent and run in parallel. If WP-4 
 
 ### WP-1 Spec readings: sync (M) — SYNC area, API-082
 - `docs/standards/tm-sync.md`: the SYNC requirements, each citing its clause of 131.0 §9 (ASM, CADU) and §10 (pseudo-randomizer), and the frame protocols they apply to (TM, AOS, fixed-length USLP).
+- The term the SYNC requirements use for the marker: 131.0 §9 names it the CSM and treats ASM as the same thing; WP-1 picks one and the glossary records the other.
 - The search engine's action bound and output-area bound (API-057, API-062); field codes from block 250–299.
 - Checklist: "A spec-readings pull request before a codec". No code.
 
@@ -111,7 +112,7 @@ The sync chain and the C/C++ chain are independent and run in parallel. If WP-4 
 
 ### WP-10 Exit (S) — VER-020, RS-015
 - `cargo xtask trace --scope m5 --strict` replaces the non-strict run; the full trace has no untraced track-R requirement of v1.
-- Rustdoc citations (RS-015); roadmap, README, glossary (PN row), and open issues.
+- Rustdoc citations (RS-015); roadmap, README, glossary (PN and 131.0-B-6 rows), and open issues.
 - The releases `v0.6.0-m5` and, with A6, v1.0 are the maintainer's.
 
 ## 4. Exit criteria

@@ -144,9 +144,8 @@ commands:
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
                                trace --scope m3 --strict, trace --scope m4 --strict,
-                               trace --scope m5; a step that
-                               cannot run
-                               counts as a problem, and the others still run
+                               trace --scope m5; a step that cannot run counts as a
+                               problem, and the others still run
 
 ";
 
