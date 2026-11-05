@@ -759,6 +759,11 @@ pub const ALDIS_FIELD_SYNC_PROTOCOL: u16 = 251;
 /// Code 252, a parameter (SYNC-014; API-082, CABI-021).
 pub const ALDIS_FIELD_CHUNK_LEN: u16 = 252;
 
+/// Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits.
+///
+/// Code 253, a parameter (131.0 §10.4.1–§10.4.2; SYNC-020; API-082, CABI-021).
+pub const ALDIS_FIELD_RANDOMIZER_SEQUENCE: u16 = 253;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -911,4 +916,5 @@ const _: () = {
     assert!(ALDIS_FIELD_ASM_ERRORS == field::ASM_ERRORS.code().get());
     assert!(ALDIS_FIELD_SYNC_PROTOCOL == field::SYNC_PROTOCOL.code().get());
     assert!(ALDIS_FIELD_CHUNK_LEN == field::CHUNK_LEN.code().get());
+    assert!(ALDIS_FIELD_RANDOMIZER_SEQUENCE == field::RANDOMIZER_SEQUENCE.code().get());
 };

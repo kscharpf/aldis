@@ -391,3 +391,4 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 250 | `asm_errors` | parameter | Number of ASM bit errors the search tolerates | sync | M5 plan D3; SYNC-007, SYNC-016 |
 | 251 | `sync_protocol` | parameter | Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length | sync | 131.0 §11.1, §11.3; SYNC-002 |
 | 252 | `chunk_len` | parameter | Length of an input chunk of the ASM search, in octets | sync | SYNC-014 |
+| 253 | `randomizer_sequence` | parameter | Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits | sync | 131.0 §10.4.1–§10.4.2; SYNC-020 |

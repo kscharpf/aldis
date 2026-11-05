@@ -1286,6 +1286,13 @@
 #define ALDIS_FIELD_CHUNK_LEN 252
 
 /**
+ * Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits.
+ *
+ * Code 253, a parameter (131.0 §10.4.1–§10.4.2; SYNC-020; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_RANDOMIZER_SEQUENCE 253
+
+/**
  * The most actions one `aldis_fop1_step` returns (COP-006): `fop1_max_actions` of the
  * `Sent_Queue` capacity, computed from Table 5-1.
  *

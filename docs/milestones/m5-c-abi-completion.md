@@ -121,7 +121,7 @@ Milestone 5 is complete when every item below is green on `main`. The results co
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Sync crate | SYNC-001…019, RS-021 | |
+| Sync crate | SYNC-001…020, RS-021 | |
 | Sync C ABI | CABI-030…032, CABI-040, API-082 | |
 | Sanitizers & Miri | VER-026, GEN-071 | |
 | Header & C code | VER-050, VER-051, VER-055 | |

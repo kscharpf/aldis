@@ -761,8 +761,13 @@ pub const SYNC_PROTOCOL: FieldId = FieldId::catalogued::<251>("sync_protocol");
 /// Code 252, a parameter (SYNC-014; API-082).
 pub const CHUNK_LEN: FieldId = FieldId::catalogued::<252>("chunk_len");
 
+/// Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits.
+///
+/// Code 253, a parameter (131.0 §10.4.1–§10.4.2; SYNC-020; API-082).
+pub const RANDOMIZER_SEQUENCE: FieldId = FieldId::catalogued::<253>("randomizer_sequence");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 144] = [
+pub const ALL: [FieldId; 145] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -907,4 +912,5 @@ pub const ALL: [FieldId; 144] = [
     ASM_ERRORS,
     SYNC_PROTOCOL,
     CHUNK_LEN,
+    RANDOMIZER_SEQUENCE,
 ];
