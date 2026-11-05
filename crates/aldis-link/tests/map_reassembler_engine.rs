@@ -675,9 +675,9 @@ fn a_gap_on_a_tfdf_of_only_idle_data_still_discards() {
     // req: LNK-070, LNK-051, LNK-064; OI-79 (3)
     // 732.1 §4.1.4.2.2.1.6: the portions of an SDU are in frames of contiguous VCF Counts, and a
     // gap flagged on the field says a frame is missing, whatever this field carries; §4.3.2.2.5
-    // note 1 only says a TFDF of idle data is discarded. The Blue Book does not combine the two
-    // (OI-79, left to the maintainer): the engine applies the gap rule of OI-78 to every field,
-    // as the `PacketExtractor` does for LNK-061 (the gap wins over LNK-064).
+    // note 1 only says a TFDF of idle data is discarded. The Blue Book does not combine the two:
+    // the maintainer decided (OI-79, 2026-11-05) that the gap rule of OI-78 applies to every
+    // field, as for the `PacketExtractor` and LNK-061 (the gap wins over LNK-064).
     let mut e = uslp_engine();
     uslp(&mut e, 1, 0, false, &variable(0b100, &[1, 2, 3]));
     let idle = [0x3F, 0, 3, 0, 0, 0, 0];
@@ -704,8 +704,8 @@ fn a_gap_on_a_tfdf_of_only_idle_data_still_discards() {
 #[test]
 fn a_gap_names_the_first_map_in_the_order_of_configuration() {
     // req: LNK-070, LNK-051; OI-79 (3)
-    // The Blue Books do not name a MAP for the event (OI-79, left to the maintainer): the engine
-    // takes the first MAP of the configuration that had an SDU in progress, not the first MAP
+    // The Blue Books do not name a MAP for the event; the maintainer decided (OI-79, 2026-11-05,
+    // LNK-070 in 04) that the engine takes the first MAP of the configuration that had an SDU in progress, not the first MAP
     // by Identifier or by the order in which the SDUs began.
     let maps = [
         ReassemblerMap::<Uslp>::sdu(vc(1), um(2), S).unwrap(),

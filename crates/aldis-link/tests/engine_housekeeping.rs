@@ -931,8 +931,9 @@ fn the_valid_pvn_set_holds_only_the_versions_the_engines_can_delimit() {
     // 133.0 §4.1.3.2.2 and 133.1 §4.1.2.2.2 give the PVNs `000` and `111` packets whose length
     // field the engines read; the Blue Books do not give a length rule to another PVN, which
     // SANA may authorize later (OI-06), so such a packet cannot be delimited and the set that
-    // names one is a construction error. Which other PVN a later release serves is the
-    // maintainer's call (OI-79).
+    // names one is a construction error. The
+    // maintainer decided (OI-79, 2026-11-05) that v1 keeps {0, 7} until SANA assigns another
+    // PVN with a delimitable format (OI-06).
     let invalid = Err((ErrorKind::InvalidConfig, Some(field::VALID_PVNS)));
     for v in (1..=6_u8).chain([8, 255]) {
         assert_eq!(

@@ -103,7 +103,7 @@ The decisions of [OI-78](../../../docs/09-open-issues.md) that an input can show
 
 * Construction errors (`InvalidConfig`, LNK-078; the API-071 limits; a TM frame above 4 095 octets; an Issue 4 AOS SCID above 255; an MC and a VC that both have an OCF or a Secondary Header; a USLP VC with COP-1 and a sequence-controlled VCF Count Length of 0; a frame with no data field): a scenario file has no input for a configuration that the engine refuses. They are tested in `channel_mux_engine.rs`, `generators_engine.rs`, `map_segmenter_engine.rs`, and `cltu_packer.rs`.
 * The AOS VC Frame Count wrap with the Cycle in use: the mux has no start count (OI-74 (2)), so a scenario would need 2^24 frames; a unit test covers it.
-* The other segmenter decisions of OI-78 are not in this round: a PVN other than 0 and 7 (OI-78 names no error), a TC VC without a Segment Header and its FDU limit, the VCF Count of a QoS for a VC that segments (the segmenter configuration has no count length), the order of a waiting stream TFDZ and the SDUs behind it, and the CLTU packer (no vector file).
+* The other segmenter decisions of OI-78 are not in this round: a PVN other than 0 and 7 (OI-78 names no error), a TC VC without a Segment Header and its FDU limit, the VCF Count of a QoS for a VC that segments (the segmenter configuration has no count length), and the order of a waiting stream TFDZ and the SDUs behind it. The CLTU packer has no vector file by decision (OI-79).
 
 OI-79 read these cases against the Blue Books (M5 WP-8b) and pinned them by unit tests (`map_segmenter_engine.rs`; the CLTU packer cases were already pinned by the existing tests of `cltu_packer.rs`); a vector for one needs a new blind-model round (TV-023).
 

@@ -718,6 +718,8 @@ fn a_released_timeout_is_harmless() {
 #[test]
 fn a_stream_that_waits_does_not_hold_the_sdus_behind_it_and_does_not_interrupt_one() {
     // req: LNK-041, LNK-012, LNK-042 (732.1 §4.1.4.2.2.1.6)
+    // 732.1 §4.2.5.3 leaves the order to the project; the maintainer accepted this one (OI-79,
+    // 2026-11-05; LNK-041 in 04).
     let mut s = UslpSeg::new(uslp_config()).unwrap();
     let mut out = [0_u8; 64];
     let at = |us| Instant::from_micros(us);
