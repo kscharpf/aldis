@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 10
+#define ALDIS_ABI_VERSION_MINOR 11
 
 /**
  * ABI patch version (CABI-060).
@@ -5705,6 +5705,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `CltuPacker`.
+ *
+ * Requirements: LNK-044, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -5879,6 +5881,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `PacketGenerator`.
+ *
+ * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -6037,6 +6041,8 @@ typedef struct {
 
 /**
  * The actions of one input of an `AccessGenerator`.
+ *
+ * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -6166,6 +6172,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `BitstreamGenerator`.
+ *
+ * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -6389,6 +6397,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `MapSegmenter`.
+ *
+ * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -6568,6 +6578,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `MapReassembler`.
+ *
+ * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -6910,6 +6922,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `ChannelMux`.
+ *
+ * Requirements: LNK-030, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -7074,6 +7088,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `PacketExtractor`.
+ *
+ * Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
@@ -7338,6 +7354,8 @@ typedef struct {
 
 /**
  * The actions of one input of a `FrameReceiver`.
+ *
+ * Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**

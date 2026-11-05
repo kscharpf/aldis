@@ -660,6 +660,8 @@ cargo xtask vectors schema --check
 cargo xtask fields
 # The error catalogue of docs/03-api-model.md §9 and the C ABI status codes generated from it (CABI-020).
 cargo xtask status
+# The header layouts of docs/reference/header-layouts.md, probed from the codec encoders (VER-072).
+cargo xtask layouts
 # The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
 cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
@@ -685,8 +687,8 @@ cargo xtask trace --scope m1 --strict
 cargo xtask trace --scope m2 --strict
 # M3 is closed: every in-scope requirement must keep an artefact (VER-020, m3 plan D1).
 cargo xtask trace --scope m3 --strict
-# M4 is in progress: measured from the start, strict at the exit (VER-020, m4 plan D1).
-cargo xtask trace --scope m4
+# M4 is closed: every in-scope requirement must keep an artefact (VER-020, m4 plan D1).
+cargo xtask trace --scope m4 --strict
 ";
 
 const DENY: &str = "\

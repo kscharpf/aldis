@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layouts of the header in its [1-octet](../reference/header-layouts.md#encapsulation-packet-header-1-octet), [2-octet](../reference/header-layouts.md#encapsulation-packet-header-2-octets), [4-octet](../reference/header-layouts.md#encapsulation-packet-header-4-octets), and [8-octet](../reference/header-layouts.md#encapsulation-packet-header-8-octets) forms, generated from the encoder: [header layouts](../reference/header-layouts.md).
+
 Octet 0 holds the Packet Version Number `111` (bits 0–2), the Encapsulation Protocol ID (EPI, bits 3–5), and the Length of Length (bits 6–7).
 EPI `000` is the Idle Packet, `110` means "use the Protocol ID Extension", and `111` means mission-specific. The other values are assigned by SANA.
 **Unlike the Space Packet, Packet Length is the *total* packet length including the header** (§4.1.2.8.2).

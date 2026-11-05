@@ -16,6 +16,7 @@ mod fuzz;
 mod header;
 mod kani;
 mod layers;
+mod layouts;
 mod links;
 mod loops;
 mod md;
@@ -57,6 +58,9 @@ commands:
                                or regenerate both (API-082)
   status [--write]             check the error catalogue (03-api-model.md §9) and that the
                                aldis-ffi status codes match it, or regenerate them (CABI-020)
+  layouts [--write]            check that docs/reference/header-layouts.md matches the bit
+                               layouts probed from the codec encoders, or regenerate it
+                               (VER-072)
   header [--write]             check that include/aldis/aldis.h and the aldis-ffi capacities
                                match a fresh generation with the pinned cbindgen, or
                                regenerate them (CABI-002, CABI-003, CABI-030)
@@ -139,7 +143,7 @@ commands:
                                vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
-                               trace --scope m3 --strict, trace --scope m4; a step that
+                               trace --scope m3 --strict, trace --scope m4 --strict; a step that
                                cannot run
                                counts as a problem, and the others still run
 
@@ -169,6 +173,7 @@ pub(crate) const CI: &[Step] = &[
     ("vectors schema --check", || vectors::schema(true)),
     ("fields", || fields::run(false)),
     ("status", || status::run(false)),
+    ("layouts", || layouts::run(false)),
     ("header", || header::run(false)),
     ("sana", || sana::run(&[])),
     // M0 and M1 are closed: every in-scope requirement must keep an artefact.
@@ -178,8 +183,8 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m2 --strict", || trace::run(Some("m2"), true)),
     // M3 is closed: every in-scope requirement must keep an artefact (D1).
     ("trace --scope m3 --strict", || trace::run(Some("m3"), true)),
-    // M4 is in progress: measured from the start, strict at the exit (D1).
-    ("trace --scope m4", || trace::run(Some("m4"), false)),
+    // M4 is closed: every in-scope requirement must keep an artefact (D1).
+    ("trace --scope m4 --strict", || trace::run(Some("m4"), true)),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
@@ -202,6 +207,7 @@ fn run_steps(steps: &[Step]) -> usize {
 fn fix() -> Result<usize, String> {
     Ok(fields::run(true)?
         + status::run(true)?
+        + layouts::run(true)?
         + vectors::schema(false)?
         + vectors::generated(true)?
         + sana::run(&["--write"])?
@@ -227,6 +233,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["fields"] => fields::run(false),
         ["fields", "--write"] => fields::run(true),
+        ["layouts"] => layouts::run(false),
+        ["layouts", "--write"] => layouts::run(true),
         ["status"] => status::run(false),
         ["status", "--write"] => status::run(true),
         ["header"] => header::run(false),

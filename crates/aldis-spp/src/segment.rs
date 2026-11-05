@@ -732,10 +732,14 @@ mod tests {
             let mut r = state.resume(&mut buf).unwrap();
             outcomes.push(r.push(&h, data).unwrap());
             state = r.suspend();
+            if outcomes.len() == 1 {
+                assert!(state.is_assembling());
+            }
         }
         assert_eq!(outcomes[2], outcome(None, Status::Complete(4)));
         assert_eq!((state.sdu_len(), state.is_assembling()), (4, false));
         assert_eq!(state.resume(&mut buf).unwrap().sdu(), &[1, 2, 3, 4]);
+        assert!(state.resume(&mut [0_u8; 4]).is_ok());
         let e = state.resume(&mut [0_u8; 3]).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),

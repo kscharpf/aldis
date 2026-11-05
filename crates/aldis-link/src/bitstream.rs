@@ -6,7 +6,7 @@
 //! a `B_PDU` that is not full is completed with the idle pattern (732.0 §4.1.4.3.3.2–4,
 //! §4.1.4.3.4, §4.2.3.2). It holds no output queue of fields (API-059).
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`BITSTREAM_GENERATOR_MAX_ACTIONS`]). `Release` writes the data field of the VC to the
 //! output area and fails with `BufferTooSmall` when the area is shorter. The other inputs write
 //! nothing.
@@ -72,12 +72,16 @@ impl<P: BitstreamProtocol> BitstreamGeneratorConfig<P> {
     }
 
     /// The VC the generator serves.
+    ///
+    /// Requirements: LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The octets of the `B_PDU`, header included.
+    ///
+    /// Requirements: LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn field_len(&self) -> usize {
         self.field_len
@@ -203,6 +207,8 @@ pub struct BitstreamGenerator<P: BitstreamProtocol, const Q: usize> {
 }
 
 /// Everything of a [`BitstreamGenerator`] but its queue (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitstreamGeneratorHead<P: BitstreamProtocol> {
     config: BitstreamGeneratorConfig<P>,
@@ -212,6 +218,8 @@ pub struct BitstreamGeneratorHead<P: BitstreamProtocol> {
 
 /// The bit queue of a [`BitstreamGenerator`]: `Q` octets, valid when all zero, which is the empty
 /// state (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct BitstreamGeneratorBuffers<const Q: usize> {
@@ -220,11 +228,15 @@ pub struct BitstreamGeneratorBuffers<const Q: usize> {
 
 impl<const Q: usize> BitstreamGeneratorBuffers<Q> {
     /// An empty queue.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
 impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     /// A generator with an empty queue.
+    ///
+    /// Requirements: LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn new(config: BitstreamGeneratorConfig<P>) -> BitstreamGenerator<P, Q> {
         BitstreamGenerator {
@@ -234,12 +246,18 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
     /// the configuration (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn new_head(config: BitstreamGeneratorConfig<P>) -> BitstreamGeneratorHead<P> {
         BitstreamGeneratorHead {
@@ -258,6 +276,8 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn config(&self) -> &BitstreamGeneratorConfig<P> {
         &self.head.config

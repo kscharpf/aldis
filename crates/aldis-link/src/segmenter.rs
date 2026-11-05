@@ -28,7 +28,7 @@
 //! start the next TFDZ when the full one is handed out. A stream TFDZ never interrupts the SDU in
 //! progress (732.1 §4.1.4.2.2.1.6).
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`MAP_SEGMENTER_MAX_ACTIONS`]): `NextFdu` one `Fdu`, `Reconfigure` one `Discarded`, the other
 //! inputs none. `NextFdu` writes at most `max_fdu_len` octets (`L`, the FDU or TFDF with its
 //! header) to the output area and fails with `BufferTooSmall` when the area is shorter, whether
@@ -192,30 +192,40 @@ impl<P: SegmenterProtocol> MapEntry<P> {
     }
 
     /// The MAP Identifier.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn id(&self) -> P::Map {
         self.id
     }
 
     /// What the MAP carries.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn service(&self) -> MapService {
         self.service
     }
 
     /// The maximum `MAP_SDU` length if the MAP permits segmentation, else `None`.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn segmentation(&self) -> Option<usize> {
         self.max_sdu_len
     }
 
     /// Whether blocking of packets is permitted.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn blocking(&self) -> bool {
         self.blocking
     }
 
     /// The parameters of the MAP that only this protocol has.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn params(&self) -> &P::MapParams {
         &self.params
@@ -310,24 +320,32 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
     }
 
     /// The VC the segmenter serves.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The parameters of the VC that only this protocol has.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn channel(&self) -> &P::Channel {
         &self.channel
     }
 
     /// The longest FDU or TFDF, header included.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn max_fdu_len(&self) -> usize {
         self.max_fdu_len
     }
 
     /// The longest user data of one FDU or TFDF: `max_fdu_len` without the header.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub fn zone_len(&self) -> usize {
         self.max_fdu_len
@@ -335,6 +353,8 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
     }
 
     /// The MAP `id`, or `None` if it is not configured.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub fn map(&self, id: u8) -> Option<&MapEntry<P>> {
         self.maps.iter().flatten().find(|m| raw(m.id) == id)
@@ -348,6 +368,8 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
     }
 
     /// The MAPs, in the order of configuration.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub fn maps(&self) -> impl Iterator<Item = &MapEntry<P>> {
         self.maps.iter().flatten()
     }
@@ -536,6 +558,8 @@ pub struct MapSegmenter<P: SegmenterProtocol, const M: usize, const Q: usize> {
 }
 
 /// Everything of a [`MapSegmenter`] but its queue (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MapSegmenterHead<P: SegmenterProtocol, const M: usize> {
     config: MapSegmenterConfig<P, M>,
@@ -548,6 +572,8 @@ pub struct MapSegmenterHead<P: SegmenterProtocol, const M: usize> {
 
 /// The queue of a [`MapSegmenter`]: `Q` octets, valid when all zero, which is the empty state
 /// (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct MapSegmenterBuffers<const Q: usize> {
@@ -556,6 +582,8 @@ pub struct MapSegmenterBuffers<const Q: usize> {
 
 impl<const Q: usize> MapSegmenterBuffers<Q> {
     /// An empty queue.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
@@ -565,6 +593,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// # Errors
     /// `CapacityExceeded` (`max_sdu_len`, `max_fdu_len`) if the queue cannot hold the longest SDU
     /// of a MAP, or a TFDZ of an octet stream, with the four octets of its entry.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub fn new(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenter<P, M, Q>> {
         Ok(MapSegmenter {
             head: Self::new_head(config)?,
@@ -573,8 +603,12 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a segmenter with an empty queue: the part of [`Self::new`] that is built from
@@ -582,6 +616,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub fn new_head(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenterHead<P, M>> {
         MapSegmenter::<P, M, Q>::check_capacity(&config)?;
         Ok(MapSegmenterHead {
@@ -613,6 +649,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn config(&self) -> &MapSegmenterConfig<P, M> {
         &self.head.config
@@ -1197,12 +1235,16 @@ mod tc_impl {
         }
 
         /// Whether every FDU has a Segment Header.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn segment_header(&self) -> bool {
             self.segment_header
         }
 
         /// Whether the Physical Channel has a FECF.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn fecf(&self) -> bool {
             self.fecf
@@ -1297,6 +1339,8 @@ mod uslp_impl {
     impl UslpSegmenterParams {
         /// A VC whose frames carry a VCF Count of `vcf_len_sc` octets on the
         /// sequence-controlled service and `vcf_len_exp` on the expedited service.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn new(vcf_len_sc: VcfCountLen, vcf_len_exp: VcfCountLen) -> UslpSegmenterParams {
             UslpSegmenterParams {
@@ -1306,12 +1350,16 @@ mod uslp_impl {
         }
 
         /// The VCF Count Length of the sequence-controlled service.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn vcf_len_sc(&self) -> VcfCountLen {
             self.vcf_len_sc
         }
 
         /// The VCF Count Length of the expedited service.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn vcf_len_exp(&self) -> VcfCountLen {
             self.vcf_len_exp
