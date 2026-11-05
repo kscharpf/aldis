@@ -26,7 +26,8 @@ Aldis is named after the Aldis lamp, the signal lamp that ships use to send Mors
 | M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
 | M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
 | M3 COP-1 (`v0.4.0-m3`) | Released: `aldis-cop1` (FOP-1 and FARM-1 as step functions over their state tables), their C ABI handles, the closed-loop tests, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m3-cop1.md)) |
-| M4–M6 | Not started: the Layer 2–3 crates (link engines, framework) are skeletons |
+| M4–M5 | Not started: the Layer 2 crate (link engines) is a skeleton; M5 is the C ABI completion |
+| M6 (v1.1) | Not started: the framework (`aldis-framework`) is a skeleton and is not part of v1 |
 | A0 reference application scenario | In progress |
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
@@ -79,7 +80,7 @@ code/
 │   ├── aldis-uslp        L1  732.1 USLP frames, truncated frames, TFDF, delimiting, validation
 │   ├── aldis-link        L2  sans-I/O generators, mux, receiver, extraction, segmentation
 │   ├── aldis-cop1        L2  232.1 FOP-1 / FARM-1
-│   ├── aldis-framework   L3  optional transport/clock traits and stacks
+│   ├── aldis-framework   L3  optional transport/clock traits and stacks (v1.1, skeleton)
 │   ├── aldis             facade (feature-gated re-exports)
 │   ├── aldis-ffi         C ABI (staticlib/cdylib, cbindgen, build-time capacities)
 │   └── aldis-testkit     tooling: test-vector model, loader, runner (dev-only)

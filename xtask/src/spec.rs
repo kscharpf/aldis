@@ -20,6 +20,11 @@ pub struct Requirement {
     pub verif: String,
 }
 
+/// Requirement areas deferred to a later release, as `(area, release)` (00-introduction.md §5.3).
+/// Their requirements stay in the tables and in `trace --scope`, but the unscoped `trace`
+/// (the v1 trace) leaves them out and reports how many it left out.
+pub const DEFERRED_AREAS: [(&str, &str); 1] = [("FW", "v1.1")];
+
 /// The parsed specification.
 pub struct Spec {
     /// Area code → document paths relative to `docs/` (from 00-introduction.md §5.2).

@@ -35,7 +35,7 @@ The reference application shows an integrator how the libraries fit together end
 | A3 | COP-1: FOP-1 on the ground, FARM-1 on board | Uplink faults; the link-level trace is frozen from here on |
 | A4 | Engines replace the loops; AOS and USLP variants | Nothing on the TM/TC link |
 | A5 | C++ flight node over `aldis.hpp` (Rust-backed and native) | Nothing |
-| A6 | `aldis-framework` stacks; flight node bare-metal under QEMU | Nothing |
+| A6 | Flight node bare-metal under QEMU, with the application's own run loop (the `aldis-framework` stacks are v1.1) | Nothing |
 
 Not covered: synchronization and channel coding, SDLS, CFDP, and time correlation (00 §2.1).
 
@@ -460,7 +460,7 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | Location | `refapp/golden/<case>.jsonl`, owned by track A |
 | Versioning | A change to a released golden trace bumps its `trace_version` and records the reason in `refapp/golden/CHANGES.md`, as TV-021 does for vectors |
 | Vectors | Golden traces are whole-system regression baselines, **not** conformance vectors: a frame or packet from a golden trace becomes a vector only with `hand-derived` or `cross-checked` provenance (TV-020; OI-23) |
-| Framework trace | Each node's step inputs (`now`, delivered units, slot) can be extracted from a golden trace, so that M6 can define the FW-013 trace to match and A6 can replay both nodes (OI-25) |
+| Framework trace | Each node's step inputs (`now`, delivered units, slot) can be extracted from a golden trace, so that M6 (v1.1) can define the FW-013 trace to match and replay both nodes from the golden traces (OI-25) |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|

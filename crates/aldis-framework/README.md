@@ -1,5 +1,7 @@
 # aldis-framework
 
+**Planned for v1.1 (milestone M6); not part of v1.** The crate is a skeleton, and its FW requirements ([05](../../docs/05-framework.md)) are outside the v1 trace and the v1.0 gate.
+
 Optional framework: transport and clock traits, and protocol stacks with a run loop that drives the engines of `aldis-link` and `aldis-cop1`. The application supplies the I/O; the framework sends the engines' output, arms their timers, and dispatches their events.
 
 ## Where it sits
