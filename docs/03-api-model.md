@@ -314,7 +314,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 65 | `ocf_type_flag` | field | Type Flag of the Operational Control Field, bit 0: Type-1 or Type-2 Report | core | 132.0 §4.1.5.4; 732.0 §4.1.5.4; 732.1 §4.1.5.2.1 |
 | 66 | `ocf_report_use` | field | Bit 1 of a Type-2 Report in the Operational Control Field: project-specific or SDLS Frame Security Report | core | 132.0 §4.1.5.5; 732.0 §4.1.5.5; 732.1 §4.1.5.2.2 |
 | 67 | `frame_version` | field | Transfer Frame Version Number | tm, tc, uslp, aos | 132.0 §4.1.2.2.2; 232.0 §4.1.2.2; 732.0 §4.1.2.2.2; 732.1 §4.1.2.2.2 |
-| 68 | `frame_len` | field | Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length frames | tm, tc, uslp, aos | 132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1; 732.0 §4.1.1.2, §5.2 Table 5-1 |
+| 68 | `frame_len` | field | Length of a Transfer Frame in octets: the Frame Length field of a TC or USLP frame, or the Transfer Frame Length managed parameter of a TM, AOS, or USLP physical channel with fixed-length frames | tm, tc, uslp, aos, sync | 132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1; 732.0 §4.1.1.2, §5.2 Table 5-1; 131.0 §11.2.1, §11.3, §11.4 |
 | 69 | `ocf_flag` | field | Operational Control Field Flag | tm, uslp | 132.0 §4.1.2.4; 732.1 §4.1.2.10 |
 | 70 | `fsh_flag` | field | Transfer Frame Secondary Header Flag | tm | 132.0 §4.1.2.7.2 |
 | 71 | `sync_flag` | field | Synchronization Flag of the TM Transfer Frame Data Field Status | tm | 132.0 §4.1.2.7.3 |
@@ -388,3 +388,7 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 217 | `sdu_len` | field | Length of a VCA SDU a generator is given, which a TM or AOS data field fixes | link | 132.0 §3.2.3, §4.1.4.3; 732.0 §3.2.4, §4.1.4.1.3; LNK-020 |
 | 218 | `field_len` | field | Length of a data field offered to the multiplexer, which the VC's data field length fixes | link | 132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076 |
 | 219 | `raw_frames` | parameter | Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert Zone | link | 732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079 |
+| 250 | `asm_errors` | parameter | Number of ASM bit errors the search tolerates | sync | M5 plan D3; SYNC-007, SYNC-016 |
+| 251 | `sync_protocol` | parameter | Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length | sync | 131.0 §11.1, §11.3; SYNC-002 |
+| 252 | `chunk_len` | parameter | Length of an input chunk of the ASM search, in octets | sync | SYNC-014 |
+| 253 | `randomizer_sequence` | parameter | Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits | sync | 131.0 §10.4.1–§10.4.2; SYNC-020 |
