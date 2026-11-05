@@ -50,7 +50,7 @@
 //! (M2 plan D4). `aldis-core` has a C ABI for part of its modules only (M2 plan D14): the runner
 //! runs the `core/` files of those modules (`FFI_FILES`), and `core/` is not required whole.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -130,8 +130,66 @@ fn matrix_crates(workflow: &str, job: &str) -> Option<BTreeSet<String>> {
     if block.is_empty() { None } else { Some(block) }
 }
 
-/// The crates of the nightly `mutants` job: from its `matrix.crate` list, or `-p` on the `cargo mutants` line.
+/// The crates of the `include:` entries (`- { crate: <name>, shard: <k>, shards: <n> }`) of the
+/// workflow job `job`. A crate split into `n` shards needs one entry for each of `0..n`, all with
+/// the same `n`; otherwise some of its mutants would never run.
+fn include_crates(workflow: &str, job: &str) -> Result<BTreeSet<String>, String> {
+    let mut shards: BTreeMap<String, (Option<u32>, BTreeSet<u32>)> = BTreeMap::new();
+    let entries = workflow
+        .lines()
+        .skip_while(|l| l.trim_end() != format!("  {job}:"))
+        .skip(1)
+        .take_while(|l| l.is_empty() || l.starts_with("   "))
+        .filter_map(|l| l.trim().strip_prefix("- {")?.strip_suffix('}'));
+    for entry in entries {
+        let field = |key: &str| {
+            entry
+                .split(',')
+                .filter_map(|kv| kv.split_once(':'))
+                .find(|(k, _)| k.trim() == key)
+                .map(|(_, v)| v.trim().to_owned())
+        };
+        let Some(name) = field("crate") else { continue };
+        let num = |key: &str| match field(key) {
+            None => Ok(None),
+            Some(v) => v
+                .parse::<u32>()
+                .map(Some)
+                .map_err(|_| format!("job `{job}`: {name}: `{key}: {v}` is not a number")),
+        };
+        let (shard, count) = (num("shard")?.unwrap_or(0), num("shards")?.unwrap_or(1));
+        let slot = shards
+            .entry(name.clone())
+            .or_insert((Some(count), BTreeSet::new()));
+        if slot.0 != Some(count) {
+            slot.0 = None;
+        }
+        if !slot.1.insert(shard) {
+            return Err(format!("job `{job}`: {name}: shard {shard} appears twice"));
+        }
+    }
+    for (name, (count, seen)) in &shards {
+        let Some(n) = count else {
+            return Err(format!(
+                "job `{job}`: {name}: its entries disagree on `shards`"
+            ));
+        };
+        if *seen != (0..*n).collect() {
+            return Err(format!(
+                "job `{job}`: {name}: shards {seen:?} are not 0..{n}"
+            ));
+        }
+    }
+    Ok(shards.into_keys().collect())
+}
+
+/// The crates of the nightly `mutants` job: from its `include:` entries, its `matrix.crate` list,
+/// or `-p` on the `cargo mutants` line.
 fn mutants_crates(workflow: &str) -> Result<BTreeSet<String>, String> {
+    let included = include_crates(workflow, "mutants")?;
+    if !included.is_empty() {
+        return Ok(included);
+    }
     if let Some(crates) = matrix_crates(workflow, "mutants") {
         return Ok(crates);
     }
@@ -1165,6 +1223,20 @@ mod tests {
             mutants_crates(yml_matrix).unwrap(),
             names(&["aldis-core", "aldis-aos"])
         );
+        let yml_shards = "jobs:\n  mutants:\n    strategy:\n      matrix:\n        include:\n          - { crate: aldis-core, shard: 0, shards: 1 }\n          - { crate: aldis-link, shard: 0, shards: 2 }\n          - { crate: aldis-link, shard: 1, shards: 2 }\n  other:\n    strategy:\n      matrix:\n        include:\n          - { crate: aldis-tm }\n";
+        assert_eq!(
+            mutants_crates(yml_shards).unwrap(),
+            names(&["aldis-core", "aldis-link"])
+        );
+        for bad in [
+            "          - { crate: aldis-link, shard: 0, shards: 2 }\n",
+            "          - { crate: aldis-link, shard: 0, shards: 2 }\n          - { crate: aldis-link, shard: 1, shards: 3 }\n",
+            "          - { crate: aldis-link, shard: 0, shards: 1 }\n          - { crate: aldis-link, shard: 0, shards: 1 }\n",
+        ] {
+            let yml =
+                format!("jobs:\n  mutants:\n    strategy:\n      matrix:\n        include:\n{bad}");
+            assert!(mutants_crates(&yml).is_err(), "{bad}");
+        }
         assert!(mutants_crates("no such line").is_err());
         let toml = "[package]\nname = \"aldis-fuzz\"\n\n[dependencies]\naldis-core = { path = \"x\" }\nlibfuzzer-sys = \"1\"\n\n[[bin]]\nname = \"a_decode\"\npath = \"a.rs\"\n\n[[bin]]\nname = \"b_roundtrip\"\n";
         assert_eq!(bin_targets(toml), names(&["a_decode", "b_roundtrip"]));
