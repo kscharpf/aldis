@@ -2,6 +2,8 @@
 
 This profile binds the language-neutral specification to the **native C++ implementation**. The Rust crates remain the reference implementation and the recommended choice. The native C++ library exists for legacy flight software that cannot easily take a Rust toolchain. It exposes the same C ABI (CABI-070) and the same C++ wrapper API (CABI-072) as the Rust-backed library, so an application can switch between them without source changes.
 
+**Release: Phase 3.** Track C was retired from v1 ([roadmap](../08-roadmap.md) §2). The CPP requirements keep their IDs and rows, but they do not count toward v1 (`DEFERRED_AREAS`, [00](../00-introduction.md) §5.3; maintainer, 2026-11-05).
+
 **Terms and acronyms:** see the [glossary](../glossary.md).
 
 **Status:** Withdrawn (2026-10-27, `chore/retire-track-c`). Track C retired from v1 and deferred to roadmap Phase 3. Native C++ codebase archived at git tag `c0-archive`. All 34 `CPP-*` requirements below are withdrawn.

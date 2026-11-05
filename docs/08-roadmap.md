@@ -4,13 +4,13 @@ v1 is built in two active tracks against one specification (Track C, native C++,
 
 | Track | Purpose | Milestones | Directories it owns |
 |---|---|---|---|
-| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ wrapper | M0–M6 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
+| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ wrapper | M0–M5 for v1, M6 in v1.1 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
 | **A — Reference application** | An end-to-end flight↔ground application that uses only the public APIs, grown one milestone at a time. It gives API feedback before v1 freezes and is the integrators' starting point | A0–A6 (§3) | `refapp/` |
 | **C — Native C++ (Phase 3)** | Retired from v1 and deferred to roadmap Phase 3 (archived at tag `c0-archive`) | C0–C5 (§2) | — |
 
 §4 shows how the tracks overlap, §5 defines the releases, and §6 the rules that let separate contributors or agents work on the tracks at the same time.
 
-## 1. Track R — Rust reference (M0–M6)
+## 1. Track R — Rust reference (M0–M5 for v1, M6 in v1.1)
 
 Every milestone defines the **C ABI for what it adds**: a codec milestone adds its codecs' functions to `aldis.h`, and an engine milestone adds its engines' handles.
 
@@ -22,9 +22,9 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests; protocol states as closed enums whose transition functions are generated from, or checked against, the state tables, and the engines' lifecycles as typestates (RS-021); a decision on hardening the engines' long-lived state against single-event upsets beyond GEN-015 ([hardware assumptions](hardware-assumptions.md) §4); FOP-1/FARM-1 handles in the C ABI, with the capacities configuration (CABI-030) | M2 | One vector per table cell; two-person table review recorded. **Released** as `v0.4.0-m3` (2026-10-31, [plan §4](milestones/m3-cop1.md)) |
 | **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer, each with its C ABI handle ([plan](milestones/m4-link-engines.md)) | M3 | LNK requirements traced; property tests for FHP placement and reassembly. **Complete** (2026-11-04, [plan §4](milestones/m4-link-engines.md)); the release `v0.5.0-m4` is the maintainer's |
 | **M5 C ABI completion** | CADUs and the TM randomizer (OI-12): a new Layer 1 crate for ASM attach and search and the TM pseudo-randomizer (131.0 §9–10), with its C ABI; C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` (CABI-072) | M4 | All CABI requirements traced; vectors pass via the C ABI and via `aldis.hpp` |
-| **M6 Framework** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay (the FW-013 trace format extractable from, or sharing the record encoding of, the reference application's golden traces, OI-25) | M5 | FW requirements traced; loopback stack tested end to end (the reference application, A6, is the full demo) |
+| **M6 Framework (v1.1)** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay (the FW-013 trace format extractable from, or sharing the record encoding of, the reference application's golden traces, OI-25) | M5 | FW requirements traced; loopback stack tested end to end. The first milestone of v1.1: the FW requirements are outside the v1 trace and the v1.0 gate (`DEFERRED_AREAS` in `xtask/src/spec.rs`, [05](05-framework.md)) |
 
-Layer 3 (`aldis-framework`) is Rust-only in v1.
+Layer 3 (`aldis-framework`) is not part of v1: its crate stays in the workspace as a skeleton until M6, and it is Rust-only.
 
 ## 2. Track C — Native C++ (Retired from v1, deferred to Phase 3)
 
@@ -42,7 +42,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
 | **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp`, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
-| **A6 Framework and target** | The application moves onto `aldis-framework` stacks and trace/replay; the flight side runs bare-metal under QEMU; footprint, stack, and timing figures published | A5; M6 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
+| **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay goes with M6 to v1.1 | A5 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
 | **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
 ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one Rust-side milestone of track A and the C ABI it needs:
@@ -67,15 +67,15 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 | 3 | M3 | A2 |
 | 4 | M4 | A3 |
 | 5 | M5 | A4 |
-| 6 | M6 | A5 |
-| 7 | v1.0 release | A6 |
+| 6 | v1.0 release (M5 exited) | A5 |
+| 7 | | A6 |
 
 ## 5. Releases
 
 | Release | Contents | Gate |
 |---|---|---|
 | `v0.N.0-mN` | Rust crates after milestone MN (as today) | MN exit |
-| **v1.0** | Rust crates, C ABI, `aldis.hpp`; docs, trace matrix, coverage waivers, stack-usage tables, changelog | M6 and A6 exited; all R-track requirements verified |
+| **v1.0** | Rust crates, C ABI, `aldis.hpp`; docs, trace matrix, coverage waivers, stack-usage tables, changelog | M5 and A6 exited; all v1 R-track requirements verified (the FW requirements are v1.1) |
 
 A milestones do not cut releases. Their exit is recorded in their milestone plans.
 
@@ -99,6 +99,7 @@ These rules let separate contributors, or separate agents, each own one track.
 | Release | Standards | Rationale |
 |---|---|---|
 | v1.1 | Minimal TC sync/coding: CLTU (BCH) build/parse and the TC randomizer (231.0 §3, §5–6); the TM part (ASM, randomizer) is in M5 (OI-12), and the UTC/TAI leap-second table trait | Lets v1 frames reach real radios without an external modem library |
+| v1.1 | The framework `aldis-framework` (M6, FW requirements of [05](05-framework.md)), and the reference application's move onto its stacks and trace/replay | Moved out of v1 to reduce its requirements; the application's own run loop serves v1 |
 | v2 | 355.0/355.1 SDLS + 352.0 algorithms (with pluggable crypto providers, HSM-friendly) | Hooks already reserved in v1 (API-070…075) |
 | v2 | 727.0 CFDP (Class 1 and Class 2, sans-I/O, filestore trait) | Highest-demand application protocol |
 | v3 | 131.0 full FEC (RS, convolutional, LDPC, turbo), 231.0 LDPC; 211.x Proximity-1 + COP-P | Compute-heavy; needs per-target optimization |
@@ -124,7 +125,7 @@ Every phase is gated on passing the shared vector suite (TV-*).
 
 Which CCSDS document, and which of its sections, each milestone of track R covers. This is coverage at the level of documents and sections, written by hand; it is not requirement tracing. Editions are those of [`specs/manifest.tsv`](../specs/manifest.tsv). Per-requirement tracing is checked at each milestone exit by `cargo xtask trace --scope <id> --strict` and the plan's §4, and is not repeated here (rule 1 of §6).
 
-Track A (A0–A6, ACFS) implements no CCSDS document: it uses the public APIs of the milestones below. M5 and M6 add no CCSDS document either; the C ABI, its header, the C++ wrapper, and the framework expose what the milestones above implement.
+Track A (A0–A6, ACFS) implements no CCSDS document: it uses the public APIs of the milestones below. M5 and M6 add no CCSDS document either; the C ABI, its header, the C++ wrapper, and the framework (M6, v1.1) expose what the milestones above implement.
 
 | Milestone | CCSDS document | Sections covered | Coverage |
 |---|---|---|---|
@@ -141,6 +142,6 @@ Track A (A0–A6, ACFS) implements no CCSDS document: it uses the public APIs of
 | M3 | 232.1-B-2 Communications Operation Procedure-1, with Cor. 1 | §3 inter-procedure interfaces, §4 service definition, §5 FOP-1 (variables, actions, state table), §6 FARM-1, §7 managed parameters | Full: FOP-1 and FARM-1 as step functions over the state tables |
 | M4 | 132.0-B-3, 232.0-B-4, 732.0-B-5, 732.1-B-3 | The procedures at the sending and receiving ends: 132.0 §4.2–§4.3, 232.0 §4.3 and §4.4.1–§4.4.8 (the validity checks of §4.4.9 are M2), 732.0 §4.2–§4.3, 732.1 §4.2–§4.3 ([04](04-engines.md) §1) | Full: the procedures as sans-I/O engines; the FOP-1 hand-off of 232.1 §4.4; the CLTU packer only groups frames (232.0 §4.3.8.4–6, 732.1 §4.2.11.7–8), and the coding itself is out (231.0, v1.1; the TM ASM and randomizer are M5, OI-12) |
 | M5 (planned) | None | C ABI completion, header checks, ABI versioning, and the C++ wrapper over the documents above | Planned |
-| M6 (planned) | None | Framework traits, stacks, adapters, and trace/replay over the documents above | Planned |
+| M6 (planned, v1.1) | None | Framework traits, stacks, adapters, and trace/replay over the documents above | Planned |
 
 Documents the specification cites that no milestone of v1 implements: 131.0-B-6 TM Synchronization and Channel Coding (beyond the ASM and randomizer of M5, OI-12) and 231.0-B-4 TC Synchronization and Channel Coding (minimal subset for v1.1, OI-12, §7), 355.0-B-2 and 355.1-B-1 procedures and 352.0-B-2 algorithms (v2), 727.0-B-4 CFDP (v2), 211.0-B-6 Proximity-1 and COP-P (v3). The [glossary](glossary.md#3-blue-book-documents) lists every document and where Aldis specifies it.

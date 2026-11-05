@@ -20,6 +20,27 @@ pub struct Requirement {
     pub verif: String,
 }
 
+/// Requirement areas deferred to a later release, as `(area, release)` (00-introduction.md §5.3).
+/// Their requirements stay in the tables and in `trace --scope`, but the unscoped `trace`
+/// (the v1 trace) leaves them out and reports how many it left out.
+pub const DEFERRED_AREAS: [(&str, &str); 2] = [("FW", "v1.1"), ("CPP", "Phase 3")];
+
+/// Whether a requirement of `area` belongs to v1 (not in [`DEFERRED_AREAS`]).
+pub fn in_v1(area: &str) -> bool {
+    !DEFERRED_AREAS.iter().any(|(a, _)| *a == area)
+}
+
+/// The entries of [`DEFERRED_AREAS`] that name no area of the area table.
+fn unknown_deferred(areas: &BTreeSet<String>) -> Vec<String> {
+    DEFERRED_AREAS
+        .iter()
+        .filter(|(a, _)| !areas.contains(*a))
+        .map(|(a, _)| {
+            format!("xtask/src/spec.rs: `DEFERRED_AREAS` names {a}, which is not an area")
+        })
+        .collect()
+}
+
 /// The parsed specification.
 pub struct Spec {
     /// Area code → document paths relative to `docs/` (from 00-introduction.md §5.2).
@@ -266,6 +287,7 @@ pub fn lint() -> Result<usize, String> {
     let spec = Spec::load()?;
     let mut problems = spec.problems.clone();
     let areas = spec.area_set();
+    problems.extend(unknown_deferred(&areas));
 
     for r in spec.requirements.values() {
         let at = format!("docs/{}:{}", r.doc, r.line);
@@ -339,6 +361,18 @@ pub fn lint() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn deferred_areas_leave_v1_and_must_exist() {
+        // req: VER-020
+        use super::{in_v1, unknown_deferred};
+        use std::collections::BTreeSet;
+        assert!(!in_v1("FW") && !in_v1("CPP") && in_v1("LNK"));
+        let areas: BTreeSet<String> = ["FW", "CPP"].iter().map(|s| (*s).to_owned()).collect();
+        assert_eq!(unknown_deferred(&areas), Vec::<String>::new());
+        let fw_only: BTreeSet<String> = std::iter::once("FW".to_owned()).collect();
+        assert_eq!(unknown_deferred(&fw_only).len(), 1);
+    }
+
     use super::{is_withdrawn, oi_problems, withdrawal_problem};
 
     fn table(rows: &[&str]) -> String {

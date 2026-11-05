@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::md::{scan_ids, tables};
 use crate::repo;
-use crate::spec::{CPP_EXTENSIONS, Spec};
+use crate::spec::{CPP_EXTENSIONS, DEFERRED_AREAS, Spec, in_v1};
 
 fn add(
     map: &mut BTreeMap<String, BTreeSet<String>>,
@@ -223,7 +223,17 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
     let arts = artefacts(&spec)?;
     let in_scope: BTreeSet<String> = match scope {
         Some(s) => scope_ids(&spec, s)?,
-        None => spec.requirements.keys().cloned().collect(),
+        None => spec
+            .requirements
+            .values()
+            .filter(|r| in_v1(&r.area))
+            .map(|r| r.id.clone())
+            .collect(),
+    };
+    let deferred = if scope.is_none() {
+        spec.requirements.len() - in_scope.len()
+    } else {
+        0
     };
 
     let mut md = format!(
@@ -261,6 +271,16 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
         scope.map(|s| format!(" --scope {s}")).unwrap_or_default(),
         in_scope.len()
     );
+    if deferred > 0 {
+        let areas: Vec<String> = DEFERRED_AREAS
+            .iter()
+            .map(|(a, r)| format!("{a} ({r})"))
+            .collect();
+        println!(
+            "deferred, not counted: {deferred} requirements of {}",
+            areas.join(", ")
+        );
+    }
     if !untraced.is_empty() {
         println!("untraced: {}", untraced.join(", "));
     }

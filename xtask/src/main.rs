@@ -44,7 +44,7 @@ usage: cargo xtask <command>
 commands:
   spec-lint                    check requirement tables and every requirement-ID reference
   trace [--scope <m>] [--strict]
-                               requirement -> artefact matrix in target/spec/ (VER-020);
+                               requirement -> artefact matrix in target/spec/ (VER-020); leaves deferred areas (FW, CPP) out;
                                --strict fails on in-scope requirements without artefacts
   vectors validate             check test-vectors/ against the model and the spec (TV-*), and run
                                the independent model each provenance_note names

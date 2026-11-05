@@ -1,5 +1,7 @@
 # 05 — Framework (`aldis-framework`)
 
+**Release: v1.1.** The framework is not part of v1 (maintainer decision, 2026-11-05). Its requirements (area FW) stay in this document with their IDs, but they count toward the v1.1 release, not v1: the unscoped `cargo xtask trace` leaves area FW out and reports how many it left out (`DEFERRED_AREAS` in `xtask/src/spec.rs`), and the v1.0 gate ([08](08-roadmap.md) §5) does not include them. The `aldis-framework` crate stays in the workspace as a skeleton until milestone M6 ([08](08-roadmap.md) §1), the first milestone of v1.1. The reference application keeps its own run loop in v1.
+
 The framework is **optional**. It turns Layer 2 engines into running protocol stacks by driving them through small, heapless traits that the integrator implements. It adds no protocol behavior of its own: everything protocol-related stays in the engines, so library users and framework users get identical wire behavior.
 
 ## 1. Traits
