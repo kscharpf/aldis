@@ -28,7 +28,7 @@ v1 covers the **core packet and link standards**:
 
 The following are **out of scope for v1** and are planned in the [roadmap](08-roadmap.md):
 
-- Synchronization and channel coding (131.x, 231.0): ASM, CLTU, randomizers, RS/convolutional/LDPC/turbo coding. **v1 operates on whole Transfer Frames.** The integrator's radio or modem, or a later release, does the coding.
+- Synchronization and channel coding (131.x, 231.0): ASM, CLTU, randomizers, RS/convolutional/LDPC/turbo coding. **v1 operates on whole Transfer Frames**, with one exception: it builds and searches CADUs (the ASM) and applies the TM randomizer (M5, OI-12). The integrator's radio or modem, or a later release, does the rest of the coding.
 - SDLS cryptography (355.0/355.1) and the 352.0 algorithms. v1 provides only the **hooks** that reserve and place the Security Header and Trailer (see [03 §7](03-api-model.md#7-security-sdls-applied-by-the-caller)).
 - CFDP, DTN (BP/LTP), IP over CCSDS, SLE/CSTS, navigation messages, Proximity-1, COP-P.
 - UTC↔TAI conversion and leap-second tables (see [time codes](standards/time-codes.md) §6).
