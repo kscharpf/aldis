@@ -395,6 +395,8 @@ pub struct aldis_packet_extractor_action_t {
 }
 
 /// The actions of one input of a `PacketExtractor`.
+///
+/// Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_extractor_actions_t {
@@ -993,6 +995,8 @@ pub struct aldis_frame_receiver_action_t {
 }
 
 /// The actions of one input of a `FrameReceiver`.
+///
+/// Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_frame_receiver_actions_t {

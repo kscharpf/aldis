@@ -154,12 +154,16 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
     }
 
     /// The VC (the MAP for USLP) the generator serves.
+    ///
+    /// Requirements: LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The octets of the data field, header included.
+    ///
+    /// Requirements: LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     #[must_use]
     pub const fn field_len(&self) -> usize {
         self.field_len
@@ -303,6 +307,8 @@ pub struct PacketGeneratorHead<P: PacketProtocol> {
 /// The octet buffers of a [`PacketGenerator`]: the data field zone (`D` octets) and the packet
 /// queue (`Q` octets). Plain arrays of octets, valid when all zero, which is the empty state
 /// (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct PacketGeneratorBuffers<const D: usize, const Q: usize> {
@@ -312,6 +318,8 @@ pub struct PacketGeneratorBuffers<const D: usize, const Q: usize> {
 
 impl<const D: usize, const Q: usize> PacketGeneratorBuffers<D, Q> {
     /// Empty buffers.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     pub const ZERO: Self = Self {
         zone: [0; D],
         queue: [0; Q],
@@ -333,8 +341,12 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a generator with an empty field and queue: the part of [`Self::new`] that is
@@ -342,6 +354,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     pub fn new_head(config: PacketGeneratorConfig<P>) -> Result<PacketGeneratorHead<P>> {
         PacketGenerator::<P, D, Q>::check_capacity(&config)?;
         Ok(PacketGeneratorHead {
@@ -368,6 +382,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     #[must_use]
     pub const fn config(&self) -> &PacketGeneratorConfig<P> {
         &self.head.config

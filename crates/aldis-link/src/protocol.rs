@@ -377,6 +377,8 @@ mod uslp_impl {
         }
 
         /// The quality of service of the fields.
+        ///
+        /// Requirements: LNK-001, LNK-010, LNK-060; docs/04-engines.md §2.1.
         #[must_use]
         pub const fn qos(&self) -> Qos {
             self.qos

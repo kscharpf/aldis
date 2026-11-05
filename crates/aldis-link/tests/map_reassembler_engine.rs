@@ -531,7 +531,7 @@ fn no_input_exceeds_two_actions() {
 
 #[test]
 fn an_area_that_is_too_short_fails_the_input_and_changes_nothing() {
-    // req: LNK-075, API-058
+    // req: LNK-075, API-058, API-062
     let mut e = tc_engine();
     tc(&mut e, &[0x41, 1, 2, 3]);
     // MAP 1 holds 16: an FDU of 4 octets needs 16 - 1 + 4 = 19.

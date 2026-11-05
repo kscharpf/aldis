@@ -57,6 +57,8 @@ impl<'a> PacketRun<'a> {
 
     /// The packets in `run`, a range of `area` that a `Packets` action named; `None` if `run`
     /// does not lie inside `area`, which is the wrong area.
+    ///
+    /// Requirements: LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     #[must_use]
     pub fn new(run: OutRange, area: &'a [u8]) -> Option<PacketRun<'a>> {
         run.slice(area).map(|rest| PacketRun { rest })
@@ -165,6 +167,8 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
     /// The octets of the shortest packet the extractor delivers: 1 when idle packets are
     /// delivered, else 3 where Encapsulation Packets are valid (a 2-octet header and one data
     /// octet), else 7 for Space Packets.
+    ///
+    /// Requirements: LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     #[must_use]
     pub const fn min_packet_len(&self) -> usize {
         if self.deliver_idle {
@@ -379,6 +383,8 @@ pub struct PacketExtractorHead<P: PacketProtocol> {
 
 /// The octet buffer of a [`PacketExtractor`]: the assembly buffer (`M` octets). A plain array of
 /// octets, valid when all zero, which is the empty state (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct PacketExtractorBuffers<const M: usize> {
@@ -387,6 +393,8 @@ pub struct PacketExtractorBuffers<const M: usize> {
 
 impl<const M: usize> PacketExtractorBuffers<M> {
     /// Empty buffers.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     pub const ZERO: Self = Self { buf: [0; M] };
 }
 
@@ -405,8 +413,12 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of an extractor that has not yet synchronised: the part of [`Self::new`] that is
@@ -414,6 +426,8 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     pub fn new_head(config: PacketExtractorConfig<P>) -> Result<PacketExtractorHead<P>> {
         PacketExtractor::<P, M, D>::check_capacity(&config)?;
         Ok(PacketExtractorHead {
@@ -434,6 +448,8 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     #[must_use]
     pub const fn config(&self) -> &PacketExtractorConfig<P> {
         &self.head.config

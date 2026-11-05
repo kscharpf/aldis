@@ -429,6 +429,8 @@ pub struct aldis_channel_mux_action_t {
 }
 
 /// The actions of one input of a `ChannelMux`.
+///
+/// Requirements: LNK-030, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_channel_mux_actions_t {

@@ -421,7 +421,7 @@ fn the_other_inputs_return_at_most_one_action() {
 
 #[test]
 fn an_area_shorter_than_the_bound_fails_before_any_change() {
-    // req: LNK-075, API-058
+    // req: LNK-075, API-058, API-062
     let mut rx = uslp();
     let before = rx.clone();
     let mut area = vec![0u8; rx.config().area_len() - 1];

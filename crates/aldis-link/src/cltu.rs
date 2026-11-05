@@ -62,9 +62,13 @@ pub struct Repetitions(NonZeroU16);
 
 impl Repetitions {
     /// One transfer: no systematic retransmission.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub const ONE: Repetitions = Repetitions(NonZeroU16::MIN);
 
     /// `n` transfers, or `None` for 0.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn new(n: u16) -> Option<Repetitions> {
         match NonZeroU16::new(n) {
@@ -74,6 +78,8 @@ impl Repetitions {
     }
 
     /// The number of transfers.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn get(self) -> u16 {
         self.0.get()
@@ -116,12 +122,16 @@ impl<P: CltuProtocol> CltuPackerConfig<P> {
     }
 
     /// The Maximum Number of Transfer Frames Given to the Coding Sublayer as a Single Data Unit.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn max_frames(&self) -> usize {
         self.max_frames
     }
 
     /// The Maximum Length of Data Unit Given to the Coding Sublayer, in octets.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn max_unit_len(&self) -> usize {
         self.max_unit_len
@@ -225,6 +235,8 @@ pub struct CltuPacker<P: CltuProtocol, const U: usize> {
 }
 
 /// Everything of a [`CltuPacker`] but its unit buffer (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CltuPackerHead<P: CltuProtocol> {
     config: CltuPackerConfig<P>,
@@ -235,6 +247,8 @@ pub struct CltuPackerHead<P: CltuProtocol> {
 
 /// The unit buffer of a [`CltuPacker`]: `U` octets, valid when all zero, which is the empty
 /// state (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct CltuPackerBuffers<const U: usize> {
@@ -243,6 +257,8 @@ pub struct CltuPackerBuffers<const U: usize> {
 
 impl<const U: usize> CltuPackerBuffers<U> {
     /// An empty unit.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub const ZERO: Self = Self { unit: [0; U] };
 }
 
@@ -251,6 +267,8 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     ///
     /// # Errors
     /// `CapacityExceeded` (`max_unit_len`) if the Maximum Length of Data Unit exceeds `U`.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub fn new(config: CltuPackerConfig<P>) -> Result<CltuPacker<P, U>> {
         Ok(CltuPacker {
             head: Self::new_head(config)?,
@@ -259,8 +277,12 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a packer with no frame held: the part of [`Self::new`] that is built from the
@@ -268,6 +290,8 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub fn new_head(config: CltuPackerConfig<P>) -> Result<CltuPackerHead<P>> {
         CltuPacker::<P, U>::check_capacity(&config)?;
         Ok(CltuPackerHead {
@@ -287,6 +311,8 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
     pub const fn config(&self) -> &CltuPackerConfig<P> {
         &self.head.config

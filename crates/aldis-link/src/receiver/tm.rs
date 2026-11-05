@@ -27,18 +27,24 @@ pub struct TmChannel {
 
 impl TmChannel {
     /// The channel whose OCF is delivered by `ocf` and whose Secondary Header by `fsh`.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn new(ocf: Service, fsh: Service) -> TmChannel {
         TmChannel { ocf, fsh }
     }
 
     /// How the OCF is delivered.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn ocf(&self) -> Service {
         self.ocf
     }
 
     /// How the Secondary Header is delivered.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn fsh(&self) -> Service {
         self.fsh
@@ -90,18 +96,24 @@ impl TmVc {
     }
 
     /// What the VC carries.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn content(&self) -> TmContent {
         self.content
     }
 
     /// Whether its frames have an OCF.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn ocf(&self) -> bool {
         self.ocf
     }
 
     /// The octets of its Secondary Header, the ID octet included, if it has one.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub fn fsh_len(&self) -> Option<usize> {
         self.fsh_len.map(usize::from)
