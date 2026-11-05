@@ -18,6 +18,8 @@ const MAX_FRAME_LEN: usize = 1024;
 pub struct TcChannel;
 
 /// The parameters of a TC VC that the receiver needs: whether the engine serves it.
+///
+/// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TcVc {
     served: bool,
@@ -25,11 +27,17 @@ pub struct TcVc {
 
 impl TcVc {
     /// A VC whose frames go to FARM-1.
+    ///
+    /// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
     pub const SERVED: TcVc = TcVc { served: true };
     /// A VC the receiver does not serve: its frames are discarded as `NotServed`.
+    ///
+    /// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
     pub const UNSERVED: TcVc = TcVc { served: false };
 
     /// Whether the receiver serves the VC.
+    ///
+    /// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn served(&self) -> bool {
         self.served

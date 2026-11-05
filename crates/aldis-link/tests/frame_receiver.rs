@@ -612,6 +612,12 @@ fn the_valid_bits_of_a_bpdu_are_delivered_and_the_idle_bits_dropped() {
         let octets = data.slice(&area).unwrap();
         let ones: u32 = octets.iter().map(|b| b.count_ones()).sum();
         assert!(ones <= u32::try_from(n).unwrap());
+        let mask = if n % 8 == 0 {
+            0xFF
+        } else {
+            0xFFu8 << (8 - n % 8)
+        };
+        assert_eq!(octets.last().unwrap() & !mask, 0, "{n} valid bits");
         assert_eq!(octets.len(), n.div_ceil(8));
     }
     let config = *rx.config();
@@ -1235,7 +1241,65 @@ fn a_configuration_is_checked_where_it_is_built() {
     assert!(p.cop() && !p.served() && p.maps().contains(MapId::<4>::new(2).unwrap()));
     assert!(!p.maps().contains(MapId::<4>::new(3).unwrap()));
     assert!(TcVc::SERVED.served() && !TcVc::UNSERVED.served());
+    // The other value of each flag.
+    assert!(!aos_config(true).raw_frames());
+    assert!(!config.vcs().nth(1).unwrap().params().ocf());
+    assert!(!TmVc::new(TmContent::Vca, false, None).unwrap().ocf());
+    let q = UslpVc::new(MapSet::default(), false, true);
+    assert!(!q.cop() && q.served());
     assert!(!MapSet::default().contains(MapId::<4>::new(0).unwrap()));
+}
+
+#[test]
+fn a_frame_too_short_for_its_parts_is_refused_by_the_configuration() {
+    // req: LNK-078, API-040, LNK-075
+    let frame_len = |e: aldis_core::Error| (e.kind(), e.field());
+    let refused = (ErrorKind::InvalidConfig, Some(field::FRAME_LEN));
+    // AOS: the header, the Insert Zone, the FECF, the OCF of a VC, and one octet of data field.
+    let aos = |len, fecf, ocf| {
+        FrameReceiverConfig::<Aos, 8>::new(
+            len,
+            fecf,
+            AosChannel::new(0, false),
+            &[VcEntry::new(vc(1), AosVc::new(AosContent::Packets, ocf))],
+        )
+    };
+    assert_eq!(frame_len(aos(6, false, false).unwrap_err()), refused);
+    assert!(aos(7, false, false).is_ok());
+    assert_eq!(frame_len(aos(8, true, false).unwrap_err()), refused);
+    assert!(aos(9, true, false).is_ok());
+    assert_eq!(frame_len(aos(10, false, true).unwrap_err()), refused);
+    assert!(aos(11, false, true).is_ok());
+    // USLP: the 7-octet primary header, the Insert Zone, the FECF, and one octet.
+    let uslp = |len, fecf| {
+        FrameReceiverConfig::<Uslp, 8>::new(
+            len,
+            fecf,
+            UslpChannel::new(0, Service::None),
+            &[VcEntry::new(
+                vc(1),
+                UslpVc::new(MapSet::default(), false, true),
+            )],
+        )
+    };
+    assert_eq!(frame_len(uslp(7, false).unwrap_err()), refused);
+    assert!(uslp(8, false).is_ok());
+    assert_eq!(frame_len(uslp(9, true).unwrap_err()), refused);
+    assert!(uslp(10, true).is_ok());
+}
+
+#[test]
+fn a_uslp_frame_without_a_count_leaves_the_expected_count_alone() {
+    // req: LNK-051
+    let mut rx = uslp();
+    feed(&mut rx, &uslp_frame(1, 0, false, false, None, None));
+    // The first count of the VC is not compared with anything.
+    let out = feed(&mut rx, &uslp_frame(1, 0, false, false, Some((1, 5)), None));
+    assert!(matches!(
+        out.last(),
+        Some(ReceiverOutput::DataField { gap: false, .. })
+    ));
+    assert_eq!(rx.status().count_discontinuities.get(), 0);
 }
 
 // ---- API-058, API-053, GEN-020: any input, no panic, no InternalError ----

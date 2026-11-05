@@ -180,6 +180,7 @@ fn the_generator_refuses_what_the_blue_book_forbids() {
         bad(24, ValidPvns::BOTH, 0).field(),
         Some(field::MAX_PACKET_LEN)
     );
+    assert!(PacketGeneratorConfig::<Tm>::new(vc, TmParams, 0x7FE, ValidPvns::BOTH, 64).is_ok());
     // A Space Packet idle packet needs 7 octets of zone.
     assert_eq!(
         bad(6, ValidPvns::SPACE, 64).field(),
@@ -208,6 +209,11 @@ fn the_generator_refuses_what_the_blue_book_forbids() {
         (e.kind(), e.field()),
         (ErrorKind::CapacityExceeded, Some(field::MAX_PACKET_LEN))
     );
+    // The queue and the zone together hold the longest packet: 64 + 24 octets.
+    let longest = PacketGeneratorConfig::<Tm>::new(vc, TmParams, 24, ValidPvns::BOTH, 88).unwrap();
+    assert!(TmGen::new(longest).is_ok());
+    let beyond = PacketGeneratorConfig::<Tm>::new(vc, TmParams, 24, ValidPvns::BOTH, 89).unwrap();
+    assert!(TmGen::new(beyond).is_err());
     let e = PacketGenerator::<Tm, 16, 64>::new(tm_config(24)).unwrap_err();
     assert_eq!(e.field(), Some(field::FIELD_LEN));
 }
@@ -357,6 +363,25 @@ fn the_extractor_refuses_what_it_cannot_take() {
         (ErrorKind::CapacityExceeded, Some(field::FIELD_LEN))
     );
     assert_eq!(e, before);
+    // The area of exactly max_packet_len - 1 plus the zone is enough.
+    let mut exact = [0u8; 63];
+    assert!(e.step(field_in(&field, 0), &mut exact).is_ok());
+}
+
+#[test]
+fn no_packet_starts_in_a_field_that_follows_a_packet_boundary() {
+    // req: LNK-060
+    let mut e = TmExt::new(ext_config()).unwrap();
+    let mut out = [0u8; 100];
+    // The field ends with a packet, so the next octet must start one; a pointer that says none
+    // starts is wrong, and the field is not read as a packet.
+    let a = e.step(field_in(&spp(24, 1), 0), &mut out).unwrap();
+    assert_eq!(a.len(), 1);
+    let a = e.step(field_in(&spp(24, 2), 0x7FF), &mut out).unwrap();
+    assert_eq!(
+        a.iter().copied().collect::<Vec<_>>(),
+        [ExtractorOutput::Error(ExtractionError::LengthInconsistent)]
+    );
 }
 
 #[test]

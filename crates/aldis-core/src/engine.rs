@@ -154,6 +154,7 @@ mod tests {
         let area = [1u8, 2, 3, 4, 5];
         let r = OutRange::new(1, 3);
         assert_eq!((r.start(), r.len(), r.end()), (1, 3, 4));
+        assert_eq!(OutRange::new(5, 2).start(), 5);
         assert!(!r.is_empty());
         assert_eq!(r.slice(&area), Some(&area[1..4]));
         assert_eq!(OutRange::new(3, 3).slice(&area), None);

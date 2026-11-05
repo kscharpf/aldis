@@ -384,6 +384,8 @@ pub struct aldis_map_segmenter_action_t {
 }
 
 /// The actions of one input of a `MapSegmenter`.
+///
+/// Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_segmenter_actions_t {
@@ -1073,6 +1075,8 @@ pub struct aldis_map_reassembler_action_t {
 }
 
 /// The actions of one input of a `MapReassembler`.
+///
+/// Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_reassembler_actions_t {

@@ -294,6 +294,8 @@ pub struct aldis_packet_generator_action_t {
 }
 
 /// The actions of one input of a `PacketGenerator`.
+///
+/// Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_generator_actions_t {
@@ -853,6 +855,8 @@ pub struct aldis_access_generator_action_t {
 }
 
 /// The actions of one input of an `AccessGenerator`.
+///
+/// Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_access_generator_actions_t {
@@ -1302,6 +1306,8 @@ pub struct aldis_bitstream_generator_action_t {
 }
 
 /// The actions of one input of a `BitstreamGenerator`.
+///
+/// Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_bitstream_generator_actions_t {

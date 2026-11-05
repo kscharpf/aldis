@@ -19,7 +19,7 @@
 //! Secondary Header, and the Insert Zone come from slots that the caller updates (LNK-033,
 //! LNK-034).
 //!
-//! **Bounds (LNK-074, LNK-075).** `Opportunity` returns at most [`CHANNEL_MUX_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** `Opportunity` returns at most [`CHANNEL_MUX_MAX_ACTIONS`]
 //! actions and writes the frame length of the configuration to the output area; every other
 //! input returns at most one action and writes nothing.
 
@@ -66,6 +66,8 @@ impl Fsh {
     ///
     /// # Errors
     /// `InvalidConfig` (`fsh_len`) unless `data` holds 1 to 63 octets.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub fn new(data: &[u8]) -> Result<Fsh> {
         let len = u8::try_from(data.len())
             .ok()
@@ -86,18 +88,24 @@ impl Fsh {
     }
 
     /// The number of data octets, 1 to 63.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.len)
     }
 
     /// Always `false`: the data holds at least one octet.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         false
     }
 
     /// The data octets.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub fn octets(&self) -> impl Iterator<Item = u8> + '_ {
         self.data.iter().copied().take(self.len())
     }
@@ -160,18 +168,24 @@ impl Cop {
     }
 
     /// The Bypass/Sequence Control Flag.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn bypass(self) -> bool {
         !matches!(self, Cop::TypeAd { .. })
     }
 
     /// The Protocol Control Command Flag.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn protocol_control(self) -> bool {
         matches!(self, Cop::TypeBc)
     }
 
     /// The VCF Count the mux takes as given: the Frame Sequence Number of a Type-AD frame.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn vcf_count(self) -> Option<u64> {
         match self {
@@ -405,6 +419,8 @@ pub struct VcConfig<P: MuxProtocol> {
 
 impl<P: MuxProtocol> VcConfig<P> {
     /// A VC with priority 0, weight 1, and no Security Header or Trailer.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn new(vc: P::Vc, params: P::VcParams) -> VcConfig<P> {
         VcConfig {
@@ -435,6 +451,8 @@ impl<P: MuxProtocol> VcConfig<P> {
     }
 
     /// The VC.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
@@ -459,6 +477,8 @@ impl<P: MuxProtocol> VcConfig<P> {
     }
 
     /// The protocol's parameters of the VC.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn params(&self) -> &P::VcParams {
         &self.params
@@ -647,18 +667,24 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     }
 
     /// The physical channel's parameters.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn channel(&self) -> &P::Channel {
         &self.channel
     }
 
     /// The frame length in octets.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn frame_len(&self) -> usize {
         self.frame_len
     }
 
     /// Whether frames have a FECF.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn fecf(&self) -> bool {
         self.fecf
@@ -677,6 +703,8 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     }
 
     /// The number of VCs.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn vc_count(&self) -> usize {
         self.count
@@ -735,6 +763,8 @@ pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
 }
 
 /// Everything of a [`ChannelMux`] but its octet buffers (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
     config: ChannelMuxConfig<P, V>,
@@ -769,6 +799,8 @@ pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
 impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
     /// The offset of the Insert Zone slot in the buffers, for an in-place build (see
     /// [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub const INSERT_OFFSET: usize = core::mem::offset_of!(Self, insert);
 
     /// Empty slots, and the Insert Zone slot filled with the idle pattern `idle` (LNK-034).
@@ -821,8 +853,12 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a mux with no field offered: the part of [`Self::new`] that is built from
@@ -830,6 +866,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub fn new_head(config: ChannelMuxConfig<P, V>) -> Result<ChannelMuxHead<P, V>> {
         ChannelMux::<P, V, F>::check_capacity(&config)?;
         let mut head = ChannelMuxHead {
@@ -865,6 +903,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn config(&self) -> &ChannelMuxConfig<P, V> {
         &self.head.config
@@ -1324,6 +1364,8 @@ mod tm_impl {
 
     impl TmChannel {
         /// A channel with no `MC_OCF` and no `MC_FSH`.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn new(scid: SpacecraftId<10>, oid_vc: VcId<3>) -> TmChannel {
             TmChannel {
@@ -1348,6 +1390,8 @@ mod tm_impl {
 
     impl TmVc {
         /// A VC with no `VC_OCF` and no `VC_FSH`.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn new(role: TmRole) -> TmVc {
             TmVc {
@@ -1531,6 +1575,8 @@ mod aos_impl {
         }
 
         /// The Spacecraft Identifier, 10 bits (8 bits in the Issue 4 edition).
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn scid(&self) -> SpacecraftId<10> {
             self.scid
@@ -1543,12 +1589,16 @@ mod aos_impl {
         }
 
         /// Whether frames have a Frame Header Error Control field.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn fhec(&self) -> bool {
             self.fhec
         }
 
         /// Whether the VC Frame Count Cycle is in use.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn cycle_in_use(&self) -> bool {
             self.cycle_in_use
@@ -1744,30 +1794,40 @@ mod uslp_impl {
         }
 
         /// The MAP ID of the VC's frames.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn map(&self) -> MapId<4> {
             self.map
         }
 
         /// The quality of service of an offered field that names none.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn qos(&self) -> Qos {
             self.qos
         }
 
         /// The VCF Count Length for sequence-controlled frames.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn vcf_len_sc(&self) -> VcfCountLen {
             self.vcf_len_sc
         }
 
         /// The VCF Count Length for expedited frames.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn vcf_len_exp(&self) -> VcfCountLen {
             self.vcf_len_exp
         }
 
         /// Whether COP-1 is in effect on the VC.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn cop(&self) -> bool {
             self.cop

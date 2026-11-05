@@ -31,12 +31,16 @@ pub struct Weight(u16);
 
 impl Weight {
     /// A weight of 1: one selection per cycle, the weight of round robin.
+    ///
+    /// Requirements: LNK-031; docs/04-engines.md §2.4.
     pub const ONE: Weight = Weight(1);
 
     /// The weight `n`.
     ///
     /// # Errors
     /// `InvalidConfig` (`vc_weight`) for 0: a VC with no selection per cycle is never served.
+    ///
+    /// Requirements: LNK-031; docs/04-engines.md §2.4.
     pub const fn new(n: u16) -> Result<Weight> {
         if n == 0 {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_WEIGHT))
@@ -46,6 +50,8 @@ impl Weight {
     }
 
     /// The number of consecutive selections per cycle.
+    ///
+    /// Requirements: LNK-031; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn get(self) -> u16 {
         self.0
@@ -66,6 +72,8 @@ pub struct Selector {
 impl Selector {
     /// The state at start-up: the first selection takes the first offered VC, with its full
     /// weight.
+    ///
+    /// Requirements: LNK-031; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn new() -> Selector {
         Selector {

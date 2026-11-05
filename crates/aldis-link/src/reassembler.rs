@@ -34,7 +34,7 @@
 //! the TFDZ, packets that do not tile a blocked FDU or a reassembled packet that disagrees with its
 //! own length field, a PVN other than 0 and 7.
 //!
-//! **Bounds (LNK-074, LNK-075).** One `Fdu` returns at most [`MAP_REASSEMBLER_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** One `Fdu` returns at most [`MAP_REASSEMBLER_MAX_ACTIONS`]
 //! actions: the events `GapDiscard` and `SequenceViolation` or `SduTooLong`, and the delivery,
 //! never all three (see the constant). It writes at most `max_sdu_len − 1 + z` octets to the
 //! output area, `z` being the octets of the user data of the FDU: the SDU in progress and the data
@@ -163,6 +163,8 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     }
 
     /// An octet-stream MAP: no SDU is assembled, so it has no maximum.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn octet_stream(vc: P::Vc, id: P::Map) -> ReassemblerMap<P> {
         ReassemblerMap {
@@ -192,24 +194,32 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     }
 
     /// The VC of the MAP.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The MAP Identifier.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn id(&self) -> P::Map {
         self.id
     }
 
     /// What the MAP carries.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn service(&self) -> Service {
         self.service
     }
 
     /// The maximum SDU length; `None` for an octet stream.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn max_sdu_len(&self) -> Option<usize> {
         match self.service {
@@ -235,6 +245,8 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
     /// # Errors
     /// `InvalidConfig` (`map_id`) for no MAP and for two MAPs of one VC with one Identifier;
     /// `CapacityExceeded` (`map_id`) for more than `M` MAPs.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub fn new(
         channel: P::Channel,
         maps: &[ReassemblerMap<P>],
@@ -261,12 +273,16 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
     }
 
     /// The parameters of the VCs that only this protocol has.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn channel(&self) -> &P::Channel {
         &self.channel
     }
 
     /// The MAPs, in the order of configuration.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub fn maps(&self) -> impl Iterator<Item = &ReassemblerMap<P>> {
         self.maps.iter().flatten()
     }
@@ -445,6 +461,8 @@ pub struct MapReassembler<P: ReassemblerProtocol, const M: usize, const S: usize
 }
 
 /// Everything of a [`MapReassembler`] but its assembly buffers (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
     config: MapReassemblerConfig<P, M>,
@@ -454,6 +472,8 @@ pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
 
 /// The assembly buffers of a [`MapReassembler`]: `S` octets for each of `M` MAPs, valid when all
 /// zero, which is the empty state (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
@@ -462,6 +482,8 @@ pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
 
 impl<const M: usize, const S: usize> MapReassemblerBuffers<M, S> {
     /// Empty buffers.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub const ZERO: Self = Self { maps: [[0; S]; M] };
 }
 
@@ -478,8 +500,12 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a reassembler with no SDU in progress: the part of [`Self::new`] that is
@@ -487,6 +513,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     pub fn new_head(config: MapReassemblerConfig<P, M>) -> Result<MapReassemblerHead<P, M>> {
         MapReassembler::<P, M, S>::check_capacity(&config)?;
         Ok(MapReassemblerHead {
@@ -508,6 +536,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
     pub const fn config(&self) -> &MapReassemblerConfig<P, M> {
         &self.head.config
@@ -942,6 +972,8 @@ mod tc_impl {
 
     impl TcReassemblerParams {
         /// VCs whose FDUs have a Segment Header, which names the MAP and the sequence flags.
+        ///
+        /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
         #[must_use]
         pub const fn with_segment_header() -> TcReassemblerParams {
             TcReassemblerParams {
