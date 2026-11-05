@@ -360,7 +360,7 @@ pub const FRAME_VERSION: FieldId = FieldId::catalogued::<67>("frame_version");
 /// frames.
 ///
 /// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
-/// 732.0 §4.1.1.2, §5.2 Table 5-1; API-082).
+/// 732.0 §4.1.1.2, §5.2 Table 5-1; 131.0 §11.2.1, §11.3, §11.4; API-082).
 pub const FRAME_LEN: FieldId = FieldId::catalogued::<68>("frame_len");
 
 /// Operational Control Field Flag.
@@ -746,8 +746,23 @@ pub const FIELD_LEN: FieldId = FieldId::catalogued::<218>("field_len");
 /// Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082).
 pub const RAW_FRAMES: FieldId = FieldId::catalogued::<219>("raw_frames");
 
+/// Number of ASM bit errors the search tolerates.
+///
+/// Code 250, a parameter (M5 plan D3; SYNC-010, SYNC-019; API-082).
+pub const ASM_ERRORS: FieldId = FieldId::catalogued::<250>("asm_errors");
+
+/// Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length.
+///
+/// Code 251, a parameter (131.0 §11.1, §11.3; SYNC-002; API-082).
+pub const SYNC_PROTOCOL: FieldId = FieldId::catalogued::<251>("sync_protocol");
+
+/// Length of an input chunk of the ASM search, in octets.
+///
+/// Code 252, a parameter (SYNC-017; API-082).
+pub const CHUNK_LEN: FieldId = FieldId::catalogued::<252>("chunk_len");
+
 /// Every field code, in code order from 1 (API-082).
-pub const ALL: [FieldId; 141] = [
+pub const ALL: [FieldId; 144] = [
     SPACECRAFT_ID,
     VC_ID,
     MAP_ID,
@@ -889,4 +904,7 @@ pub const ALL: [FieldId; 141] = [
     SDU_LEN,
     FIELD_LEN,
     RAW_FRAMES,
+    ASM_ERRORS,
+    SYNC_PROTOCOL,
+    CHUNK_LEN,
 ];

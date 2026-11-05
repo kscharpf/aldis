@@ -88,6 +88,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A withdr
 | AOS | [AOS frames](standards/aos-frame.md) |
 | USLP | [USLP frames](standards/uslp-frame.md) |
 | COP | [COP-1](standards/cop1.md) |
+| SYNC | [TM synchronization](standards/tm-sync.md) |
 | RS | [Rust profile](profiles/rust.md) |
 | CABI | [C ABI profile](profiles/c-abi.md) |
 | CPP | [C++ profile](profiles/cpp.md) |

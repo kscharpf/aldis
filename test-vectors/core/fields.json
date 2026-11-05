@@ -705,6 +705,21 @@
       "code": 219,
       "name": "raw_frames",
       "kind": "parameter"
+    },
+    {
+      "code": 250,
+      "name": "asm_errors",
+      "kind": "parameter"
+    },
+    {
+      "code": 251,
+      "name": "sync_protocol",
+      "kind": "parameter"
+    },
+    {
+      "code": 252,
+      "name": "chunk_len",
+      "kind": "parameter"
     }
   ]
 }

@@ -355,7 +355,7 @@ pub const ALDIS_FIELD_FRAME_VERSION: u16 = 67;
 /// frames.
 ///
 /// Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
-/// 732.0 §4.1.1.2, §5.2 Table 5-1; API-082, CABI-021).
+/// 732.0 §4.1.1.2, §5.2 Table 5-1; 131.0 §11.2.1, §11.3, §11.4; API-082, CABI-021).
 pub const ALDIS_FIELD_FRAME_LEN: u16 = 68;
 
 /// Operational Control Field Flag.
@@ -744,6 +744,21 @@ pub const ALDIS_FIELD_FIELD_LEN: u16 = 218;
 /// Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082, CABI-021).
 pub const ALDIS_FIELD_RAW_FRAMES: u16 = 219;
 
+/// Number of ASM bit errors the search tolerates.
+///
+/// Code 250, a parameter (M5 plan D3; SYNC-010, SYNC-019; API-082, CABI-021).
+pub const ALDIS_FIELD_ASM_ERRORS: u16 = 250;
+
+/// Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length.
+///
+/// Code 251, a parameter (131.0 §11.1, §11.3; SYNC-002; API-082, CABI-021).
+pub const ALDIS_FIELD_SYNC_PROTOCOL: u16 = 251;
+
+/// Length of an input chunk of the ASM search, in octets.
+///
+/// Code 252, a parameter (SYNC-017; API-082, CABI-021).
+pub const ALDIS_FIELD_CHUNK_LEN: u16 = 252;
+
 // Each code is the code of its `aldis_core::field` constant (API-082).
 const _: () = {
     assert!(ALDIS_FIELD_SPACECRAFT_ID == field::SPACECRAFT_ID.code().get());
@@ -893,4 +908,7 @@ const _: () = {
     assert!(ALDIS_FIELD_SDU_LEN == field::SDU_LEN.code().get());
     assert!(ALDIS_FIELD_FIELD_LEN == field::FIELD_LEN.code().get());
     assert!(ALDIS_FIELD_RAW_FRAMES == field::RAW_FRAMES.code().get());
+    assert!(ALDIS_FIELD_ASM_ERRORS == field::ASM_ERRORS.code().get());
+    assert!(ALDIS_FIELD_SYNC_PROTOCOL == field::SYNC_PROTOCOL.code().get());
+    assert!(ALDIS_FIELD_CHUNK_LEN == field::CHUNK_LEN.code().get());
 };
