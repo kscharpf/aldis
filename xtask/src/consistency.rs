@@ -158,7 +158,9 @@ fn include_crates(workflow: &str, job: &str) -> Result<BTreeSet<String>, String>
                 .map_err(|_| format!("job `{job}`: {name}: `{key}: {v}` is not a number")),
         };
         let (shard, count) = (num("shard")?.unwrap_or(0), num("shards")?.unwrap_or(1));
-        let slot = shards.entry(name.clone()).or_insert((Some(count), BTreeSet::new()));
+        let slot = shards
+            .entry(name.clone())
+            .or_insert((Some(count), BTreeSet::new()));
         if slot.0 != Some(count) {
             slot.0 = None;
         }
@@ -168,10 +170,14 @@ fn include_crates(workflow: &str, job: &str) -> Result<BTreeSet<String>, String>
     }
     for (name, (count, seen)) in &shards {
         let Some(n) = count else {
-            return Err(format!("job `{job}`: {name}: its entries disagree on `shards`"));
+            return Err(format!(
+                "job `{job}`: {name}: its entries disagree on `shards`"
+            ));
         };
         if *seen != (0..*n).collect() {
-            return Err(format!("job `{job}`: {name}: shards {seen:?} are not 0..{n}"));
+            return Err(format!(
+                "job `{job}`: {name}: shards {seen:?} are not 0..{n}"
+            ));
         }
     }
     Ok(shards.into_keys().collect())
@@ -1227,7 +1233,8 @@ mod tests {
             "          - { crate: aldis-link, shard: 0, shards: 2 }\n          - { crate: aldis-link, shard: 1, shards: 3 }\n",
             "          - { crate: aldis-link, shard: 0, shards: 1 }\n          - { crate: aldis-link, shard: 0, shards: 1 }\n",
         ] {
-            let yml = format!("jobs:\n  mutants:\n    strategy:\n      matrix:\n        include:\n{bad}");
+            let yml =
+                format!("jobs:\n  mutants:\n    strategy:\n      matrix:\n        include:\n{bad}");
             assert!(mutants_crates(&yml).is_err(), "{bad}");
         }
         assert!(mutants_crates("no such line").is_err());
