@@ -234,11 +234,29 @@ jobs:
       - run: cargo test --release --all-features -p ${{ matrix.crate }} --test bit_flips -- --ignored
 
   mutants:
-    name: mutation testing ${{ matrix.crate }} (VER-025, report only)
+    name: mutation testing ${{ matrix.crate }} shard ${{ matrix.shard }}/${{ matrix.shards }} (VER-025, report only)
     strategy:
       fail-fast: false
+      # A crate whose run nears the timeout is split into shards (cargo-mutants --shard k/n), each
+      # its own job and report: aldis-link was cancelled at 60 minutes with about 400 of its 1 517
+      # mutants untested (nightly 41937505446); aldis-time and aldis-aos took 31 to 35 minutes.
       matrix:
-        crate: [aldis-core, aldis-time, aldis-epp, aldis-spp, aldis-aos, aldis-tm, aldis-tc, aldis-uslp, aldis-cop1, aldis-link]
+        include:
+          - { crate: aldis-core, shard: 0, shards: 1 }
+          - { crate: aldis-time, shard: 0, shards: 2 }
+          - { crate: aldis-time, shard: 1, shards: 2 }
+          - { crate: aldis-epp, shard: 0, shards: 1 }
+          - { crate: aldis-spp, shard: 0, shards: 1 }
+          - { crate: aldis-aos, shard: 0, shards: 2 }
+          - { crate: aldis-aos, shard: 1, shards: 2 }
+          - { crate: aldis-tm, shard: 0, shards: 1 }
+          - { crate: aldis-tc, shard: 0, shards: 1 }
+          - { crate: aldis-uslp, shard: 0, shards: 1 }
+          - { crate: aldis-cop1, shard: 0, shards: 1 }
+          - { crate: aldis-link, shard: 0, shards: 4 }
+          - { crate: aldis-link, shard: 1, shards: 4 }
+          - { crate: aldis-link, shard: 2, shards: 4 }
+          - { crate: aldis-link, shard: 3, shards: 4 }
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -269,7 +287,7 @@ jobs:
             done ) &
           sampler=$!
           code=0
-          cargo mutants -p ${{ matrix.crate }} --all-features || code=$?
+          cargo mutants -p ${{ matrix.crate }} --all-features --shard ${{ matrix.shard }}/${{ matrix.shards }} || code=$?
           kill "$sampler" 2>/dev/null || true
           echo "cargo-mutants exit code $code"
           [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ]
@@ -283,7 +301,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: mutants-${{ matrix.crate }}
+          name: mutants-${{ matrix.crate }}-shard-${{ matrix.shard }}-of-${{ matrix.shards }}
           path: mutants.out/
           if-no-files-found: warn
 
