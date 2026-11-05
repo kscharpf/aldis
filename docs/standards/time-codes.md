@@ -6,6 +6,8 @@
 
 The four standard time codes: CUC, CDS, CCS, and ASCII (A and B). Each binary code supports an explicit **P-field** (preamble) or an implicit one supplied by configuration. Agency-defined codes (§3.6) are representable only as raw P-field/T-field octets.
 
+Bit-by-bit layouts of the first P-field octet of the [CUC](../reference/header-layouts.md#p-field-of-the-cuc-time-code-octet-1), [CDS](../reference/header-layouts.md#p-field-of-the-cds-time-code-octet-1), and [CCS](../reference/header-layouts.md#p-field-of-the-ccs-time-code-octet-1) codes, generated from the encoders: [header layouts](../reference/header-layouts.md).
+
 ## 2. Common model
 
 ```

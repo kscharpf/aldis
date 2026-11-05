@@ -16,6 +16,7 @@ mod fuzz;
 mod header;
 mod kani;
 mod layers;
+mod layouts;
 mod links;
 mod loops;
 mod md;
@@ -57,6 +58,9 @@ commands:
                                or regenerate both (API-082)
   status [--write]             check the error catalogue (03-api-model.md §9) and that the
                                aldis-ffi status codes match it, or regenerate them (CABI-020)
+  layouts [--write]            check that docs/reference/header-layouts.md matches the bit
+                               layouts probed from the codec encoders, or regenerate it
+                               (VER-072)
   header [--write]             check that include/aldis/aldis.h and the aldis-ffi capacities
                                match a fresh generation with the pinned cbindgen, or
                                regenerate them (CABI-002, CABI-003, CABI-030)
@@ -169,6 +173,7 @@ pub(crate) const CI: &[Step] = &[
     ("vectors schema --check", || vectors::schema(true)),
     ("fields", || fields::run(false)),
     ("status", || status::run(false)),
+    ("layouts", || layouts::run(false)),
     ("header", || header::run(false)),
     ("sana", || sana::run(&[])),
     // M0 and M1 are closed: every in-scope requirement must keep an artefact.
@@ -202,6 +207,7 @@ fn run_steps(steps: &[Step]) -> usize {
 fn fix() -> Result<usize, String> {
     Ok(fields::run(true)?
         + status::run(true)?
+        + layouts::run(true)?
         + vectors::schema(false)?
         + vectors::generated(true)?
         + sana::run(&["--write"])?
@@ -227,6 +233,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["vectors", "schema", "--check"] => vectors::schema(true),
         ["fields"] => fields::run(false),
         ["fields", "--write"] => fields::run(true),
+        ["layouts"] => layouts::run(false),
+        ["layouts", "--write"] => layouts::run(true),
         ["status"] => status::run(false),
         ["status", "--write"] => status::run(true),
         ["header"] => header::run(false),
