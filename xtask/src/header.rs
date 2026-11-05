@@ -350,9 +350,10 @@ fn native_static_libs(note: &str) -> Vec<String> {
 }
 
 /// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C11,
-/// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The C23 build takes the
-/// branch of each enumeration that declares its underlying type (c-abi.md §12.3, spike 1); a
-/// compiler that does not define `__STDC_VERSION__` as C23 yet compiles the C99 branch.
+/// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The
+/// C23 build takes the branch of each enumeration that declares its underlying type (c-abi.md
+/// §12.3, spike 1); a compiler that does not define `__STDC_VERSION__` as C23 yet compiles the
+/// C99 branch.
 pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
     let root = repo::root();
     // The static library's native dependencies, printed while it is built (CABI-001). Without
@@ -468,12 +469,12 @@ const CERT_C_CHECKS: &str = "-*,cert-*-c";
 pub fn c_tidy(tidy: &str) -> Result<usize, String> {
     let root = repo::root();
     let dir = root.join(Path::new(SMOKE).parent().unwrap_or(Path::new(".")));
-    let mut files: Vec<_> = std::fs::read_dir(&dir)
+    let mut files = std::fs::read_dir(&dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "c"))
-        .collect();
+        .map(|entry| entry.map(|e| e.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    files.retain(|p| p.extension().is_some_and(|x| x == "c"));
     files.sort();
     let out_dir = root.join("target/header");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
