@@ -762,6 +762,19 @@ mod tests {
         ));
         assert_eq!(stream1.next(), None);
 
+        // 1b. The shortest frame, 7 octets (the Frame Length field is 6), is discarded whole.
+        let v0_least = [0x00, 0x15, 0x59, 0x00, 0x00, 0x06, 0x00];
+        let mut stream1b = FrameStream::new(&v0_least, &table, 31);
+        assert!(matches!(
+            stream1b.next(),
+            Some(IntakeItem::Discarded {
+                reason: DiscardReason::UnexpectedVersion,
+                octets,
+                ..
+            }) if octets.len() == 7
+        ));
+        assert_eq!(stream1b.next(), None);
+
         // 2. Non-truncated with version 0, raw.frame_len < 7 (e.g. 5) -> falls through to Fill
         let mut v0_short = [0_u8; 8];
         v0_short[..7].copy_from_slice(&[0x00, 0x15, 0x59, 0x00, 0x00, 0x04, 0x00]);

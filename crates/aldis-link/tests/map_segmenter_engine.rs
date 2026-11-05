@@ -165,6 +165,11 @@ fn configurations_are_checked() {
     assert_eq!(bad(2), None);
     assert_eq!(bad(1017), None);
     let plain = TcSegmenterParams::with_segment_header(false);
+    assert!(header.segment_header() && header.fecf());
+    assert!(plain.segment_header() && !plain.fecf());
+    assert!(!TcSegmenterParams::without_segment_header(true, true).segment_header());
+    assert!(TcSegmenterParams::without_segment_header(true, true).fecf());
+    assert!(!TcSegmenterParams::without_segment_header(false, true).fecf());
     assert!(TcCfg::new(vc(), plain, 1019, &[tc_map(1)]).is_ok());
     assert!(TcCfg::new(vc(), plain, 1020, &[tc_map(1)]).is_err());
     // A TC MAP that permits segmentation needs a maximum MAP_SDU length (232.0 Table 5-4).
@@ -173,6 +178,7 @@ fn configurations_are_checked() {
         (e.kind(), e.field()),
         (ErrorKind::InvalidConfig, Some(field::MAX_SDU_LEN))
     );
+    assert!(tc_map(1).with_segmentation(65_535).is_ok());
     assert!(tc_map(1).with_segmentation(65_536).is_err());
     // MAPs: none, twice, too many; a MAP on a VC without a Segment Header.
     let map_id = Some((ErrorKind::InvalidConfig, Some(field::MAP_ID)));
