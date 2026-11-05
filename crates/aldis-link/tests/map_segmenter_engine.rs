@@ -859,3 +859,110 @@ fn the_accessors_report_the_configuration() {
     let ch = uslp.config().channel();
     assert_eq!((ch.vcf_len_sc().get(), ch.vcf_len_exp().get()), (2, 2));
 }
+
+// ---- OI-79: cases that no vector pins, read against the Blue Books ----
+
+#[test]
+fn only_the_pvns_of_the_two_packet_standards_are_packets() {
+    // req: LNK-040, LNK-042, LNK-010, API-058; OI-79 (7)
+    // 133.0 §4.1.3.2.2 gives Space Packets the PVN `000` and 133.1 §4.1.2.2.2 gives
+    // Encapsulation Packets `111`; no Blue Book the engines serve gives another PVN a length
+    // field, so such a packet cannot be delimited. The Blue Books name no error, so the
+    // catalogue's `InvalidField` names the field (03 §9); the submission changes nothing.
+    let refused = (ErrorKind::InvalidField, Some(field::PACKET_VERSION));
+    let mut tc = TcSeg::new(tc_config()).unwrap();
+    let cfg = UslpCfg::new(
+        vc(),
+        counts(1, 1),
+        12,
+        &[uslp_map(1, MapService::Packets, 0)],
+    )
+    .unwrap();
+    let mut us = UslpSeg::new(cfg).unwrap();
+    for pvn in 1..=6_u8 {
+        let packet = [pvn << 5, 0, 0, 0, 0, 0, 0, 0];
+        let r = run(
+            &mut tc,
+            SegmenterInput::SubmitPacket {
+                map: MapId::<6>::new(1).unwrap(),
+                packet: &packet,
+            },
+        );
+        assert_eq!(kind_of(&r), refused, "TC, PVN {pvn}");
+        let r = run(
+            &mut us,
+            SegmenterInput::SubmitPacket {
+                map: MapId::<4>::new(1).unwrap(),
+                packet: &packet,
+            },
+        );
+        assert_eq!(kind_of(&r), refused, "USLP, PVN {pvn}");
+    }
+    assert_eq!(tc.status().submitted.get(), 0);
+    assert_eq!(us.status().submitted.get(), 0);
+    assert_eq!(tc.status().refused.get(), 6);
+    // PVN 0 and 7 are accepted.
+    submit_packet(&mut tc, &spp(8, 1)).unwrap();
+    submit_packet(&mut tc, &[0xE5, 0x03, 7]).unwrap();
+}
+
+fn submit_packet(s: &mut TcSeg, packet: &[u8]) -> Result<(), aldis_core::Error> {
+    run(
+        s,
+        SegmenterInput::SubmitPacket {
+            map: MapId::<6>::new(1).unwrap(),
+            packet,
+        },
+    )
+}
+
+#[test]
+fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segments() {
+    // req: LNK-040, LNK-078; OI-79 (7)
+    // 232.0 §4.1.3.1.2: the Frame Data Field is at most 1019 octets (1017 with a FECF), and with
+    // no Segment Header it is the FDU itself (§4.1.3.2.1.1 a); §4.1.3.2.1.3: such an FDU holds
+    // complete packets or a complete VCA_SDU, so a longer SDU cannot be divided (§4.1.3.2.1.4: a
+    // VC that sends SDUs larger than one frame needs the Segment Header).
+    for (fecf, limit) in [(false, 1019), (true, 1017)] {
+        let params = TcSegmenterParams::without_segment_header(fecf, false);
+        assert!(TcCfg::new(vc(), params, limit, &[]).is_ok(), "fecf {fecf}");
+        let e = TcCfg::new(vc(), params, limit + 1, &[]).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::MAX_FDU_LEN))
+        );
+    }
+    let cfg = TcCfg::new(
+        vc(),
+        TcSegmenterParams::without_segment_header(true, false),
+        1017,
+        &[],
+    )
+    .unwrap();
+    let mut s = TcSegmenter1017::new(cfg).unwrap();
+    let mut out = [0_u8; 1017];
+    // A VCA_SDU of the limit is one FDU; one octet more is refused, not divided.
+    s.step(
+        SegmenterInput::SubmitSdu {
+            map: MapId::<6>::new(0).unwrap(),
+            sdu: &[3; 1017],
+        },
+        T0,
+        &mut out,
+    )
+    .unwrap();
+    let r = s.step(
+        SegmenterInput::SubmitSdu {
+            map: MapId::<6>::new(0).unwrap(),
+            sdu: &[3; 1018],
+        },
+        T0,
+        &mut out,
+    );
+    assert_eq!(
+        kind_of(&r),
+        (ErrorKind::OutOfRange, Some(field::MAX_FDU_LEN))
+    );
+}
+
+type TcSegmenter1017 = MapSegmenter<Tc, 4, 1100>;
