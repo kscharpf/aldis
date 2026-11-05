@@ -746,7 +746,7 @@ pub const ALDIS_FIELD_RAW_FRAMES: u16 = 219;
 
 /// Number of ASM bit errors the search tolerates.
 ///
-/// Code 250, a parameter (M5 plan D3; SYNC-010, SYNC-019; API-082, CABI-021).
+/// Code 250, a parameter (M5 plan D3; SYNC-007, SYNC-016; API-082, CABI-021).
 pub const ALDIS_FIELD_ASM_ERRORS: u16 = 250;
 
 /// Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length.
@@ -756,7 +756,7 @@ pub const ALDIS_FIELD_SYNC_PROTOCOL: u16 = 251;
 
 /// Length of an input chunk of the ASM search, in octets.
 ///
-/// Code 252, a parameter (SYNC-017; API-082, CABI-021).
+/// Code 252, a parameter (SYNC-014; API-082, CABI-021).
 pub const ALDIS_FIELD_CHUNK_LEN: u16 = 252;
 
 // Each code is the code of its `aldis_core::field` constant (API-082).

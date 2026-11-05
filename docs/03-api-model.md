@@ -388,6 +388,6 @@ The table is the registry. `cargo xtask fields --write` generates from it the Ru
 | 217 | `sdu_len` | field | Length of a VCA SDU a generator is given, which a TM or AOS data field fixes | link | 132.0 §3.2.3, §4.1.4.3; 732.0 §3.2.4, §4.1.4.1.3; LNK-020 |
 | 218 | `field_len` | field | Length of a data field offered to the multiplexer, which the VC's data field length fixes | link | 132.0 §4.1.4; 732.0 §4.1.4; 732.1 §4.1.4.2, §4.2.2.1; LNK-076 |
 | 219 | `raw_frames` | parameter | Whether the receiver accepts the raw octets of a frame the caller rejected, to return its Insert Zone | link | 732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079 |
-| 250 | `asm_errors` | parameter | Number of ASM bit errors the search tolerates | sync | M5 plan D3; SYNC-010, SYNC-019 |
+| 250 | `asm_errors` | parameter | Number of ASM bit errors the search tolerates | sync | M5 plan D3; SYNC-007, SYNC-016 |
 | 251 | `sync_protocol` | parameter | Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length | sync | 131.0 §11.1, §11.3; SYNC-002 |
-| 252 | `chunk_len` | parameter | Length of an input chunk of the ASM search, in octets | sync | SYNC-017 |
+| 252 | `chunk_len` | parameter | Length of an input chunk of the ASM search, in octets | sync | SYNC-014 |

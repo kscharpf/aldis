@@ -1267,7 +1267,7 @@
 /**
  * Number of ASM bit errors the search tolerates.
  *
- * Code 250, a parameter (M5 plan D3; SYNC-010, SYNC-019; API-082, CABI-021).
+ * Code 250, a parameter (M5 plan D3; SYNC-007, SYNC-016; API-082, CABI-021).
  */
 #define ALDIS_FIELD_ASM_ERRORS 250
 
@@ -1281,7 +1281,7 @@
 /**
  * Length of an input chunk of the ASM search, in octets.
  *
- * Code 252, a parameter (SYNC-017; API-082, CABI-021).
+ * Code 252, a parameter (SYNC-014; API-082, CABI-021).
  */
 #define ALDIS_FIELD_CHUNK_LEN 252
 

@@ -748,7 +748,7 @@ pub const RAW_FRAMES: FieldId = FieldId::catalogued::<219>("raw_frames");
 
 /// Number of ASM bit errors the search tolerates.
 ///
-/// Code 250, a parameter (M5 plan D3; SYNC-010, SYNC-019; API-082).
+/// Code 250, a parameter (M5 plan D3; SYNC-007, SYNC-016; API-082).
 pub const ASM_ERRORS: FieldId = FieldId::catalogued::<250>("asm_errors");
 
 /// Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length.
@@ -758,7 +758,7 @@ pub const SYNC_PROTOCOL: FieldId = FieldId::catalogued::<251>("sync_protocol");
 
 /// Length of an input chunk of the ASM search, in octets.
 ///
-/// Code 252, a parameter (SYNC-017; API-082).
+/// Code 252, a parameter (SYNC-014; API-082).
 pub const CHUNK_LEN: FieldId = FieldId::catalogued::<252>("chunk_len");
 
 /// Every field code, in code order from 1 (API-082).
