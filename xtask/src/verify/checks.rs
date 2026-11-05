@@ -13,6 +13,7 @@ const RUST_BARE_METAL: &[&str] = &[
     "thumbv7em-none-eabihf",
     "armv7r-none-eabihf",
     "riscv32imac-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
 ];
 
 /// Where a check can run.

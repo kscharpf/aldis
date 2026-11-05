@@ -30,6 +30,13 @@ target = "riscv32imac-unknown-none-elf"
 rust = 4096
 c-abi = 10240
 
+[[budget]]
+# 64-bit words and pointers make frames larger: measured 5600 (rust) and 11664 (c-abi) bytes.
+# Bounds for this target only, maintainer decision 2026-11-05 (VER-011).
+target = "riscv64gc-unknown-none-elf"
+rust = 6144
+c-abi = 12288
+
 # The `Display` implementation of `aldis_core::Error` writes through `core::fmt`, whose
 # `Formatter` calls the caller's `core::fmt::Write` implementation through a `dyn` reference in
 # these four functions. That writer is the caller's code, so its stack is the caller's to bound:

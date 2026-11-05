@@ -97,7 +97,7 @@ Each crate has a README with its purpose, status, and layer, and an example for 
 
 ## Building
 
-The toolchain is pinned to stable Rust 1.99.1 by `rust-toolchain.toml`. rustup selects it automatically, together with the bare-metal targets.
+The toolchain is pinned to stable Rust 1.99.1 by `rust-toolchain.toml`. rustup selects it automatically, together with the bare-metal targets. The supported targets, and what each is tested with, are listed in [06-verification §4](docs/06-verification.md#4-targets-and-ci-matrix).
 
 ```sh
 cargo check --workspace                                                     # hosted

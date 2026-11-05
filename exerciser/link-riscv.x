@@ -1,4 +1,4 @@
-/* RISC-V (riscv32imac-unknown-none-elf) on QEMU virt with -bios none: DRAM from 0x80000000,
+/* RISC-V (riscv32imac and riscv64gc, -unknown-none-elf) on QEMU virt with -bios none: DRAM from 0x80000000,
    where QEMU starts the hart. `_start` comes first, so the image starts at the reset address
    whether QEMU jumps to the DRAM base or to the ELF entry (M1 D6). QEMU loads the ELF and
    zero-fills memory, so no copy or clear loop is needed. */
