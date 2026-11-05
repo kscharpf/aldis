@@ -66,6 +66,7 @@ pub const TARGETS: &[&str] = &[
     "thumbv7em-none-eabihf",
     "armv7r-none-eabihf",
     "riscv32imac-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
 ];
 
 /// The budgets and exemptions, relative to the repository root.

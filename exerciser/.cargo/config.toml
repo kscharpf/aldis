@@ -22,6 +22,10 @@ runner = [
 [target.riscv32imac-unknown-none-elf]
 runner = "qemu-system-riscv32 -machine virt -bios none -nographic -semihosting-config enable=on,target=native -kernel"
 
+# RV64 on the virt board, machine mode, no firmware.
+[target.riscv64gc-unknown-none-elf]
+runner = "qemu-system-riscv64 -machine virt -bios none -nographic -semihosting-config enable=on,target=native -kernel"
+
 # LEON3 (SPARC V8) on the leon3_generic board, non-gating (OI-08). The target is tier 3: build
 # with the tooling nightly and `-Z build-std=core` (verify check `rust-sparc-leon3`). The
 # rustflags select the LEON3 CPU; a RUSTFLAGS variable replaces them, so the check sets the flag

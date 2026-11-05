@@ -233,7 +233,7 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `record:VER-010` | What the exerciser calls (every public API of the library crates and every C ABI function), with which inputs (every live vector case), and how the canary keeps the check from passing vacuously | VER-010, GEN-020, GEN-021 |
-| `check:exerciser-thumbv7em-none-eabihf`; `check:exerciser-armv7r-none-eabihf`; `check:exerciser-riscv32imac-unknown-none-elf` | The link check, the canary, and the vector run under QEMU, gating on every pull request | VER-010, GEN-021 |
+| `check:exerciser-thumbv7em-none-eabihf`; `check:exerciser-armv7r-none-eabihf`; `check:exerciser-riscv32imac-unknown-none-elf`; `check:exerciser-riscv64gc-unknown-none-elf` | The link check, the canary, and the vector run under QEMU, gating on every pull request | VER-010, GEN-021 |
 | `file:exerciser/src/ffi.rs` | The C ABI group of the exerciser (M2 plan D16), so the link check covers `aldis-ffi` | VER-010 |
 | `nightly-check:rust-sparc-leon3` | The same on LEON3, reported and not gating (OI-08) | VER-010 |
 
@@ -281,7 +281,7 @@ graph TD
 
 | Evidence | Shows | Requirements |
 |---|---|---|
-| `check:stack`; `record:VER-011` | The call graph of the shipped C ABI library and of the exerciser, built from object code on three targets, is checked complete (no indirect call outside stated exemptions) and fails on a cycle | GEN-022 |
+| `check:stack`; `record:VER-011` | The call graph of the shipped C ABI library and of the exerciser, built from object code on four targets, is checked complete (no indirect call outside stated exemptions) and fails on a cycle | GEN-022 |
 
 ### AC-3.3 Nothing blocks
 
@@ -290,7 +290,7 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `record:GEN-022` | Analysis of architecture: `#![no_std]`, no heap allocation, no locks, atomics, or syscalls | GEN-023 |
-| `record:CABI-004`; `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf` | The bare-metal static library needs nothing from the platform beyond `memcpy` and `memset` equivalents, so it calls no operating system service that could block; GEN-031 and GEN-032 have no record of their own (`df:DF-13`) | CABI-004, GEN-005 |
+| `record:CABI-004`; `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `check:no-std-riscv64gc-unknown-none-elf` | The bare-metal static library needs nothing from the platform beyond `memcpy` and `memset` equivalents, so it calls no operating system service that could block; GEN-031 and GEN-032 have no record of their own (`df:DF-13`) | CABI-004, GEN-005 |
 | `check:layers` | No third-party runtime dependency brings any in | GEN-001 |
 
 ## AC-4 Aldis uses bounded resources
@@ -306,7 +306,7 @@ graph TD
 | Evidence | Shows | Requirements |
 |---|---|---|
 | `record:GEN-010` | Fixed capacities, and builds with no allocator | GEN-010, GEN-012 |
-| `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `check:no-std-thumbv7em-none-eabihf` | The facade with every feature and the C ABI library build for bare metal without `alloc` | GEN-005, GEN-010 |
+| `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `check:no-std-riscv64gc-unknown-none-elf`; `check:no-std-thumbv7em-none-eabihf` | The facade with every feature and the C ABI library build for bare metal without `alloc` | GEN-005, GEN-010 |
 | `record:CABI-004` | The shipped static library imports no allocator | CABI-004 |
 | `check:features`; `check:features` | `alloc` and `std` add no API and change no result | GEN-006 |
 

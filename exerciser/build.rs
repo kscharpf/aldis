@@ -374,7 +374,7 @@ fn main() {
         ("cortex_m", "link-cortex-m.x")
     } else if target.starts_with("armv7r") {
         ("cortex_r", "link-cortex-r.x")
-    } else if target.starts_with("riscv32") {
+    } else if target.starts_with("riscv") {
         ("riscv", "link-riscv.x")
     } else if target.starts_with("sparc-") {
         // LEON3 (SPARC V8), non-gating (OI-08).
