@@ -32,7 +32,7 @@ c-abi = 10240
 
 [[budget]]
 # 64-bit words and pointers make frames larger: measured 5600 (rust) and 11664 (c-abi) bytes.
-# Provisional bounds, pending the maintainer (VER-011).
+# Bounds for this target only, maintainer decision 2026-11-05 (VER-011).
 target = "riscv64gc-unknown-none-elf"
 rust = 6144
 c-abi = 12288
