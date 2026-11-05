@@ -734,7 +734,15 @@ dependencies = [
 name = "xtask"
 version = "0.4.0"
 dependencies = [
+ "aldis-aos",
+ "aldis-core",
+ "aldis-epp",
+ "aldis-spp",
+ "aldis-tc",
  "aldis-testkit",
+ "aldis-time",
+ "aldis-tm",
+ "aldis-uslp",
  "serde_json",
  "sha2",
 ]

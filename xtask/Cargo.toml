@@ -10,6 +10,16 @@ publish = false
 
 [dependencies]
 aldis-testkit = { path = "../crates/aldis-testkit", features = ["schema"] }
+# The codec crates, without default features, for `xtask layouts`, which derives the header
+# layouts by probing their encoders (VER-072).
+aldis-core = { path = "../crates/aldis-core", default-features = false }
+aldis-time = { path = "../crates/aldis-time", default-features = false }
+aldis-spp = { path = "../crates/aldis-spp", default-features = false }
+aldis-epp = { path = "../crates/aldis-epp", default-features = false }
+aldis-tm = { path = "../crates/aldis-tm", default-features = false }
+aldis-tc = { path = "../crates/aldis-tc", default-features = false }
+aldis-aos = { path = "../crates/aldis-aos", default-features = false }
+aldis-uslp = { path = "../crates/aldis-uslp", default-features = false }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 

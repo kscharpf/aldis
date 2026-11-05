@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layouts of the [Primary Header](../reference/header-layouts.md#tm-transfer-frame-primary-header) and of the [Secondary Header identification field](../reference/header-layouts.md#tm-transfer-frame-secondary-header-identification-field), generated from the encoders: [header layouts](../reference/header-layouts.md).
+
 Secondary Header: ID octet = version `00` (2 bits) ‖ length − 1 (6 bits), followed by 1–63 data octets (total 2–64, fixed per MC/VC).
 
 ## 2. Configuration (managed parameters, §5)

@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layouts of the [Primary Header](../reference/header-layouts.md#uslp-transfer-frame-primary-header) and the [truncated Primary Header](../reference/header-layouts.md#uslp-transfer-frame-truncated-primary-header), generated from the encoders: [header layouts](../reference/header-layouts.md).
+
 Flag combinations (Table 4-1): `00` sequence-controlled user data, `01` **reserved**, `10` expedited user data, `11` protocol control commands (sequence-controlled service).
 
 **TFDF Header:** TFDZ Construction Rule (3 bits) ‖ UPID (5 bits) ‖ [First Header / Last Valid Octet Pointer (16 bits)].
