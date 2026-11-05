@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::md::{scan_ids, tables};
 use crate::repo;
-use crate::spec::{CPP_EXTENSIONS, DEFERRED_AREAS, Spec};
+use crate::spec::{CPP_EXTENSIONS, DEFERRED_AREAS, Spec, in_v1};
 
 fn add(
     map: &mut BTreeMap<String, BTreeSet<String>>,
@@ -226,16 +226,15 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
         None => spec
             .requirements
             .values()
-            .filter(|r| !DEFERRED_AREAS.iter().any(|(a, _)| *a == r.area))
+            .filter(|r| in_v1(&r.area))
             .map(|r| r.id.clone())
             .collect(),
     };
-    let deferred = spec.requirements.len()
-        - if scope.is_none() {
-            in_scope.len()
-        } else {
-            spec.requirements.len()
-        };
+    let deferred = if scope.is_none() {
+        spec.requirements.len() - in_scope.len()
+    } else {
+        0
+    };
 
     let mut md = format!(
         "# Trace matrix{}\n\n| ID | Verif. | Status | Artefacts |\n|---|---|---|---|\n",
