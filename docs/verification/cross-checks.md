@@ -335,3 +335,16 @@ ESA SCOS-2000, EGOS, and libgcs are not published as open source. OpenC3 COSMOS 
 ## 5. COP-1 (M3)
 
 No independent implementation of COP-1 (232.1) was searched for or run. By maintainer decision of 2026-10-31, the blind Python model `test-vectors/models/cop1.py`, written without sight of the Rust engines (TV-023), is the independent check for M3 and counts as the VER-040 search record for the milestone: one scenario per cell of Tables 5-1 and 6-1 (M3 WP-2, #183, #190). It also counts as the second review of the hand-derived vectors.
+
+## 6. Link engines (M4)
+
+Search of 2026-11-04 (M4 WP-9) for an independent implementation of the link-layer procedures that `aldis-link` implements: packet placement with the First Header Pointer, virtual channel multiplexing, frame reception and counting, packet extraction, MAP segmentation and reassembly, and CLTU grouping, for TM (132.0), TC (232.0), AOS (732.0), and USLP (732.1). The search ran on the web (open-source CCSDS frame libraries, and the frame-processing layers of ground systems) and revisited the candidates of §4.7 to §4.10.
+
+| Candidate | License | Coverage | Verdict |
+|---|---|---|---|
+| `eu.dariolucia.ccsds` (Java; [repository](https://github.com/dariol83/ccsds), archived 2024) | Apache-2.0 | TM, TC, and AOS frame encoding and decoding, packet and encapsulation packet extraction by FHP, and a COP-1 FARM/FOP. No USLP, no multiplexing policy, no MAP segmentation | Qualifies for the packet placement and extraction of TM and AOS; not run in `crosscheck/` because it needs a JVM and the vector files would need a Java harness |
+| Yamcs `org.yamcs.tctm.ccsds` (Java; [manual](https://docs.yamcs.org/yamcs-server-manual/links/ccsds-frame-processing/)) | AGPL-3.0 | The master channel frame handler demultiplexes TM, AOS, and USLP frames to virtual channels with packet, idle, and VCA services | Does not qualify: AGPL-3.0 copyleft and the Yamcs runtime (OI-32) |
+| Astro (Go; [package](https://pkg.go.dev/github.com/ravisuhag/astro/pkg)) | not checked | AOS and USLP frame packages; the search results do not say whether it has the procedures (multiplexing, FHP placement) | Not evaluated: its license and the procedures it covers were not read |
+| Open Space Data Link Protocol (C/C++; [slides](https://events.libre.space/event/5/contributions/147/attachments/115/142/session%204-2%20OSDLP.pdf)) | not checked | Virtual channels and MAP segmentation for TC, per the slides of its authors | Not evaluated: a presentation was found, not a version to run |
+
+None was run against the vector files. The independent check of the link engines is the pair of blind Python models `test-vectors/models/link_send.py` and `test-vectors/models/link_recv.py`, written from the Blue Books and `docs/` without sight of the Rust engines (TV-023, M4 WP-2a and WP-2b), whose scenarios the Rust runners and the C ABI runners pass. **Accepted for M4** (maintainer decision 2026-11-05): VER-040 for the link engines is met by this search and the blind models; running `eu.dariolucia.ccsds` through a Java harness against the TM and AOS packet scenarios is not required for the M4 exit, and stays open with OI-32.

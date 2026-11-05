@@ -8,7 +8,7 @@
 //! 732.0 §3.2.4, §4.1.4.1.3; 732.1 §4.1.4.2.2.1.4, §4.1.4.2.4.5–6, §4.2.3.1.2–6). It holds no
 //! output queue of fields (API-059): the framework feeds the returned field to the multiplexer.
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`ACCESS_GENERATOR_MAX_ACTIONS`]). `Release` writes the data field of the VC to the output
 //! area and fails with `BufferTooSmall` when the area is shorter. The other inputs write nothing.
 
@@ -76,6 +76,8 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     /// `InvalidConfig` (`field_len`) unless the field holds the header and at least one octet of
     /// zone, the zone has at most 65 535 octets (the length of a queued SDU has 16 bits), and
     /// the pointer of the protocol can address the last octet of the zone.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub fn new(vc: P::Vc, params: P::Params, field_len: usize) -> Result<AccessGeneratorConfig<P>> {
         let zone = field_len.saturating_sub(P::HEADER_LEN);
         // The queue holds the length of an SDU in 16 bits, so a zone above 65 535 octets could
@@ -125,24 +127,32 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     }
 
     /// The VC (the MAP for USLP) the generator serves.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn vc(&self) -> P::Vc {
         self.vc
     }
 
     /// The octets of the data field, header included.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn field_len(&self) -> usize {
         self.field_len
     }
 
     /// The longest SDU.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn max_sdu_len(&self) -> usize {
         self.max_sdu_len
     }
 
     /// The octet that fills the zone after an SDU.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn idle_pattern(&self) -> u8 {
         self.idle_pattern
@@ -222,6 +232,8 @@ pub struct AccessGenerator<P: AccessProtocol, const Q: usize> {
 }
 
 /// Everything of an [`AccessGenerator`] but its queue (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessGeneratorHead<P: AccessProtocol> {
     config: AccessGeneratorConfig<P>,
@@ -233,6 +245,8 @@ pub struct AccessGeneratorHead<P: AccessProtocol> {
 
 /// The SDU queue of an [`AccessGenerator`]: `Q` octets, valid when all zero, which is the empty
 /// state (see [`crate::inplace`]).
+///
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct AccessGeneratorBuffers<const Q: usize> {
@@ -241,6 +255,8 @@ pub struct AccessGeneratorBuffers<const Q: usize> {
 
 impl<const Q: usize> AccessGeneratorBuffers<Q> {
     /// An empty queue.
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const ZERO: Self = Self { queue: [0; Q] };
 }
 
@@ -249,6 +265,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     ///
     /// # Errors
     /// `CapacityExceeded` (`max_sdu_len`) if the longest SDU and its length do not fit the queue.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub fn new(config: AccessGeneratorConfig<P>) -> Result<AccessGenerator<P, Q>> {
         Ok(AccessGenerator {
             head: Self::new_head(config)?,
@@ -257,8 +275,12 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     }
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
@@ -266,6 +288,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     ///
     /// # Errors
     /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub fn new_head(config: AccessGeneratorConfig<P>) -> Result<AccessGeneratorHead<P>> {
         AccessGenerator::<P, Q>::check_capacity(&config)?;
         Ok(AccessGeneratorHead {
@@ -286,6 +310,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     }
 
     /// The configuration in force.
+    ///
+    /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
     pub const fn config(&self) -> &AccessGeneratorConfig<P> {
         &self.head.config

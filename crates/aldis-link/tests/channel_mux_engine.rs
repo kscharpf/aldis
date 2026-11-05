@@ -345,6 +345,24 @@ fn the_configuration_reports_what_it_holds() {
     assert_eq!(channel.scid().get(), 421);
     assert_eq!(channel.edition(), AosEdition::Issue5);
     assert!(!channel.fhec() && !channel.cycle_in_use());
+    let flagged = AosChannel::new(
+        SpacecraftId::<10>::new(7).unwrap(),
+        AosEdition::Issue5,
+        true,
+        true,
+    )
+    .unwrap();
+    assert!(flagged.fhec() && flagged.cycle_in_use());
+    let no_fecf = ChannelMuxConfig::<Tm, V>::new(
+        tm_channel(),
+        24,
+        false,
+        MuxPolicy::FixedPriority,
+        &tm_vcs(),
+    )
+    .unwrap();
+    assert!(!no_fecf.fecf());
+    assert!(uslp_vc(1, true).params().cop() && !uslp_vc(1, false).params().cop());
     let aos = aos_config().with_insert_zone(3, 0xA5).unwrap();
     assert_eq!(aos.insert_zone_len(), 3);
 }
@@ -689,13 +707,15 @@ fn an_opportunity_needs_the_whole_frame_and_changes_nothing_without() {
     let e = mux.step(MuxInput::Opportunity, &mut short).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(mux.status().frames_out.get(), 0);
-    // The offer is still there and the first frame is the first of the counts.
-    let a = mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    // The offer is still there and the first frame is the first of the counts; an area of
+    // exactly the frame is enough.
+    let mut exact = [0; 24];
+    let a = mux.step(MuxInput::Opportunity, &mut exact).unwrap();
     let Some(MuxOutput::Transmit(t)) = a.get(0) else {
         panic!("no frame")
     };
     assert_eq!((t.class, t.vc, t.frame.len()), (FrameClass::Data, 1, 24));
-    assert_eq!(&out[2..4], [0, 0]);
+    assert_eq!(&exact[2..4], [0, 0]);
 }
 
 #[test]
@@ -889,6 +909,80 @@ fn the_protocols_without_cop_have_no_vcf_count_to_take() {
     assert!(Tm::vc_route(&tm).is_none() && Aos::vc_route(&aos).is_none());
     assert!(Tm::vc_fsh(&tm).is_none() && Aos::vc_fsh(&aos).is_none());
     assert_eq!(Aos::check_pointer(&aos, Some(5)).unwrap(), 0);
+    assert_eq!(
+        Uslp::check_pointer(uslp_vc(1, false).params(), Some(5)).unwrap(),
+        0
+    );
+}
+
+#[test]
+fn a_frame_of_the_capacity_is_accepted() {
+    // req: GEN-011, LNK-075
+    let tm =
+        ChannelMuxConfig::<Tm, V>::new(tm_channel(), F, true, MuxPolicy::FixedPriority, &tm_vcs())
+            .unwrap();
+    assert!(TmMux::new(tm).is_ok() && TmMux::new_head(tm).is_ok());
+    let aos = ChannelMuxConfig::<Aos, V>::new(
+        aos_channel(),
+        F,
+        true,
+        MuxPolicy::FixedPriority,
+        &[aos_vc(1, 1)],
+    )
+    .unwrap();
+    assert!(AosMux::new(aos).is_ok());
+    let uslp = ChannelMuxConfig::<Uslp, V>::new(
+        uslp_channel(),
+        F,
+        true,
+        MuxPolicy::FixedPriority,
+        &[uslp_vc(1, false)],
+    )
+    .unwrap();
+    assert!(UslpMux::new(uslp).is_ok());
+}
+
+#[test]
+fn a_tm_frame_carries_all_ten_bits_of_the_scid() {
+    // req: LNK-032
+    let channel = TmChannel::new(
+        SpacecraftId::<10>::new(0x2A5).unwrap(),
+        VcId::<3>::new(7).unwrap(),
+    );
+    let config =
+        ChannelMuxConfig::<Tm, V>::new(channel, 24, true, MuxPolicy::FixedPriority, &tm_vcs())
+            .unwrap();
+    let mut mux = TmMux::new(config).unwrap();
+    let mut out = [0; F];
+    step_ok(&mut mux, offer(1, &[1; 16], Some(0)));
+    mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    // Version 00, then the SCID: bits 9-4 in octet 0, bits 3-0 in the top of octet 1.
+    assert_eq!((out[0], out[1] >> 4), (0x2A, 0x5));
+}
+
+#[test]
+fn a_uslp_frame_names_the_destination_when_the_channel_is_one() {
+    // req: LNK-032
+    let channel = UslpChannel {
+        source_or_destination: SourceOrDestination::Destination,
+        ..uslp_channel()
+    };
+    let config = ChannelMuxConfig::<Uslp, V>::new(
+        channel,
+        32,
+        true,
+        MuxPolicy::FixedPriority,
+        &[uslp_vc(1, false)],
+    )
+    .unwrap();
+    let mut mux = UslpMux::new(config).unwrap();
+    let mut out = [0; F];
+    mux.step(MuxInput::Offer(offer(1, &[0x22; 21], None)), &mut out)
+        .unwrap();
+    mux.step(MuxInput::Opportunity, &mut out).unwrap();
+    // The SCID 0x1234 ends in the top four bits of octet 2; the next bit is the flag.
+    assert_eq!(out[2] >> 4, 0x4);
+    assert_eq!(out[2] >> 3 & 1, 1);
 }
 
 #[test]

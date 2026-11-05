@@ -49,18 +49,24 @@ impl UslpChannel {
     }
 
     /// Whether the frames vary in length.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn is_variable(&self) -> bool {
         self.variable
     }
 
     /// The octets of the Insert Zone.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn insert_zone_len(&self) -> usize {
         self.insert_zone_len
     }
 
     /// How the OCF is delivered.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn ocf(&self) -> Service {
         self.ocf
@@ -73,6 +79,8 @@ pub struct MapSet(u16);
 
 impl MapSet {
     /// The set of `maps`.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub fn new(maps: &[MapId<4>]) -> MapSet {
         MapSet(maps.iter().fold(0u16, |set, map| {
@@ -81,6 +89,8 @@ impl MapSet {
     }
 
     /// Whether `map` is in the set.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub fn contains(&self, map: MapId<4>) -> bool {
         self.0 & 1u16.wrapping_shl(u32::from(map.get())) != 0
@@ -105,18 +115,24 @@ impl UslpVc {
     }
 
     /// The MAPs of the VC.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn maps(&self) -> MapSet {
         self.maps
     }
 
     /// Whether the COP is in effect.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn cop(&self) -> bool {
         self.cop
     }
 
     /// Whether the receiver serves the VC.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn served(&self) -> bool {
         self.served
