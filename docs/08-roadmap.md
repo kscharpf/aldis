@@ -4,7 +4,7 @@ v1 is built in two active tracks against one specification (Track C, native C++,
 
 | Track | Purpose | Milestones | Directories it owns |
 |---|---|---|---|
-| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ wrapper | M0–M5 for v1, M6 in v1.1 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
+| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ engine-handle wrapper | M0–M5 for v1, M6 in v1.1 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
 | **A — Reference application** | An end-to-end flight↔ground application that uses only the public APIs, grown one milestone at a time. It gives API feedback before v1 freezes and is the integrators' starting point | A0–A6 (§3) | `refapp/` |
 | **C — Native C++ (Phase 3)** | Retired from v1 and deferred to roadmap Phase 3 (archived at tag `c0-archive`) | C0–C5 (§2) | — |
 
@@ -21,7 +21,7 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | **M2 Frame codecs** ([plan](milestones/m2-frame-codecs.md)) | **WP-0:** the M1 codecs' part of the C ABI (time, SPP, EPP: `aldis-ffi` functions and generated header, OI-21), the field-code catalogue with `FieldId` carrying its code (API-082, OI-27), and the shared property-test strategies in `aldis-testkit` (VER-054). Then `aldis-tm`, `aldis-tc` (incl. CLCW, delimiting, validation), `aldis-aos` (incl. FHEC, editions), `aldis-uslp` (incl. truncated), each with its C ABI functions | M1 | **Complete** (2026-10-27, `v0.3.0-m2`); exit criteria in the plan §4 |
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests; protocol states as closed enums whose transition functions are generated from, or checked against, the state tables, and the engines' lifecycles as typestates (RS-021); a decision on hardening the engines' long-lived state against single-event upsets beyond GEN-015 ([hardware assumptions](hardware-assumptions.md) §4); FOP-1/FARM-1 handles in the C ABI, with the capacities configuration (CABI-030) | M2 | One vector per table cell; two-person table review recorded. **Released** as `v0.4.0-m3` (2026-10-31, [plan §4](milestones/m3-cop1.md)) |
 | **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer, each with its C ABI handle ([plan](milestones/m4-link-engines.md)) | M3 | LNK requirements traced; property tests for FHP placement and reassembly. **Complete** (2026-11-04, [plan §4](milestones/m4-link-engines.md)); the release `v0.5.0-m4` is the maintainer's |
-| **M5 C ABI completion** ([plan](milestones/m5-c-abi-completion.md)) | CADUs and the TM randomizer (OI-12): a new Layer 1 crate for ASM attach and search and the TM pseudo-randomizer (131.0 §9–10), with its C ABI; C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` (CABI-072) | M4 | All CABI requirements traced; vectors pass via the C ABI and via `aldis.hpp` |
+| **M5 C ABI completion** ([plan](milestones/m5-c-abi-completion.md)) | CADUs and the TM randomizer (OI-12): a new Layer 1 crate for ASM attach and search and the TM pseudo-randomizer (131.0 §9–10), with its C ABI; C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` of the engine handles (CABI-072) | M4 | All CABI requirements traced; engine-scenario vectors pass via `aldis.hpp` |
 | **M6 Framework (v1.1)** | `aldis-framework` traits, stacks, loopback, std adapters, trace/replay (the FW-013 trace format extractable from, or sharing the record encoding of, the reference application's golden traces, OI-25) | M5 | FW requirements traced; loopback stack tested end to end. The first milestone of v1.1: the FW requirements are outside the v1 trace and the v1.0 gate (`DEFERRED_AREAS` in `xtask/src/spec.rs`, [05](05-framework.md)) |
 
 Layer 3 (`aldis-framework`) is not part of v1: its crate stays in the workspace as a skeleton until M6, and it is Rust-only.
@@ -41,7 +41,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
 | **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
-| **A5 C and C++** | A C++ flight side using `aldis.hpp`, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
+| **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
 | **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay goes with M6 to v1.1 | A5 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
 | **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
@@ -113,7 +113,7 @@ Each later standard follows the active tracks: the Rust crate first, then its us
 | Phase | Language | Approach |
 |---|---|---|
 | 1 | Rust | Reference implementation (track R); the recommended choice |
-| 1 | C / C++ | C ABI over Rust (`aldis-ffi`) + header-only C++ wrapper (`aldis.hpp`, track R, M5, CABI-072) |
+| 1 | C / C++ | C ABI over Rust (`aldis-ffi`) + header-only C++ wrapper of the engine handles (`aldis.hpp`, track R, M5, CABI-072) |
 | 2 | Python | Bindings over the C ABI (or PyO3 over the Rust crates) with an idiomatic API; vectors run under pytest |
 | 2 | Go | cgo bindings over the C ABI |
 | 2 | Java / C# | Panama (FFM) or JNI / P/Invoke over the C ABI |
