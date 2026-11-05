@@ -48,6 +48,8 @@
 
 The check `big-endian` runs `cargo test --workspace --all-features` on `s390x-unknown-linux-gnu` under QEMU user mode (`BIG_ENDIAN` in `xtask/src/verify/checks.rs`). `xtask` is a member of the workspace, so its tests run on a big-endian target too.
 
+The table lists the supported targets. Two more platforms are test platforms only, not supported targets: `s390x-unknown-linux-gnu`, the big-endian target of the check `big-endian` (GEN-007, VER-030), and macOS, the developer host of the check `test-macos`.
+
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | VER-030 | At least one big-endian target SHALL run the full vector suite (GEN-007). | GEN-007 | V |
