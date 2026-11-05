@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layouts of the Primary Header [without](../reference/header-layouts.md#aos-transfer-frame-primary-header) and [with the FHEC](../reference/header-layouts.md#aos-transfer-frame-primary-header-with-the-frame-header-error-control), generated from the encoders: [header layouts](../reference/header-layouts.md).
+
 The data field holds exactly one of: an **M_PDU** (packets), a **B_PDU** (bitstream), a **VCA_SDU**, or Idle Data (OID frame), fixed per VC.
 
 - **M_PDU (Issue 5):** First Header Pointer (16 bits) ‖ Packet Zone. FHP `0xFFFF` = no packet starts; `0xFFFE` = only idle data.

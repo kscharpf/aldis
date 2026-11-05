@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layouts of the [Primary Header](../reference/header-layouts.md#tc-transfer-frame-primary-header), the [Segment Header](../reference/header-layouts.md#tc-segment-header), and the [CLCW](../reference/header-layouts.md#communications-link-control-word), generated from the encoders: [header layouts](../reference/header-layouts.md).
+
 Flag combinations (Table 4-1): `00` AD, `01` **reserved**, `10` BD, `11` BC.
 Segment Header (optional per VC, never in Type-C frames): Sequence Flags (2 b: `01` first, `00` continuing, `10` last, `11` unsegmented) ‖ MAP ID (6 b).
 Control commands (Type-C data field): **Unlock** = `00`; **Set V(R)** = `82 00 vv`.

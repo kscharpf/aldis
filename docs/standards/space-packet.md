@@ -6,6 +6,8 @@
 
 The field layout is that of the Blue Book clause cited in the heading, and of the rustdoc of the view and writer types; the vectors pin the octets.
 
+Bit-by-bit layout of the [Primary Header](../reference/header-layouts.md#space-packet-primary-header), generated from the encoder: [header layouts](../reference/header-layouts.md).
+
 Total packet length is 7 to 65 542 octets (§4.1.2.2).
 
 ## 2. Requirements
