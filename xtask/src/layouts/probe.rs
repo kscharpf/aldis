@@ -238,6 +238,16 @@ pub fn probe(header: &Header) -> Result<Layout, String> {
             id.name()
         ));
     }
+    if let Some(f) = header
+        .fields
+        .iter()
+        .find(|f| matches!(f.how, How::Rejected) && f.id.is_none())
+    {
+        return Err(format!(
+            "{title}: field {}: a rejected field needs the field code the decoder names",
+            f.name
+        ));
+    }
     let derived_from = header.fields.iter().find_map(|f| match f.how {
         How::Derived { from_bit } => Some(from_bit),
         How::Encode { .. } | How::Rejected => None,
@@ -443,6 +453,19 @@ mod tests {
         };
         let e = probe(&toy(vec![dead])).unwrap_err();
         assert!(e.contains("no accepted value changes a bit"), "{e}");
+    }
+
+    #[test]
+    fn a_rejected_field_without_a_field_code_fails() {
+        // req: VER-072
+        let mut h = checked(|v| v);
+        for f in &mut h.fields {
+            if matches!(f.how, How::Rejected) {
+                f.id = None;
+            }
+        }
+        let e = probe(&h).unwrap_err();
+        assert!(e.contains("needs the field code"), "{e}");
     }
 
     /// A two-octet header: a 3-bit field `x` in bits 0-2 that sets the second octet as a check
