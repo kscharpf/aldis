@@ -8,7 +8,7 @@
 //! at start-up, and after an extraction error it resynchronises at the next First Header Pointer
 //! (LNK-061, LNK-062).
 //!
-//! **Bounds (LNK-074, LNK-075).** One `DataField` returns at most
+//! **Bounds (LNK-074, LNK-075, API-062).** One `DataField` returns at most
 //! [`EXTRACTOR_MAX_ACTIONS`] actions, whatever the length of the field: the packets between two
 //! events are one `Packets` run. It writes at most `max_packet_len − 1 + z` octets to the
 //! output area, `z` being the octets of the packet zone it is given: the packet in progress

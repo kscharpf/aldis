@@ -13,7 +13,7 @@
 //! released (LNK-013). The octets of a packet that do not fit are queued whole behind it
 //! (LNK-015).
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`PACKET_GENERATOR_MAX_ACTIONS`]). `Release` writes at most `D` octets to the output area,
 //! the data field of the VC, and fails with `BufferTooSmall` when the area is shorter than the
 //! field it would return. The other inputs write nothing.

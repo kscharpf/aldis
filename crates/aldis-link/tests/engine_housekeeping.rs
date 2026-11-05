@@ -214,7 +214,7 @@ fn the_generator_refuses_what_the_blue_book_forbids() {
 
 #[test]
 fn an_area_too_short_fails_with_no_change() {
-    // req: LNK-075, API-058, API-062
+    // req: LNK-075, API-058
     let mut g = tm_gen();
     let mut out = [0u8; 24];
     g.step(GeneratorInput::SubmitPacket(&spp(24, 1)), T0, &mut out)

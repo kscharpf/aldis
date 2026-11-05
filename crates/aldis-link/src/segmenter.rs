@@ -28,7 +28,7 @@
 //! start the next TFDZ when the full one is handed out. A stream TFDZ never interrupts the SDU in
 //! progress (732.1 §4.1.4.2.2.1.6).
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`MAP_SEGMENTER_MAX_ACTIONS`]): `NextFdu` one `Fdu`, `Reconfigure` one `Discarded`, the other
 //! inputs none. `NextFdu` writes at most `max_fdu_len` octets (`L`, the FDU or TFDF with its
 //! header) to the output area and fails with `BufferTooSmall` when the area is shorter, whether

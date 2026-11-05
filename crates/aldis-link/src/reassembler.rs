@@ -34,7 +34,7 @@
 //! the TFDZ, packets that do not tile a blocked FDU or a reassembled packet that disagrees with its
 //! own length field, a PVN other than 0 and 7.
 //!
-//! **Bounds (LNK-074, LNK-075).** One `Fdu` returns at most [`MAP_REASSEMBLER_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** One `Fdu` returns at most [`MAP_REASSEMBLER_MAX_ACTIONS`]
 //! actions: the events `GapDiscard` and `SequenceViolation` or `SduTooLong`, and the delivery,
 //! never all three (see the constant). It writes at most `max_sdu_len − 1 + z` octets to the
 //! output area, `z` being the octets of the user data of the FDU: the SDU in progress and the data

@@ -19,7 +19,7 @@
 //! Secondary Header, and the Insert Zone come from slots that the caller updates (LNK-033,
 //! LNK-034).
 //!
-//! **Bounds (LNK-074, LNK-075).** `Opportunity` returns at most [`CHANNEL_MUX_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** `Opportunity` returns at most [`CHANNEL_MUX_MAX_ACTIONS`]
 //! actions and writes the frame length of the configuration to the output area; every other
 //! input returns at most one action and writes nothing.
 

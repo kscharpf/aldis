@@ -20,10 +20,12 @@
 //! ([`ReceiverOutput::TcFrame`]) for FARM-1 (LNK-081). The octets of an FSH, an Insert Zone, or
 //! a data field are copied to the output area, and the action names the range.
 //!
-//! **Bounds (LNK-074, LNK-075).** One input returns at most [`FRAME_RECEIVER_MAX_ACTIONS`]
+//! **Bounds (LNK-074, LNK-075, API-062).** One input returns at most [`FRAME_RECEIVER_MAX_ACTIONS`]
 //! actions, and `Frame` writes at most [`FrameReceiverConfig::area_len`] octets to the output
 //! area; a shorter area fails the input with `BufferTooSmall` before any state change. The
-//! per-protocol worst cases are argued at [`FRAME_RECEIVER_MAX_ACTIONS`].
+//! per-protocol worst cases are argued at [`FRAME_RECEIVER_MAX_ACTIONS`]. `RawFrame` writes the
+//! Insert Zone `IN_SDU`, at most the Insert Zone length of the channel; `FrameLoss`,
+//! `CallerDiscard`, and `Reconfigure` write nothing.
 //!
 //! **No state change on a refusal (API-058).** A frame is parsed completely before any count or
 //! flag changes, so a frame the receiver refuses (`LengthMismatch`, `Malformed`, `ReservedValue`,

@@ -8,7 +8,7 @@
 //! 732.0 §3.2.4, §4.1.4.1.3; 732.1 §4.1.4.2.2.1.4, §4.1.4.2.4.5–6, §4.2.3.1.2–6). It holds no
 //! output queue of fields (API-059): the framework feeds the returned field to the multiplexer.
 //!
-//! **Bounds (LNK-074, LNK-075).** Every input returns at most one action
+//! **Bounds (LNK-074, LNK-075, API-062).** Every input returns at most one action
 //! ([`ACCESS_GENERATOR_MAX_ACTIONS`]). `Release` writes the data field of the VC to the output
 //! area and fails with `BufferTooSmall` when the area is shorter. The other inputs write nothing.
 

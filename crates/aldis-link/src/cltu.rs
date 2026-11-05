@@ -19,7 +19,7 @@
 //!   §2.4.2 note, §4.2.11.8): its repetition value is 1, whatever value the caller gives.
 //! - Truncated and non-truncated USLP frames never share a unit (732.1 Annex D, D1.2.5).
 //!
-//! **Bounds (LNK-074, LNK-075).** `AddFrame` returns at most two units
+//! **Bounds (LNK-074, LNK-075, API-062).** `AddFrame` returns at most two units
 //! ([`CLTU_PACKER_MAX_ACTIONS`]): the unit the frame did not fit, and the new unit if the frame
 //! fills it. It writes at most `2·U` octets to the output area, `U` being the maximum length of a
 //! data unit of the configuration, and fails with `BufferTooSmall` when the area is shorter.
