@@ -366,6 +366,79 @@ fn native_static_libs(note: &str) -> Vec<String> {
         .collect()
 }
 
+/// The C vector harness of `sanitizers` (VER-026).
+const VECTOR_HARNESS: &str = "crates/aldis-ffi/tests/c/vectors.c";
+
+/// `xtask header sanitizers <cc>`: the C vector harness, built by `cc` with
+/// `-fsanitize=address,undefined` against the static library, runs the shared vectors through the
+/// C ABI (VER-026). Prints the compiler it ran; an undefined-behaviour report stops the run
+/// (`-fno-sanitize-recover`), and so does any `ASan` error.
+pub fn sanitizers(cc: &str) -> Result<usize, String> {
+    let root = repo::root();
+    let note = run_cmd(
+        Command::new("cargo")
+            .args(["--color", "never"])
+            .args(["rustc", "-p", "aldis-ffi", "--release", "--lib"])
+            .args(["--crate-type", "staticlib"])
+            .args(["--", "--print", "native-static-libs"])
+            .current_dir(&root),
+    )?;
+    run_cmd(
+        Command::new("cargo")
+            .args(["build", "-p", "aldis-ffi", "--release", "--lib"])
+            .current_dir(&root),
+    )?;
+    let lib = root.join("target/release/libaldis_ffi.a");
+    if !lib.is_file() {
+        return Err("target/release/libaldis_ffi.a was not built (CABI-001)".into());
+    }
+    let version = run_cmd(Command::new(cc).arg("--version"))?;
+    let out_dir = root.join("target/header");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let exe = out_dir.join("vectors-sanitized");
+    run_cmd(
+        Command::new(cc)
+            .args([
+                "-std=c99",
+                "-pedantic",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-g",
+                "-O1",
+            ])
+            .args(["-fsanitize=address,undefined", "-fno-sanitize-recover=all"])
+            .args(["-fno-omit-frame-pointer", "-I"])
+            .arg(root.join("include"))
+            .arg(root.join(VECTOR_HARNESS))
+            .arg(&lib)
+            .args(native_static_libs(&note))
+            .arg("-o")
+            .arg(&exe),
+    )?;
+    let out = run_cmd(
+        Command::new(&exe)
+            .arg(root.join("test-vectors"))
+            // LeakSanitizer exists on Linux only; macOS refuses the option.
+            .env(
+                "ASAN_OPTIONS",
+                if cfg!(target_os = "linux") {
+                    "detect_leaks=1"
+                } else {
+                    "detect_leaks=0"
+                },
+            )
+            .env("UBSAN_OPTIONS", "print_stacktrace=1:halt_on_error=1"),
+    )?;
+    print!("{out}");
+    println!(
+        "sanitizers: {} (-fsanitize=address,undefined) passed: {}",
+        version.lines().next().unwrap_or(cc),
+        out.lines().last().unwrap_or("")
+    );
+    Ok(0)
+}
+
 /// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C11,
 /// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The
 /// C23 build takes the branch of each enumeration that declares its underlying type (c-abi.md

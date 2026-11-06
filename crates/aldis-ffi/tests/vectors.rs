@@ -1265,26 +1265,23 @@ fn epp_run(case: &CodecCase) -> R<Value> {
 
 // ---------------------------------------------------------------- aldis-core: CRC, OCF, OID
 
-/// An OID generator of one form in storage of its own (CABI-031): the storage, boxed so that
-/// moving the `Oid` does not move it (CABI-032), and the handle into it.
+/// An OID generator of one form in storage of its own (CABI-031): the handle into storage on the
+/// heap, so that moving the `Oid` does not move it (CABI-032). Only the raw pointer is kept, as
+/// a `Box` field would be retagged by every move of the `Oid` and make the writes through `h`
+/// undefined behaviour under Miri (VER-026).
 struct Oid {
-    _storage: Box<aldis_oid_generator_t>,
     h: *mut aldis_oid_generator_t,
 }
 
 impl Oid {
     fn new(form: u32) -> Oid {
-        let mut storage = Box::new(aldis_oid_generator_t {
+        let h = Box::into_raw(Box::new(aldis_oid_generator_t {
             words: [0; ALDIS_OID_GENERATOR_WORDS],
-        });
-        let h: *mut aldis_oid_generator_t = &raw mut *storage;
+        }));
         // SAFETY: `h` points to live storage.
         call(|e| unsafe { aldis_oid_generator_init(h, form, e) })
             .unwrap_or_else(|f| panic!("aldis_oid_generator_init: {}", f.kind));
-        Oid {
-            _storage: storage,
-            h,
-        }
+        Oid { h }
     }
 
     /// The next `len` octets, from `aldis_oid_generator_fill`.
@@ -1299,8 +1296,11 @@ impl Oid {
 
 impl Drop for Oid {
     fn drop(&mut self) {
-        // SAFETY: `h` is the handle of the storage this struct still owns.
-        unsafe { aldis_oid_generator_deinit(self.h) }
+        // SAFETY: `h` is the handle of the storage this struct owns, from `Box::into_raw`.
+        unsafe {
+            aldis_oid_generator_deinit(self.h);
+            drop(Box::from_raw(self.h));
+        }
     }
 }
 

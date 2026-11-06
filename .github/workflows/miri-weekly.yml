@@ -1,0 +1,31 @@
+# The vector tests of aldis-ffi under Miri (VER-026, m5 plan D4). They take about two hours, so
+# the nightly check `ffi-miri` leaves them out and they run here once a week. Report only: a
+# failure fails this run and gates no merge. Nightly Rust is tooling only (RS-002), always the
+# date pinned in `tooling-nightly`.
+name: Miri weekly
+
+on:
+  schedule:
+    - cron: "43 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  miri-vectors:
+    name: aldis-ffi vector tests under Miri (VER-026)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: |
+          echo "NIGHTLY=$(cat tooling-nightly)" >> "$GITHUB_ENV"
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal --component rust-src --component miri
+      # Isolation off: the tests read test-vectors/.
+      - run: >
+          MIRIFLAGS="-Zmiri-disable-isolation" cargo +"$NIGHTLY" miri test --locked
+          -p aldis-ffi --test vectors

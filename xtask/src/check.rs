@@ -689,6 +689,14 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     ("kani", "nightly-only (VER-059)"),
     (
+        "c-sanitizers",
+        "not mirrored: needs the pinned clang with its sanitizer runtimes; `cargo xtask header sanitizers <cc>` runs it by hand",
+    ),
+    (
+        "ffi-miri",
+        "not mirrored: runs the aldis-ffi tests under Miri on the tooling nightly; `MIRIFLAGS=-Zmiri-disable-isolation cargo +<tooling-nightly> miri test -p aldis-ffi --lib --test <name>` runs it by hand, without the `vectors` test, which runs weekly",
+    ),
+    (
         "spec",
         "partly: `xtask ci` runs all of its commands but the cross-check run",
     ),

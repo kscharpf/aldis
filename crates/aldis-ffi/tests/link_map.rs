@@ -121,7 +121,7 @@ fn sg_init(
 }
 
 fn sg_step(
-    h: &mut aldis_map_segmenter_t,
+    h: *mut aldis_map_segmenter_t,
     input: &aldis_map_segmenter_input_t,
     now_us: u64,
     out: &mut [u8],
@@ -133,7 +133,7 @@ fn sg_step(
 }
 
 /// Submits `data` as the kind `kind` for the MAP `map`.
-fn sg_submit(h: &mut aldis_map_segmenter_t, kind: u32, map: u8, data: &[u8]) -> u32 {
+fn sg_submit(h: *mut aldis_map_segmenter_t, kind: u32, map: u8, data: &[u8]) -> u32 {
     let mut input = sg_input(kind);
     input.map_id = map;
     input.data = data.as_ptr();
@@ -219,7 +219,13 @@ fn the_segmenter_storage_is_checked_and_tagged() {
         assert_eq!((armed, at), (0, 0));
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = sg_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_map_segmenter_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -366,12 +372,15 @@ fn the_segmenter_steps_and_reconfigures() {
     // Nothing queued: a request gets nothing.
     let mut next = sg_input(ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU);
     next.handle = 7;
-    assert_eq!(sg_step(&mut s, &next, 0, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        sg_step(&raw mut *s, &next, 0, &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 0);
     // A 20-octet SDU is segmented into three FDUs of one header and at most 15 octets.
     let sdu: Vec<u8> = (0..20).collect();
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &sdu),
+        sg_submit(&raw mut *s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &sdu),
         0
     );
     let mut status = aldis_map_segmenter_status_t::default();
@@ -382,7 +391,10 @@ fn the_segmenter_steps_and_reconfigures() {
     let mut octets = Vec::new();
     for handle in 1..=2 {
         next.handle = handle;
-        assert_eq!(sg_step(&mut s, &next, 0, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(
+            sg_step(&raw mut *s, &next, 0, &mut out, &mut actions, &mut d),
+            0
+        );
         assert_eq!(actions.count, 1);
         let a = actions.items[0];
         assert_eq!(a.kind, ALDIS_MAP_SEGMENTER_ACTION_FDU);
@@ -397,11 +409,19 @@ fn the_segmenter_steps_and_reconfigures() {
     assert_eq!(octets, sdu);
     // The expedited service of a request is the request's.
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &[1, 2]),
+        sg_submit(
+            &raw mut *s,
+            ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
+            1,
+            &[1, 2]
+        ),
         0
     );
     next.qos = ALDIS_LINK_QOS_EXPEDITED;
-    assert_eq!(sg_step(&mut s, &next, 0, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        sg_step(&raw mut *s, &next, 0, &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.items[0].qos, ALDIS_LINK_QOS_EXPEDITED);
     assert_eq!(actions.items[0].framing, ALDIS_MAP_FRAMING_WHOLE);
     // Refusals leave the engine unchanged and the actions unwritten.
@@ -410,24 +430,29 @@ fn the_segmenter_steps_and_reconfigures() {
         ..aldis_map_segmenter_actions_t::default()
     };
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 5, &[1]),
+        sg_submit(&raw mut *s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 5, &[1]),
         ALDIS_ERR_UNKNOWN_CHANNEL
     );
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 64, &[1]),
+        sg_submit(&raw mut *s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 64, &[1]),
         ALDIS_ERR_OUT_OF_RANGE
     );
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &[]),
+        sg_submit(&raw mut *s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &[]),
         ALDIS_ERR_LENGTH_MISMATCH
     );
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_OCTETS, 1, &[1]),
+        sg_submit(
+            &raw mut *s,
+            ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_OCTETS,
+            1,
+            &[1]
+        ),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(
         sg_submit(
-            &mut s,
+            &raw mut *s,
             ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_PACKET,
             1,
             &[0x20, 0, 0]
@@ -436,23 +461,28 @@ fn the_segmenter_steps_and_reconfigures() {
     );
     let mut bad = sg_input(99);
     assert_eq!(
-        sg_step(&mut s, &bad, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &bad, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     bad = next;
     bad.qos = 5;
     assert_eq!(
-        sg_step(&mut s, &bad, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &bad, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(actions.count, 99);
     // An area shorter than the FDU: `BufferTooSmall`, even though a request is pending.
     assert_eq!(
-        sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &[1, 2]),
+        sg_submit(
+            &raw mut *s,
+            ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
+            1,
+            &[1, 2]
+        ),
         0
     );
     assert_eq!(
-        sg_step(&mut s, &next, 0, &mut out[..8], &mut actions, &mut d),
+        sg_step(&raw mut *s, &next, 0, &mut out[..8], &mut actions, &mut d),
         ALDIS_ERR_BUFFER_TOO_SMALL
     );
     // The input data must not overlap the storage or `out`.
@@ -460,37 +490,48 @@ fn the_segmenter_steps_and_reconfigures() {
     overlap.data = (&raw const *s).cast::<u8>();
     overlap.data_len = 8;
     assert_eq!(
-        sg_step(&mut s, &overlap, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &overlap, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
-    overlap.data = out.as_ptr();
-    assert_eq!(
-        sg_step(&mut s, &overlap, 0, &mut out, &mut actions, &mut d),
-        ALDIS_ERR_INVALID_FIELD
-    );
+    // One raw pointer for both: a second borrow of `out` would end the first (Stacked Borrows).
+    let out_ptr = out.as_mut_ptr();
+    overlap.data = out_ptr.cast_const();
+    // SAFETY: every pointer is to a live local; `data` is rejected before any access through it.
+    let rc = unsafe {
+        aldis_map_segmenter_step(
+            &raw mut *s,
+            &overlap,
+            0,
+            out_ptr,
+            out.len(),
+            &mut actions,
+            &mut d,
+        )
+    };
+    assert_eq!(rc, ALDIS_ERR_INVALID_FIELD);
     // A reconfiguration keeps the protocol, discards the queue, and is refused when invalid.
     let mut reconf = sg_input(ALDIS_MAP_SEGMENTER_INPUT_RECONFIGURE);
     reconf.config = uslp_sg();
     assert_eq!(
-        sg_step(&mut s, &reconf, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &reconf, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_LINK_PROTOCOL);
     reconf.config = tc_sg();
     reconf.config.max_fdu_len = 0;
     assert_eq!(
-        sg_step(&mut s, &reconf, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &reconf, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     reconf.config = tc_sg();
     reconf.config.channel.protocol = 9;
     assert_eq!(
-        sg_step(&mut s, &reconf, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &reconf, 0, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     reconf.config = tc_sg();
     assert_eq!(
-        sg_step(&mut s, &reconf, 0, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &reconf, 0, &mut out, &mut actions, &mut d),
         0
     );
     assert_eq!(actions.count, 1);
@@ -515,7 +556,7 @@ fn the_segmenter_queue_refuses_what_does_not_fit_whole() {
     let mut taken = 0;
     // bound: each SDU takes 19 octets of the queue, so it is full after a fixed number.
     let refused = loop {
-        let status = sg_submit(&mut s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &sdu);
+        let status = sg_submit(&raw mut *s, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU, 1, &sdu);
         if status != 0 {
             break status;
         }
@@ -544,7 +585,7 @@ fn the_segmenter_serves_a_stream_on_uslp_with_a_deadline() {
     submit.data = data.as_ptr();
     submit.data_len = data.len();
     assert_eq!(
-        sg_step(&mut s, &submit, 100, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &submit, 100, &mut out, &mut actions, &mut d),
         0
     );
     let (mut armed, mut at) = (0_u8, 0_u64);
@@ -555,17 +596,17 @@ fn the_segmenter_serves_a_stream_on_uslp_with_a_deadline() {
     let mut next = sg_input(ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU);
     next.handle = 1;
     assert_eq!(
-        sg_step(&mut s, &next, 600, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &next, 600, &mut out, &mut actions, &mut d),
         0
     );
     assert_eq!(actions.count, 0);
     let timeout = sg_input(ALDIS_MAP_SEGMENTER_INPUT_TIMEOUT);
     assert_eq!(
-        sg_step(&mut s, &timeout, 600, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &timeout, 600, &mut out, &mut actions, &mut d),
         0
     );
     assert_eq!(
-        sg_step(&mut s, &next, 600, &mut out, &mut actions, &mut d),
+        sg_step(&raw mut *s, &next, 600, &mut out, &mut actions, &mut d),
         0
     );
     assert_eq!(actions.count, 1);
@@ -653,7 +694,7 @@ fn ra_init(
 }
 
 fn ra_step(
-    h: &mut aldis_map_reassembler_t,
+    h: *mut aldis_map_reassembler_t,
     input: &aldis_map_reassembler_input_t,
     out: &mut [u8],
     actions: &mut aldis_map_reassembler_actions_t,
@@ -710,7 +751,13 @@ fn the_reassembler_storage_is_checked_and_tagged() {
         );
         assert_eq!(status, aldis_map_reassembler_status_t::default());
         let mut copy = ra_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_map_reassembler_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -798,7 +845,13 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
     // An SDU in two segments (flags 01 and 10) of the MAP 1 is delivered at the last one.
     let first = [0x41, 1, 2, 3];
     assert_eq!(
-        ra_step(&mut s, &fdu(&first, 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&first, 0, 0),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     assert_eq!(actions.count, 0);
@@ -808,7 +861,13 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
     assert_eq!(status.assembly.current, 3);
     let last = [0x81, 4, 5];
     assert_eq!(
-        ra_step(&mut s, &fdu(&last, 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&last, 0, 0),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     assert_eq!(actions.count, 1);
@@ -826,7 +885,13 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
         0xC0, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0xAA, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0xBB,
     ];
     assert_eq!(
-        ra_step(&mut s, &fdu(&packets, 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&packets, 0, 0),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     assert_eq!(actions.count, 1);
@@ -836,7 +901,13 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
     // An FDU of a MAP that is not configured is an event.
     let unknown = [0xC5, 1];
     assert_eq!(
-        ra_step(&mut s, &fdu(&unknown, 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&unknown, 0, 0),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     let a = actions.items[0];
@@ -851,13 +922,25 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
     // A continuing segment without a first one is a sequence violation; one too long is
     // discarded.
     let orphan = [0x01, 1];
-    ra_step(&mut s, &fdu(&orphan, 0, 0), &mut out, &mut actions, &mut d);
+    ra_step(
+        &raw mut *s,
+        &fdu(&orphan, 0, 0),
+        &mut out,
+        &mut actions,
+        &mut d,
+    );
     assert_eq!(
         actions.items[0].event,
         ALDIS_MAP_REASSEMBLY_EVENT_SEQUENCE_VIOLATION
     );
     let long = [0x41, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    ra_step(&mut s, &fdu(&long, 0, 0), &mut out, &mut actions, &mut d);
+    ra_step(
+        &raw mut *s,
+        &fdu(&long, 0, 0),
+        &mut out,
+        &mut actions,
+        &mut d,
+    );
     assert_eq!(
         actions.items[0].event,
         ALDIS_MAP_REASSEMBLY_EVENT_SDU_TOO_LONG
@@ -880,27 +963,33 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
         ..aldis_map_reassembler_actions_t::default()
     };
     assert_eq!(
-        ra_step(&mut s, &fdu(&[], 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &fdu(&[], 0, 0), &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(d.field, ALDIS_FIELD_FRAME_DATA_FIELD);
     assert_eq!(
-        ra_step(&mut s, &fdu(&first, 0, 2), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&first, 0, 2),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         ALDIS_ERR_INVALID_FIELD
     );
     let mut bad = fdu(&first, 0, 0);
     bad.vc_id = 64;
     assert_eq!(
-        ra_step(&mut s, &bad, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &bad, &mut out, &mut actions, &mut d),
         ALDIS_ERR_OUT_OF_RANGE
     );
     assert_eq!(
-        ra_step(&mut s, &ra_input(99), &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &ra_input(99), &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(
         ra_step(
-            &mut s,
+            &raw mut *s,
             &fdu(&first, 0, 0),
             &mut out[..2],
             &mut actions,
@@ -913,26 +1002,35 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
     let mut overlap = fdu(&first, 0, 0);
     overlap.data = (&raw const *s).cast::<u8>();
     assert_eq!(
-        ra_step(&mut s, &overlap, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &overlap, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     // A reconfiguration keeps the protocol and discards the SDUs in progress.
-    ra_step(&mut s, &fdu(&first, 0, 0), &mut out, &mut actions, &mut d);
+    ra_step(
+        &raw mut *s,
+        &fdu(&first, 0, 0),
+        &mut out,
+        &mut actions,
+        &mut d,
+    );
     let mut reconf = ra_input(ALDIS_MAP_REASSEMBLER_INPUT_RECONFIGURE);
     reconf.config = uslp_ra();
     assert_eq!(
-        ra_step(&mut s, &reconf, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_LINK_PROTOCOL);
     reconf.config = tc_ra();
     reconf.config.map_count = 0;
     assert_eq!(
-        ra_step(&mut s, &reconf, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     reconf.config = tc_ra();
-    assert_eq!(ra_step(&mut s, &reconf, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        ra_step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 1);
     assert_eq!(
         actions.items[0].kind,
@@ -952,7 +1050,13 @@ fn the_reassembler_serves_uslp_streams_and_gaps() {
     // A whole SDU (rule 111, UPID 5) of the MAP 0.
     let whole = [0xE5, 0x20, 0x21];
     assert_eq!(
-        ra_step(&mut s, &fdu(&whole, 0, 0), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&whole, 0, 0),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     let a = actions.items[0];
@@ -964,7 +1068,13 @@ fn the_reassembler_serves_uslp_streams_and_gaps() {
     // Octets of the stream MAP 1 (rule 011, UPID 4), the first after a gap.
     let stream = [0x64, 7, 8];
     assert_eq!(
-        ra_step(&mut s, &fdu(&stream, 1, 1), &mut out, &mut actions, &mut d),
+        ra_step(
+            &raw mut *s,
+            &fdu(&stream, 1, 1),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
         0
     );
     let a = actions.items[0];
@@ -973,21 +1083,33 @@ fn the_reassembler_serves_uslp_streams_and_gaps() {
     assert_eq!(&out[a.data.offset..a.data.offset + a.data.len], [7, 8]);
     // A gap discards the SDUs in progress.
     let first = [0x85, 1, 2, 3];
-    ra_step(&mut s, &fdu(&first, 0, 0), &mut out, &mut actions, &mut d);
+    ra_step(
+        &raw mut *s,
+        &fdu(&first, 0, 0),
+        &mut out,
+        &mut actions,
+        &mut d,
+    );
     let next = [0xA5, 4];
-    ra_step(&mut s, &fdu(&next, 0, 1), &mut out, &mut actions, &mut d);
+    ra_step(
+        &raw mut *s,
+        &fdu(&next, 0, 1),
+        &mut out,
+        &mut actions,
+        &mut d,
+    );
     assert_eq!(
         actions.items[0].event,
         ALDIS_MAP_REASSEMBLY_EVENT_GAP_DISCARD
     );
     let mut bad = fdu(&whole, 16, 0);
     assert_eq!(
-        ra_step(&mut s, &bad, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &bad, &mut out, &mut actions, &mut d),
         ALDIS_ERR_OUT_OF_RANGE
     );
     bad = fdu(&whole, 0, 3);
     assert_eq!(
-        ra_step(&mut s, &bad, &mut out, &mut actions, &mut d),
+        ra_step(&raw mut *s, &bad, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
 }
@@ -1020,7 +1142,7 @@ fn the_members_of_the_channel_are_read_whatever_the_protocol() {
         set(&mut reconf.config.channel);
         let mut actions = aldis_map_segmenter_actions_t::default();
         assert_eq!(
-            sg_step(&mut s, &reconf, 0, &mut [], &mut actions, &mut d),
+            sg_step(&raw mut *s, &reconf, 0, &mut [], &mut actions, &mut d),
             want
         );
     }

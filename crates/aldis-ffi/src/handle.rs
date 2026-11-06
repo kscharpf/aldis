@@ -8,6 +8,10 @@
 //! with `ALDIS_ERR_INVALID_HANDLE` on uninitialized, deinitialized, foreign, or copied storage
 //! (CABI-032). `_deinit` clears the magic.
 //!
+//! The storage holds uninitialized padding bytes (the slot is smaller than the struct, and its
+//! own fields have padding), so a Rust caller must copy it as bytes (`copy_nonoverlapping`),
+//! never by value (`a.words = b.words`), which reads uninitialized memory (Miri, VER-026).
+//!
 //! A call reaches the state in one of two ways. A small helper reads it by value
 //! (`Handle::load`) and writes it back (`Handle::store`). An engine works **in place**
 //! (CABI-040; c-abi.md §12 item 6): `Handle::read` and `Handle::update` lend the state in

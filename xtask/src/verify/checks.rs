@@ -170,6 +170,20 @@ pub const FFI: PathList = PathList {
     ],
 };
 
+/// Read by the check `c-sanitizers` (VER-026): the C ABI crate and what it builds, the header
+/// the C harness includes, and the vectors the harness reads.
+pub const C_SANITIZERS_LIST: PathList = PathList {
+    name: "c-sanitizers",
+    patterns: &["crates/**", "include/**", "test-vectors/**"],
+};
+
+/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build and
+/// the vectors its tests read; not the header, which Miri does not read.
+pub const FFI_MIRI_LIST: PathList = PathList {
+    name: "ffi-miri",
+    patterns: &["crates/**", "test-vectors/**"],
+};
+
 /// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
 /// `proofs.rs` and the code it calls are what the check proves. Their manifests, the workspace,
 /// and `xtask` (which runs the harnesses) are in `RUN`.
@@ -308,6 +322,8 @@ const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
 const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
 const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
 const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
+const SANITIZER_INPUTS: Inputs = Inputs::Paths(&[&RUN, &C_SANITIZERS_LIST]);
+const MIRI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI_MIRI_LIST]);
 const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
 const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS]);
 
@@ -476,6 +492,7 @@ fn rust() -> Vec<Check> {
             ..check("rust-sparc-leon3", c, false, 67, RUST_LEON3)
         },
     ));
+    out.push(ffi_miri_check());
     // The Kani proof harnesses (OI-42, docs/verification/formal-verification.md): reported, not gating,
     // and run only at night (maintainer decision 2026-10-24).
     out.push(Check {
@@ -486,6 +503,7 @@ fn rust() -> Vec<Check> {
             check("kani", c, false, 641, "cargo xtask kani\n"),
         )
     });
+    out.extend(c_sanitizer_checks());
     out.extend([
         grouped(
             Group::Coverage,
@@ -499,6 +517,43 @@ fn rust() -> Vec<Check> {
         grouped(Group::Cross, check("deny", c, false, 2, DENY)),
     ]);
     out
+}
+
+/// The check of the C ABI under sanitizers (VER-026; m5 plan D4): the C vector harness under
+/// `ASan` and `UBSan`. The duration is an estimate until the hosted runs measure it.
+fn c_sanitizer_checks() -> Vec<Check> {
+    let c = Host::Container;
+    vec![grouped(
+        Group::Host,
+        reading(
+            SANITIZER_INPUTS,
+            check("c-sanitizers", c, false, 40, C_SANITIZERS_SCRIPT),
+        ),
+    )]
+}
+
+/// Its typical duration in seconds: the sum of the per-binary times under Miri without the
+/// `vectors` test (M5 plan, WP-5 notes), plus the build.
+const MIRI_SECS: u16 = 600;
+
+/// The check `ffi-miri`: nightly-only and non-gating like `kani`, since Miri over the `aldis-ffi`
+/// tests takes far longer than 10 minutes (m5 plan D4, VER-059). It leaves out the `vectors`
+/// test, which takes about two hours and runs weekly (`.github/workflows/miri-weekly.yml`).
+fn ffi_miri_check() -> Check {
+    Check {
+        gating: false,
+        nightly: true,
+        ..reading(
+            MIRI_INPUTS,
+            check(
+                "ffi-miri",
+                Host::Container,
+                false,
+                MIRI_SECS,
+                FFI_MIRI_SCRIPT,
+            ),
+        )
+    }
 }
 
 /// The exerciser check of `target`, in the group that balances the groups by their measured
@@ -610,6 +665,28 @@ cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
 pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
+
+const FFI_MIRI_SCRIPT: &str = r#"
+# The aldis-ffi tests under Miri on the tooling nightly, Stacked Borrows (VER-026, GEN-071; m5
+# plan D4): the unit tests and every integration test but `vectors`, which takes about two
+# hours and runs weekly (.github/workflows/miri-weekly.yml). Isolation is off: the tests read
+# test-vectors/.
+nightly="$(cat tooling-nightly)"
+tests=()
+for f in crates/aldis-ffi/tests/*.rs; do
+  name="$(basename "$f" .rs)"
+  [ "$name" = vectors ] || tests+=(--test "$name")
+done
+MIRIFLAGS="-Zmiri-disable-isolation" \
+  cargo +"$nightly" miri test --locked -p aldis-ffi --lib "${tests[@]}"
+"#;
+
+const C_SANITIZERS_SCRIPT: &str = "\
+# The C vector harness of aldis-ffi, built with -fsanitize=address,undefined by the pinned clang,
+# runs the shared vectors through the C ABI (VER-026). It prints the compiler it ran. Clang only,
+# by decision of the maintainer (2026-11-05): GCC stays in the header checks (VER-050).
+cargo xtask header sanitizers clang
+";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
@@ -775,23 +852,25 @@ mod tests {
 
     // req: VER-056, VER-059
     #[test]
-    fn only_kani_is_nightly_only_and_it_does_not_gate() {
+    fn only_kani_and_ffi_miri_are_nightly_only_and_they_do_not_gate() {
         let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
-        assert_eq!(nightly.len(), 1);
-        assert_eq!(nightly[0].name, "kani");
-        assert!(!nightly[0].gating);
-        assert_eq!(nightly[0].host, Host::Container);
+        let names: Vec<&str> = nightly.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["ffi-miri", "kani"]);
+        for c in &nightly {
+            assert!(!c.gating, "{}", c.name);
+            assert_eq!(c.host, Host::Container, "{}", c.name);
+        }
     }
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_and_kani_checks_are_non_gating() {
+    fn only_the_leon3_kani_and_miri_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "kani"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "ffi-miri", "kani"]);
     }
 
     // req: VER-067
@@ -869,6 +948,14 @@ mod tests {
             }
             if c.name == "kani" {
                 assert_eq!(lists, [&RUN, &KANI]);
+                continue;
+            }
+            if c.name == "c-sanitizers" {
+                assert_eq!(lists, [&RUN, &C_SANITIZERS_LIST]);
+                continue;
+            }
+            if c.name == "ffi-miri" {
+                assert_eq!(lists, [&RUN, &FFI_MIRI_LIST]);
                 continue;
             }
             if c.name == "stack" {
