@@ -654,6 +654,7 @@ const GENERATORS: &[(&str, &str)] = &[
     ("test-vectors/cop1", "test-vectors/models/cop1.py"),
     ("test-vectors/link/recv", "test-vectors/models/link_recv.py"),
     ("test-vectors/link/send", "test-vectors/models/link_send.py"),
+    ("test-vectors/sync", "test-vectors/models/sync.py"),
 ];
 
 /// The `.json` files under `dir`, as paths relative to it.

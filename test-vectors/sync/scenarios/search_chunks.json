@@ -1,0 +1,565 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-chunk-o0-k01",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 1 and 8 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1A"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "CFFC1D5E633291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k02",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 2 and 7 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "FC1D5E633291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k03",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 3 and 6 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "1D5E633291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k04",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 4 and 5 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "5E633291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k05",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 5 and 4 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D5E"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "633291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k06",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 6 and 3 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D5E63"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "3291B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k07",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 7 and 2 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D5E6332"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "91B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o0-k08",
+      "description": "0 junk bits, then a CADU (9 octets in all); the stream is cut into chunks of 8 and 1 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 0.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D5E633291"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "B3"}}, "expect": [{"unit": {"data_hex": "5E633291B3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k01",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 1 and 9 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "67FE0EDFE09C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k02",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 2 and 8 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "FE0EDFE09C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k03",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 3 and 7 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "0EDFE09C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k04",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 4 and 6 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0E"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "DFE09C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k05",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 5 and 5 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EDF"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "E09C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k06",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 6 and 4 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EDFE0"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "9C57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k07",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 7 and 3 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EDFE09C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "57CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k08",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 8 and 2 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EDFE09C57"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "CA00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o1-k09",
+      "description": "1 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 9 and 1 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 1.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EDFE09C57CA"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "00"}}, "expect": [{"unit": {"data_hex": "BFC138AF94", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k01",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 1 and 9 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "43"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "59FF83AF139AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k02",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 2 and 8 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "FF83AF139AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k03",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 3 and 7 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "83AF139AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k04",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 4 and 6 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "AF139AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k05",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 5 and 5 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83AF"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "139AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k06",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 6 and 4 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83AF13"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "9AA26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k07",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 7 and 3 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83AF139A"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "A26540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k08",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 8 and 2 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83AF139AA2"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "6540"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o3-k09",
+      "description": "3 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 9 and 1 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 3.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83AF139AA265"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "40"}}, "expect": [{"unit": {"data_hex": "789CD5132A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k01",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 1 and 9 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "359FF83BE829FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k02",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 2 and 8 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5435"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "9FF83BE829FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k03",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 3 and 7 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359F"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "F83BE829FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k04",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 4 and 6 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF8"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "3BE829FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k05",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 5 and 5 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "E829FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k06",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 6 and 4 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83BE8"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "29FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k07",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 7 and 3 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83BE829"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "FB5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k08",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 8 and 2 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83BE829FB"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "5572"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-o7-k09",
+      "description": "7 junk bits, then a CADU (10 octets in all); the stream is cut into chunks of 9 and 1 octets, so the marker or the unit crosses the boundary: the same unit as in one chunk, with skipped_bits 7.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83BE829FB55"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "72"}}, "expect": [{"unit": {"data_hex": "F414FDAAB9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o0",
+      "description": "0 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1A"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "CF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "FC"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "1D"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "17"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "4E"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "9C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "2B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "D3"}}, "expect": [{"unit": {"data_hex": "174E9C2BD3", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o1",
+      "description": "1 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "67"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "FE"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "0E"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "B8"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "56"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "51"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "20"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "9A"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "00"}}, "expect": [{"unit": {"data_hex": "70ACA24134", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o2",
+      "description": "2 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "46"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "B3"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "FF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "07"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "74"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "43"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "6A"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "67"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "DA"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "40"}}, "expect": [{"unit": {"data_hex": "D10DA99F69", "errors": 0, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o3",
+      "description": "3 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "43"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "59"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "FF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "83"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "A6"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "4D"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "77"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "F6"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "89"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "40"}}, "expect": [{"unit": {"data_hex": "326BBFB44A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o4",
+      "description": "4 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "51"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "AC"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "FF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "C1"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "D9"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "3C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "94"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "5C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "2A"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "E0"}}, "expect": [{"unit": {"data_hex": "93C945C2AE", "errors": 0, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o5",
+      "description": "5 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "D6"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "7F"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "E0"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "EF"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "61"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "3A"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "58"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "C4"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "18"}}, "expect": [{"unit": {"data_hex": "EC274B1883", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o6",
+      "description": "6 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "6B"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "3F"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "F0"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "75"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "36"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "15"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "78"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "DB"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "90"}}, "expect": [{"unit": {"data_hex": "4D855E36E4", "errors": 0, "skipped_bits": 6}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-bytewise-o7",
+      "description": "7 junk bits and a CADU fed one octet per step: no action until the octet that completes the unit, and the same unit as in one chunk.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "35"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "9F"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "F8"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "3B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "5B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "C6"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "C8"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "87"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "B2"}}, "expect": [{"unit": {"data_hex": "ADE36443D9", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-empty",
+      "description": "A chunk of 0 octets changes nothing and returns no action, with the marker half read and with the unit half collected.",
+      "requirements": ["SYNC-010"],
+      "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": ""}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "1ACF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": ""}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "FC1D9EE8"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": ""}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "CC5D"}}, "expect": [{"unit": {"data_hex": "9EE8CC5D", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-split-asm-three-chunks",
+      "description": "The marker is spread over three chunks (1, 1, and 3 octets) at bit offset 5, then the unit follows in a fourth.",
+      "requirements": ["SYNC-010", "SYNC-009", "SYNC-011"],
+      "config": {"protocol": "uslp", "frame_len": 3, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "D6"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "7FE0EF"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "FB7028"}}, "expect": [{"unit": {"data_hex": "FF6E05", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-unit-state-queries",
+      "description": "A CADU at octet alignment fed in three chunks, with the state and the octets of the partial unit after each: the state is Collecting after the marker, the partial unit grows by the octets collected, and the counter of units rises when the unit completes.",
+      "requirements": ["SYNC-010", "SYNC-012", "SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 10, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 0}}], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "5911C4CF2F"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 5}}], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 0}}], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "37884087AE"}}, "expect": [{"unit": {"data_hex": "5911C4CF2F37884087AE", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 7000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 0}}], "expect_state": "Searching"},
+        {"at_us": 8000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-many-units-bound",
+      "description": "A chunk of 20 octets that holds four 1-octet-frame CADUs back to back: four actions, in stream order, each with skipped_bits 0 (the bound ceil(20 / 5) = 4 is reached).",
+      "requirements": ["SYNC-011", "SYNC-013", "SYNC-014"],
+      "config": {"protocol": "tm", "frame_len": 1, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D2C1ACFFC1D8D1ACFFC1DEE1ACFFC1D4F"}}, "expect": [{"unit": {"data_hex": "2C", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "8D", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "EE", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "4F", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-chunk-many-units-misaligned",
+      "description": "Five 2-octet-frame CADUs, each after a different number of junk bits (0 to 4), in chunks cut at octet 7, 15 and 25: the units come in stream order, with the skipped_bits of each measured from the end of the one before.",
+      "requirements": ["SYNC-010", "SYNC-011", "SYNC-013"],
+      "config": {"protocol": "aos", "frame_len": 2, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DE5AA8D"}}, "expect": [{"unit": {"data_hex": "E5AA", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "67FE0EA3042359FF"}}, "expect": [{"unit": {"data_hex": "4608", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "83B4ECD46B3FF0740311"}}, "expect": [{"unit": {"data_hex": "A766", "errors": 0, "skipped_bits": 2}}, {"unit": {"data_hex": "00C4", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "46B3FF07584880"}}, "expect": [{"unit": {"data_hex": "6122", "errors": 0, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-search-tm-skip-000",
+      "description": "0 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 0 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 0.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0C4E2645"}}, "expect": [{"unit": {"data_hex": "0C4E2645", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-001",
+      "description": "1 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 0 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 1.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EB6D616C980"}}, "expect": [{"unit": {"data_hex": "6DAC2D93", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-002",
+      "description": "2 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 0 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 2.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "46B3FF0773828CEA40"}}, "expect": [{"unit": {"data_hex": "CE0A33A9", "errors": 0, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-003",
+      "description": "3 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 0 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 3.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83A5ED6738E0"}}, "expect": [{"unit": {"data_hex": "2F6B39C7", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-004",
+      "description": "4 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 0 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 4.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "51ACFFC1D88C9CF1C0"}}, "expect": [{"unit": {"data_hex": "88C9CF1C", "errors": 0, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-005",
+      "description": "5 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 0 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 5.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50D67FE0EF413E9150"}}, "expect": [{"unit": {"data_hex": "E827D22A", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-006",
+      "description": "6 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 0 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 6.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "546B3FF07526176100"}}, "expect": [{"unit": {"data_hex": "4985D840", "errors": 0, "skipped_bits": 6}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-007",
+      "description": "7 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 0 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 7.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83B55C7DD3C"}}, "expect": [{"unit": {"data_hex": "AAE3EE9E", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-008",
+      "description": "8 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 1 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 8.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "551ACFFC1D0B41F4B4"}}, "expect": [{"unit": {"data_hex": "0B41F4B4", "errors": 0, "skipped_bits": 8}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-009",
+      "description": "9 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 1 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 9.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "550D67FE0EB25FFDE080"}}, "expect": [{"unit": {"data_hex": "64BFFBC1", "errors": 0, "skipped_bits": 9}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-010",
+      "description": "10 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 1 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 10.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5546B3FF0771476047C0"}}, "expect": [{"unit": {"data_hex": "C51D811F", "errors": 0, "skipped_bits": 10}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-011",
+      "description": "11 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 1 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 11.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "554359FF83A4CF72E6A0"}}, "expect": [{"unit": {"data_hex": "267B9735", "errors": 0, "skipped_bits": 11}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-012",
+      "description": "12 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 1 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 12.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5551ACFFC1D87D99D430"}}, "expect": [{"unit": {"data_hex": "87D99D43", "errors": 0, "skipped_bits": 12}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-013",
+      "description": "13 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 1 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 13.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5550D67FE0EF01B504C0"}}, "expect": [{"unit": {"data_hex": "E036A098", "errors": 0, "skipped_bits": 13}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-014",
+      "description": "14 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 1 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 14.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55546B3FF0750652DAD8"}}, "expect": [{"unit": {"data_hex": "4194B6B6", "errors": 0, "skipped_bits": 14}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-015",
+      "description": "15 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 1 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 15.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5554359FF83B45E57998"}}, "expect": [{"unit": {"data_hex": "A2F2BCCC", "errors": 0, "skipped_bits": 15}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-016",
+      "description": "16 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 2 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 16.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55551ACFFC1D0350421A"}}, "expect": [{"unit": {"data_hex": "0350421A", "errors": 0, "skipped_bits": 16}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-017",
+      "description": "17 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 2 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 17.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55550D67FE0ECE67249B80"}}, "expect": [{"unit": {"data_hex": "9CCE4937", "errors": 0, "skipped_bits": 17}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-018",
+      "description": "18 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 2 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 18.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555546B3FF077F4B17D340"}}, "expect": [{"unit": {"data_hex": "FD2C5F4D", "errors": 0, "skipped_bits": 18}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-019",
+      "description": "19 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 2 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 19.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55554359FF83ABD14CB360"}}, "expect": [{"unit": {"data_hex": "5E8A659B", "errors": 0, "skipped_bits": 19}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-020",
+      "description": "20 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 2 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 20.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555551ACFFC1DBEE86BB10"}}, "expect": [{"unit": {"data_hex": "BEE86BB1", "errors": 0, "skipped_bits": 20}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-021",
+      "description": "21 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 2 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 21.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555550D67FE0E8FA33F670"}}, "expect": [{"unit": {"data_hex": "1F467ECE", "errors": 0, "skipped_bits": 21}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-022",
+      "description": "22 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 2 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 22.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555546B3FF075E2901390"}}, "expect": [{"unit": {"data_hex": "78A404E4", "errors": 0, "skipped_bits": 22}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-023",
+      "description": "23 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 2 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 23.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555554359FF83BB20A1464"}}, "expect": [{"unit": {"data_hex": "D9050A32", "errors": 0, "skipped_bits": 23}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-024",
+      "description": "24 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 3 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 24.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555551ACFFC1D3A631048"}}, "expect": [{"unit": {"data_hex": "3A631048", "errors": 0, "skipped_bits": 24}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-025",
+      "description": "25 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 3 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 25.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555550D67FE0ECDE093B280"}}, "expect": [{"unit": {"data_hex": "9BC12765", "errors": 0, "skipped_bits": 25}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-026",
+      "description": "26 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 3 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 26.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555546B3FF077D0FCB6CC0"}}, "expect": [{"unit": {"data_hex": "F43F2DB3", "errors": 0, "skipped_bits": 26}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-027",
+      "description": "27 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 3 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 27.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555554359FF83AAB3A67920"}}, "expect": [{"unit": {"data_hex": "559D33C9", "errors": 0, "skipped_bits": 27}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-028",
+      "description": "28 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 3 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 28.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555551ACFFC1DB6FB39E70"}}, "expect": [{"unit": {"data_hex": "B6FB39E7", "errors": 0, "skipped_bits": 28}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-029",
+      "description": "29 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 3 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 29.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555550D67FE0E8BACE61E8"}}, "expect": [{"unit": {"data_hex": "1759CC3D", "errors": 0, "skipped_bits": 29}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-030",
+      "description": "30 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 3 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 30.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555546B3FF075C2DF4928"}}, "expect": [{"unit": {"data_hex": "70B7D24A", "errors": 0, "skipped_bits": 30}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-031",
+      "description": "31 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 3 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 31.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555554359FF83BA22BB0C0"}}, "expect": [{"unit": {"data_hex": "D115D860", "errors": 0, "skipped_bits": 31}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-032",
+      "description": "32 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 4 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 32.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555551ACFFC1D3273EEBE"}}, "expect": [{"unit": {"data_hex": "3273EEBE", "errors": 0, "skipped_bits": 32}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-033",
+      "description": "33 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 4 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 33.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555550D67FE0EC9E87A6A00"}}, "expect": [{"unit": {"data_hex": "93D0F4D4", "errors": 0, "skipped_bits": 33}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-034",
+      "description": "34 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 4 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 34.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555546B3FF077B13BEF840"}}, "expect": [{"unit": {"data_hex": "EC4EFBE1", "errors": 0, "skipped_bits": 34}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-035",
+      "description": "35 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 4 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 35.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555554359FF83A9959027E0"}}, "expect": [{"unit": {"data_hex": "4CAC813F", "errors": 0, "skipped_bits": 35}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-036",
+      "description": "36 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 4 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 36.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555551ACFFC1DAD0A97550"}}, "expect": [{"unit": {"data_hex": "AD0A9755", "errors": 0, "skipped_bits": 36}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-037",
+      "description": "37 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 4 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 37.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555550D67FE0E87344EB18"}}, "expect": [{"unit": {"data_hex": "0E689D63", "errors": 0, "skipped_bits": 37}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-038",
+      "description": "38 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 4 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 38.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555546B3FF075BF1A82E0"}}, "expect": [{"unit": {"data_hex": "6FC6A0B8", "errors": 0, "skipped_bits": 38}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-039",
+      "description": "39 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 4 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 39.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555554359FF83B90496DAC"}}, "expect": [{"unit": {"data_hex": "C824B6D6", "errors": 0, "skipped_bits": 39}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tm-skip-040",
+      "description": "40 junk bits, then the CADU of a 4-octet tm frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 5 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 40.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555551ACFFC1D2982BCEC"}}, "expect": [{"unit": {"data_hex": "2982BCEC", "errors": 0, "skipped_bits": 40}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

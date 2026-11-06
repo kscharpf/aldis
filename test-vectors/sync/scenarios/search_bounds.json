@@ -1,0 +1,52 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 3, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-bound-buffer-too-small",
+      "description": "A chunk that completes two 3-octet units needs 6 octets of output: an area of 5 fails with BufferTooSmall, needed 6, and changes nothing (the state stays Searching, no unit counted); the same chunk with an area of 6 returns both units.",
+      "requirements": ["SYNC-014", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 3, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DF4A27F1ACFFC1D550002", "out_len": 5}}, "expect": [{"error": "BufferTooSmall", "needed": 6}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 0}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ACFFC1DF4A27F1ACFFC1D550002", "out_len": 6}}, "expect": [{"unit": {"data_hex": "F4A27F", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "550002", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-bound-needed-counts-completed-units",
+      "description": "Only the units that the chunk completes count: a chunk that completes one 4-octet unit and starts a second needs 4 octets; an area of 3 fails with needed 4, an area of 4 succeeds and the second unit is still partial (Collecting).",
+      "requirements": ["SYNC-014", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DB657D8E01ACFFC1D17B5", "out_len": 3}}, "expect": [{"error": "BufferTooSmall", "needed": 4}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "1ACFFC1DB657D8E01ACFFC1D17B5", "out_len": 4}}, "expect": [{"unit": {"data_hex": "B657D8E0", "errors": 0, "skipped_bits": 0}}], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 2}}], "expect_state": "Collecting"}
+      ]
+    },
+    {
+      "id": "sync-bound-no-unit-no-area",
+      "description": "A chunk that completes no unit needs no output area: an area of 0 is enough.",
+      "requirements": ["SYNC-014", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 8, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D70CEB06E6E", "out_len": 0}}, "expect": [], "expect_state": "Collecting"}
+      ]
+    },
+    {
+      "id": "sync-bound-error-then-same-chunk",
+      "description": "After a BufferTooSmall error the state is exactly as before: the half-read marker of the first chunk is still there, so the second chunk, refused once for want of output, then accepted, gives the same unit as an uninterrupted run.",
+      "requirements": ["SYNC-014", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 2, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "83BA1460", "out_len": 1}}, "expect": [{"error": "BufferTooSmall", "needed": 2}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "83BA1460", "out_len": 2}}, "expect": [{"unit": {"data_hex": "D0A3", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

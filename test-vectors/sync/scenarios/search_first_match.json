@@ -1,0 +1,171 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 2, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-first-ones-tolerance-13",
+      "description": "Tolerance 13: the first 32 bits, all ones, differ from the marker in the 13 bits where the marker is 0, so that window matches (errors 13, skipped_bits 0) and its unit is the next 2 octets, even though the real marker follows (the first position wins, OI-80).",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 2, "asm_errors": 13},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "FFFFFFFF1ACF"}}, "expect": [{"unit": {"data_hex": "1ACF", "errors": 13, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-ones-tolerance-12",
+      "description": "Tolerance 12: the same 32 bits do not match (13 differ), so there is no unit.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 2, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "FFFFFFFF"}}, "expect": [], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift1-v0",
+      "description": "1 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 0, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 0, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "8D67FE0EB6DBAE00"}}, "expect": [{"unit": {"data_hex": "B6DBAE", "errors": 12, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift1-v0-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 1 bits in is found: errors 0, skipped_bits 1.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "8D67FE0EB6DBAE00"}}, "expect": [{"unit": {"data_hex": "6DB75C", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift1-v1",
+      "description": "1 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 0, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 0, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "8D67FE0EE70AB100"}}, "expect": [{"unit": {"data_hex": "E70AB1", "errors": 12, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift1-v1-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 1 bits in is found: errors 0, skipped_bits 1.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "8D67FE0EE70AB100"}}, "expect": [{"unit": {"data_hex": "CE1562", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift2-v0",
+      "description": "2 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 1, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 1, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "46B3FF074BDCDA00"}}, "expect": [{"unit": {"data_hex": "97B9B4", "errors": 12, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift2-v0-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 2 bits in is found: errors 0, skipped_bits 2.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "46B3FF074BDCDA00"}}, "expect": [{"unit": {"data_hex": "2F7368", "errors": 0, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift2-v1",
+      "description": "2 junk bits, then an exact marker and a 3-octet frame. With tolerance 11 the window that starts at bit 1, which differs from the marker in 11 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 11, skipped_bits 1, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "86B3FF0763F45FC0"}}, "expect": [{"unit": {"data_hex": "C7E8BF", "errors": 11, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift2-v1-below",
+      "description": "The same stream with tolerance 10: no earlier window is within the tolerance, so the exact marker 2 bits in is found: errors 0, skipped_bits 2.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 10},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "86B3FF0763F45FC0"}}, "expect": [{"unit": {"data_hex": "8FD17F", "errors": 0, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift3-v0",
+      "description": "3 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 2, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 2, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A359FF83BD09E0A0"}}, "expect": [{"unit": {"data_hex": "F42782", "errors": 12, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift3-v0-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 3 bits in is found: errors 0, skipped_bits 3.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A359FF83BD09E0A0"}}, "expect": [{"unit": {"data_hex": "E84F05", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift3-v1",
+      "description": "3 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 2, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 2, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A359FF83A9358160"}}, "expect": [{"unit": {"data_hex": "A4D605", "errors": 12, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift3-v1-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 3 bits in is found: errors 0, skipped_bits 3.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A359FF83A9358160"}}, "expect": [{"unit": {"data_hex": "49AC0B", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift5-v0",
+      "description": "5 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 4, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 4, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "E8D67FE0EB263150"}}, "expect": [{"unit": {"data_hex": "B26315", "errors": 12, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift5-v0-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 5 bits in is found: errors 0, skipped_bits 5.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "E8D67FE0EB263150"}}, "expect": [{"unit": {"data_hex": "64C62A", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift5-v1",
+      "description": "5 junk bits, then an exact marker and a 3-octet frame. With tolerance 12 the window that starts at bit 4, which differs from the marker in 12 bits, is the first within the tolerance, so it wins over the exact marker 1 bits later: errors 12, skipped_bits 4, and the unit is read from that earlier position.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A8D67FE0EE292180"}}, "expect": [{"unit": {"data_hex": "E29218", "errors": 12, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-first-near-miss-shift5-v1-below",
+      "description": "The same stream with tolerance 11: no earlier window is within the tolerance, so the exact marker 5 bits in is found: errors 0, skipped_bits 5.",
+      "requirements": ["SYNC-007", "SYNC-008", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 3, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "A8D67FE0EE292180"}}, "expect": [{"unit": {"data_hex": "C52430", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}
