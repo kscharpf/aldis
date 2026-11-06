@@ -48,7 +48,7 @@ Raised with this plan: **OI-23** (golden traces and the vector suite), **OI-24**
 | **A2** Frames | Hand-written VC packet generation (FHP, release deadline, idle fill), mux, OID frames, frame counts, OCF with CLCW; TC frame validation, MAP demultiplexing, segment reassembly | TM frame decoding, FECF, VC demultiplexing, packet extraction, frame-gap detection; TC Type-BD frames with blocking and segmentation | TM frames; TC Type-BD frames; downlink faults | + `aldis-tm`, `aldis-tc`, `aldis-core` (OID, counters) |
 | **A3** COP-1 | FARM-1; CLCW from FARM-1; FARM-1 status in housekeeping (API-056) | FOP-1 with directives (Initiate AD, Unlock, Set V(R)); transfer and directive notifications as application events | Type-AD and Type-BC frames; uplink faults | + `aldis-cop1` |
 | **A4** Engines | Loops replaced by `aldis-link` engines | Loops replaced by `aldis-link` engines | Nothing new (same traces as A3); AOS and USLP variants (D6) | + `aldis-link` |
-| **A5** C and C++ | C++ flight node over `aldis.hpp`, built against the Rust-backed and the native library | Unchanged | Nothing new | `aldis.h`, `aldis.hpp`, native C++ library |
+| **A5** C and C++ | C++ flight node over `aldis.hpp` (engine handles) and `aldis.h` (codecs), built against the Rust-backed and the native library | Unchanged | Nothing new | `aldis.h`, `aldis.hpp`, native C++ library |
 | **A6** Target | Flight node bare-metal under QEMU (the framework stacks and replay moved to v1.1, 2026-11-05) | Own run loop, as in A4 | Nothing new | Nothing new |
 
 ### 2.2 APIDs (D3, indicative)
