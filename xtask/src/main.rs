@@ -153,7 +153,7 @@ commands:
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
                                trace --scope m3 --strict, trace --scope m4 --strict,
-                               trace --scope m5; a step that cannot run counts as a
+                               trace --scope m5 --strict; a step that cannot run counts as a
                                problem, and the others still run
 
 ";
@@ -194,8 +194,8 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m3 --strict", || trace::run(Some("m3"), true)),
     // M4 is closed: every in-scope requirement must keep an artefact (D1).
     ("trace --scope m4 --strict", || trace::run(Some("m4"), true)),
-    // M5 is in progress: progress is reported, not enforced, until its exit (D1).
-    ("trace --scope m5", || trace::run(Some("m5"), false)),
+    // M5 is closed: every in-scope requirement must keep an artefact (m5 plan D1).
+    ("trace --scope m5 --strict", || trace::run(Some("m5"), true)),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an

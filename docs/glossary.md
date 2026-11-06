@@ -76,7 +76,7 @@ This page expands the acronyms and abbreviations used in the specification, the 
 | <a id="b-pdu"></a>**B_PDU** | Bitstream Protocol Data Unit | The AOS data field format for an unstructured bitstream: a header with a pointer to the last valid bit, then the data. | 732.0 §4.1.4.3 | `aldis_aos::bpdu` (AOS-017, AOS-018); BitstreamGenerator (LNK-021) |
 | <a id="vcf-count"></a>**VCF Count** | Virtual Channel Frame Count | A per-VC counter of frames sent, which lets the receiver detect lost frames. TM and AOS spell the field out; "VCF Count" is USLP's short form, where the header also gives its length. On its own, VCF names the Virtual Channel Frame service (132.0 §2.2.3.6). | 132.0 §4.1.2.6; 732.0 §4.1.2.4; 732.1 §4.1.2.11–12 | Modular counters in `aldis-core` (CMN-030, CMN-031); USLP-004; LNK-032, LNK-051 |
 | <a id="oid"></a>**OID** | Only Idle Data | A frame whose data field holds only idle data, a pseudo-noise fill, sent when no data is ready, so that the frame stream continues. | 132.0 §4.1.4.6; 732.0 §4.1.4.1.5; 732.1 §4.1.4.1.5–10 | `aldis_core::oid::OidGenerator` (CMN-020…024); TM-010, AOS-016, USLP-009; OID frames from the ChannelMux (LNK-030, LNK-036) |
-| <a id="pn"></a>**PN** | Pseudo Noise | A deterministic bit sequence that looks random. The data link protocols use one to fill OID frames; the coding sublayers use one to randomize the transmitted bits, which 131.0 §10 calls the pseudo-randomizer and 231.0 §6 the randomizer. | 132.0 Annex B, §4.1.4.6.2 | `OidGenerator`; the TM randomizer is M5, the TC randomizer v1.1 (OI-12) |
+| <a id="pn"></a>**PN** | Pseudo Noise | A deterministic bit sequence that looks random. The data link protocols use one to fill OID frames; the coding sublayers use one to randomize the transmitted bits, which 131.0 §10 calls the pseudo-randomizer and 231.0 §6 the randomizer. | 132.0 Annex B, §4.1.4.6.2 | `OidGenerator`; the TM pseudo-randomizer is `aldis-sync` (M5, SYNC-004, SYNC-020), the TC randomizer v1.1 (OI-12) |
 | <a id="lfsr"></a>**LFSR** | Linear Feedback Shift Register | The shift-register construction that generates the OID PN sequence, in a Fibonacci or a Galois form. | 132.0 §4.1.4.6.2, Annex D | `OidGenerator`, `OidGeneratorGalois` (CMN-020, CMN-022) |
 | <a id="fdu"></a>**FDU** | Frame Data Unit | The content of a TC Type-D frame's data field: user data, preceded by a Segment Header when the VC uses one. An FDU with a Segment Header is a segment. | 232.0 §4.1.3.2 | Input of FOP-1 `request_ad` and `request_bd` ([cop1.md](standards/cop1.md) §2.2); MapSegmenter output (LNK-043) |
 | <a id="pdu"></a>**PDU** | Protocol Data Unit | The OSI term for the unit a protocol exchanges with its peer. The Transfer Frame is the PDU of a data link protocol. | 132.0 §1.6.1.1, §1.6.1.3 | In M_PDU and B_PDU |
@@ -130,9 +130,9 @@ This page expands the acronyms and abbreviations used in the specification, the 
 | <a id="bcd"></a>**BCD** | Binary Coded Decimal | Decimal digits stored one per 4-bit nibble, as in the CCS T-field. | 301.0 §3.4 | TIME-030 |
 | <a id="doy"></a>**DOY** | Day of year | The CCS calendar variation that gives the day of the year instead of month and day. | 301.0 §3.4.1.2 | `NonZeroDoyHighNibble` (TIME-034) |
 
-### 1.7 Synchronization and channel coding (outside v1)
+### 1.7 Synchronization and channel coding
 
-v1 works on whole Transfer Frames; the integrator's radio or modem does the coding ([00 §2.1](00-introduction.md#2-v1-scope)).
+v1 works on whole Transfer Frames. `aldis-sync` adds the ASM, the pseudo-randomizer, and the ASM search (131.0 §9–10, M5); the integrator's radio or modem does the coding ([00 §2.1](00-introduction.md#2-v1-scope)).
 
 | Term | Expansion | Meaning | Defined in | In Aldis |
 |---|---|---|---|---|
@@ -332,7 +332,7 @@ Areas CPP and APP belong to tracks C and A; the others are shared ([08 §6](08-r
 | <a id="ccsds-133-0-b-2"></a>133.0-B-2 | Space Packet Protocol | Yes (v1) | [Space Packet](standards/space-packet.md) |
 | <a id="ccsds-133-1-b-3"></a>133.1-B-3 | Encapsulation Packet Protocol | Yes (v1) | [Encapsulation Packet](standards/encapsulation-packet.md) |
 | <a id="ccsds-301-0-b-4"></a>301.0-B-4 | Time Code Formats | Yes (v1) | [Time codes](standards/time-codes.md) |
-| <a id="ccsds-131-0-b-6"></a>131.0-B-6 | TM Synchronization and Channel Coding | Yes (ref) | §9 (ASM/CSM, CADU) and §10 (pseudo-randomizer) in v1, M5 (OI-12); the rest out of v1, roadmap §7 |
+| <a id="ccsds-131-0-b-6"></a>131.0-B-6 | TM Synchronization and Channel Coding | Yes (v1, partly) | §9 (ASM/CSM, CADU) and §10 (pseudo-randomizer) in `aldis-sync` (M5, OI-12): [TM synchronization](standards/tm-sync.md); the rest (codes, slicing) out of v1, roadmap §7 |
 | <a id="ccsds-231-0-b-4"></a>231.0-B-4 | TC Synchronization and Channel Coding | Yes (ref) | Out of v1 scope; roadmap §7; OI-35 item 8 |
 | <a id="ccsds-355-0-b-2"></a>355.0-B-2 | Space Data Link Security Protocol | Yes (ref) | SDLS hooks: API-070…075 |
 | <a id="ccsds-355-1-b-1"></a>355.1-B-1 | Space Data Link Security Protocol — Extended Procedures (as cited by 132.0 ref. [11] and 732.1 ref. [16]) | No | Defines the FSR; SDLS is roadmap v2 |
