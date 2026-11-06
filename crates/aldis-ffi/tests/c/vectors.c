@@ -42,7 +42,7 @@ static void skip_ws(const char **p) {
 static void *xrealloc(void *p, size_t n) {
     void *q = realloc(p, n);
     if (q == NULL) {
-        fputs("out of memory\n", stderr);
+        (void)fputs("out of memory\n", stderr);
         exit(2);
     }
     return q;
@@ -671,7 +671,7 @@ static char *read_file(const char *path) {
             break;
         }
     }
-    fclose(f);
+    (void)fclose(f);
     buf[n] = '\0';
     return buf;
 }

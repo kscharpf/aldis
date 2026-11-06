@@ -487,6 +487,7 @@ fn rust() -> Vec<Check> {
     ));
     // The Kani proof harnesses (OI-42, docs/verification/formal-verification.md): reported, not gating,
     // and run only at night (maintainer decision 2026-10-24).
+    out.push(ffi_miri_check());
     out.push(Check {
         gating: false,
         nightly: true,
@@ -495,7 +496,7 @@ fn rust() -> Vec<Check> {
             check("kani", c, false, 641, "cargo xtask kani\n"),
         )
     });
-    out.extend(ffi_sanitizer_checks());
+    out.extend(c_sanitizer_checks());
     out.extend([
         grouped(
             Group::Coverage,
@@ -511,27 +512,36 @@ fn rust() -> Vec<Check> {
     out
 }
 
-/// The checks of the C ABI under sanitizers (VER-026, GEN-071; m5 plan D4): the C vector harness
-/// under `ASan` and `UBSan`, and the `aldis-ffi` tests under Miri. The durations are estimates until
-/// the hosted runs measure them.
-fn ffi_sanitizer_checks() -> Vec<Check> {
+/// The check of the C ABI under sanitizers (VER-026; m5 plan D4): the C vector harness under
+/// `ASan` and `UBSan`. The duration is an estimate until the hosted runs measure it.
+fn c_sanitizer_checks() -> Vec<Check> {
     let c = Host::Container;
-    vec![
-        grouped(
-            Group::Host,
-            reading(
-                SANITIZER_INPUTS,
-                check("c-sanitizers", c, false, 40, C_SANITIZERS_SCRIPT),
-            ),
+    vec![grouped(
+        Group::Host,
+        reading(
+            SANITIZER_INPUTS,
+            check("c-sanitizers", c, false, 40, C_SANITIZERS_SCRIPT),
         ),
-        grouped(
-            Group::Coverage,
-            reading(
-                MIRI_INPUTS,
-                check("ffi-miri", c, false, MIRI_SECS, FFI_MIRI_SCRIPT),
+    )]
+}
+
+/// The check `ffi-miri`: nightly-only and non-gating like `kani`, since Miri over the `aldis-ffi`
+/// tests runs for hours (m5 plan D4, VER-059).
+fn ffi_miri_check() -> Check {
+    Check {
+        gating: false,
+        nightly: true,
+        ..reading(
+            MIRI_INPUTS,
+            check(
+                "ffi-miri",
+                Host::Container,
+                false,
+                MIRI_SECS,
+                FFI_MIRI_SCRIPT,
             ),
-        ),
-    ]
+        )
+    }
 }
 
 /// The exerciser check of `target`, in the group that balances the groups by their measured
@@ -584,7 +594,8 @@ fn exerciser(target: &str) -> String {
 /// `no-std-<target>`, and the exerciser runs as in `exerciser-<target>`: the panic-freedom link
 /// check, its canary, and every vector case under QEMU `leon3_generic` (VER-010). The linker
 /// and the QEMU command are in `exerciser/.cargo/config.toml`.
-const MIRI_SECS: u16 = 600;
+/// Measured: the `vectors` test of `aldis-ffi` alone took 7830 s under Miri.
+const MIRI_SECS: u16 = 8000;
 
 const RUST_LEON3: &str = r#"
 # Reported against OI-08, never a gate.
@@ -648,9 +659,12 @@ pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n"
 
 const FFI_MIRI_SCRIPT: &str = r#"
 # The aldis-ffi tests under Miri on the tooling nightly (VER-026, GEN-071; m5 plan D4). The
-# vector tests read test-vectors/, which Miri's isolation forbids.
+# vector tests read test-vectors/, which Miri's isolation forbids. Tree Borrows, not the
+# default Stacked Borrows: the tests hand a caller's buffer to the library through raw
+# pointers, which Stacked Borrows rejects in the test code itself.
 nightly="$(cat tooling-nightly)"
-MIRIFLAGS="-Zmiri-disable-isolation" cargo +"$nightly" miri test --locked -p aldis-ffi
+MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-tree-borrows" \
+  cargo +"$nightly" miri test --locked -p aldis-ffi
 "#;
 
 const C_SANITIZERS_SCRIPT: &str = "\
@@ -814,28 +828,30 @@ mod tests {
                 assert!(at(quick) < at(slow), "{quick} before {slow}");
             }
         }
-        assert_eq!(order.last().map(|c| c.name.as_str()), Some("kani"));
+        assert_eq!(order.last().map(|c| c.name.as_str()), Some("ffi-miri"));
     }
 
     // req: VER-056, VER-059
     #[test]
-    fn only_kani_is_nightly_only_and_it_does_not_gate() {
+    fn only_kani_and_ffi_miri_are_nightly_only_and_they_do_not_gate() {
         let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
-        assert_eq!(nightly.len(), 1);
-        assert_eq!(nightly[0].name, "kani");
-        assert!(!nightly[0].gating);
-        assert_eq!(nightly[0].host, Host::Container);
+        let names: Vec<&str> = nightly.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["ffi-miri", "kani"]);
+        for c in &nightly {
+            assert!(!c.gating, "{}", c.name);
+            assert_eq!(c.host, Host::Container, "{}", c.name);
+        }
     }
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_and_kani_checks_are_non_gating() {
+    fn only_the_leon3_kani_and_miri_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "kani"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "ffi-miri", "kani"]);
     }
 
     // req: VER-067
