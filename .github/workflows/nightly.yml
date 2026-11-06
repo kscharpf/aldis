@@ -160,6 +160,7 @@ jobs:
           - link_map_roundtrip
           - link_map_inputs
           - link_mux
+          - sync_search
           - link_frame_receiver
     runs-on: ubuntu-24.04
     permissions:
@@ -252,6 +253,7 @@ jobs:
           - { crate: aldis-tm, shard: 0, shards: 1 }
           - { crate: aldis-tc, shard: 0, shards: 1 }
           - { crate: aldis-uslp, shard: 0, shards: 1 }
+          - { crate: aldis-sync, shard: 0, shards: 1 }
           - { crate: aldis-cop1, shard: 0, shards: 1 }
           - { crate: aldis-link, shard: 0, shards: 4 }
           - { crate: aldis-link, shard: 1, shards: 4 }

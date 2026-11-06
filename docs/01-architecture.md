@@ -18,7 +18,7 @@ The libraries are split into three layers plus a foreign-function boundary. Each
  ├────────────────────────────────────────────────────────────────────────┤
  │ Layer 1 — CODECS (stateless, bytes in → fields/bytes out)              │
  │   aldis-time  aldis-spp  aldis-epp  aldis-tm  aldis-tc  aldis-aos      │
- │   aldis-uslp                                                           │
+ │   aldis-uslp  aldis-sync (ASM, CADU, randomizer, ASM search engine)    │
  ├────────────────────────────────────────────────────────────────────────┤
  │ Layer 0 — FOUNDATION                                       aldis-core  │
  │   errors, bit-field access, IDs, CRC-16, OID PN generator,             │
@@ -49,6 +49,7 @@ Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Lay
 | `aldis-tc` | 1 | 232.0 TC Transfer Frame, Segment Header, Control Commands, CLCW, frame delimiting | core |
 | `aldis-aos` | 1 | 732.0 AOS Transfer Frame, FHEC, M_PDU, B_PDU | core |
 | `aldis-uslp` | 1 | 732.1 USLP Transfer Frame (incl. truncated), TFDF header | core |
+| `aldis-sync` | 1 | 131.0 §9–§10 ASM and CADU, pseudo-randomizer, ASM search engine ([tm-sync](standards/tm-sync.md)) | core |
 | `aldis-link` | 2 | Sending and receiving engines for packets over TM/AOS/USLP and TC/USLP MAPs ([04](04-engines.md)) | core, spp, epp, tm, tc, aos, uslp (each behind a feature) |
 | `aldis-cop1` | 2 | 232.1 FOP-1, FARM-1 ([COP-1](standards/cop1.md)) | core, tc, (uslp feature) |
 | `aldis-framework` | 3 | [05 Framework](05-framework.md) | core, link, cop1 |
