@@ -98,6 +98,51 @@
       ]
     },
     {
+      "id": "sync-units-total-after-reset",
+      "description": "The total of skipped bits is the sum of the skipped_bits of the units returned (OI-83 a): 5 junk bits and a unit give 5; bits read in a search that a Reset cuts short, and a unit being collected when it comes, add nothing; a unit after the Reset with 3 skipped bits gives 8.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50D67FE0EB39A88F4550"}}, "expect": [{"unit": {"data_hex": "673511E8", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1ACFFC1DC093"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 8000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "4359FF83A41E25AB80"}}, "expect": [{"unit": {"data_hex": "20F12D5C", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"},
+        {"at_us": 10000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 8}}], "expect_state": "Searching"},
+        {"at_us": 11000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-partial-octets-rounds-down",
+      "description": "The octets of the partial unit are the complete ones (OI-83 b): a marker at bit offset 3 and a 10-octet frame, read up to 5 octets and 5 bits of the unit, give 5; after the next octet (6 octets and 5 bits), 6.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "aos", "frame_len": 10, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83B05B6396026C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 5}}], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "6B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 6}}], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "77E51F60"}}, "expect": [{"unit": {"data_hex": "82DB1CB013635BBF28FB", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-complemented-marker",
+      "description": "The engine does not search for the complemented marker (OI-81): a stream of tolerance 0 that carries the complement of the marker (E530 03E2) and a frame gives no unit and stays Searching, at bit offsets 0 and 5; the true marker that follows after a Reset is found.",
+      "requirements": ["SYNC-019", "SYNC-007"],
+      "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "E53003E25800FB82"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "5729801F15CBF476F8"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1ACFFC1D1ADC94F5"}}, "expect": [{"unit": {"data_hex": "1ADC94F5", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
       "id": "sync-units-marker-needs-32-bits",
       "description": "Tolerance 13: 24 bits of ones read since the start are not a window (a match needs 32 bits): no unit, the engine stays Searching; the fourth octet of ones completes 32 bits, which differ from the marker in 13 bits, and the engine starts Collecting.",
       "requirements": ["SYNC-007"],

@@ -48,7 +48,7 @@ Configuration: `protocol`, `frame_len`, `asm_errors` (tolerance), and for the tw
 | `{"error": kind, "field"?: name, "needed"?: n}` | The input is refused and nothing changes: `BufferTooSmall` (`needed`), `OutOfRange` (`chunk_len`). The field is the name of the catalogue (the codes are in the codec files) |
 | `{"counter": {"name", "value"}}` | The answer to `query` |
 
-A stream is built from whole octets; where it holds a junk prefix of n bits, the CADU follows at bit n, and the last octet is padded with zero bits, which stay in the window after the last unit (so no scenario queries `skipped_bits_total` there). Frame lengths are at most 64 octets and chunks at most 128 octets in every scenario, so an instance needs `FRAME` of 64 and `CHUNK` of 128 for the files other than `search_capacity.json`.
+A stream is built from whole octets; where it holds a junk prefix of n bits, the CADU follows at bit n, and the last octet is padded with zero bits, which stay in the window after the last unit . Frame lengths are at most 64 octets and chunks at most 128 octets in every scenario, so an instance needs `FRAME` of 64 and `CHUNK` of 128 for the files other than `search_capacity.json`.
 
 ## Readings the model makes
 
@@ -56,12 +56,13 @@ A stream is built from whole octets; where it holds a junk prefix of n bits, the
 2. `skipped_bits` is the number of bits read since the search began (the stream start, a Reset, or the end of the previous unit), less 32, at the match.
 3. A match with `errors` below the tolerance is reported with the number of bits that differ, as SYNC-011 says.
 
-## Readings the model refuses (OI-83)
+## Readings the model makes (decided in OI-83, 2026-11-05)
 
-No vector pins these, because `tm-sync.md` does not settle them. A runner that disagrees with the model on one of them has found a gap in the specification, not a failing vector.
+4. `skipped_bits_total` is the sum of the `skipped_bits` of the units returned; bits that a Reset discards (an unfinished search or unit) count for nothing.
+5. `partial_octets` counts complete octets of the partial unit, rounded down; 0 while `Searching`.
+6. With two faults at once the first is reported: `attach` checks the frame length, then the output area; a configuration checks the protocol, the frame length, the tolerance, then the capacity.
 
-* `skipped_bits_total` (SYNC-015) is queried only when the engine is `Searching` with no bits read since the last unit and no Reset has discarded bits: the text does not say whether the bits of a search that is cut short by a Reset, or the skipped bits of a unit still being collected, count in the total.
-* `partial_octets` is queried only when the bits collected are a whole number of octets: the text does not say whether a partial octet counts.
-* The order of the checks when an `attach` has both a frame of the wrong length and an output area that is too small (`LengthMismatch` or `BufferTooSmall`, SYNC-003), and when a configuration has two faults (protocol, frame length, tolerance, capacity; SYNC-002, SYNC-016): every vector has one fault.
+## Readings the model refuses (OI-83 d, open, target WP-4)
+
 * The encoding of the choices that the C ABI receives (`randomizer_sequence`, `sync_protocol`): the vectors use the sequence length in bits and the name of the protocol; the C ABI harness maps them.
 * How a runner builds an instance of a given `FRAME` and `CHUNK` capacity (compile-time constants, GEN-011), for `frame_capacity` and `chunk_capacity`.

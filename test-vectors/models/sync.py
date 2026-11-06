@@ -186,8 +186,8 @@ class Unspecified(Exception):
 
 def check_config(cfg):
     """Validates a sync configuration: protocol, frame length, tolerance, and the capacity of the
-    instance when the configuration names one (`frame_capacity`). Each kind of fault is tested
-    alone, so the order of the checks is not pinned (README, readings the model refuses)."""
+    instance when the configuration names one (`frame_capacity`). With several faults the first
+    in this order is reported: protocol, frame length, tolerance, capacity (OI-83 c)."""
     protocol = cfg.get("protocol")
     if protocol not in MAX_FRAME:
         raise Refused("InvalidConfig", "sync_protocol")
@@ -247,7 +247,6 @@ class Engine:
         self.err_cur = 0
         self.units = 0
         self.total = 0
-        self.tainted = False  # a Reset threw away bits whose accounting no document settles
 
     def _bit(self, b, actions):
         if self.state == "Searching":
@@ -290,8 +289,6 @@ class Engine:
         return actions
 
     def reset(self):
-        if (self.state == "Searching" and self.read > 0) or self.state == "Collecting":
-            self.tainted = True
         self.state = "Searching"
         self.win = []
         self.read = 0
@@ -303,13 +300,9 @@ class Engine:
         if name == "partial_octets":
             if self.state == "Searching":
                 return 0
-            if len(self.unit) % 8:
-                raise Unspecified("partial octets of a unit that ends inside an octet")
-            return len(self.unit) // 8
+            return len(self.unit) // 8  # complete octets, rounded down (OI-83 b)
         if name == "skipped_bits_total":
-            if self.tainted or self.state != "Searching" or self.read:
-                raise Unspecified("total of skipped bits while bits are pending or after a Reset")
-            return self.total
+            return self.total  # the skipped_bits of the units returned (OI-83 a)
         raise Unspecified("counter " + name)
 
 
@@ -591,6 +584,10 @@ def cadu_error_cases():
     out.append(Codec("sync-cadu-out-zero", reqs,
                      "An output area of 0 octets fails with BufferTooSmall, needed = 16.",
                      "attach", cfg, fr, {"out_len": 0}))
+    out.append(Codec("sync-cadu-both-faults", reqs,
+                     "A frame of the wrong length and an output area too small: the frame length "
+                     "is checked first, LengthMismatch naming frame_len (OI-83 c).", "attach",
+                     cfg, frame_octets(11, 5), {"out_len": 0}))
     out.append(Codec("sync-cadu-out-marker-only", reqs,
                      "An output area that holds the marker (4 octets) but not the frame fails "
                      "with BufferTooSmall, needed = 16.", "attach", cfg, fr, {"out_len": 4}))
@@ -701,6 +698,17 @@ def config_cases():
                      "The same for AOS: 1024 octets on an instance of capacity 1023.", "config",
                      {"protocol": "aos", "frame_len": 1024, "asm_errors": 0,
                       "frame_capacity": 1023}, None))
+    two = [("protocol-and-frame", {"protocol": "none", "frame_len": 0, "asm_errors": 0}, "sync_protocol"),
+           ("frame-and-tolerance", {"protocol": "tm", "frame_len": 0, "asm_errors": 16}, "frame_len"),
+           ("tolerance-and-capacity", {"protocol": "tm", "frame_len": 65, "asm_errors": 16,
+                                       "frame_capacity": 64}, "asm_errors"),
+           ("frame-and-capacity", {"protocol": "tm", "frame_len": 2049, "asm_errors": 0,
+                                   "frame_capacity": 64}, "frame_len")]
+    for name, cfg, first in two:
+        out.append(Codec("sync-config-two-faults-" + name, ["SYNC-002", "SYNC-016"],
+                         "Two faults at once: the first in the order protocol, frame length, "
+                         "tolerance, capacity is reported (InvalidConfig naming %s; OI-83 c)."
+                         % first, "config", cfg, None))
     out.append(Codec("sync-config-protocol-invalid", ["SYNC-002"],
                      "A frame protocol that is none of TM, AOS, USLP (a C ABI input; the Rust "
                      "type cannot hold one) is rejected with InvalidConfig naming "
@@ -1040,6 +1048,40 @@ def unit_scenarios():
     s.reset().query("units_returned")
     s.chunk(cad(2)).query("units_returned")
     s.expect_units([(0, 0)] * 3)
+    out.append(s)
+    s = Scn("sync-units-total-after-reset", ["SYNC-015"],
+            "The total of skipped bits is the sum of the skipped_bits of the units returned "
+            "(OI-83 a): 5 junk bits and a unit give 5; bits read in a search that a Reset cuts "
+            "short, and a unit being collected when it comes, add nothing; a unit after "
+            "the Reset with 3 skipped bits gives 8.", cfg_of("tm", 4))
+    s.chunk(to_chunk(junk_bits(5) + cadu_stream_bits(frame_octets(4, 150)) + junk_bits(8, 1)))
+    s.query("skipped_bits_total")
+    s.reset().query("skipped_bits_total")
+    s.chunk(to_chunk(cadu_stream_bits(frame_octets(4, 151)))[:6]).query("skipped_bits_total")
+    s.reset().query("skipped_bits_total")
+    s.chunk(to_chunk(junk_bits(3) + cadu_stream_bits(frame_octets(4, 152))))
+    s.query("skipped_bits_total").query("units_returned")
+    s.expect_units([(0, 5), (0, 3)])
+    out.append(s)
+    s = Scn("sync-units-partial-octets-rounds-down", ["SYNC-015"],
+            "The octets of the partial unit are the complete ones (OI-83 b): a marker at bit "
+            "offset 3 and a 10-octet frame, read up to 5 octets and 5 bits of the unit, "
+            "give 5; after the next octet (6 octets and 5 bits), 6.", cfg_of("aos", 10))
+    st = to_chunk(junk_bits(3) + cadu_stream_bits(frame_octets(10, 153)))
+    s.chunk(st[:10]).query("partial_octets").chunk(st[10:11]).query("partial_octets")
+    s.chunk(st[11:])
+    s.expect_units([(0, 3)])
+    out.append(s)
+    s = Scn("sync-units-complemented-marker", ["SYNC-019", "SYNC-007"],
+            "The engine does not search for the complemented marker (OI-81): a stream of "
+            "tolerance 0 that carries the complement of the marker (E530 03E2) and a frame "
+            "gives no unit and stays Searching, at bit offsets 0 and 5; the true marker that "
+            "follows after a Reset is found.", cfg_of("tm", 4))
+    comp = [1 - b for b in ASM_BITS]
+    s.chunk(to_chunk(comp + bits_of(randomize(frame_octets(4, 160), 131071)))).reset()
+    s.chunk(to_chunk(junk_bits(5) + comp + bits_of(randomize(frame_octets(4, 161), 131071)))).reset()
+    s.chunk(to_chunk(cadu_stream_bits(frame_octets(4, 162))))
+    s.expect_units([(0, 0)])
     out.append(s)
     s = Scn("sync-units-marker-needs-32-bits", ["SYNC-007"],
             "Tolerance 13: 24 bits of ones read since the start are not a window (a match needs "
