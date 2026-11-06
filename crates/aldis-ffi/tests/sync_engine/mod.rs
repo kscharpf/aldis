@@ -11,7 +11,7 @@
 //! cannot lower them (they are compile-time constants, GEN-011). The vectors that state a
 //! `frame_capacity` or `chunk_capacity` that the handle does not have, and expect the refusal that
 //! the capacity causes, are therefore counted and skipped, and the Rust runner of `aldis-sync`
-//! covers them: the two `CapacityExceeded` cases of `config.json` and the scenarios of
+//! covers them (a scenario that states the handle's own capacity runs): the two `CapacityExceeded` cases of `config.json` and the scenarios of
 //! `search_capacity.json`. The refusal of a chunk above the handle's capacity is checked by
 //! `tests/sync.rs`.
 
@@ -24,6 +24,7 @@ use std::num::NonZeroU16;
 
 use aldis::core::{ErrorKind, FieldId};
 use aldis_ffi::aldis_error_detail_t;
+use aldis_ffi::capacities::ALDIS_SYNC_MAX_CHUNK_OCTETS;
 use aldis_ffi::error::{ALDIS_DETAIL_NEEDED, ALDIS_OK};
 use aldis_ffi::link::{ALDIS_LINK_PROTOCOL_AOS, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP};
 use aldis_ffi::sync::*;
@@ -284,7 +285,9 @@ pub(crate) fn run_scenario_file(name: &str) -> usize {
         }
         // The handle has the capacity of `capacities.toml`; a scenario that states another
         // chunk capacity tests that capacity and is run by the Rust runner (module comment).
-        if scenario.config.contains_key("chunk_capacity") {
+        if num(scenario.config, "chunk_capacity")
+            .is_some_and(|n| usize_of(n) != ALDIS_SYNC_MAX_CHUNK_OCTETS)
+        {
             skipped += 1;
             continue;
         }

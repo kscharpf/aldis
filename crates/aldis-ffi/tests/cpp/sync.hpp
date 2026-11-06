@@ -71,7 +71,9 @@ inline Tally run(const std::string& path) {
         if (sc.superseded) {
             continue;
         }
-        if (sc.config->has("chunk_capacity")) {
+        // Only a scenario that states a chunk capacity other than the handle's is skipped.
+        if (sc.config->num_or("chunk_capacity", ALDIS_SYNC_MAX_CHUNK_OCTETS) !=
+            ALDIS_SYNC_MAX_CHUNK_OCTETS) {
             ++t.skipped;
             continue;
         }
@@ -141,6 +143,13 @@ inline Tally run(const std::string& path) {
                 break;
             }
         }
+    }
+    // Only search_capacity.json skips (its one scenario states a chunk capacity of 16); a file
+    // that skips otherwise, or that skips nothing there, fails, so nothing passes unrun.
+    const bool capacity_file = path.find("search_capacity") != std::string::npos;
+    if ((t.skipped != 0) != capacity_file) {
+        t.failures.push_back(path + ": unexpected number of skipped scenarios: " +
+                             std::to_string(t.skipped));
     }
     return t;
 }

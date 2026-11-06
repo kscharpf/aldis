@@ -62,7 +62,7 @@ A stream is built from whole octets; where it holds a junk prefix of n bits, the
 5. `partial_octets` counts complete octets of the partial unit, rounded down; 0 while `Searching`.
 6. With two faults at once the first is reported: `attach` checks the frame length, then the output area; a configuration checks the protocol, the frame length, the tolerance, then the capacity.
 
-## Readings the model refuses (OI-83 d, proposed in M5 WP-4)
+## Readings the model refuses (OI-83 d, decided 2026-11-06)
 
 * The encoding of the choices that the C ABI receives (`randomizer_sequence`, `sync_protocol`): the vectors use the sequence length in bits and the name of the protocol; the C ABI runners map them: the length is the argument of `aldis_sync_randomize` as it stands, and the protocol name is an `ALDIS_LINK_PROTOCOL_*` constant (`none` is a value that no constant has).
 * How a runner builds an instance of a given `FRAME` and `CHUNK` capacity (compile-time constants, GEN-011), for `frame_capacity` and `chunk_capacity`: the Rust runner of `aldis-sync` instantiates the const-generic type. The C ABI handle has the one capacity of `capacities.toml` (chunk 256, frame 65536), so the C ABI runners (`crates/aldis-ffi/tests/`, through `aldis.hpp` too) skip the two `CapacityExceeded` cases of `config.json` and `search_capacity.json`, and count them. The refusal of a chunk above the handle's capacity is tested separately in `crates/aldis-ffi/tests/sync.rs`.

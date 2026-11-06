@@ -1,7 +1,7 @@
 //! The contract of the `aldis_sync_*` functions, called as a C caller calls them: storage and tags
 //! (CABI-031, CABI-032), argument checks (CABI-022), the choices of the C ABI (SYNC-002,
 //! SYNC-020), the capacities of the header (CABI-030, SYNC-014), and a frame of the largest
-//! length through attach, randomize, and search (SYNC-017). The rules of the codec and the engine
+//! length through attach, randomize, and search (SYNC-014). The rules of the codec and the engine
 //! are checked by `crates/aldis-sync/tests/`, and the vectors by `vectors.rs`.
 #![expect(unsafe_code, reason = "the tests call the C ABI")]
 #![expect(
@@ -431,7 +431,9 @@ fn a_step_checks_its_arguments_and_the_chunk_capacity() {
 
 #[test]
 fn a_frame_of_the_largest_length_goes_through_attach_randomize_and_search() {
-    // req: SYNC-017, SYNC-014, CABI-030, CABI-040
+    // req: SYNC-014, CABI-030, CABI-040
+    // One case at the largest frame: a prefix of 3 octets, no flipped bit. SYNC-017 (every offset,
+    // flips up to the tolerance) is checked by the search_offsets_* and search_errors vectors.
     let len = ALDIS_SYNC_MAX_FRAME_OCTETS;
     let cfg = config(ALDIS_LINK_PROTOCOL_AOS, len);
     let frame: Vec<u8> = (0..len).map(|i| u8::try_from(i % 251).unwrap()).collect();

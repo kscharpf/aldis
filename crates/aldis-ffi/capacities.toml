@@ -36,7 +36,7 @@ max_maps = 32              # MAP channels in one aldis_uslp_* channel table (API
 # The ASM search handle `aldis_sync_search_t` (M5 WP-4, SYNC-002, SYNC-013, SYNC-014): the engine is
 # built in place in the caller's storage (`aldis::sync::AsmSearch`, issue #240 pattern), so
 # `max_frame_octets` octets of partial unit do not pass through the stack. 65536 is the largest
-# frame of AOS and fixed-length USLP (131.0 §11.1; TM stops at 2048), so no valid frame length
+# frame of AOS and fixed-length USLP (131.0 §11.3, §11.4; TM stops at 2048), so no valid frame length
 # exceeds the capacity. A chunk is at most `max_chunk_octets` octets (`chunk_len`, SYNC-014); the
 # output area that fits every chunk is `max_chunk_octets + max_frame_octets` octets.
 max_chunk_octets = 256
