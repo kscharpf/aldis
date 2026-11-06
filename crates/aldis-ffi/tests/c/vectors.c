@@ -685,7 +685,12 @@ static void run_file(const char *root, const char *rel, run_fn run) {
     jval file;
     size_t i;
     int file_ran = 0;
-    snprintf(path, sizeof path, "%s/%s", root, rel);
+    int written = snprintf(path, sizeof path, "%s/%s", root, rel);
+    if (written < 0 || (size_t)written >= sizeof path) {
+        printf("FAIL: path too long for %s/%s\n", root, rel);
+        failures++;
+        return;
+    }
     text = read_file(path);
     if (text == NULL) {
         printf("FAIL: cannot read %s\n", path);
