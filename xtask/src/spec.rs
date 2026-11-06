@@ -23,7 +23,7 @@ pub struct Requirement {
 /// Requirement areas deferred to a later release, as `(area, release)` (00-introduction.md §5.3).
 /// Their requirements stay in the tables and in `trace --scope`, but the unscoped `trace`
 /// (the v1 trace) leaves them out and reports how many it left out.
-pub const DEFERRED_AREAS: [(&str, &str); 2] = [("FW", "v1.1"), ("CPP", "Phase 3")];
+pub const DEFERRED_AREAS: [(&str, &str); 2] = [("FW", "later"), ("CPP", "Phase 3")];
 
 /// Whether a requirement of `area` belongs to v1 (not in [`DEFERRED_AREAS`]).
 pub fn in_v1(area: &str) -> bool {
