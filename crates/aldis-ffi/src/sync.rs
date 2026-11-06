@@ -166,8 +166,9 @@ pub struct aldis_sync_search_config_t {
     /// The frame length in octets, without the marker: 1 up to 2048 for TM, 65536 for AOS and
     /// USLP (131.0 §11.3, §11.4).
     pub frame_len: usize,
-    /// The tolerated bit errors of the ASM, 0 to 15 (SYNC-007, SYNC-016). `aldis_sync_attach`
-    /// does not read it.
+    /// The tolerated bit errors of the ASM, 0 to 15 (SYNC-007, SYNC-016). A high value raises
+    /// the false-lock rate: about 43 % of random windows match at 15 (HZ-SYNC-01).
+    /// `aldis_sync_attach` does not read it.
     pub asm_errors: u32,
 }
 

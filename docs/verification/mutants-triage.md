@@ -10,7 +10,7 @@ Surviving mutants from `cargo mutants` (`-p aldis-core -p aldis-time -p aldis-ep
 |---|---|---|
 | `randomizer.rs:50` `RandomizerSequence::period` replaced by 0 | Test gap | Fixed: `the_choice_is_a_period_in_bits` asserts both periods; re-run with `-F period`: 4 caught, 1 unviable |
 | `randomizer.rs:99` `randomize`, `mask << 1` `\|` → `^` | Equivalent: the shift leaves bit 0 of the mask clear, so OR and XOR of it with the new bit are the same | None possible |
-| `randomizer.rs:100` `randomize`, `reg >> 1` `\|` → `^` | Equivalent: the shift clears the top bit of the register and the feedback is written to that bit only, so the two operands have no bit in common | None possible |
+| `randomizer.rs:100` `randomize`, `reg >> 1` `\|` → `^` | Equivalent: the shift clears the top bit of the register and the feedback is written to that bit only, so the two operands have no bit in common as long as the register stays below 2^width (it does: the seed is below it and each step shifts right and sets only bit width−1) | None possible |
 | `search.rs:193` `Phase::advance`, `window << 1` `\|` → `^` | Equivalent: the shift clears bit 0 of the window, where the new bit goes | None possible |
 
 ## 2026-11-05, Nightly run 41949461901 (M4 WP-9 exit)

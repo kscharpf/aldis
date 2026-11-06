@@ -17,11 +17,12 @@ use aldis_ffi::error::{ALDIS_ERR_BUFFER_TOO_SMALL, ALDIS_ERR_OUT_OF_RANGE};
 use aldis_ffi::link::{ALDIS_LINK_PROTOCOL_AOS, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP};
 use aldis_ffi::sync::{
     ALDIS_SYNC_RANDOMIZER_255, ALDIS_SYNC_RANDOMIZER_131071, ALDIS_SYNC_SEARCH_INPUT_CHUNK,
-    ALDIS_SYNC_SEARCH_MAX_ACTIONS, ALDIS_SYNC_SEARCH_WORDS, aldis_sync_attach,
-    aldis_sync_randomize, aldis_sync_search_action_t, aldis_sync_search_actions_t,
-    aldis_sync_search_config_t, aldis_sync_search_deinit, aldis_sync_search_init,
-    aldis_sync_search_input_t, aldis_sync_search_status, aldis_sync_search_status_t,
-    aldis_sync_search_step, aldis_sync_search_t,
+    ALDIS_SYNC_SEARCH_INPUT_RECONFIGURE, ALDIS_SYNC_SEARCH_INPUT_RESET,
+    ALDIS_SYNC_SEARCH_MAX_ACTIONS, ALDIS_SYNC_SEARCH_STATE_COLLECTING, ALDIS_SYNC_SEARCH_WORDS,
+    aldis_sync_attach, aldis_sync_randomize, aldis_sync_search_action_t,
+    aldis_sync_search_actions_t, aldis_sync_search_config_t, aldis_sync_search_deinit,
+    aldis_sync_search_init, aldis_sync_search_input_t, aldis_sync_search_status,
+    aldis_sync_search_status_t, aldis_sync_search_step, aldis_sync_search_t,
 };
 use aldis_ffi::{ALDIS_OK, aldis_error_detail_t};
 use aldis_sync::{
@@ -37,7 +38,7 @@ type Engine = AsmSearch<FRAME, CHUNK, ALDIS_SYNC_SEARCH_MAX_ACTIONS>;
 
 const _: () = assert!(ALDIS_SYNC_SEARCH_MAX_ACTIONS == max_actions(CHUNK));
 
-fn config(u: &mut Unstructured<'_>) -> Result<(u32, aldis_sync_search_config_t, SyncConfig)> {
+fn draw_config(u: &mut Unstructured<'_>) -> Result<(u32, aldis_sync_search_config_t, SyncConfig)> {
     let (raw, protocol, cap) = match u.int_in_range(0..=2)? {
         0 => (ALDIS_LINK_PROTOCOL_TM, SyncProtocol::Tm, 2048),
         1 => (ALDIS_LINK_PROTOCOL_AOS, SyncProtocol::Aos, 65536),
@@ -80,12 +81,15 @@ fn same_status(h: &mut aldis_sync_search_t, rust: &Engine) {
     assert_eq!(c.units_returned, r.units_returned());
     assert_eq!(c.skipped_bits_total, r.skipped_bits_total());
     assert_eq!(c.partial_octets, r.partial_octets());
-    assert_eq!(c.state == 1, r.state() == SearchState::Collecting);
+    assert_eq!(
+        c.state == ALDIS_SYNC_SEARCH_STATE_COLLECTING,
+        r.state() == SearchState::Collecting
+    );
 }
 
 fuzz_target!(|data: &[u8]| {
     let mut u = Unstructured::new(data);
-    let Ok((_, c_config, config)) = config(&mut u) else {
+    let Ok((_, mut c_config, mut config)) = draw_config(&mut u) else {
         return;
     };
 
@@ -161,8 +165,57 @@ fuzz_target!(|data: &[u8]| {
     }
 
     let mut at = 0;
+    let mut last_empty = false;
     while at < stream.len() {
-        let want_len = u.int_in_range(0..=CHUNK + 20).unwrap_or(CHUNK);
+        // Now and then a Reset or a reconfiguration, on both sides (SYNC-015).
+        if u.ratio(1, 8).unwrap_or(false) {
+            let reconfigure = u.ratio(1, 2).unwrap_or(false);
+            let mut kind = ALDIS_SYNC_SEARCH_INPUT_RESET;
+            let mut new = None;
+            if reconfigure && let Ok((_, c, r)) = draw_config(&mut u) {
+                kind = ALDIS_SYNC_SEARCH_INPUT_RECONFIGURE;
+                new = Some((c, r));
+            }
+            let rust_reset = rust.step(
+                SearchInput::Reset {
+                    config: new.map(|(_, r)| r),
+                },
+                &mut [],
+            );
+            let input = aldis_sync_search_input_t {
+                kind,
+                data: core::ptr::null(),
+                data_len: 0,
+                config: new.map_or(c_config, |(c, _)| c),
+            };
+            let mut actions = empty_actions();
+            // SAFETY: the storage holds a live engine; `input` and `actions` are live locals;
+            // a null area has length 0.
+            let code = unsafe {
+                aldis_sync_search_step(
+                    &raw mut *storage,
+                    &raw const input,
+                    null_mut(),
+                    0,
+                    &raw mut actions,
+                    null_mut(),
+                )
+            };
+            assert_eq!(code, ALDIS_OK);
+            assert_eq!(rust_reset.unwrap().len(), 0);
+            assert_eq!(actions.count, 0);
+            if let Some((c, r)) = new {
+                c_config = c;
+                config = r;
+            }
+            same_status(&mut storage, &rust);
+        }
+        let frame_len = config.frame_len();
+        let mut want_len = u.int_in_range(0..=CHUNK + 20).unwrap_or(CHUNK);
+        if last_empty {
+            want_len = want_len.max(1);
+        }
+        last_empty = want_len == 0;
         let end = stream.len().min(at + want_len);
         let chunk = &stream[at..end];
         let area_len = u
@@ -225,12 +278,7 @@ fuzz_target!(|data: &[u8]| {
             }
         }
         same_status(&mut storage, &rust);
-        if end == at && want_len == 0 {
-            // An empty chunk consumes nothing: move on.
-            at += 1.min(stream.len() - at);
-        } else {
-            at = end;
-        }
+        at = end;
     }
     // SAFETY: the storage holds a live engine, deinitialised once.
     unsafe { aldis_sync_search_deinit(&raw mut *storage) };
