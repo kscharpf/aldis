@@ -137,7 +137,7 @@ Milestone 5 is complete when every item below is green on `main`. The results co
 
 The roadmap exit: all CABI requirements traced; the codec vectors pass via the C ABI, the engine-scenario vectors also via `aldis.hpp`.
 
-Not in M5: CLTU (BCH) and the TC randomizer (231.0, v1.1, OI-12); the framework (M6, v1.1).
+Not in M5: CLTU (BCH) and the TC randomizer (231.0, v1.1, OI-12); the framework (M6, later).
 
 ## 5. Risks
 
@@ -156,4 +156,4 @@ Not in M5: CLTU (BCH) and the TC randomizer (231.0, v1.1, OI-12); the framework 
 | A — A5 (C++ flight side) | `aldis.hpp` over the C ABI (engine handles; codecs through `aldis.h`) | WP-7 merged |
 | A — A6 (target) | CADUs and the randomizer for the end-to-end demo, if the scenario uses them | WP-4 merged |
 | ACFS | The sync handle and `aldis.hpp` | M5 exit |
-| R — M6 (v1.1) | A released v1.0 C ABI to build the framework adapters on | v1.0 |
+| R — M6 (later) | A released v1.0 C ABI to build the framework adapters on | v1.0 |
