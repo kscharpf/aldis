@@ -241,13 +241,47 @@ impl Phase {
 /// `FRAME`, `CHUNK`, and `ACTIONS` are the capacities of the instance (GEN-011); see the
 /// [module](self) for their meaning. A type is built as
 /// `AsmSearch<64, 128, { max_actions(128) }>`.
+///
+/// The engine is its [`AsmSearchHead`] followed by its [`AsmSearchBuffers`] (`repr(C)`), so that
+/// a caller can build it in place, in storage it owns (the pattern of `aldis-link`'s
+/// `inplace` module; CABI-040, GEN-012): the partial-unit storage of a `FRAME` of 65536 octets
+/// would otherwise pass through the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub struct AsmSearch<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize> {
+    head: AsmSearchHead,
+    bufs: AsmSearchBuffers<FRAME>,
+}
+
+/// Everything of an [`AsmSearch`] but its partial-unit storage: the configuration, the phase,
+/// and the counters (see [`AsmSearch`]).
+///
+/// Requirements: SYNC-012, SYNC-015, CABI-040 (in-place construction), CABI-030.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AsmSearchHead {
     config: SyncConfig,
     phase: Phase,
     units_returned: u64,
     skipped_bits_total: u64,
+}
+
+/// The partial-unit storage of an [`AsmSearch`]: `FRAME` octets, valid when all zero, which is
+/// the empty state (see [`AsmSearch`]).
+///
+/// Requirements: SYNC-012, CABI-040 (in-place construction), CABI-030.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
+pub struct AsmSearchBuffers<const FRAME: usize> {
     partial: [u8; FRAME],
+}
+
+impl<const FRAME: usize> AsmSearchBuffers<FRAME> {
+    /// Empty storage: no bit of a unit is held.
+    ///
+    /// Requirements: SYNC-012, CABI-040 (in-place construction).
+    pub const ZERO: Self = Self {
+        partial: [0; FRAME],
+    };
 }
 
 impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
@@ -278,14 +312,36 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     /// # Errors
     /// `CapacityExceeded` when the frame length of `config` is above `FRAME` (SYNC-002).
     pub fn new(config: SyncConfig) -> Result<AsmSearch<FRAME, CHUNK, ACTIONS>> {
+        Ok(AsmSearch {
+            head: Self::new_head(config)?,
+            bufs: AsmSearchBuffers::ZERO,
+        })
+    }
+
+    /// The offset of the head in the engine, for an in-place build.
+    ///
+    /// Requirements: CABI-040 (in-place construction), SYNC-012.
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers in the engine, for an in-place build.
+    ///
+    /// Requirements: CABI-040 (in-place construction), SYNC-012.
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+    /// The head of an engine in `Searching` with an empty window: the part of [`Self::new`]
+    /// that is built from the configuration, for an in-place build.
+    ///
+    /// # Errors
+    /// As [`Self::new`].
+    ///
+    /// Requirements: CABI-040 (in-place construction), SYNC-002, SYNC-012, SYNC-013.
+    pub fn new_head(config: SyncConfig) -> Result<AsmSearchHead> {
         let () = Self::BOUND_HOLDS;
         Self::check_capacity(&config)?;
-        Ok(AsmSearch {
+        Ok(AsmSearchHead {
             config,
             phase: Phase::START,
             units_returned: 0,
             skipped_bits_total: 0,
-            partial: [0; FRAME],
         })
     }
 
@@ -300,13 +356,13 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     /// The configuration in force (SYNC-015).
     #[must_use]
     pub const fn config(&self) -> &SyncConfig {
-        &self.config
+        &self.head.config
     }
 
     /// The state (SYNC-012).
     #[must_use]
     pub const fn state(&self) -> SearchState {
-        match self.phase {
+        match self.head.phase {
             Phase::Searching { .. } => SearchState::Searching,
             Phase::Collecting { .. } => SearchState::Collecting,
         }
@@ -315,13 +371,13 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     /// The status snapshot (SYNC-015, API-056).
     #[must_use]
     pub const fn status(&self) -> SearchStatus {
-        let partial_octets = match self.phase {
+        let partial_octets = match self.head.phase {
             Phase::Searching { .. } => 0,
             Phase::Collecting { collected, .. } => collected / 8,
         };
         SearchStatus {
-            units_returned: self.units_returned,
-            skipped_bits_total: self.skipped_bits_total,
+            units_returned: self.head.units_returned,
+            skipped_bits_total: self.head.skipped_bits_total,
             state: self.state(),
             partial_octets,
         }
@@ -354,9 +410,9 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
             SearchInput::Reset { config } => {
                 if let Some(config) = config {
                     Self::check_capacity(&config)?;
-                    self.config = config;
+                    self.head.config = config;
                 }
-                self.phase = Phase::START;
+                self.head.phase = Phase::START;
                 Ok(SearchActions::new())
             }
         }
@@ -370,12 +426,12 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
                 u64::try_from(data.len()).unwrap_or(u64::MAX),
             ));
         }
-        let frame_len = self.config.frame_len();
+        let frame_len = self.head.config.frame_len();
         let unit_bits = frame_len.saturating_mul(8);
-        let tolerance = self.config.asm_errors();
+        let tolerance = self.head.config.asm_errors();
         // The units the chunk completes, counted on a copy of the phase, so that a refusal
         // changes nothing (API-058).
-        let mut trial = self.phase;
+        let mut trial = self.head.phase;
         let mut completed = 0_usize;
         for &octet in data {
             for mask in BIT_MASKS {
@@ -395,7 +451,7 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
         for &octet in data {
             for mask in BIT_MASKS {
                 let bit = octet & mask != 0;
-                match self.phase.advance(bit, unit_bits, tolerance) {
+                match self.head.phase.advance(bit, unit_bits, tolerance) {
                     Advance::Passed => {}
                     Advance::Stored { index } => self.store(index, bit),
                     Advance::Completed {
@@ -406,7 +462,7 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
                         self.store(index, bit);
                         let unit = OutRange::new(written, frame_len);
                         let (Some(from), Some(to)) = (
-                            self.partial.get(..frame_len),
+                            self.bufs.partial.get(..frame_len),
                             out.get_mut(unit.start()..unit.end()),
                         ) else {
                             return Err(Error::new(ErrorKind::InternalError));
@@ -418,8 +474,9 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
                             errors,
                             skipped_bits: skipped,
                         })?;
-                        self.units_returned = self.units_returned.saturating_add(1);
-                        self.skipped_bits_total = self.skipped_bits_total.saturating_add(skipped);
+                        self.head.units_returned = self.head.units_returned.saturating_add(1);
+                        self.head.skipped_bits_total =
+                            self.head.skipped_bits_total.saturating_add(skipped);
                     }
                 }
             }
@@ -430,9 +487,10 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     /// Writes bit `index` of the unit in progress. The first bit of an octet clears the octet,
     /// so the storage needs no clearing between units.
     fn store(&mut self, index: usize, bit: bool) {
-        if let (Some(octet), Some(&mask)) =
-            (self.partial.get_mut(index / 8), BIT_MASKS.get(index % 8))
-        {
+        if let (Some(octet), Some(&mask)) = (
+            self.bufs.partial.get_mut(index / 8),
+            BIT_MASKS.get(index % 8),
+        ) {
             if mask == 0x80 {
                 *octet = 0;
             }
@@ -475,7 +533,7 @@ mod tests {
         );
         // The total of the skipped bits saturates too.
         let mut engine = Engine::new(config()).unwrap();
-        engine.skipped_bits_total = u64::MAX - 1;
+        engine.head.skipped_bits_total = u64::MAX - 1;
         let mut stream = [0_u8; 8];
         stream[0] = 0x80; // one bit of junk, then the ASM and the unit
         let cadu = [0x0D, 0x67, 0xFE, 0x0E, 0x80, 0x00, 0x00, 0x00];

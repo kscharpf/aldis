@@ -53,3 +53,13 @@ pub const ALDIS_LINK_PACKET_QUEUE_OCTETS: usize = 8192;
 ///
 /// `[link] max_frame_octets` of `capacities.toml` (CABI-030).
 pub const ALDIS_LINK_MAX_FRAME_OCTETS: usize = 2048;
+
+/// Octets of the largest input chunk of one `aldis_sync_search_t` (SYNC-014; M5 plan D3).
+///
+/// `[sync] max_chunk_octets` of `capacities.toml` (CABI-030).
+pub const ALDIS_SYNC_MAX_CHUNK_OCTETS: usize = 256;
+
+/// Octets of the largest frame, and of the partial unit, of one `aldis_sync_search_t` (SYNC-002, SYNC-012; M5 plan D3).
+///
+/// `[sync] max_frame_octets` of `capacities.toml` (CABI-030).
+pub const ALDIS_SYNC_MAX_FRAME_OCTETS: usize = 65536;

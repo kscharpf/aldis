@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 11
+#define ALDIS_ABI_VERSION_MINOR 12
 
 /**
  * ABI patch version (CABI-060).
@@ -171,6 +171,20 @@
  * `[link] max_frame_octets` of `capacities.toml` (CABI-030).
  */
 #define ALDIS_LINK_MAX_FRAME_OCTETS 2048
+
+/**
+ * Octets of the largest input chunk of one `aldis_sync_search_t` (SYNC-014; M5 plan D3).
+ *
+ * `[sync] max_chunk_octets` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_SYNC_MAX_CHUNK_OCTETS 256
+
+/**
+ * Octets of the largest frame, and of the partial unit, of one `aldis_sync_search_t` (SYNC-002, SYNC-012; M5 plan D3).
+ *
+ * `[sync] max_frame_octets` of `capacities.toml` (CABI-030).
+ */
+#define ALDIS_SYNC_MAX_FRAME_OCTETS 65536
 
 /**
  * Header size argument: the smallest header that holds the fields and the length
@@ -1472,6 +1486,30 @@
  * 64-bit words of one `aldis_spp_reassembler_t` (CABI-031; M2 plan D5).
  */
 #define ALDIS_SPP_REASSEMBLER_WORDS 8
+
+/**
+ * The most units one `aldis_sync_search_step` returns: ⌈`ALDIS_SYNC_MAX_CHUNK_OCTETS` / 5⌉, the
+ * value for a frame of 1 octet (SYNC-013, API-057).
+ */
+#define ALDIS_SYNC_SEARCH_MAX_ACTIONS 52
+
+/**
+ * The randomizer sequence of 131071 bits, h(x) = x^17 + x^14 + 1 (131.0 §10.4.1; SYNC-005): a
+ * value of the `randomizer_sequence` argument of [`aldis_sync_randomize`].
+ */
+#define ALDIS_SYNC_RANDOMIZER_131071 131071
+
+/**
+ * The legacy randomizer sequence of 255 bits, h(x) = x^8 + x^7 + x^5 + x^3 + 1 (131.0 §10.4.2;
+ * SYNC-020): a value of the `randomizer_sequence` argument of [`aldis_sync_randomize`].
+ */
+#define ALDIS_SYNC_RANDOMIZER_255 255
+
+/**
+ * 64-bit words of one `aldis_sync_search_t` (CABI-031): the tag and the engine at the build
+ * capacity; the build fails when the engine outgrows it.
+ */
+#define ALDIS_SYNC_SEARCH_WORDS 8201
 
 /**
  * Length of the TC Transfer Frame Primary Header in octets (232.0 §4.1.2).
@@ -3890,6 +3928,95 @@ enum aldis_status
 typedef enum aldis_status aldis_status;
 #else
 typedef uint32_t aldis_status;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_sync_search_action_t` (API-057, API-080).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_sync_search_action
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * A unit found after an ASM, in `out` (SYNC-011).
+   */
+  ALDIS_SYNC_SEARCH_ACTION_UNIT = 0,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_sync_search_action aldis_sync_search_action;
+#else
+typedef uint32_t aldis_sync_search_action;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The kind of an `aldis_sync_search_input_t` (SYNC-015; API-057).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_sync_search_input
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The next octets of the stream (`data`, at most `ALDIS_SYNC_MAX_CHUNK_OCTETS`), read most
+   * significant bit first (SYNC-007, SYNC-010).
+   */
+  ALDIS_SYNC_SEARCH_INPUT_CHUNK = 0,
+  /**
+   * Discard the partial unit and the window and restart the skipped-bit count, keeping the
+   * counters and the configuration (SYNC-015).
+   */
+  ALDIS_SYNC_SEARCH_INPUT_RESET = 1,
+  /**
+   * As `RESET`, with the new configuration `config` (SYNC-015).
+   */
+  ALDIS_SYNC_SEARCH_INPUT_RECONFIGURE = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_sync_search_input aldis_sync_search_input;
+#else
+typedef uint32_t aldis_sync_search_input;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
+
+/**
+ * The state of the search engine, `state` of an `aldis_sync_search_status_t` (SYNC-012).
+ *
+ * A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
+ * the header (OI-57 convention 2; CABI-010).
+ *
+ */
+enum aldis_sync_search_state
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * Looking for the ASM (SYNC-007).
+   */
+  ALDIS_SYNC_SEARCH_STATE_SEARCHING = 0,
+  /**
+   * Taking the unit that follows a matched ASM (SYNC-009).
+   */
+  ALDIS_SYNC_SEARCH_STATE_COLLECTING = 1,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum aldis_sync_search_state aldis_sync_search_state;
+#else
+typedef uint32_t aldis_sync_search_state;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -7838,6 +7965,127 @@ typedef struct {
 } aldis_spp_reassembly_t;
 
 /**
+ * The configuration of the SYNC functions: the frame protocol, the frame length, and the
+ * tolerance of the ASM search.
+ *
+ * Taken by the engine and by the attach function (131.0 §11.1, §11.3, §11.4; SYNC-002, SYNC-016).
+ */
+typedef struct {
+  /**
+   * The frame protocol: `ALDIS_LINK_PROTOCOL_TM`, `_AOS`, or `_USLP` (fixed-length frames).
+   */
+  uint32_t protocol;
+  /**
+   * The frame length in octets, without the marker: 1 up to 2048 for TM, 65536 for AOS and
+   * USLP (131.0 §11.3, §11.4).
+   */
+  size_t frame_len;
+  /**
+   * The tolerated bit errors of the ASM, 0 to 15 (SYNC-007, SYNC-016). `aldis_sync_attach`
+   * does not read it.
+   */
+  uint32_t asm_errors;
+} aldis_sync_search_config_t;
+
+/**
+ * An ASM search engine in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (SYNC-007, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_SYNC_SEARCH_WORDS];
+} aldis_sync_search_t;
+
+/**
+ * One input of the search engine (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_SYNC_SEARCH_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `CHUNK`: the octets of the stream, read once (API-060). `data` is checked on every
+   * kind and must not overlap the storage or `out`: `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`, at most `ALDIS_SYNC_MAX_CHUNK_OCTETS`.
+   */
+  size_t data_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_sync_search_config_t config;
+} aldis_sync_search_input_t;
+
+/**
+ * One action of the search engine (API-057, API-061, SYNC-011). A field that the kind does not
+ * use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_SYNC_SEARCH_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `UNIT`: the ASM bits that differed, 0 up to the tolerance.
+   */
+  uint32_t errors;
+  /**
+   * For `UNIT`: where the unit (the frame as received, possibly randomized, shifted to an
+   * octet boundary) is in `out`.
+   */
+  aldis_range_t unit;
+  /**
+   * For `UNIT`: the stream bits between the end of the previous unit (or the start or reset
+   * of the stream) and the first bit of the ASM, saturating at `UINT64_MAX`.
+   */
+  uint64_t skipped_bits;
+} aldis_sync_search_action_t;
+
+/**
+ * The actions of one input of the search engine.
+ *
+ * Requirements: SYNC-011, SYNC-013, CABI-040; docs/04-engines.md §4.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_SYNC_SEARCH_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_sync_search_action_t items[ALDIS_SYNC_SEARCH_MAX_ACTIONS];
+} aldis_sync_search_actions_t;
+
+/**
+ * A read-only snapshot of the search engine (SYNC-015, API-056).
+ */
+typedef struct {
+  /**
+   * Units returned.
+   */
+  uint64_t units_returned;
+  /**
+   * The sum of the `skipped_bits` of the units returned, saturating.
+   */
+  uint64_t skipped_bits_total;
+  /**
+   * `ALDIS_SYNC_SEARCH_STATE_*`.
+   */
+  uint32_t state;
+  /**
+   * The complete octets of the unit being collected; 0 while searching.
+   */
+  size_t partial_octets;
+} aldis_sync_search_status_t;
+
+/**
  * Managed parameters of a physical channel (232.0 §5.1 Table 5-1; GEN-060).
  */
 typedef struct {
@@ -10927,6 +11175,126 @@ uint32_t aldis_spp_reassembler_is_assembling(aldis_spp_reassembler_t *h,
  * As for [`aldis_spp_tracker_deinit`].
  */
 void aldis_spp_reassembler_deinit(aldis_spp_reassembler_t *h);
+
+/**
+ * Writes the CADU of a frame: the ASM, then the frame as given (131.0 §9.2.1, §9.1.2 Table 9-1;
+ * SYNC-001, SYNC-003, SYNC-006).
+ *
+ * `frame` is the frame as it goes on the channel, randomized by the caller when the channel
+ * randomizes (`aldis_sync_randomize`). `out_len` receives `4 + cfg->frame_len`, the length of
+ * the CADU. Nothing is written on error.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`sync_protocol`, `frame_len`, `asm_errors`) for a configuration
+ * that is not valid, in that order; `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`) when `frame_len`
+ * is not `cfg->frame_len`; `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) when `cap` is below the
+ * CADU; CABI-022 violations, including `out` overlapping `frame`.
+ *
+ * # Safety
+ * `cfg` is valid for a read; `frame` is valid for `frame_len` octets (or `NULL` with 0); `out`
+ * is valid for `cap` octets of writes; `out_len` is valid for one write; `err` is `NULL` or
+ * valid for one write.
+ */
+uint32_t aldis_sync_attach(const aldis_sync_search_config_t *cfg,
+                           const uint8_t *frame,
+                           size_t frame_len,
+                           uint8_t *out,
+                           size_t cap,
+                           size_t *out_len,
+                           aldis_error_detail_t *err);
+
+/**
+ * Exclusive-ORs the `len` octets at `data` in place with a pseudo-random sequence (131.0 §10;
+ * SYNC-004, SYNC-005, SYNC-020).
+ *
+ * One function for both directions: applying it twice restores the buffer. The sequence starts
+ * at the first bit of the buffer on every call. `sequence` is the length of the sequence in bits,
+ * `ALDIS_SYNC_RANDOMIZER_131071` or `ALDIS_SYNC_RANDOMIZER_255`. A buffer of any length is
+ * accepted, including 0.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_CONFIG` (`randomizer_sequence`) for another `sequence`; CABI-022
+ * violations (`data` `NULL` with `len` above 0, or a range that wraps). The buffer is not
+ * changed on error.
+ *
+ * # Safety
+ * `data` is valid for reads and writes of `len` octets (or `NULL` with `len` 0); `err` is `NULL`
+ * or valid for one write.
+ */
+uint32_t aldis_sync_randomize(uint32_t sequence,
+                              uint8_t *data,
+                              size_t len,
+                              aldis_error_detail_t *err);
+
+/**
+ * Places an ASM search engine in `storage`, in `Searching` with an empty window (SYNC-007;
+ * CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`;
+ * `ALDIS_ERR_INVALID_CONFIG` (`sync_protocol`) for a protocol that is not TM, AOS, or USLP,
+ * (`frame_len`) for a length of 0 or above the maximum of the protocol, (`asm_errors`) above 15,
+ * in that order; `ALDIS_ERR_CAPACITY_EXCEEDED` for a frame above `ALDIS_SYNC_MAX_FRAME_OCTETS`
+ * (no valid frame length is).
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_sync_search_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_sync_search_init(aldis_sync_search_t *storage,
+                                const aldis_sync_search_config_t *cfg,
+                                aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the search engine (API-057, CABI-040).
+ *
+ * A `CHUNK` is searched bit by bit; each unit it completes is written to `out`, one after the
+ * other from offset 0, and returned as an action. `out` must hold the units the chunk completes:
+ * `ALDIS_SYNC_MAX_CHUNK_OCTETS + ALDIS_SYNC_MAX_FRAME_OCTETS` octets fit every chunk (SYNC-014).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a kind that
+ * is none; for `CHUNK`: `ALDIS_ERR_OUT_OF_RANGE` (`chunk_len`) above
+ * `ALDIS_SYNC_MAX_CHUNK_OCTETS`, `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`, the exact octets
+ * of the units the chunk completes); for `RECONFIGURE`: as `aldis_sync_search_init`. The engine
+ * is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_sync_search_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is valid
+ * for one write; `err` is `NULL` or valid for one write. No other thread uses the storage
+ * (CABI-050).
+ */
+uint32_t aldis_sync_search_step(aldis_sync_search_t *h,
+                                const aldis_sync_search_input_t *input,
+                                uint8_t *out,
+                                size_t out_cap,
+                                aldis_sync_search_actions_t *actions,
+                                aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the state of the search engine (SYNC-015, API-056). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_sync_search_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_sync_search_status(aldis_sync_search_t *h,
+                                  aldis_sync_search_status_t *status,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_sync_search_step`].
+ */
+void aldis_sync_search_deinit(aldis_sync_search_t *h);
 
 /**
  * Checks a physical channel configuration (232.0 §5.1 Table 5-1; GEN-060, API-040, TC-007).

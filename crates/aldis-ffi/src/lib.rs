@@ -6,7 +6,8 @@
 //! Control Field ([`ocf`]), and the OID generator in caller-owned storage ([`oid`]); and the
 //! frame codec `aldis-tm` ([`tm`]; M2 plan WP-2 module 7, D14); the frame codec `aldis-aos`
 //! ([`aos`]; WP-4 module 8, D14); and the frame codec `aldis-uslp` ([`uslp`]; WP-5 module 9,
-//! D14). The header
+//! D14); and the TM synchronization of `aldis-sync` ([`sync`]; M5 WP-4: the ASM attach and the
+//! pseudo-randomizer, and the ASM search handle). The header
 //! `include/aldis/aldis.h` is generated from these sources by the pinned `cbindgen`
 //! (`cargo xtask header --write`; CABI-002, CABI-003), and build-time capacities come from
 //! `capacities.toml` ([`capacities`], CABI-030).
@@ -55,6 +56,7 @@ pub mod range;
 pub mod spp;
 pub mod spp_state;
 pub mod status;
+pub mod sync;
 pub mod tc;
 pub mod time;
 pub mod tm;
@@ -68,7 +70,7 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 11;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 12;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 /// The ABI version in one word (CABI-060).

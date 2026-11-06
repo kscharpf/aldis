@@ -169,7 +169,8 @@ inline int report(const char* name, const Tally& t) {
     }
     std::printf("%s: %d scenarios run, %d skipped, %zu failed\n", name, t.run, t.skipped,
                 t.failures.size());
-    return t.failures.empty() && t.run > 0 ? 0 : 1;
+    // A file that runs nothing is a failure, unless a runner skipped its scenarios on purpose.
+    return t.failures.empty() && t.run + t.skipped > 0 ? 0 : 1;
 }
 
 }  // namespace harness
