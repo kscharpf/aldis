@@ -311,7 +311,7 @@ fn a_packet_waits_in_the_queue_behind_a_marked_field() {
 
 #[test]
 fn a_continuation_field_has_no_start() {
-    // req: LNK-011
+    // req: LNK-011, API-054
     let mut g = tm_gen();
     let mut out = [0u8; 24];
     // 60 octets: three fields, 24 + 24 + 12 (the last completed by idle at the deadline).

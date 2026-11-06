@@ -186,7 +186,7 @@ Engines report notable occurrences as typed events, returned among the actions o
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| API-080 | Each event SHALL have a stable numeric kind code shared by all profiles, and a fixed-size payload. | — | V |
+| API-080 | Each engine action kind SHALL have a stable numeric code in the C ABI and a fixed-size payload. | — | T |
 | API-081 | Withdrawn: the drop-oldest rule and the `events_dropped` counter belong to the event queue, which no longer exists (API-059; OI-56). | — | — |
 | API-083 | An event SHALL be returned as an action of the input that causes it, and SHALL NOT be dropped or coalesced by the engine (API-057). In particular the events that the CCSDS procedure requires to reach the user (COP-1 notifications, alerts, and data-loss indications) cannot be lost in the engine. Counters of occurrences that are not events (discards by reason, gaps) are state (API-056). | 232.1 §4.2–§4.4 | T |
 

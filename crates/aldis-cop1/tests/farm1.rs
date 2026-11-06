@@ -839,7 +839,7 @@ fn step_is_deterministic_and_independent_of_the_clock() {
 
 #[test]
 fn delivered_range_addresses_the_output_area() {
-    // req: API-061
+    // req: API-061, API-054
     let f = fresh(0);
     let mut out = [0u8; 8];
     let (_, actions) = f.step(ad(0, true), NOW, &mut out).unwrap();
