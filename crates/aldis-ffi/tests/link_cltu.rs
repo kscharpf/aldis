@@ -73,7 +73,7 @@ fn init(
 }
 
 fn step(
-    h: &mut aldis_cltu_packer_t,
+    h: *mut aldis_cltu_packer_t,
     input: &aldis_cltu_packer_input_t,
     out: &mut [u8],
     actions: &mut aldis_cltu_packer_actions_t,
@@ -148,7 +148,13 @@ fn the_storage_is_checked_and_tagged() {
         assert_eq!(status, aldis_cltu_packer_status_t::default());
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_cltu_packer_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -209,18 +215,24 @@ fn the_packer_steps_and_reconfigures() {
     assert_eq!(init(&mut s, &config(ALDIS_LINK_PROTOCOL_TC), &mut d), 0);
     // Nothing held: a flush gets nothing.
     let flush = input(ALDIS_CLTU_PACKER_INPUT_FLUSH);
-    assert_eq!(step(&mut s, &flush, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &flush, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.count, 0);
     // One frame is held; the second fills the unit (two frames), which is returned at once.
     let a = [0xA1_u8; 10];
     let b = [0xB2_u8; 12];
-    assert_eq!(step(&mut s, &add(&a), &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(&raw mut *s, &add(&a), &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 0);
     let mut status = aldis_cltu_packer_status_t::default();
     // SAFETY: every pointer is to a live local.
     unsafe { aldis_cltu_packer_status(&mut *s, &mut status, &mut d) };
     assert_eq!(status.pending.current, 10);
-    assert_eq!(step(&mut s, &add(&b), &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(&raw mut *s, &add(&b), &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 1);
     let u = actions.items[0];
     assert_eq!(u.kind, ALDIS_CLTU_PACKER_ACTION_DATA_UNIT);
@@ -231,13 +243,13 @@ fn the_packer_steps_and_reconfigures() {
     let mut x = add(&a);
     x.qos = ALDIS_LINK_QOS_EXPEDITED;
     x.repetitions = 3;
-    assert_eq!(step(&mut s, &x, &mut out, &mut actions, &mut d), 0);
-    assert_eq!(step(&mut s, &flush, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &x, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &flush, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.items[0].repetitions, 1);
     let mut r = add(&a);
     r.repetitions = 3;
-    assert_eq!(step(&mut s, &r, &mut out, &mut actions, &mut d), 0);
-    assert_eq!(step(&mut s, &flush, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &r, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &flush, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.items[0].repetitions, 3);
     // Refusals leave the engine unchanged and the actions unwritten.
     actions = aldis_cltu_packer_actions_t {
@@ -245,44 +257,44 @@ fn the_packer_steps_and_reconfigures() {
         ..aldis_cltu_packer_actions_t::default()
     };
     assert_eq!(
-        step(&mut s, &add(&[]), &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &add(&[]), &mut out, &mut actions, &mut d),
         ALDIS_ERR_LENGTH_MISMATCH
     );
     assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
     assert_eq!(
-        step(&mut s, &add(&[0; 33]), &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &add(&[0; 33]), &mut out, &mut actions, &mut d),
         ALDIS_ERR_OUT_OF_RANGE
     );
     let mut t = add(&a);
     t.truncated = 1;
     assert_eq!(
-        step(&mut s, &t, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &t, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(d.field, ALDIS_FIELD_TRUNCATED_FRAME_LEN);
     t.truncated = 2;
     assert_eq!(
-        step(&mut s, &t, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &t, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     let mut bad = add(&a);
     bad.repetitions = 0;
     assert_eq!(
-        step(&mut s, &bad, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &bad, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     bad = add(&a);
     bad.qos = 5;
     assert_eq!(
-        step(&mut s, &bad, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &bad, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(
-        step(&mut s, &input(99), &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &input(99), &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(
-        step(&mut s, &add(&a), &mut out[..40], &mut actions, &mut d),
+        step(&raw mut *s, &add(&a), &mut out[..40], &mut actions, &mut d),
         ALDIS_ERR_BUFFER_TOO_SMALL
     );
     assert_eq!(actions.count, 99);
@@ -290,37 +302,53 @@ fn the_packer_steps_and_reconfigures() {
     let mut overlap = add(&a);
     overlap.data = (&raw const *s).cast::<u8>();
     assert_eq!(
-        step(&mut s, &overlap, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &overlap, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
-    overlap.data = out.as_ptr();
-    assert_eq!(
-        step(&mut s, &overlap, &mut out, &mut actions, &mut d),
-        ALDIS_ERR_INVALID_FIELD
-    );
+    // One raw pointer for both: a second borrow of `out` would end the first (Stacked Borrows).
+    let out_ptr = out.as_mut_ptr();
+    overlap.data = out_ptr.cast_const();
+    // SAFETY: every pointer is to a live local; `data` is rejected before any access through it.
+    let rc = unsafe {
+        aldis_cltu_packer_step(
+            &raw mut *s,
+            &overlap,
+            out_ptr,
+            out.len(),
+            &mut actions,
+            &mut d,
+        )
+    };
+    assert_eq!(rc, ALDIS_ERR_INVALID_FIELD);
     // A reconfiguration keeps the protocol and discards the unit in progress.
-    assert_eq!(step(&mut s, &add(&a), &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(&raw mut *s, &add(&a), &mut out, &mut actions, &mut d),
+        0
+    );
     let mut reconf = input(ALDIS_CLTU_PACKER_INPUT_RECONFIGURE);
     reconf.config = config(ALDIS_LINK_PROTOCOL_USLP);
     assert_eq!(
-        step(&mut s, &reconf, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_LINK_PROTOCOL);
     reconf.config = config(ALDIS_LINK_PROTOCOL_TC);
     reconf.config.max_frames = 0;
     assert_eq!(
-        step(&mut s, &reconf, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     reconf.config = config(ALDIS_LINK_PROTOCOL_TC);
     reconf.config.channel.protocol = 9;
     assert_eq!(
-        step(&mut s, &reconf, &mut out, &mut actions, &mut d),
+        step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     reconf.config = config(ALDIS_LINK_PROTOCOL_TC);
-    assert_eq!(step(&mut s, &reconf, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(&raw mut *s, &reconf, &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 1);
     assert_eq!(actions.items[0].kind, ALDIS_CLTU_PACKER_ACTION_DISCARDED);
     assert_eq!(actions.items[0].octets, 10);
@@ -341,15 +369,18 @@ fn a_uslp_packer_keeps_truncated_frames_apart() {
     let mut out = [0_u8; 64];
     assert_eq!(init(&mut s, &config(ALDIS_LINK_PROTOCOL_USLP), &mut d), 0);
     let a = [0x11_u8; 8];
-    assert_eq!(step(&mut s, &add(&a), &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(&raw mut *s, &add(&a), &mut out, &mut actions, &mut d),
+        0
+    );
     let mut t = add(&a);
     t.truncated = 1;
     // The truncated frame cannot join the unit: the unit in progress is returned first.
-    assert_eq!(step(&mut s, &t, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &t, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.count, 1);
     assert_eq!(actions.items[0].truncated, 0);
     let flush = input(ALDIS_CLTU_PACKER_INPUT_FLUSH);
-    assert_eq!(step(&mut s, &flush, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(step(&raw mut *s, &flush, &mut out, &mut actions, &mut d), 0);
     assert_eq!(
         (actions.items[0].truncated, actions.items[0].frames),
         (1, 1)
@@ -378,6 +409,9 @@ fn the_members_of_the_channel_are_read_whatever_the_protocol() {
         let mut reconf = input(ALDIS_CLTU_PACKER_INPUT_RECONFIGURE);
         set(&mut reconf.config.channel);
         let mut actions = aldis_cltu_packer_actions_t::default();
-        assert_eq!(step(&mut s, &reconf, &mut [], &mut actions, &mut d), want);
+        assert_eq!(
+            step(&raw mut *s, &reconf, &mut [], &mut actions, &mut d),
+            want
+        );
     }
 }

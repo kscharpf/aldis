@@ -433,12 +433,14 @@ fn encode_arguments_are_checked() {
     assert_eq!((status, e.needed), (ALDIS_ERR_BUFFER_TOO_SMALL, 11));
     assert!(frame.iter().all(|&b| b == 0xEE));
     // The output overlapping the User Data.
+    // One raw pointer for both: a second borrow of `frame` would end the first (Stacked Borrows).
+    let frame_ptr = frame.as_mut_ptr();
     let inside = aldis_tc_content_t {
-        user_data: frame.as_ptr().wrapping_add(8),
+        user_data: frame_ptr.wrapping_add(8).cast_const(),
         ..content
     };
     assert_eq!(
-        encode(&fields, &raw const inside, frame.as_mut_ptr(), 64).0,
+        encode(&fields, &raw const inside, frame_ptr, 64).0,
         ALDIS_ERR_INVALID_FIELD
     );
     // A Control Command with User Data, or with a Segment Header; an unknown command.
@@ -786,8 +788,10 @@ fn stream_rejects_overlapping_pointers() {
 
     // 1. offset pointing into unit buffer is rejected
     let mut buffer = [0_usize; 8];
-    let unit_ptr = buffer.as_ptr().cast::<u8>();
+    // The mutable pointer first, the other derived from it: a later borrow of `buffer` would end
+    // an earlier one (Stacked Borrows).
     let offset_ptr = buffer.as_mut_ptr();
+    let unit_ptr = offset_ptr.cast::<u8>().cast_const();
     // SAFETY: pointers point to valid aligned stack buffer
     let status = unsafe {
         aldis_tc_stream_next(

@@ -1234,7 +1234,7 @@ mod tests {
         assert!(rows[..at].iter().all(|r| r.1 == "pass"));
         for row in &rows[at + 1..] {
             assert_eq!(row.1, "not-run", "{}", row.0);
-            let why = if row.0 == "kani" {
+            let why = if matches!(row.0.as_str(), "kani" | "ffi-miri") {
                 checks::NIGHTLY_ONLY.to_owned()
             } else {
                 stop_reason("header")
@@ -1312,14 +1312,21 @@ mod tests {
         let all = checks::all();
         let rec = |result: &str| {
             json!({"checks": [{"name": "fmt", "result": "pass"},
-            {"name": "kani", "result": result}, {"name": "cpp-leon3", "result": "fail"}]})
+            {"name": "kani", "result": result}, {"name": "ffi-miri", "result": result},
+            {"name": "cpp-leon3", "result": "fail"}]})
         };
         assert_eq!(nightly_problems(&rec("pass"), &all), Vec::<String>::new());
-        assert_eq!(nightly_problems(&rec("fail"), &all), ["kani: fail"]);
-        assert_eq!(nightly_problems(&rec("not-run"), &all), ["kani: not-run"]);
+        assert_eq!(
+            nightly_problems(&rec("fail"), &all),
+            ["ffi-miri: fail", "kani: fail"]
+        );
+        assert_eq!(
+            nightly_problems(&rec("not-run"), &all),
+            ["ffi-miri: not-run", "kani: not-run"]
+        );
         assert_eq!(
             nightly_problems(&json!({"checks": []}), &all),
-            ["kani: missing"]
+            ["ffi-miri: missing", "kani: missing"]
         );
     }
 
@@ -1504,7 +1511,7 @@ mod tests {
             for (name, result, reason) in &rows {
                 let want = match name.as_str() {
                     "rust-sparc-leon3" => ("not-run", Some(NO_CONTAINER_REASON)),
-                    "kani" => ("not-run", Some(checks::NIGHTLY_ONLY)),
+                    "kani" | "ffi-miri" => ("not-run", Some(checks::NIGHTLY_ONLY)),
                     _ => ("skipped", None),
                 };
                 assert_eq!(result, want.0, "{name}");
@@ -1538,7 +1545,7 @@ mod tests {
                 .iter()
                 .filter(|e| e["result"] == "reused")
                 .count();
-            assert_eq!(reused, all.len() - 3);
+            assert_eq!(reused, all.len() - 4);
         }
     }
 

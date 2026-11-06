@@ -12,7 +12,7 @@
 | WP-2 Blind model & vectors: sync | planned | | Python model written blind (TV-023); vectors for ASM attach, search, and the randomizer |
 | WP-3 `aldis-sync` crate | planned | | ASM attach, randomizer, ASM search engine |
 | WP-4 `aldis-sync` C ABI | planned | | Codec functions and the search handle |
-| WP-5 Sanitizers & Miri | planned | | C harness under ASan/UBSan; `aldis-ffi` tests under Miri (VER-026) |
+| WP-5 Sanitizers & Miri | planned | | C harness under ASan/UBSan, Clang only (`c-sanitizers`); `aldis-ffi` tests under Miri (VER-026). `ffi-miri` is nightly-only and non-gating (D4: Miri over all tests exceeds 10 min): the unit and integration tests but `vectors` take about 8 min (`--lib` 286 s, each other binary 7 to 31 s); `vectors` alone takes about 2 h and runs weekly (`miri-weekly.yml`). The C harness covers CRC-16, SPP, EPP, TM and FARM-1; TC, AOS, USLP, the link engines and FOP-1 do not run through C yet |
 | WP-6 Header & C checks | planned | | C99/C11/C++11/C++17 on GCC and Clang (VER-050); CERT C on the C code (VER-051) |
 | WP-7 `aldis.hpp`: engine handles | planned | | Header-only C++20 RAII wrapper of the engine handles; engine-scenario vectors pass via `aldis.hpp` (CABI-072) |
 | WP-8 Open v1 requirements & OI-79 | planned | | The untraced requirements of §1 that no other WP closes; OI-79 decided |
@@ -86,7 +86,7 @@ The sync chain and the C/C++ chain are independent and run in parallel. If WP-4 
 - Checklist: "Adding C ABI functions".
 
 ### WP-5 Sanitizers & Miri (M) — VER-026, GEN-071
-- A C test harness in `crates/aldis-ffi/tests/c/` that runs the shared vectors through the C ABI, built with `-fsanitize=address,undefined` on Clang and GCC.
+- A C test harness in `crates/aldis-ffi/tests/c/` that runs the shared vectors through the C ABI, built with `-fsanitize=address,undefined` on Clang only (maintainer, 2026-11-05: GCC stays in the header checks, VER-050).
 - The `aldis-ffi` Rust tests under Miri; the checks of D4 with their inputs declared.
 
 ### WP-6 Header & C checks (M) — VER-050, VER-051, VER-055

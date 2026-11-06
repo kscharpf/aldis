@@ -67,6 +67,9 @@ commands:
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
                                program with them, as C99, C11, C23, C++11, and C++17 with
                                -Wall -Wextra -Wpedantic -Werror (CABI-001, CABI-003, VER-050)
+  header sanitizers <cc>       build the C vector harness of aldis-ffi with
+                               -fsanitize=address,undefined and run the shared vectors through the
+                               C ABI (VER-026)
   header cpp-engines <c++>     compile include/aldis/aldis.hpp with the tests of
                                crates/aldis-ffi/tests/cpp/ as C++20 without exceptions and run
                                the engine-scenario vectors through it (CABI-072)
@@ -248,6 +251,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header"] => header::run(false),
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
+        ["header", "sanitizers", cc] => header::sanitizers(cc),
         ["header", "cpp-engines", cxx] => header::cpp_engines(cxx),
         ["header", "c-tidy", tidy] => header::c_tidy(tidy),
         ["sana", rest @ ..] => sana::run(rest),

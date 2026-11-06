@@ -629,7 +629,7 @@ fn encode_oid_forms_agree_and_check_the_content() {
         ocf_len: 4,
         ..aldis_tm_content_t::default()
     };
-    let call = |content: &aldis_tm_content_t, h, out: &mut [u8]| {
+    let call_raw = |content: &aldis_tm_content_t, h, out: *mut u8, cap: usize| {
         let (mut n, mut d) = (0_usize, detail());
         // SAFETY: every pointer is to a live local or into `out`.
         let s = unsafe {
@@ -642,13 +642,16 @@ fn encode_oid_forms_agree_and_check_the_content() {
                 2,
                 content,
                 h,
-                out.as_mut_ptr(),
-                out.len(),
+                out,
+                cap,
                 &raw mut n,
                 &raw mut d,
             )
         };
         (s, n, d)
+    };
+    let call = |content: &aldis_tm_content_t, h, out: &mut [u8]| {
+        call_raw(content, h, out.as_mut_ptr(), out.len())
     };
     let (mut a, mut b) = ([0_u8; 40], [0_u8; 40]);
     assert_eq!(call(&good, handles[0], &mut a).0, ALDIS_OK);
@@ -707,12 +710,14 @@ fn encode_oid_forms_agree_and_check_the_content() {
         );
     }
     // The output overlapping the content.
+    // One raw pointer for both: a second borrow of `out` would end the first (Stacked Borrows).
+    let out_ptr = out.as_mut_ptr();
     let overlapping = aldis_tm_content_t {
-        fsh_data: out.as_ptr().wrapping_add(7),
+        fsh_data: out_ptr.wrapping_add(7).cast_const(),
         ..good
     };
     assert_eq!(
-        call(&overlapping, handles[0], &mut out).0,
+        call_raw(&overlapping, handles[0], out_ptr, out.len()).0,
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(out, [0xEE; 40]);

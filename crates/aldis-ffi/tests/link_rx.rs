@@ -79,7 +79,7 @@ const fn pe_input(kind: u32) -> aldis_packet_extractor_input_t {
 }
 
 fn pe_step(
-    h: &mut aldis_packet_extractor_t,
+    h: *mut aldis_packet_extractor_t,
     input: &aldis_packet_extractor_input_t,
     out: &mut [u8],
     actions: &mut aldis_packet_extractor_actions_t,
@@ -119,7 +119,7 @@ fn fr_input(kind: u32) -> aldis_frame_receiver_input_t {
 }
 
 fn fr_step(
-    h: &mut aldis_frame_receiver_t,
+    h: *mut aldis_frame_receiver_t,
     input: &aldis_frame_receiver_input_t,
     out: &mut [u8],
     actions: &mut aldis_frame_receiver_actions_t,
@@ -207,7 +207,13 @@ fn the_extractor_storage_is_checked_and_tagged() {
         assert_eq!(status, aldis_packet_extractor_status_t::default());
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = pe_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_packet_extractor_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -305,7 +311,10 @@ fn the_extractor_steps_and_reconfigures() {
     input.data = field.as_ptr();
     input.data_len = field.len();
     input.header_pointer_present = 1;
-    assert_eq!(pe_step(&mut s, &input, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+        0
+    );
     assert_eq!(actions.count, 1);
     assert_eq!(actions.items[0].kind, ALDIS_PACKET_EXTRACTOR_ACTION_PACKETS);
     assert_eq!(
@@ -323,23 +332,23 @@ fn the_extractor_steps_and_reconfigures() {
     // A TM field without a pointer, a flag that is no flag, and a short area change nothing.
     input.header_pointer_present = 0;
     assert_eq!(
-        pe_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     input.header_pointer_present = 2;
     assert_eq!(
-        pe_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     input.header_pointer_present = 1;
     input.gap = 2;
     assert_eq!(
-        pe_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     input.gap = 0;
     assert_eq!(
-        pe_step(&mut s, &input, &mut out[..8], &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out[..8], &mut actions, &mut d),
         ALDIS_ERR_BUFFER_TOO_SMALL
     );
     // A data field above the build capacity.
@@ -347,34 +356,34 @@ fn the_extractor_steps_and_reconfigures() {
     input.data = big.as_ptr();
     input.data_len = big.len();
     assert_eq!(
-        pe_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_CAPACITY_EXCEEDED
     );
     // An input kind that is none.
     assert_eq!(
-        pe_step(&mut s, &pe_input(9), &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &pe_input(9), &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     // The data must not overlap the storage.
     input.data = (&raw const *s).cast::<u8>();
     input.data_len = 8;
     assert_eq!(
-        pe_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     // A reconfiguration of the same protocol, and of another one.
     let mut re = pe_input(ALDIS_PACKET_EXTRACTOR_INPUT_RECONFIGURE);
-    assert_eq!(pe_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(pe_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.count, 0);
     re.config = pe_config(ALDIS_LINK_PROTOCOL_AOS);
     assert_eq!(
-        pe_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_LINK_PROTOCOL);
     re.config = pe_config(9);
     assert_eq!(
-        pe_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        pe_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
 }
@@ -395,10 +404,10 @@ fn the_extractor_serves_aos_and_uslp() {
         );
         let mut re = pe_input(ALDIS_PACKET_EXTRACTOR_INPUT_RECONFIGURE);
         re.config = cfg;
-        assert_eq!(pe_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(pe_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
         re.config = pe_config(ALDIS_LINK_PROTOCOL_TM);
         assert_eq!(
-            pe_step(&mut s, &re, &mut out, &mut actions, &mut d),
+            pe_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_CONFIG
         );
         // A data field without its header is the codec's refusal of the engine.
@@ -406,7 +415,10 @@ fn the_extractor_serves_aos_and_uslp() {
         let field = [0_u8; 1];
         input.data = field.as_ptr();
         input.data_len = 1;
-        assert_ne!(pe_step(&mut s, &input, &mut out, &mut actions, &mut d), 0);
+        assert_ne!(
+            pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+            0
+        );
     }
 }
 
@@ -447,7 +459,13 @@ fn the_receiver_storage_is_checked_and_tagged() {
         );
         assert_eq!(status, aldis_frame_receiver_status_t::default());
         let mut copy = fr_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_frame_receiver_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -546,10 +564,10 @@ fn the_receiver_configuration_is_checked() {
     re.config = c;
     let mut actions = aldis_frame_receiver_actions_t::default();
     let mut out = [0_u8; 64];
-    assert_eq!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
     re.config.aos_edition = 7;
     assert_eq!(
-        fr_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     // Raw frames need an Insert Zone.
@@ -595,7 +613,7 @@ fn the_receiver_steps_and_reconfigures() {
     // Frame loss is a flag for every VC.
     assert_eq!(
         fr_step(
-            &mut s,
+            &raw mut *s,
             &fr_input(ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS),
             &mut out,
             &mut actions,
@@ -613,7 +631,10 @@ fn the_receiver_steps_and_reconfigures() {
     ] {
         let mut input = fr_input(ALDIS_FRAME_RECEIVER_INPUT_CALLER_DISCARD);
         input.reason = reason;
-        assert_eq!(fr_step(&mut s, &input, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(
+            fr_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+            0
+        );
         assert_eq!(actions.items[0].reason, reason);
         assert_eq!(actions.items[0].vc_present, 0);
     }
@@ -625,7 +646,7 @@ fn the_receiver_steps_and_reconfigures() {
         let mut input = fr_input(ALDIS_FRAME_RECEIVER_INPUT_CALLER_DISCARD);
         input.reason = reason;
         assert_eq!(
-            fr_step(&mut s, &input, &mut out, &mut actions, &mut d),
+            fr_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_FIELD
         );
     }
@@ -635,16 +656,19 @@ fn the_receiver_steps_and_reconfigures() {
     let mut input = fr_input(ALDIS_FRAME_RECEIVER_INPUT_FRAME);
     input.data = short.as_ptr();
     input.data_len = short.len();
-    assert_ne!(fr_step(&mut s, &input, &mut out, &mut actions, &mut d), 0);
+    assert_ne!(
+        fr_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+        0
+    );
     input.kind = ALDIS_FRAME_RECEIVER_INPUT_RAW_FRAME;
     assert_eq!(
-        fr_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        fr_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_RAW_FRAMES);
     input.kind = 99;
     assert_eq!(
-        fr_step(&mut s, &input, &mut out, &mut actions, &mut d),
+        fr_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     let mut status = aldis_frame_receiver_status_t::default();
@@ -656,17 +680,17 @@ fn the_receiver_steps_and_reconfigures() {
     );
     // A reconfiguration of the same protocol, and of another one.
     let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
-    assert_eq!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
     assert_eq!(actions.count, 0);
     re.config = fr_config(ALDIS_LINK_PROTOCOL_AOS);
     assert_eq!(
-        fr_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_CONFIG
     );
     assert_eq!(d.field, ALDIS_FIELD_LINK_PROTOCOL);
     re.config = fr_config(9);
     assert_eq!(
-        fr_step(&mut s, &re, &mut out, &mut actions, &mut d),
+        fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
         ALDIS_ERR_INVALID_FIELD
     );
     // The same for each other protocol.
@@ -679,10 +703,10 @@ fn the_receiver_steps_and_reconfigures() {
         assert_eq!(fr_init(&mut s, &fr_config(protocol), &mut d), 0);
         let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
         re.config = fr_config(protocol);
-        assert_eq!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
         re.config = fr_config(ALDIS_LINK_PROTOCOL_TM);
         assert_eq!(
-            fr_step(&mut s, &re, &mut out, &mut actions, &mut d),
+            fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_CONFIG
         );
     }
@@ -692,7 +716,10 @@ fn the_receiver_steps_and_reconfigures() {
     input.data = frame.as_ptr();
     input.data_len = frame.len();
     let mut small = [0_u8; 8];
-    assert_ne!(fr_step(&mut s, &input, &mut small, &mut actions, &mut d), 0);
+    assert_ne!(
+        fr_step(&raw mut *s, &input, &mut small, &mut actions, &mut d),
+        0
+    );
 }
 
 #[test]
@@ -726,23 +753,29 @@ fn every_protocol_refuses_a_bad_extractor_configuration_and_serves_loss_and_disc
         assert_eq!(fr_init(&mut s, &cfg, &mut d), 0, "{protocol}");
         let mut loss = fr_input(ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS);
         loss.config = cfg;
-        assert_eq!(fr_step(&mut s, &loss, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(
+            fr_step(&raw mut *s, &loss, &mut out, &mut actions, &mut d),
+            0
+        );
         assert_eq!(actions.items[0].kind, ALDIS_FRAME_RECEIVER_ACTION_LOSS_FLAG);
         let mut discard = fr_input(ALDIS_FRAME_RECEIVER_INPUT_CALLER_DISCARD);
         discard.config = cfg;
         discard.reason = ALDIS_LINK_DISCARD_CRC_MISMATCH;
-        assert_eq!(fr_step(&mut s, &discard, &mut out, &mut actions, &mut d), 0);
+        assert_eq!(
+            fr_step(&raw mut *s, &discard, &mut out, &mut actions, &mut d),
+            0
+        );
         assert_eq!(actions.items[0].reason, ALDIS_LINK_DISCARD_CRC_MISMATCH);
         discard.reason = ALDIS_LINK_DISCARD_NOT_SERVED;
         assert_eq!(
-            fr_step(&mut s, &discard, &mut out, &mut actions, &mut d),
+            fr_step(&raw mut *s, &discard, &mut out, &mut actions, &mut d),
             ALDIS_ERR_INVALID_FIELD
         );
         // A configuration the engine refuses is an error for a reconfiguration and for init.
         cfg.frame_len = 0;
         let mut re = fr_input(ALDIS_FRAME_RECEIVER_INPUT_RECONFIGURE);
         re.config = cfg;
-        assert_ne!(fr_step(&mut s, &re, &mut out, &mut actions, &mut d), 0);
+        assert_ne!(fr_step(&raw mut *s, &re, &mut out, &mut actions, &mut d), 0);
         assert_ne!(fr_init(&mut s, &cfg, &mut d), 0);
     }
 }
