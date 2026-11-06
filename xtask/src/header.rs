@@ -9,6 +9,9 @@
 //! builds the static and shared libraries and compiles, links, and runs a C program with them,
 //! as C99, C11, and C23 against the static library and as C++11 and C++17 against the shared one,
 //! with `-Wall -Wextra -Wpedantic -Werror` (CABI-001, CABI-003, VER-050).
+//! `cargo xtask header cpp-engines <c++>` compiles the C++20 wrapper `include/aldis/aldis.hpp` of the
+//! engine handles with the tests of `crates/aldis-ffi/tests/cpp/`, which run the engine-scenario
+//! vectors of `test-vectors/cop1/` and `test-vectors/link/` through it (CABI-072).
 //! `cargo xtask header c-tidy <clang-tidy>` runs the CERT C checks of clang-tidy over the C code
 //! of `crates/aldis-ffi/tests/c/` and the README example (VER-051).
 
@@ -529,6 +532,90 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
         C_STANDARDS.join(", "),
         CXX_STANDARDS.join(", ")
     );
+    Ok(0)
+}
+
+/// The C++ tests of `aldis.hpp` (CABI-072): the engine scenarios and the capacity check.
+const CPP_TESTS: &str = "crates/aldis-ffi/tests/cpp";
+
+/// `xtask header cpp-engines <c++>`: compiles `engines.cpp` against `aldis.hpp` and the shared
+/// library as C++20 without exceptions, with `-Wall -Wextra -Wpedantic -Werror`, and runs it over
+/// the engine-scenario vectors (CABI-072, CABI-030, CABI-031). `capacity_mismatch.cpp` must fail
+/// to compile with the `static_assert` of the capacity, and compile once the capacity is right.
+pub fn cpp_engines(cxx: &str) -> Result<usize, String> {
+    let root = repo::root();
+    run_cmd(
+        Command::new("cargo")
+            .args(["build", "-p", "aldis-ffi", "--release", "--lib"])
+            .current_dir(&root),
+    )?;
+    let lib_dir = root.join("target/release");
+    let shared = if cfg!(target_os = "macos") {
+        "libaldis_ffi.dylib"
+    } else {
+        "libaldis_ffi.so"
+    };
+    if !lib_dir.join(shared).is_file() {
+        return Err(format!("target/release/{shared} was not built (CABI-001)"));
+    }
+    let out_dir = root.join("target/header");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let tests = root.join(CPP_TESTS);
+    let flags = [
+        "-std=c++20",
+        "-fno-exceptions",
+        "-Wpedantic",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ];
+    let exe = out_dir.join("engines-cpp20");
+    run_cmd(
+        Command::new(cxx)
+            .args(flags)
+            .arg("-I")
+            .arg(root.join("include"))
+            .arg("-I")
+            .arg(&tests)
+            .arg(tests.join("engines.cpp"))
+            .arg(lib_dir.join(shared))
+            .arg(format!("-Wl,-rpath,{}", lib_dir.display()))
+            .arg("-o")
+            .arg(&exe),
+    )?;
+    print!(
+        "{}",
+        run_cmd(Command::new(&exe).arg(root.join("test-vectors")))?
+    );
+    // A capacity that differs from the library's does not compile (OI-20).
+    let mismatch = tests.join("capacity_mismatch.cpp");
+    let syntax = |ok: bool| {
+        let mut cmd = Command::new(cxx);
+        cmd.args(flags)
+            .arg("-fsyntax-only")
+            .arg("-I")
+            .arg(root.join("include"));
+        if ok {
+            cmd.arg("-DALDIS_HPP_CAPACITY_OK");
+        }
+        cmd.arg(&mismatch);
+        run_cmd(&mut cmd)
+    };
+    syntax(true).map_err(|e| format!("{CPP_TESTS}/capacity_mismatch.cpp, capacity right:\n{e}"))?;
+    match syntax(false) {
+        Ok(_) => {
+            return Err(format!(
+                "{CPP_TESTS}/capacity_mismatch.cpp compiled with a wrong capacity (CABI-072)"
+            ));
+        }
+        Err(e) if e.contains("ALDIS_FOP1_SENT_QUEUE_FRAMES (CABI-030)") => {}
+        Err(e) => {
+            return Err(format!(
+                "{CPP_TESTS}/capacity_mismatch.cpp failed for another reason:\n{e}"
+            ));
+        }
+    }
+    println!("cpp-engines: {cxx} (c++20, no exceptions) passed");
     Ok(0)
 }
 
