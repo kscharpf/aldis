@@ -121,7 +121,7 @@ Milestone 5 is complete when every item below is green on `main`. The results co
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Sync crate | SYNC-001…020, RS-021 | Met. `cargo xtask trace --scope m5 --strict` passes (55 of 55). Area [TM synchronization](../standards/tm-sync.md); the vectors of `test-vectors/sync/` (blind model `test-vectors/models/sync.py`, TV-023) run by `crates/aldis-sync/tests/codec_vectors.rs`; the round trip of VER-023 in `crates/aldis-sync/tests/` |
+| Sync crate | SYNC-001…020, RS-021 | Met. `cargo xtask trace --scope m5 --strict` passes (`cargo xtask trace --scope m5` reports the counts). Area [TM synchronization](../standards/tm-sync.md); the vectors of `test-vectors/sync/` (blind model `test-vectors/models/sync.py`, TV-023) run by `crates/aldis-sync/tests/codec_vectors.rs`; the round trip of VER-023 in `crates/aldis-sync/tests/` |
 | Sync C ABI | CABI-030…032, CABI-040, API-082 | Met. [c-abi.md](../profiles/c-abi.md) §10 "TM sync"; `crates/aldis-ffi/tests/sync.rs` and the sync vectors through the C ABI in `crates/aldis-ffi/tests/vectors.rs`; the fuzz target `sync_ffi`; verify check `header` |
 | Sanitizers & Miri | VER-026, GEN-071 | Met. Verify checks `c-sanitizers` (gating, Clang) and `ffi-miri` (nightly-only by D4, VER-059; `vectors` weekly in `miri-weekly.yml`); GEN-071 is traced by `ffi-miri` and by `clippy` (`undocumented_unsafe_blocks`, `forbid(unsafe_code)` outside `aldis-ffi`) in `CHECK_REQUIREMENTS` (`xtask/src/trace.rs`) |
 | Header & C code | VER-050, VER-051, VER-055 | Met. Verify check `header` (C99, C11, C++11, C++17 on GCC and Clang); records [VER-051](../verification/records/VER-051.md) and [VER-055](../verification/records/VER-055.md) |
