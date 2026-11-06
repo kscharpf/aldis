@@ -34,6 +34,8 @@ impl SyncProtocol {
 /// A number of ASM bit errors, 0 to 15 (OI-80, decided; SYNC-007, SYNC-011, SYNC-016).
 ///
 /// It is the tolerance of the search and the number of differing bits of a match.
+///
+/// A high tolerance raises the false-lock rate: about 1 in 10^3 random 32-bit windows match at 7 and about 43 % at 15 (hazard HZ-SYNC-01, ASM-20).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AsmErrors(u8);
 

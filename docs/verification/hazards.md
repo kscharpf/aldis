@@ -2,7 +2,7 @@
 
 How a failure of Aldis could harm a mission, what controls each failure mode, and what is left. Requirement: VER-065 ([06 §11](../06-verification.md#11-hazard-analysis-and-assurance-case)). The [assurance case](assurance-case.md) uses each hazard's controls as evidence for its claims (VER-066), and `cargo xtask assurance` checks every reference in both ([assurance-evidence.md](assurance-evidence.md)).
 
-This file holds the method, the index, and the failure modes common to all codecs. Each frame codec, the COP-1 engines, and the link engines have their own file, so that they can be written and reviewed in parallel:
+This file holds the method, the index, and the failure modes common to all codecs. Each frame codec, the COP-1 engines, the link engines, and the synchronization layer have their own file, so that they can be written and reviewed in parallel:
 
 | Codec | File | Standard document |
 |---|---|---|
@@ -12,6 +12,7 @@ This file holds the method, the index, and the failure modes common to all codec
 | USLP | [hazards/uslp.md](hazards/uslp.md) | [uslp-frame.md](../standards/uslp-frame.md) |
 | COP-1 (FOP-1 and FARM-1) | [hazards/cop1.md](hazards/cop1.md) | [cop1.md](../standards/cop1.md) |
 | Link engines (`aldis-link`) | [hazards/link.md](hazards/link.md) | [04-engines.md](../04-engines.md) |
+| TM synchronization (`aldis-sync`) | [hazards/sync.md](hazards/sync.md) | [tm-sync.md](../standards/tm-sync.md) |
 
 ## 1. Method
 
@@ -19,7 +20,7 @@ This file holds the method, the index, and the failure modes common to all codec
 
 Aldis is a library. It turns octets into typed views and typed values into octets, and it returns. It does not decide what a mission does with a frame, and it cannot know what a wrong frame costs. The analysis therefore stops at the library's contract: what the library returns, writes, or fails to return. **The mission's own hazard analysis owns the mission effects**, and takes this file as an input. The column "Mission effect" names the kind of harm a wrong result can lead to, so that the mission analysis can find it; it does not rate it.
 
-Inside the boundary: every public function of `aldis-core`, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`, `aldis-cop1`, `aldis-link`, and the C ABI of `aldis-ffi`. Outside it: the synchronization and channel coding sublayer below the frames (roadmap §7, OI-12; its ASM and TM randomizer come inside with their crate in M5, and are analysed then), the caller's code (for the COP-1 engines, the timer, the routing, the delivery buffer, and the reaction to an Alert; for the link engines, the clock, the release and opportunity inputs, the routing between the engines, and the size and copying of the output area), and the platform. The assumptions the analysis makes of what is outside are the `ASM-n` rows of the [assurance case](assurance-case.md#assumptions-and-context).
+Inside the boundary: every public function of `aldis-core`, `aldis-time`, `aldis-spp`, `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`, `aldis-cop1`, `aldis-link`, `aldis-sync`, and the C ABI of `aldis-ffi`, with the C++ wrapper of its handles. Outside it: the channel coding of the synchronization and channel coding sublayer below the frames (roadmap §7, OI-12; its ASM, ASM search, and TM randomizer are inside, as `aldis-sync`), the caller's code (for the COP-1 engines, the timer, the routing, the delivery buffer, and the reaction to an Alert; for the link engines, the clock, the release and opportunity inputs, the routing between the engines, and the size and copying of the output area), and the platform. The assumptions the analysis makes of what is outside are the `ASM-n` rows of the [assurance case](assurance-case.md#assumptions-and-context).
 
 ### 1.2 Failure-mode categories
 
@@ -65,7 +66,7 @@ A **gap** is a failure mode without an adequate control: no requirement covers i
 
 ### 1.7 Format
 
-Each hazard is a section `### HZ-<codec>-NN <title>`, where `<codec>` is `X` in this file and `TM`, `TC`, `AOS`, `USLP`, `COP1`, or `LINK` in the codec files, and `NN` is two digits, numbered in order and never reused. The section holds one table with exactly these rows, in this order (the format `cargo xtask assurance` checks, [assurance-evidence.md](assurance-evidence.md) §3):
+Each hazard is a section `### HZ-<codec>-NN <title>`, where `<codec>` is `X` in this file and `TM`, `TC`, `AOS`, `USLP`, `COP1`, `LINK`, or `SYNC` in the codec files, and `NN` is two digits, numbered in order and never reused. The section holds one table with exactly these rows, in this order (the format `cargo xtask assurance` checks, [assurance-evidence.md](assurance-evidence.md) §3):
 
 | Row | Content |
 |---|---|

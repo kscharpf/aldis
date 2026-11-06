@@ -7981,8 +7981,9 @@ typedef struct {
    */
   size_t frame_len;
   /**
-   * The tolerated bit errors of the ASM, 0 to 15 (SYNC-007, SYNC-016). `aldis_sync_attach`
-   * does not read it.
+   * The tolerated bit errors of the ASM, 0 to 15 (SYNC-007, SYNC-016). A high value raises
+   * the false-lock rate: about 43 % of random windows match at 15 (HZ-SYNC-01).
+   * `aldis_sync_attach` does not read it.
    */
   uint32_t asm_errors;
 } aldis_sync_search_config_t;
