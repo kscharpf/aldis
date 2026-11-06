@@ -96,7 +96,7 @@ These rules let separate contributors, or separate agents, each own one track.
 
 ## 7. Later standards (proposed order)
 
-After v1, SDLS comes before the framework (maintainer, 2026-11-06). The TM codes follow in v1.2 (maintainer, 2026-11-06).
+After v1, SDLS comes before the framework (maintainer, 2026-11-06). The TM codes follow in v1.2 (maintainer, 2026-11-06). The v1.1 and v1.2 rows are decided; the rows after them are the proposed order.
 
 | Release | Standards | Rationale |
 |---|---|---|
