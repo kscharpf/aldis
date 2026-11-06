@@ -339,7 +339,11 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     ///   `needed` being their exact length (SYNC-014).
     /// - `Reset`: `CapacityExceeded` when the new configuration has a frame length above
     ///   `FRAME`.
-    /// - `InternalError` when a bound that holds by construction does not (never returned).
+    /// - `InternalError` when a bound that holds by construction does not. It is never
+    ///   returned: the output area is checked against the exact length of the units the chunk
+    ///   completes before the first one is written, and the compile-time check of `ACTIONS`
+    ///   keeps the action list from overflowing. Were it returned, the state-unchanged
+    ///   promise above (API-058) would not hold for a chunk part-way through.
     pub fn step(
         &mut self,
         input: SearchInput<'_>,
