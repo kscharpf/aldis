@@ -181,6 +181,9 @@ mod tests {
             RandomizerSequence::from_period(255),
             Ok(RandomizerSequence::Period255)
         );
+        // The period of each choice is the number the caller passes to choose it.
+        assert_eq!(RandomizerSequence::Period131071.period(), 131_071);
+        assert_eq!(RandomizerSequence::Period255.period(), 255);
         for bad in [0, 1, 254, 256, 131_070, u32::MAX] {
             let e = RandomizerSequence::from_period(bad).unwrap_err();
             assert_eq!(e.kind(), ErrorKind::InvalidConfig);

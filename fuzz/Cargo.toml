@@ -348,6 +348,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "sync_ffi"
+path = "fuzz_targets/sync_ffi.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "link_frame_receiver"
 path = "fuzz_targets/link_frame_receiver.rs"
 test = false

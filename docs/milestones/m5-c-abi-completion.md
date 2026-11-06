@@ -24,6 +24,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 History:
 - 2026-11-05: plan drafted following the M4 exit; OI-12 resolved into M5 by the maintainer the same day; D1–D8 accepted.
 - 2026-11-05: WP-7 narrowed to the engine handles; WP-7a cut (maintainer); step calls of `aldis.hpp` return a `[[nodiscard]] enum class aldis::Status`, no `expected`-like type (maintainer).
+- 2026-11-06: WP-9: `hazards/sync.md` (13 hazards, with the C/C++ boundary), AC-1.10 and ASM-20 of the assurance case, the Type-BD lost-segment note of OI-79 in `HZ-LINK-01`, the fuzz target `sync_ffi`, the mutants of `aldis-sync` triaged, stack and QEMU measured.
 
 ## 1. Starting point
 

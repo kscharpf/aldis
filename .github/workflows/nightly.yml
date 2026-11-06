@@ -161,6 +161,7 @@ jobs:
           - link_map_inputs
           - link_mux
           - sync_search
+          - sync_ffi
           - link_frame_receiver
     runs-on: ubuntu-24.04
     permissions:
