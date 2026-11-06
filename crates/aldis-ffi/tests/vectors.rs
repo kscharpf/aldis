@@ -3574,3 +3574,58 @@ mod link_map {
     vector_test!(map_reassembler_uslp, "link", "recv/map_reassembler_uslp");
 }
 // ---- end link MapSegmenter and MapReassembler
+
+// ---- TM synchronization (M5 WP-4): the vectors of `test-vectors/sync/` through the C ABI of the
+// ASM attach, the randomizer, and the ASM search handle. The runner skips only the cases that
+// state a capacity the handle does not have (`sync_engine`); each test names how many.
+mod sync_engine;
+
+mod sync_codec {
+    macro_rules! vector_test {
+        ($name:ident, "sync", $file:literal, skipped $skipped:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-001, TV-002, TV-003, SYNC-001, SYNC-003, SYNC-004, SYNC-020, CABI-010, CABI-011, CABI-020, CABI-021
+                assert_eq!(
+                    super::sync_engine::run_codec_file(concat!("sync/", $file, ".json")),
+                    $skipped
+                );
+            }
+        };
+    }
+
+    vector_test!(cadu_tm, "sync", "cadu_tm", skipped 0);
+    vector_test!(cadu_aos, "sync", "cadu_aos", skipped 0);
+    vector_test!(cadu_uslp, "sync", "cadu_uslp", skipped 0);
+    vector_test!(cadu_errors, "sync", "cadu_errors", skipped 0);
+    vector_test!(randomizer_131071, "sync", "randomizer_131071", skipped 0);
+    vector_test!(randomizer_255, "sync", "randomizer_255", skipped 0);
+    vector_test!(config, "sync", "config", skipped 2);
+}
+
+mod sync_scenario {
+    macro_rules! vector_test {
+        ($name:ident, "sync", $file:literal, skipped $skipped:literal) => {
+            #[test]
+            fn $name() {
+                // req: VER-021, TV-010, TV-011, TV-012, SYNC-007, SYNC-011, CABI-030, CABI-031, CABI-032, CABI-040
+                assert_eq!(
+                    super::sync_engine::run_scenario_file(concat!("sync/", $file, ".json")),
+                    $skipped
+                );
+            }
+        };
+    }
+
+    vector_test!(search_offsets_tm, "sync", "scenarios/search_offsets_tm", skipped 0);
+    vector_test!(search_offsets_aos, "sync", "scenarios/search_offsets_aos", skipped 0);
+    vector_test!(search_offsets_uslp, "sync", "scenarios/search_offsets_uslp", skipped 0);
+    vector_test!(search_errors, "sync", "scenarios/search_errors", skipped 0);
+    vector_test!(search_first_match, "sync", "scenarios/search_first_match", skipped 0);
+    vector_test!(search_chunks, "sync", "scenarios/search_chunks", skipped 0);
+    vector_test!(search_units, "sync", "scenarios/search_units", skipped 0);
+    vector_test!(search_bounds, "sync", "scenarios/search_bounds", skipped 0);
+    // The one scenario of `search_capacity.json` states a chunk capacity of 16 (Rust runner).
+    vector_test!(search_capacity, "sync", "scenarios/search_capacity", skipped 1);
+}
+// ---- end TM synchronization

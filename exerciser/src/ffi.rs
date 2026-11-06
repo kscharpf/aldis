@@ -25,8 +25,8 @@ use aldis_ffi::epp::{
     aldis_epp_validate,
 };
 use aldis_ffi::error::{
-    ALDIS_ERR_BUFFER_TOO_SMALL, ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_FIELD,
-    ALDIS_ERR_INVALID_HANDLE, ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_OK,
+    ALDIS_ERR_BUFFER_TOO_SMALL, ALDIS_ERR_INCOMPLETE, ALDIS_ERR_INVALID_CONFIG,
+    ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_OK,
 };
 use aldis_ffi::farm1::{
     ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME_AD,
@@ -124,6 +124,16 @@ use aldis_ffi::spp_state::{
     aldis_spp_segmenter_t, aldis_spp_tracked_t, aldis_spp_tracker_config_t,
     aldis_spp_tracker_deinit, aldis_spp_tracker_forget, aldis_spp_tracker_init,
     aldis_spp_tracker_last, aldis_spp_tracker_len, aldis_spp_tracker_t, aldis_spp_tracker_track,
+};
+use aldis_ffi::sync::{
+    ALDIS_SYNC_RANDOMIZER_255, ALDIS_SYNC_RANDOMIZER_131071, ALDIS_SYNC_SEARCH_INPUT_CHUNK,
+    ALDIS_SYNC_SEARCH_INPUT_RECONFIGURE, ALDIS_SYNC_SEARCH_INPUT_RESET,
+    ALDIS_SYNC_SEARCH_MAX_ACTIONS, ALDIS_SYNC_SEARCH_STATE_COLLECTING,
+    ALDIS_SYNC_SEARCH_STATE_SEARCHING, ALDIS_SYNC_SEARCH_WORDS, aldis_sync_attach,
+    aldis_sync_randomize, aldis_sync_search_action_t, aldis_sync_search_actions_t,
+    aldis_sync_search_config_t, aldis_sync_search_deinit, aldis_sync_search_init,
+    aldis_sync_search_input_t, aldis_sync_search_status, aldis_sync_search_status_t,
+    aldis_sync_search_step, aldis_sync_search_t,
 };
 use aldis_ffi::time::{
     ALDIS_TIME_ASCII, ALDIS_TIME_CCS, ALDIS_TIME_CDS, ALDIS_TIME_CUC, aldis_time_ascii_encoded_len,
@@ -2555,6 +2565,185 @@ fn link_cltu_handle(t: &mut Tally) {
     }
 }
 
+/// The sync codec functions and the ASM search handle (M5 WP-4; SYNC-001…SYNC-020): the CADU of a
+/// frame, the randomizer in both directions, and a search over the CADU split into two chunks.
+#[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
+#[expect(
+    clippy::large_stack_arrays,
+    reason = "a C caller declares the 64 KB storage of the handle as a local too (CABI-031); \
+              the exerciser has 256 KB of stack"
+)]
+#[expect(clippy::too_many_lines, reason = "one call per exported function")]
+fn sync_handle(t: &mut Tally) {
+    let mut det = detail();
+    let det_ptr = &raw mut det;
+    let cfg = aldis_sync_search_config_t {
+        protocol: bb(ALDIS_LINK_PROTOCOL_TM),
+        frame_len: bb(3),
+        asm_errors: bb(1),
+    };
+    let frame = bb([0x12_u8, 0x34, 0x56]);
+    let mut cadu = [0_u8; 7];
+    let mut cadu_len = 0_usize;
+    // SAFETY: every pointer is to a live local of the type, valid for the length given.
+    unsafe {
+        t.check(
+            aldis_sync_attach(
+                &raw const cfg,
+                frame.as_ptr(),
+                frame.len(),
+                cadu.as_mut_ptr(),
+                cadu.len(),
+                &raw mut cadu_len,
+                det_ptr,
+            ) == ALDIS_OK
+                && cadu_len == 7
+                && cadu[..4] == [0x1A, 0xCF, 0xFC, 0x1D]
+                && cadu[4..] == frame,
+        );
+        t.check(
+            aldis_sync_attach(
+                &raw const cfg,
+                frame.as_ptr(),
+                frame.len(),
+                cadu.as_mut_ptr(),
+                6,
+                &raw mut cadu_len,
+                det_ptr,
+            ) == ALDIS_ERR_BUFFER_TOO_SMALL,
+        );
+    }
+    // The randomizer: both sequences are involutions; a value that is neither fails.
+    let mut data = bb([1_u8, 2, 3, 4]);
+    // SAFETY: `data` is a live array of 4 octets.
+    unsafe {
+        for sequence in [ALDIS_SYNC_RANDOMIZER_131071, ALDIS_SYNC_RANDOMIZER_255] {
+            t.check(
+                aldis_sync_randomize(bb(sequence), data.as_mut_ptr(), data.len(), det_ptr)
+                    == ALDIS_OK
+                    && data != [1, 2, 3, 4],
+            );
+            t.check(
+                aldis_sync_randomize(sequence, data.as_mut_ptr(), data.len(), det_ptr) == ALDIS_OK
+                    && data == [1, 2, 3, 4],
+            );
+        }
+        t.check(
+            aldis_sync_randomize(bb(7), data.as_mut_ptr(), data.len(), det_ptr)
+                == ALDIS_ERR_INVALID_CONFIG,
+        );
+    }
+    // The search: the CADU in two chunks, one flipped bit in the ASM (tolerance 1).
+    let mut storage = aldis_sync_search_t {
+        words: [0; ALDIS_SYNC_SEARCH_WORDS],
+    };
+    let h = &raw mut storage;
+    let mut stream = bb(cadu);
+    stream[0] ^= 0x01;
+    let chunk = |data: &[u8]| aldis_sync_search_input_t {
+        kind: ALDIS_SYNC_SEARCH_INPUT_CHUNK,
+        data: data.as_ptr(),
+        data_len: data.len(),
+        config: cfg,
+    };
+    let (first, second) = stream.split_at(3);
+    let (first, second) = (chunk(first), chunk(second));
+    let mut area = [0_u8; 64];
+    let mut actions = aldis_sync_search_actions_t {
+        count: 0,
+        items: [aldis_sync_search_action_t::default(); ALDIS_SYNC_SEARCH_MAX_ACTIONS],
+    };
+    let mut status = aldis_sync_search_status_t::default();
+    // SAFETY: every pointer is to a live local; the storage is a zeroed object of its type.
+    unsafe {
+        t.check(aldis_sync_search_init(h, &raw const cfg, det_ptr) == ALDIS_OK);
+        t.check(
+            aldis_sync_search_step(
+                h,
+                &raw const first,
+                area.as_mut_ptr(),
+                area.len(),
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 0,
+        );
+        t.check(
+            aldis_sync_search_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.state == ALDIS_SYNC_SEARCH_STATE_SEARCHING,
+        );
+        t.check(
+            aldis_sync_search_step(
+                h,
+                &raw const second,
+                area.as_mut_ptr(),
+                area.len(),
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 1
+                && actions.items[0].errors == 1
+                && actions.items[0].skipped_bits == 0
+                && actions.items[0].unit.offset == 0
+                && actions.items[0].unit.len == 3
+                && area[..3] == frame,
+        );
+        t.check(
+            aldis_sync_search_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.units_returned == 1
+                && status.state == ALDIS_SYNC_SEARCH_STATE_SEARCHING,
+        );
+        // A chunk that ends inside a unit leaves the engine collecting; a reset ends that.
+        let head = chunk(&cadu[..5]);
+        t.check(
+            aldis_sync_search_step(
+                h,
+                &raw const head,
+                area.as_mut_ptr(),
+                area.len(),
+                &raw mut actions,
+                det_ptr,
+            ) == ALDIS_OK
+                && actions.count == 0,
+        );
+        t.check(
+            aldis_sync_search_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.state == ALDIS_SYNC_SEARCH_STATE_COLLECTING
+                && status.partial_octets == 1,
+        );
+        let reset = aldis_sync_search_input_t {
+            kind: ALDIS_SYNC_SEARCH_INPUT_RESET,
+            ..head
+        };
+        let reconfigure = aldis_sync_search_input_t {
+            kind: ALDIS_SYNC_SEARCH_INPUT_RECONFIGURE,
+            data: null(),
+            data_len: 0,
+            ..head
+        };
+        for input in [reset, reconfigure] {
+            t.check(
+                aldis_sync_search_step(
+                    h,
+                    &raw const input,
+                    area.as_mut_ptr(),
+                    area.len(),
+                    &raw mut actions,
+                    det_ptr,
+                ) == ALDIS_OK
+                    && actions.count == 0,
+            );
+        }
+        t.check(
+            aldis_sync_search_status(h, &raw mut status, det_ptr) == ALDIS_OK
+                && status.state == ALDIS_SYNC_SEARCH_STATE_SEARCHING
+                && status.units_returned == 1,
+        );
+        aldis_sync_search_deinit(h);
+        t.check(aldis_sync_search_status(h, &raw mut status, det_ptr) == ALDIS_ERR_INVALID_HANDLE);
+    }
+}
+
 /// Calls every exported function of `aldis-ffi`.
 pub fn run(t: &mut Tally) {
     core(t);
@@ -2573,4 +2762,5 @@ pub fn run(t: &mut Tally) {
     link_mux_handle(t);
     link_map_handles(t);
     link_cltu_handle(t);
+    sync_handle(t);
 }

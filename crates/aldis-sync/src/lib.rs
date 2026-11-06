@@ -15,7 +15,7 @@
 //! returns (SYNC-006). The codec does not combine the two. The engine only searches (SYNC-019):
 //! it holds no lock and does not check the spacing of the units.
 //!
-//! **Status:** implemented (M5 WP-3); the C ABI follows in M5 WP-4.
+//! **Status:** implemented (M5 WP-3); the C ABI is `aldis_sync_*` of `aldis-ffi` (M5 WP-4).
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -34,8 +34,8 @@ pub use asm::{ASM, ASM_LEN, attach_asm};
 pub use config::{AsmErrors, MAX_ASM_ERRORS, SyncConfig, SyncProtocol};
 pub use randomizer::{RandomizerSequence, randomize};
 pub use search::{
-    AsmSearch, SearchAction, SearchActions, SearchInput, SearchState, SearchStatus, max_actions,
-    max_out_len,
+    AsmSearch, AsmSearchBuffers, AsmSearchHead, SearchAction, SearchActions, SearchInput,
+    SearchState, SearchStatus, max_actions, max_out_len,
 };
 
 /// Copies `src` over the start of `dst`, as far as both reach. The callers pass slices of the

@@ -222,6 +222,7 @@ ALDIS_HPP_BINDING(MapReassembler, map_reassembler, false, false, (s, &in, out, c
 ALDIS_HPP_BINDING(ChannelMux, channel_mux, false, false, (s, &in, out, cap, &a, e));
 ALDIS_HPP_BINDING(PacketExtractor, packet_extractor, false, false, (s, &in, out, cap, &a, e));
 ALDIS_HPP_BINDING(FrameReceiver, frame_receiver, false, false, (s, &in, out, cap, &a, e));
+ALDIS_HPP_BINDING(SyncSearch, sync_search, false, false, (s, &in, out, cap, &a, e));
 
 }  // namespace aldis::detail
 
@@ -324,6 +325,18 @@ class FrameReceiver final : public detail::Handle<detail::FrameReceiverApi> {
                   "VC capacity differs from ALDIS_LINK_MAX_VIRTUAL_CHANNELS (CABI-030)");
     static_assert(MaxFrameOctets == ALDIS_LINK_MAX_FRAME_OCTETS,
                   "frame capacity differs from ALDIS_LINK_MAX_FRAME_OCTETS (CABI-030)");
+};
+
+/// The ASM search engine (131.0 §9.2; SYNC-007…SYNC-015). The capacities are
+/// `ALDIS_SYNC_MAX_FRAME_OCTETS` and `ALDIS_SYNC_MAX_CHUNK_OCTETS`; the output area that fits every
+/// chunk is `MaxChunkOctets + MaxFrameOctets` octets (SYNC-014). The ASM attach and the randomizer
+/// are codec functions: call `aldis_sync_attach` and `aldis_sync_randomize` of `aldis.h`.
+template <std::size_t MaxFrameOctets, std::size_t MaxChunkOctets>
+class SyncSearch final : public detail::Handle<detail::SyncSearchApi> {
+    static_assert(MaxFrameOctets == ALDIS_SYNC_MAX_FRAME_OCTETS,
+                  "frame capacity differs from ALDIS_SYNC_MAX_FRAME_OCTETS (CABI-030)");
+    static_assert(MaxChunkOctets == ALDIS_SYNC_MAX_CHUNK_OCTETS,
+                  "chunk capacity differs from ALDIS_SYNC_MAX_CHUNK_OCTETS (CABI-030)");
 };
 
 }  // namespace aldis
