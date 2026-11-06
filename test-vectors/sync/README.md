@@ -48,7 +48,7 @@ Configuration: `protocol`, `frame_len`, `asm_errors` (tolerance), and for the tw
 | `{"error": kind, "field"?: name, "needed"?: n}` | The input is refused and nothing changes: `BufferTooSmall` (`needed`), `OutOfRange` (`chunk_len`). The field is the name of the catalogue (the codes are in the codec files) |
 | `{"counter": {"name", "value"}}` | The answer to `query` |
 
-A stream is built from whole octets; where it holds a junk prefix of n bits, the CADU follows at bit n, and the last octet is padded with zero bits, which stay in the window after the last unit . Frame lengths are at most 64 octets and chunks at most 128 octets in every scenario, so an instance needs `FRAME` of 64 and `CHUNK` of 128 for the files other than `search_capacity.json`.
+A stream is built from whole octets; where it holds a junk prefix of n bits, the CADU follows at bit n, and the last octet is padded with zero bits, which stay in the window after the last unit. Frame lengths are at most 64 octets and chunks at most 128 octets in every scenario, so an instance needs `FRAME` of 64 and `CHUNK` of 128 for the files other than `search_capacity.json`.
 
 ## Readings the model makes
 
