@@ -21,6 +21,7 @@ aldis-epp = { path = "../crates/aldis-epp" }
 aldis-link = { path = "../crates/aldis-link", features = ["spp", "epp", "tm", "tc", "aos", "uslp"] }
 aldis-ffi = { path = "../crates/aldis-ffi" }
 aldis-spp = { path = "../crates/aldis-spp", features = ["time"] }
+aldis-sync = { path = "../crates/aldis-sync" }
 aldis-tc = { path = "../crates/aldis-tc" }
 aldis-time = { path = "../crates/aldis-time" }
 aldis-tm = { path = "../crates/aldis-tm" }
@@ -335,6 +336,13 @@ bench = false
 [[bin]]
 name = "link_mux"
 path = "fuzz_targets/link_mux.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sync_search"
+path = "fuzz_targets/sync_search.rs"
 test = false
 doc = false
 bench = false

@@ -54,3 +54,21 @@ crate = "aldis-link"
 metric = "branches"
 count = 70
 justification = "src/receiver.rs and src/receiver/*.rs (part; M4 WP-5, after #232) — the branches of the `?` returns above and of the `None` arm of a slot lookup for a protocol whose procedure passes only a VC it found. The rest: src/generator.rs, src/extractor.rs — the branches of the same unreachable error returns: the `else` of `let Some(&first) = held.first()` in `look` and `emit`, the `let Length::Total(total) = packet::length(..) else` of `pull_from_queue`, the `?` of `Actions::push` and `Cx::write`, and the `get` of the octet-by-octet shift of the queue (an index below the queue length). None is reachable (GEN-020). M4 WP-4 (19 more): the branches of the same unreachable error returns in src/mux.rs, src/access.rs, and src/bitstream.rs (`Actions::push`, the offer slot, the count of a VCID, the shifts of the queues). M4 WP-6 (37 more): in src/segmenter.rs, src/reassembler.rs, and src/cltu.rs the `?` of `Actions::push` (the bounds are 1, 2, and 2, driven to their worst cases by `tests/map_segmenter_engine.rs`, `tests/map_reassembler_engine.rs`, and `tests/cltu_packer.rs`), the `ok_or(InternalError)` on an entry, a slice, or a slot that the code built or checked itself (the queue entry at a position found by a scan, the MAP of a queued entry, the slot of a MAP found by `find`), the `get_mut` of those slots, the `else` of a pointer slice that `split_at_checked` bounded, and the octet-by-octet shifts of the queue at an index below its length, counted for each protocol that instantiates the generic code. None is reachable (GEN-020)."
+
+[[waiver]]
+crate = "aldis-sync"
+metric = "regions"
+count = 4
+justification = "src/search.rs, `AsmSearch::chunk` and `AsmSearch::store` — error returns and arms that no input reaches, each an explicit error or a skipped store and not a default (GEN-020): the `let ... else` for the unit range of the output area and the partial-unit storage (the area was checked against the units the chunk completes before the first unit is written, and a unit is at most `FRAME` octets by `check_capacity`), the `?` of `Actions::push` (the bound `ACTIONS` is `max_actions(CHUNK)`, driven to its worst case by `tests/engine.rs`), and the `None` arm of the `get_mut` of `store` (the index is below the unit length, which is at most `FRAME` octets)."
+
+[[waiver]]
+crate = "aldis-sync"
+metric = "lines"
+count = 3
+justification = "src/search.rs, `AsmSearch::chunk` and `AsmSearch::store` — error returns and arms that no input reaches, each an explicit error or a skipped store and not a default (GEN-020): the `let ... else` for the unit range of the output area and the partial-unit storage (the area was checked against the units the chunk completes before the first unit is written, and a unit is at most `FRAME` octets by `check_capacity`), the `?` of `Actions::push` (the bound `ACTIONS` is `max_actions(CHUNK)`, driven to its worst case by `tests/engine.rs`), and the `None` arm of the `get_mut` of `store` (the index is below the unit length, which is at most `FRAME` octets)."
+
+[[waiver]]
+crate = "aldis-sync"
+metric = "branches"
+count = 3
+justification = "src/search.rs, `AsmSearch::chunk` and `AsmSearch::store` — error returns and arms that no input reaches, each an explicit error or a skipped store and not a default (GEN-020): the `let ... else` for the unit range of the output area and the partial-unit storage (the area was checked against the units the chunk completes before the first unit is written, and a unit is at most `FRAME` octets by `check_capacity`), the `?` of `Actions::push` (the bound `ACTIONS` is `max_actions(CHUNK)`, driven to its worst case by `tests/engine.rs`), and the `None` arm of the `get_mut` of `store` (the index is below the unit length, which is at most `FRAME` octets)."

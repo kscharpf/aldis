@@ -18,6 +18,7 @@ aldis-tm = { path = "../aldis-tm", default-features = false, optional = true }
 aldis-tc = { path = "../aldis-tc", default-features = false, optional = true }
 aldis-aos = { path = "../aldis-aos", default-features = false, optional = true }
 aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true }
+aldis-sync = { path = "../aldis-sync", default-features = false, optional = true }
 aldis-link = { path = "../aldis-link", default-features = false, optional = true }
 aldis-cop1 = { path = "../aldis-cop1", default-features = false, optional = true }
 aldis-framework = { path = "../aldis-framework", default-features = false, optional = true }
@@ -34,6 +35,7 @@ tm = ["dep:aldis-tm"]
 tc = ["dep:aldis-tc"]
 aos = ["dep:aldis-aos"]
 uslp = ["dep:aldis-uslp"]
+sync = ["dep:aldis-sync"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
 framework = ["dep:aldis-framework"]
@@ -46,6 +48,7 @@ alloc = [
     "aldis-tc?/alloc",
     "aldis-aos?/alloc",
     "aldis-uslp?/alloc",
+    "aldis-sync?/alloc",
     "aldis-link?/alloc",
     "aldis-cop1?/alloc",
     "aldis-framework?/alloc",
@@ -60,6 +63,7 @@ std = [
     "aldis-tc?/std",
     "aldis-aos?/std",
     "aldis-uslp?/std",
+    "aldis-sync?/std",
     "aldis-link?/std",
     "aldis-cop1?/std",
     "aldis-framework?/std",
@@ -74,6 +78,7 @@ full = [
     "tc",
     "aos",
     "uslp",
+    "sync",
     "link",
     "aldis-link/spp",
     "aldis-link/epp",
