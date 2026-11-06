@@ -7,17 +7,17 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | in progress | | This plan, D1–D8, `--scope m5` trace gate, field-code block 250–299 |
-| WP-1 Spec readings: sync | planned | | Area SYNC from 131.0 §9–10, clause by clause; field codes. No code |
-| WP-2 Blind model & vectors: sync | planned | | Python model written blind (TV-023); vectors for ASM attach, search, and the randomizer |
-| WP-3 `aldis-sync` crate | planned | | ASM attach, randomizer, ASM search engine |
-| WP-4 `aldis-sync` C ABI | planned | | Codec functions and the search handle |
-| WP-5 Sanitizers & Miri | planned | | C harness under ASan/UBSan, Clang only (`c-sanitizers`); `aldis-ffi` tests under Miri (VER-026). `ffi-miri` is nightly-only and non-gating (D4: Miri over all tests exceeds 10 min): the unit and integration tests but `vectors` take about 8 min (`--lib` 286 s, each other binary 7 to 31 s); `vectors` alone takes about 2 h and runs weekly (`miri-weekly.yml`). The C harness covers CRC-16, SPP, EPP, TM and FARM-1; TC, AOS, USLP, the link engines and FOP-1 do not run through C yet |
-| WP-6 Header & C checks | planned | | C99/C11/C++11/C++17 on GCC and Clang (VER-050); CERT C on the C code (VER-051) |
-| WP-7 `aldis.hpp`: engine handles | planned | | Header-only C++20 RAII wrapper of the engine handles; engine-scenario vectors pass via `aldis.hpp` (CABI-072) |
-| WP-8 Open v1 requirements & OI-79 | planned | | The untraced requirements of §1 that no other WP closes; OI-79 decided |
-| WP-9 Gates & hazards | planned | | |
-| WP-10 Exit | planned | | `trace --scope m5 --strict`; the full v1 trace of track R |
+| WP-0 Plan | merged | #268, #269, #274 | This plan, D1–D8, `--scope m5` trace gate, field-code block 250–299 |
+| WP-1 Spec readings: sync | merged | #271 | Area SYNC from 131.0 §9–10, clause by clause; field codes. No code |
+| WP-2 Blind model & vectors: sync | merged | #275 | Python model written blind (TV-023); vectors for ASM attach, search, and the randomizer |
+| WP-3 `aldis-sync` crate | merged | #279 | ASM attach, randomizer, ASM search engine |
+| WP-4 `aldis-sync` C ABI | merged | #280 | Codec functions and the search handle |
+| WP-5 Sanitizers & Miri | merged | #276 | C harness under ASan/UBSan, Clang only (`c-sanitizers`); `aldis-ffi` tests under Miri (VER-026). `ffi-miri` is nightly-only and non-gating (D4: Miri over all tests exceeds 10 min): the unit and integration tests but `vectors` take about 8 min (`--lib` 286 s, each other binary 7 to 31 s); `vectors` alone takes about 2 h and runs weekly (`miri-weekly.yml`). The C harness covers CRC-16, SPP, EPP, TM and FARM-1; TC, AOS, USLP, the link engines and FOP-1 do not run through C yet |
+| WP-6 Header & C checks | merged | #270 | C99/C11/C++11/C++17 on GCC and Clang (VER-050); CERT C on the C code (VER-051) |
+| WP-7 `aldis.hpp`: engine handles | merged | #277 | Header-only C++20 RAII wrapper of the engine handles; engine-scenario vectors pass via `aldis.hpp` (CABI-072) |
+| WP-8 Open v1 requirements & OI-79 | merged | #272, #273 | The untraced requirements of §1 that no other WP closes; OI-79 decided |
+| WP-9 Gates & hazards | merged | #281, #282 | |
+| WP-10 Exit | merged | #283 | `trace --scope m5 --strict`; the full v1 trace of track R |
 
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
 
