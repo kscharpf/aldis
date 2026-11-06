@@ -34,7 +34,7 @@ The reference application shows an integrator how the libraries fit together end
 | A2 | Frames: TM down, TC Type-BD up, hand-written loops | Downlink faults |
 | A3 | COP-1: FOP-1 on the ground, FARM-1 on board | Uplink faults; the link-level trace is frozen from here on |
 | A4 | Engines replace the loops; AOS and USLP variants | Nothing on the TM/TC link |
-| A5 | C++ flight node over `aldis.hpp` (Rust-backed and native) | Nothing |
+| A5 | C++ flight node over `aldis.hpp` (engine handles) and `aldis.h` (codecs), Rust-backed and native | Nothing |
 | A6 | Flight node bare-metal under QEMU, with the application's own run loop (the `aldis-framework` stacks are v1.1) | Nothing |
 
 Not covered: synchronization and channel coding, SDLS, CFDP, and time correlation (00 §2.1).

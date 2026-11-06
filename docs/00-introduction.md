@@ -7,7 +7,7 @@ These libraries add **CCSDS space data system protocols** to two kinds of applic
 - **Flight software:** bare-metal and RTOS spacecraft processors with static memory and no heap.
 - **Ground systems:** mission control systems, ground-station front ends, simulators, test equipment, and analysis tools.
 
-A single **Rust reference implementation** is the source of truth for behavior, and it is the recommended choice: it carries the strongest correctness evidence. It is exposed to C and C++ through a stable **C ABI** and the header-only `aldis.hpp` wrapper (CABI-072), and later to Java, C#, Python, and Go through bindings over that ABI. Native C/C++ implementations are planned for Phase 3 of the roadmap (see [08](08-roadmap.md)).
+A single **Rust reference implementation** is the source of truth for behavior, and it is the recommended choice: it carries the strongest correctness evidence. It is exposed to C and C++ through a stable **C ABI** and the header-only `aldis.hpp` wrapper of the engine handles (CABI-072), and later to Java, C#, Python, and Go through bindings over that ABI. Native C/C++ implementations are planned for Phase 3 of the roadmap (see [08](08-roadmap.md)).
 
 ## 2. v1 scope
 
@@ -88,6 +88,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A withdr
 | AOS | [AOS frames](standards/aos-frame.md) |
 | USLP | [USLP frames](standards/uslp-frame.md) |
 | COP | [COP-1](standards/cop1.md) |
+| SYNC | [TM synchronization](standards/tm-sync.md) |
 | RS | [Rust profile](profiles/rust.md) |
 | CABI | [C ABI profile](profiles/c-abi.md) |
 | CPP | [C++ profile](profiles/cpp.md) |

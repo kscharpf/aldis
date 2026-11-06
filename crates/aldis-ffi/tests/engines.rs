@@ -263,7 +263,7 @@ fn configurations_are_checked_once() {
 
 #[test]
 fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
-    // req: CABI-040, COP-002, COP-006, API-058, API-061
+    // req: CABI-040, COP-002, COP-006, API-058, API-061, API-054
     let mut s = farm1_storage();
     let cfg = farm1_config();
     let mut d = detail();
@@ -573,7 +573,7 @@ fn a_farm1_step_checks_every_argument() {
 
 #[test]
 fn a_fop1_run_from_initial_to_a_retransmission() {
-    // req: CABI-040, COP-001, COP-010, COP-011, COP-013, API-053, API-061
+    // req: CABI-040, COP-001, COP-010, COP-011, COP-013, API-053, API-054, API-061, CABI-013
     let mut s = fop1_storage();
     let cfg = fop1_config();
     let mut out = [0_u8; 64];
@@ -856,5 +856,82 @@ fn a_fop1_step_checks_every_argument() {
             aldis_fop1_next_deadline(&raw mut *s, &raw mut armed, null_mut(), null_mut()),
             ALDIS_ERR_INVALID_FIELD
         );
+    }
+}
+
+#[test]
+fn instants_and_durations_are_u64_microseconds() {
+    // req: CABI-013
+    // The caller's clock, the deadline the engine reports, and a configured duration are all
+    // `uint64_t` microseconds: a function of another type would not coerce to these pointers.
+    // `a_fop1_run_from_initial_to_a_retransmission` reads the deadline back as the time of the
+    // request plus `t1_initial_us` (20 + 1000 = 1020), and the timeout at 1019 does nothing.
+    let step: unsafe extern "C" fn(
+        *mut aldis_fop1_t,
+        *const aldis_fop1_input_t,
+        u64,
+        *mut u8,
+        usize,
+        *mut aldis_fop1_actions_t,
+        *mut aldis_ffi::aldis_error_detail_t,
+    ) -> u32 = aldis_fop1_step;
+    let next: unsafe extern "C" fn(
+        *mut aldis_fop1_t,
+        *mut u8,
+        *mut u64,
+        *mut aldis_ffi::aldis_error_detail_t,
+    ) -> u32 = aldis_fop1_next_deadline;
+    let duration: u64 = fop1_config().t1_initial_us;
+    std::hint::black_box((step, next, duration));
+}
+
+#[test]
+fn handles_on_distinct_storage_run_on_different_threads_at_once() {
+    // req: CABI-050
+    // Each thread owns its storage and runs its own engine with no lock; the calls on one handle
+    // stay on one thread, as CABI-050 requires of the caller. A shared piece of state in the
+    // library would give a thread another thread's count.
+    let threads: Vec<_> = (1_u8..=4)
+        .map(|n| {
+            std::thread::spawn(move || {
+                let mut s = farm1_storage();
+                let cfg = farm1_config();
+                let mut out = [0_u8; 8];
+                let data = [n; 3];
+                let mut actions = aldis_farm1_actions_t::default();
+                // SAFETY: every pointer is to a live local of this thread; `data` is valid for
+                // its length.
+                unsafe {
+                    assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
+                    for i in 0..(u32::from(n) * 50) {
+                        let input = farm1_ad(u8::try_from(i % 256).unwrap(), &data);
+                        assert_eq!(
+                            aldis_farm1_step(
+                                &raw mut *s,
+                                &raw const input,
+                                u64::from(i),
+                                out.as_mut_ptr(),
+                                out.len(),
+                                &raw mut actions,
+                                null_mut()
+                            ),
+                            0
+                        );
+                        assert_eq!(actions.items[0].kind, ALDIS_FARM1_ACTION_DELIVER);
+                    }
+                    let mut status = aldis_farm1_status_t::default();
+                    assert_eq!(
+                        aldis_farm1_status(&raw mut *s, &raw mut status, null_mut()),
+                        0
+                    );
+                    aldis_farm1_deinit(&raw mut *s);
+                    (u32::from(n) * 50 % 256, u32::from(status.v_r))
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        let (want, got) = t.join().unwrap();
+        assert_eq!(got, want);
     }
 }

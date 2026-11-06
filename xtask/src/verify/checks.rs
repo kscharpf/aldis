@@ -423,7 +423,7 @@ fn rust() -> Vec<Check> {
         ),
         grouped(
             Group::Host,
-            reading(FFI_INPUTS, check("header", c, false, 11, HEADER)),
+            reading(FFI_INPUTS, check("header", c, false, 20, HEADER)),
         ),
     ];
     for t in RUST_BARE_METAL {
@@ -664,10 +664,14 @@ const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
 # <stdint.h>, <stddef.h>, and <stdbool.h>, and wraps its declarations in extern \"C\" (CABI-003).
 cargo xtask header
-# The static and shared libraries on the host (CABI-001), and the header as C99 and C++11 with
-# the pinned GCC and Clang: a C program built against each library runs (CABI-003).
+# The static and shared libraries on the host (CABI-001), and the header as C99, C11, C23, C++11,
+# and C++17 with -Wall -Wextra -Wpedantic -Werror on the pinned GCC and Clang: a C program built
+# against each library runs (CABI-003, VER-050).
 cargo xtask header c-smoke gcc-14 g++-14
 cargo xtask header c-smoke clang clang++
+# The CERT C checks of the pinned clang-tidy over the C code under crates/aldis-ffi/tests/c/
+# and the README example (VER-051).
+cargo xtask header c-tidy clang-tidy
 ";
 
 const BIG_ENDIAN: &str = "\
@@ -1050,6 +1054,7 @@ mod tests {
         assert!(header.script.contains("cargo xtask header\n"));
         assert!(header.script.contains("c-smoke gcc-14 g++-14"));
         assert!(header.script.contains("c-smoke clang clang++"));
+        assert!(header.script.contains("c-tidy clang-tidy"));
     }
 
     // req: VER-011, VER-056

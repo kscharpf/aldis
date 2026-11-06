@@ -65,10 +65,13 @@ commands:
                                match a fresh generation with the pinned cbindgen, or
                                regenerate them (CABI-002, CABI-003, CABI-030)
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
-                               program with them, as C99 and C++11 (CABI-001, CABI-003)
+                               program with them, as C99, C11, C23, C++11, and C++17 with
+                               -Wall -Wextra -Wpedantic -Werror (CABI-001, CABI-003, VER-050)
   header sanitizers <cc>       build the C vector harness of aldis-ffi with
                                -fsanitize=address,undefined and run the shared vectors through the
                                C ABI (VER-026)
+  header c-tidy <clang-tidy>   the CERT C checks of clang-tidy over the C code of
+                               crates/aldis-ffi/tests/c/ and the README example (VER-051)
   sana [--write]               the SANA registry snapshots in specs/sana/ match their SHA-256
                                and the tables generated from them, or regenerate the tables
                                (M2 plan D13, OI-06)
@@ -246,6 +249,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
         ["header", "sanitizers", cc] => header::sanitizers(cc),
+        ["header", "c-tidy", tidy] => header::c_tidy(tidy),
         ["sana", rest @ ..] => sana::run(rest),
         ["fix"] => fix(),
         ["links"] => links::check(),

@@ -218,7 +218,7 @@ fn config_one(max: usize) -> MapReassemblerConfig<Tc, M> {
 
 #[test]
 fn a_gap_discards_the_sdus_in_progress_of_every_map_of_the_vc() {
-    // req: LNK-070, LNK-051; OI-78 (two SDUs in progress on one USLP VC)
+    // req: LNK-070, LNK-051, API-054; OI-78 (two SDUs in progress on one USLP VC)
     // 732.1 §4.3.3.1 note: one instance of the reception function for each MAP channel, so two
     // SDUs of one VC are in progress at once; §4.1.4.2.2.1.6: the portions of an SDU are in frames
     // of contiguous VCF Counts, which a gap breaks for whichever MAP lost a frame.
@@ -666,4 +666,141 @@ fn the_status_counts_what_happened() {
         };
         assert_eq!(counted, n, "{event:?}");
     }
+}
+
+// ---- OI-79: cases that no vector pins, read against the Blue Books ----
+
+#[test]
+fn a_gap_on_a_tfdf_of_only_idle_data_still_discards() {
+    // req: LNK-070, LNK-051, LNK-064; OI-79 (3)
+    // 732.1 §4.1.4.2.2.1.6: the portions of an SDU are in frames of contiguous VCF Counts, and a
+    // gap flagged on the field says a frame is missing, whatever this field carries; §4.3.2.2.5
+    // note 1 only says a TFDF of idle data is discarded. The Blue Book does not combine the two:
+    // the maintainer decided (OI-79, 2026-11-05) that the gap rule of OI-78 applies to every
+    // field, as for the `PacketExtractor` and LNK-061 (the gap wins over LNK-064).
+    let mut e = uslp_engine();
+    uslp(&mut e, 1, 0, false, &variable(0b100, &[1, 2, 3]));
+    let idle = [0x3F, 0, 3, 0, 0, 0, 0];
+    let got = uslp(&mut e, 1, 0, true, &idle).unwrap();
+    assert_eq!(got, [Got::Event(GapDiscard, 1, 0)]);
+    assert_eq!(e.status().assembly.current(), 0);
+    assert_eq!(e.status().discarded_octets.get(), 3);
+    // The idle field itself delivers nothing, on any MAP of the VC, even one not configured.
+    uslp(&mut e, 1, 0, false, &variable(0b100, &[1, 2]));
+    let got = uslp(&mut e, 1, 9, true, &idle).unwrap();
+    assert_eq!(
+        got,
+        [Got::Event(GapDiscard, 1, 0), Got::Event(UnknownMap, 1, 9)]
+    );
+    // Without a gap the SDU in progress is kept (the idle TFDF is ignored).
+    uslp(&mut e, 1, 0, false, &variable(0b100, &[7]));
+    assert_eq!(uslp(&mut e, 1, 0, false, &idle), Ok(vec![]));
+    assert_eq!(
+        uslp(&mut e, 1, 0, false, &variable(0b110, &[8])),
+        Ok(vec![Got::Sdu(1, 0, vec![7, 8])])
+    );
+}
+
+#[test]
+fn a_gap_names_the_first_map_in_the_order_of_configuration() {
+    // req: LNK-070, LNK-051; OI-79 (3)
+    // The Blue Books do not name a MAP for the event; the maintainer decided (OI-79, 2026-11-05,
+    // LNK-070 in 04) that the engine takes the first MAP of the configuration that had an SDU in progress, not the first MAP
+    // by Identifier or by the order in which the SDUs began.
+    let maps = [
+        ReassemblerMap::<Uslp>::sdu(vc(1), um(2), S).unwrap(),
+        ReassemblerMap::<Uslp>::sdu(vc(1), um(0), S).unwrap(),
+        ReassemblerMap::<Uslp>::sdu(vc(1), um(1), S).unwrap(),
+    ];
+    let mut e = UslpEngine::new(MapReassemblerConfig::new((), &maps).unwrap()).unwrap();
+    // The SDU of MAP 0 begins first, then that of MAP 2.
+    uslp(&mut e, 1, 0, false, &variable(0b100, &[1]));
+    uslp(&mut e, 1, 2, false, &variable(0b100, &[2, 2]));
+    assert_eq!(e.status().assembly.current(), 3);
+    // A gap on MAP 1, which had none: the event names MAP 2, first in the configuration.
+    let got = uslp(&mut e, 1, 1, true, &variable(0b111, &[5])).unwrap();
+    assert_eq!(got, [Got::Event(GapDiscard, 1, 2), Got::Sdu(1, 1, vec![5])]);
+    assert_eq!(e.status().assembly.current(), 0);
+    assert_eq!(e.status().discarded_octets.get(), 3);
+    assert_eq!(e.status().gap_discards.get(), 1);
+}
+
+#[test]
+fn rule_000_is_the_extractors_on_every_map_and_changes_nothing() {
+    // req: LNK-070, LNK-072, API-058; OI-79 (5)
+    // 732.1 §4.1.4.2.2.2.1 and §4.3.2.2: rule `000` is a fixed-length TFDZ of packets that span
+    // frames, extracted with the First Header Pointer, which the `PacketExtractor` does; the
+    // reassembler has no SDU to rebuild from it, on a MAP of any service.
+    let mut e = uslp_engine();
+    uslp(&mut e, 1, 0, false, &variable(0b100, &[1, 2]));
+    let rule = Err((ErrorKind::InvalidField, Some(field::TFDZ_CONSTRUCTION_RULE)));
+    for map in [0, 1, 2] {
+        assert_eq!(uslp(&mut e, 1, map, false, &[0x05, 0, 0, 1, 2]), rule);
+        // A gap flagged on the refused field discards nothing: the input changes no state.
+        assert_eq!(uslp(&mut e, 1, map, true, &[0x05, 0, 0, 1, 2]), rule);
+    }
+    assert_eq!(e.status().refused.get(), 6);
+    assert_eq!(e.status().fdus_in.get(), 1);
+    assert_eq!(e.status().gap_discards.get(), 0);
+    assert_eq!(e.status().assembly.current(), 2);
+}
+
+#[test]
+fn an_encapsulation_length_below_its_header_refuses_the_blocked_fdu() {
+    // req: LNK-071, API-058; OI-79 (4)
+    // 133.1 §4.1.2.8.2 and Table 4-2: the Packet Length field is the length of the whole packet,
+    // header included, so a value below the header (2, 4, or 8 octets) is no length; the reaction
+    // is that of the other blocked FDUs that do not fit (OI-78): the whole FDU is refused.
+    let mut e = tc_engine();
+    let mismatch = Err((ErrorKind::LengthMismatch, Some(field::PACKET_LEN)));
+    for blocked in [
+        // 2-octet header (Length of Length 01): lengths 0 and 1.
+        vec![0xC2, 0xE5, 0x00],
+        vec![0xC2, 0xE5, 0x01, 9],
+        // 4-octet header (10): length 3.
+        vec![0xC2, 0xE6, 0x00, 0x00, 0x03],
+        // 8-octet header (11): length 7.
+        vec![0xC2, 0xE7, 0, 0, 0, 0, 0, 0, 7],
+        // After a good packet.
+        [&[0xC2][..], &spp(8), &[0xE5, 0x01]].concat(),
+    ] {
+        assert_eq!(tc(&mut e, &blocked), mismatch, "{blocked:?}");
+    }
+    assert_eq!(e.status().refused.get(), 5);
+    assert_eq!(e.status().fdus_in.get(), 0);
+    // A length of the header and one octet of data is a packet.
+    assert_eq!(
+        tc(&mut e, &[0xC2, 0xE5, 0x03, 7]),
+        Ok(vec![Got::Packets(1, 2, vec![vec![0xE5, 0x03, 7]])])
+    );
+}
+
+#[test]
+fn a_tc_reassembler_has_no_gap_to_see() {
+    // req: LNK-051, LNK-070; OI-79 (6)
+    // 232.0 §4.4.2.3 and §4.4.1.3: SDUs are rebuilt from the Sequence Flags alone; §4.4.6.1–2:
+    // Type-AD frames reach the MAP functions only after the FARM's acceptance checks (232.1), and
+    // Type-BD frames at once, so a TC `Fdu` has no count and no gap flag. A lost segment shows
+    // only as far as the flags show it.
+    let mut e = tc_engine();
+    // A lost first segment is a sequence violation (a last segment with none in progress).
+    assert_eq!(
+        tc(&mut e, &[0x81, 3, 4]),
+        Ok(vec![Got::Event(SequenceViolation, 1, 1)])
+    );
+    // A lost last segment: the next first segment finds the SDU in progress, which it discards.
+    tc(&mut e, &[0x41, 1, 2]);
+    assert_eq!(
+        tc(&mut e, &[0x41, 5]),
+        Ok(vec![Got::Event(SequenceViolation, 1, 1)])
+    );
+    // A lost continuing segment shows nothing for an SDU: the first and last still join.
+    assert_eq!(tc(&mut e, &[0x81, 6]), Ok(vec![Got::Sdu(1, 1, vec![5, 6])]));
+    // For packets the length field shows it.
+    tc(&mut e, &[&[0x42][..], &spp(14)[..4]].concat());
+    assert_eq!(
+        tc(&mut e, &[&[0x82][..], &spp(14)[8..]].concat()),
+        Err((ErrorKind::LengthMismatch, Some(field::PACKET_LEN)))
+    );
+    assert_eq!(e.status().gap_discards.get(), 0);
 }
