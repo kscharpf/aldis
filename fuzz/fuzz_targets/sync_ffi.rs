@@ -41,8 +41,8 @@ const _: () = assert!(ALDIS_SYNC_SEARCH_MAX_ACTIONS == max_actions(CHUNK));
 /// The usual cap on the frame length this target draws, for the initial configuration and every
 /// reconfiguration. A Reset or reconfiguration is drawn on about one step in eight, and a frame
 /// of up to 65536 octets on each made the target slow; 512 octets keeps the throughput up.
-/// About one configuration in 64 instead draws a length up to the protocol's real maximum (TM
-/// 2048, AOS and USLP 65536), so this target still reaches the capacity of the C handle. The
+/// About one configuration in 1024 instead draws a length up to the protocol's real maximum (TM
+/// 2048, AOS and USLP 65536), so this target still reaches the capacity of the C handle. The cost of a configuration grows with its frame length, and 65536 is about 128 times 512, so a rarer draw (1 in 1024) keeps the expected cost near that of the cap alone. The
 /// `sync_search` target uses a small instance (`FRAME` of 64) and does not cover those lengths;
 /// the SYNC-014 largest-frame test of `crates/aldis-ffi/tests/sync.rs` covers one fixed case.
 const LONG_FRAME_CAP: usize = 512;
@@ -55,7 +55,7 @@ fn draw_config(u: &mut Unstructured<'_>) -> Result<(u32, aldis_sync_search_confi
     };
     // Mostly short frames, so that units complete inside a chunk; sometimes one up to
     // `LONG_FRAME_CAP`; rarely one up to the protocol's maximum.
-    let len = if u.ratio(1, 64)? {
+    let len = if u.ratio(1, 1024)? {
         u.int_in_range(1..=max)?
     } else if u.ratio(1, 8)? {
         u.int_in_range(1..=LONG_FRAME_CAP)?
