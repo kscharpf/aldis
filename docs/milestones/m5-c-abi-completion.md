@@ -3,7 +3,7 @@
 **Goal:** the last milestone of track R for v1. A new Layer 1 crate for CADUs and the TM pseudo-randomizer (ASM attach and search, 131.0 §9–10; OI-12), with its C ABI; a C test harness run under AddressSanitizer and UBSan, and the C ABI under Miri (VER-026); header compile checks across C and C++ standards and compilers (VER-050); the header-only C++20 wrapper `aldis.hpp` of the engine handles (CABI-072); and every v1 requirement of track R traced. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M4](m4-link-engines.md) (`v0.5.0-m4`) · **Release:** `v0.6.0-m5`; v1.0 follows when M5 and A6 have exited (roadmap §5)
 
-**Status: plan accepted; decisions D1–D8 (§2) accepted (maintainer, 2026-11-05).** Entry gate: M4 (roadmap §1), met by `v0.5.0-m4`.
+**Status: exit criteria (§4) met; the release `v0.6.0-m5` is the maintainer's.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-05). Entry gate: M4 (roadmap §1), met by `v0.5.0-m4`.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -24,6 +24,7 @@ A pull request that starts or merges a work package changes only its row (roadma
 History:
 - 2026-11-05: plan drafted following the M4 exit; OI-12 resolved into M5 by the maintainer the same day; D1–D8 accepted.
 - 2026-11-05: WP-7 narrowed to the engine handles; WP-7a cut (maintainer); step calls of `aldis.hpp` return a `[[nodiscard]] enum class aldis::Status`, no `expected`-like type (maintainer).
+- 2026-11-06: WP-10: `trace --scope m5 --strict` gates `cargo xtask ci`, `ci.yml`, and the check `spec` (D1); GEN-071, the last untraced requirement of track R, is traced by the checks `ffi-miri` and `clippy`; the §4 results column filled.
 - 2026-11-06: WP-9: `hazards/sync.md` (13 hazards, with the C/C++ boundary), AC-1.10 and ASM-20 of the assurance case, the Type-BD lost-segment note of OI-79 in `HZ-LINK-01`, the fuzz target `sync_ffi`, the mutants of `aldis-sync` triaged, stack and QEMU measured.
 
 ## 1. Starting point
@@ -116,23 +117,23 @@ The sync chain and the C/C++ chain are independent and run in parallel. If WP-4 
 
 ## 4. Exit criteria
 
-Milestone 5 is complete when every item below is green on `main`. The results column is filled at the WP-10 exit pull request.
+Milestone 5 is complete when every item below is green on `main`. The results column was filled at the WP-10 exit pull request.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Sync crate | SYNC-001…020, RS-021 | |
-| Sync C ABI | CABI-030…032, CABI-040, API-082 | |
-| Sanitizers & Miri | VER-026, GEN-071 | |
-| Header & C code | VER-050, VER-051, VER-055 | |
-| C++ wrapper (engine handles) | CABI-072 | |
-| ABI versioning | CABI-060, GEN-080 | |
-| Concurrency | GEN-033, RS-013, CABI-050 | |
-| Remaining API | API-054, API-059, API-080, CABI-013, CMN-024, USLP-011 | |
-| COP-1 review & WCET | VER-041, VER-012 | |
-| Panic freedom & resources | VER-010, VER-011 | |
-| Verification gates | VER-022…025 | |
-| Vectors and trace | TV-023, VER-020, VER-023 | |
-| Hazards & assurance case | VER-065, VER-066 | |
+| Sync crate | SYNC-001…020, RS-021 | Met. `cargo xtask trace --scope m5 --strict` passes (55 of 55). Area [TM synchronization](../standards/tm-sync.md); the vectors of `test-vectors/sync/` (blind model `test-vectors/models/sync.py`, TV-023) run by `crates/aldis-sync/tests/codec_vectors.rs`; the round trip of VER-023 in `crates/aldis-sync/tests/` |
+| Sync C ABI | CABI-030…032, CABI-040, API-082 | Met. [c-abi.md](../profiles/c-abi.md) §10 "TM sync"; `crates/aldis-ffi/tests/sync.rs` and the sync vectors through the C ABI in `crates/aldis-ffi/tests/vectors.rs`; the fuzz target `sync_ffi`; verify check `header` |
+| Sanitizers & Miri | VER-026, GEN-071 | Met. Verify checks `c-sanitizers` (gating, Clang) and `ffi-miri` (nightly-only by D4, VER-059; `vectors` weekly in `miri-weekly.yml`); GEN-071 is traced by `ffi-miri` and by `clippy` (`undocumented_unsafe_blocks`, `forbid(unsafe_code)` outside `aldis-ffi`) in `CHECK_REQUIREMENTS` (`xtask/src/trace.rs`) |
+| Header & C code | VER-050, VER-051, VER-055 | Met. Verify check `header` (C99, C11, C++11, C++17 on GCC and Clang); records [VER-051](../verification/records/VER-051.md) and [VER-055](../verification/records/VER-055.md) |
+| C++ wrapper (engine handles) | CABI-072 | Met. `include/aldis/aldis.hpp`; the engine-scenario vectors run through it by `crates/aldis-ffi/tests/cpp/`, compiled and run by verify check `header` |
+| ABI versioning | CABI-060, GEN-080 | Met. `crates/aldis-ffi/tests/abi.rs` (CABI-060); record [GEN-080](../verification/records/GEN-080.md) (D6) |
+| Concurrency | GEN-033, RS-013, CABI-050 | Met. `crates/aldis-cop1/tests/engine_contract.rs`, `crates/aldis-link/tests/engine_contract.rs`; `crates/aldis-ffi/tests/engines.rs` |
+| Remaining API | API-054, API-059, API-080, CABI-013, CMN-024, USLP-011 | Met. Traced by tests (`cargo xtask trace --scope m5` lists each); record [API-059](../verification/records/API-059.md) |
+| COP-1 review & WCET | VER-041, VER-012 | Met. Records [VER-041](../verification/records/VER-041.md) and [VER-012](../verification/records/VER-012.md) |
+| Panic freedom & resources | VER-010, VER-011 | Met for `aldis-sync` and its handle: records [VER-010](../verification/records/VER-010.md) and [VER-011](../verification/records/VER-011.md); verify check `stack` and the exerciser run |
+| Verification gates | VER-022…025 | Met. Verify check `coverage` (`coverage-waivers.toml`); records [VER-022](../verification/records/VER-022.md) and [VER-025](../verification/records/VER-025.md); [mutants-triage.md](../verification/mutants-triage.md) for `aldis-sync`; the fuzz targets run nightly |
+| Vectors and trace | TV-023, VER-020, VER-023 | Met. Blind model of `sync`, verify check `spec`; `cargo xtask trace --scope m5 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`, and `cargo xtask trace` shows no untraced requirement outside the APP rows of track A |
+| Hazards & assurance case | VER-065, VER-066 | Met. [hazards/sync.md](../verification/hazards/sync.md), AC-1.10 and ASM-20 of the [assurance case](../verification/assurance-case.md); `cargo xtask assurance --strict` in `cargo xtask ci` |
 
 The roadmap exit: all CABI requirements traced; the codec vectors pass via the C ABI, the engine-scenario vectors also via `aldis.hpp`.
 
