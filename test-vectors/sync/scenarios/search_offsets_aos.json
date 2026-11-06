@@ -1,0 +1,193 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "aos", "frame_len": 9, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-search-aos-skip-000",
+      "description": "0 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 0 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 0.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0CC2B2968EB63CCA6A"}}, "expect": [{"unit": {"data_hex": "0CC2B2968EB63CCA6A", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-001",
+      "description": "1 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 0 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 1.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EB6905C56719AA9F32B00"}}, "expect": [{"unit": {"data_hex": "6D20B8ACE33553E656", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-002",
+      "description": "2 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 2 of its octet, after 0 octets and 2 bits, and returns the unit shifted to an octet boundary with skipped_bits 2.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "46B3FF0773A053BEB1EA5CE45480"}}, "expect": [{"unit": {"data_hex": "CE814EFAC7A9739152", "errors": 0, "skipped_bits": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-003",
+      "description": "3 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 3 of its octet, after 0 octets and 3 bits, and returns the unit shifted to an octet boundary with skipped_bits 3.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83A5FFEAA2E70592518BA0"}}, "expect": [{"unit": {"data_hex": "2FFF5517382C928C5D", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-004",
+      "description": "4 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 0 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 4.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "51ACFFC1D885D5B2D1DA0B2A7590"}}, "expect": [{"unit": {"data_hex": "885D5B2D1DA0B2A759", "errors": 0, "skipped_bits": 4}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-005",
+      "description": "5 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 5 of its octet, after 0 octets and 5 bits, and returns the unit shifted to an octet boundary with skipped_bits 5.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50D67FE0EF4DDB0BDBF13E8A9228"}}, "expect": [{"unit": {"data_hex": "E9BB617B7E27D15245", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-006",
+      "description": "6 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 6 of its octet, after 0 octets and 6 bits, and returns the unit shifted to an octet boundary with skipped_bits 6.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "546B3FF0752865DE454A6FC53504"}}, "expect": [{"unit": {"data_hex": "4A197791529BF14D41", "errors": 0, "skipped_bits": 6}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-007",
+      "description": "7 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 0 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 7.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83B56EEF55D6E3C20F098"}}, "expect": [{"unit": {"data_hex": "AB777AAEB71E10784C", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-008",
+      "description": "8 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 1 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 8.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "551ACFFC1D04D500C4E892301448"}}, "expect": [{"unit": {"data_hex": "04D500C4E892301448", "errors": 0, "skipped_bits": 8}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-009",
+      "description": "9 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 1 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 9.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "550D67FE0EB2998B096688AB87DA00"}}, "expect": [{"unit": {"data_hex": "65331612CD11570FB4", "errors": 0, "skipped_bits": 9}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-015",
+      "description": "15 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 1 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 15.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5554359FF83B450D90393CF42B0546"}}, "expect": [{"unit": {"data_hex": "A286C81C9E7A1582A3", "errors": 0, "skipped_bits": 15}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-016",
+      "description": "16 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 2 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 16.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55551ACFFC1D03E4DE2AF2F934BDAE"}}, "expect": [{"unit": {"data_hex": "03E4DE2AF2F934BDAE", "errors": 0, "skipped_bits": 16}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-017",
+      "description": "17 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 2 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 17.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55550D67FE0ECE2172206BBEAA545500"}}, "expect": [{"unit": {"data_hex": "9C42E440D77D54A8AA", "errors": 0, "skipped_bits": 17}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-031",
+      "description": "31 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 3 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 31.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555554359FF83BA352E963849A1AE9CE"}}, "expect": [{"unit": {"data_hex": "D1A974B1C24D0D74E7", "errors": 0, "skipped_bits": 31}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-032",
+      "description": "32 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 4 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 32.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555551ACFFC1D32067ACE27C12D6FE2"}}, "expect": [{"unit": {"data_hex": "32067ACE27C12D6FE2", "errors": 0, "skipped_bits": 32}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-033",
+      "description": "33 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 4 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 33.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555550D67FE0EC9B200720C22260D7700"}}, "expect": [{"unit": {"data_hex": "936400E418444C1AEE", "errors": 0, "skipped_bits": 33}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-063",
+      "description": "63 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 7 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 63.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555555555554359FF83BEFDA7FD2F1B9FDD2FE"}}, "expect": [{"unit": {"data_hex": "F7ED3FE978DCFEE97F", "errors": 0, "skipped_bits": 63}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-064",
+      "description": "64 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 8 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 64.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555555555551ACFFC1D504BC2075C531E847B"}}, "expect": [{"unit": {"data_hex": "504BC2075C531E847B", "errors": 0, "skipped_bits": 64}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-065",
+      "description": "65 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 8 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 65.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555555555550D67FE0ED8D4E42ED8EB9EDFB380"}}, "expect": [{"unit": {"data_hex": "B1A9C85DB1D73DBF67", "errors": 0, "skipped_bits": 65}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-100",
+      "description": "100 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 4 of its octet, after 12 octets and 4 bits, and returns the unit shifted to an octet boundary with skipped_bits 100.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555555555555555555551ACFFC1DF104B21641DC8D95E20"}}, "expect": [{"unit": {"data_hex": "F104B21641DC8D95E2", "errors": 0, "skipped_bits": 100}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-127",
+      "description": "127 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 15 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 127.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555555555555555555555555554359FF83A76A69F346DF3B14410"}}, "expect": [{"unit": {"data_hex": "3B534F9A36F9D8A208", "errors": 0, "skipped_bits": 127}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-128",
+      "description": "128 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 16 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 128.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555555555555555555555555555551ACFFC1D94B155B06B7DF85E0B"}}, "expect": [{"unit": {"data_hex": "94B155B06B7DF85E0B", "errors": 0, "skipped_bits": 128}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-aos-skip-129",
+      "description": "129 junk bits, then the CADU of a 9-octet aos frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 16 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 129.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555555555555555555555555555550D67FE0EFA17AC66A6780C24BB80"}}, "expect": [{"unit": {"data_hex": "F42F58CD4CF0184977", "errors": 0, "skipped_bits": 129}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

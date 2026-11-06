@@ -622,9 +622,10 @@ fn vector_problems(
 /// that adds it. `cop1/scenarios/` left it when the C ABI runner of M3 WP-6 landed. The `link/`
 /// files went one by one: the `PacketGenerator` and `PacketExtractor` files left with M4 WP-3, the
 /// `ChannelMux`, Access, and Bitstream generator files with WP-4, the `FrameReceiver` files with
-/// WP-5, and the `MapSegmenter` and `MapReassembler` files with WP-6. No file waits for a runner
-/// now; the list stays for the next engine that gets its vectors first.
-const AWAITING_RUNNER: &[&str] = &[];
+/// WP-5, and the `MapSegmenter` and `MapReassembler` files with WP-6. `sync/` (M5 WP-2) waits for
+/// the `aldis-sync` crate (WP-3) and its C ABI (WP-4); the entry goes with the pull request that
+/// adds its runner.
+const AWAITING_RUNNER: &[&str] = &["sync/"];
 
 /// Whether `f`, relative to `test-vectors/`, is a vector file that no runner runs yet. Such a
 /// file is no evidence for `cargo xtask trace` either (`trace.rs`).

@@ -1,0 +1,113 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "uslp", "frame_len": 16, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-search-uslp-skip-000",
+      "description": "0 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 0 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 0.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0D276FD47BF23851DAF7EFD723CA5EF1"}}, "expect": [{"unit": {"data_hex": "0D276FD47BF23851DAF7EFD723CA5EF1", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-001",
+      "description": "1 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 0 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 1.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "0D67FE0EB742BAF0AE38AC2663682CE3DFEBA52880"}}, "expect": [{"unit": {"data_hex": "6E8575E15C71584CC6D059C7BFD74A51", "errors": 0, "skipped_bits": 1}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-007",
+      "description": "7 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 0 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 7.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "54359FF83B49B06FD8C2B43B9E79272D4BC48B8E22"}}, "expect": [{"unit": {"data_hex": "A4D837EC615A1DCF3C9396A5E245C711", "errors": 0, "skipped_bits": 7}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-008",
+      "description": "8 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 1 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 8.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "551ACFFC1D04363D3A42D93CFA38F341557E52F0F1"}}, "expect": [{"unit": {"data_hex": "04363D3A42D93CFA38F341557E52F0F1", "errors": 0, "skipped_bits": 8}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-009",
+      "description": "9 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 1 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 9.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "550D67FE0EB2CA61A853AEAE4A926605A2CCDFF62880"}}, "expect": [{"unit": {"data_hex": "6594C350A75D5C9524CC0B4599BFEC51", "errors": 0, "skipped_bits": 9}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-023",
+      "description": "23 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 2 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 23.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555554359FF83BB5F6A700A55A2B62E10875722F6B2622"}}, "expect": [{"unit": {"data_hex": "DAFB538052AD15B170843AB917B59311", "errors": 0, "skipped_bits": 23}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-024",
+      "description": "24 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 3 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 24.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555551ACFFC1D3B5959DEB62135AC7CE4E4A9B2828CF1"}}, "expect": [{"unit": {"data_hex": "3B5959DEB62135AC7CE4E4A9B2828CF1", "errors": 0, "skipped_bits": 24}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-025",
+      "description": "25 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 3 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 25.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555550D67FE0ECA5BB7FA75D22A23BC62D7ACE777DC2880"}}, "expect": [{"unit": {"data_hex": "94B76FF4EBA4544778C5AF59CEEFB851", "errors": 0, "skipped_bits": 25}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-056",
+      "description": "56 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 7 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 56.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555555555551ACFFC1D599A21162CB026C1F4D6ACA11B2314F2"}}, "expect": [{"unit": {"data_hex": "599A21162CB026C1F4D6ACA11B2314F2", "errors": 0, "skipped_bits": 56}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-057",
+      "description": "57 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 7 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 57.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "555555555555550D67FE0EDD7D9B96009BA37E781B8B28DB9800A900"}}, "expect": [{"unit": {"data_hex": "BAFB372C013746FCF0371651B7300152", "errors": 0, "skipped_bits": 57}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-121",
+      "description": "121 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 1 of its octet, after 15 octets and 1 bits, and returns the unit shifted to an octet boundary with skipped_bits 121.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555555555555555555555555550D67FE0EFF30A3EEEFE8905B408942D044F838A900"}}, "expect": [{"unit": {"data_hex": "FE6147DDDFD120B6811285A089F07152", "errors": 0, "skipped_bits": 121}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-255",
+      "description": "255 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 7 of its octet, after 31 octets and 7 bits, and returns the unit shifted to an octet boundary with skipped_bits 255.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555555555555555555555555555555555555555555555555555555555555554359FF83B074037F29B014339300BFECAA1FEC626"}}, "expect": [{"unit": {"data_hex": "83A01BF94D80A19C9805FF6550FF6313", "errors": 0, "skipped_bits": 255}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-uslp-skip-256",
+      "description": "256 junk bits, then the CADU of a 16-octet uslp frame (frame randomized with the 131071-bit sequence, then the marker): the engine finds the marker at bit offset 0 of its octet, after 32 octets and 0 bits, and returns the unit shifted to an octet boundary with skipped_bits 256.",
+      "requirements": ["SYNC-007", "SYNC-009", "SYNC-011", "SYNC-017"],
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "55555555555555555555555555555555555555555555555555555555555555551ACFFC1DE31E2E17AE04C1B78466AA15ECCC1FF3"}}, "expect": [{"unit": {"data_hex": "E31E2E17AE04C1B78466AA15ECCC1FF3", "errors": 0, "skipped_bits": 256}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

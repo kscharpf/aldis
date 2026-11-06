@@ -1,0 +1,196 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 16, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-units-back-to-back",
+      "description": "Three CADUs back to back at octet alignment: skipped_bits 0 each, and the counters after the third: units_returned 3, skipped_bits_total 0.",
+      "requirements": ["SYNC-009", "SYNC-011", "SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 16, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DD83CFF65A64637110821DDA82050E9521ACFFC1D399A85B29BC5560C74018758BBBD9A321ACFFC1D9AF88BC8FFB9762770627248D68AB692"}}, "expect": [{"unit": {"data_hex": "D83CFF65A64637110821DDA82050E952", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "399A85B29BC5560C74018758BBBD9A32", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "9AF88BC8FFB9762770627248D68AB692", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 3}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-gaps",
+      "description": "CADUs separated by 0, 13, 40 and 3 junk bits: skipped_bits counts the bits between the end of the previous unit and the first marker bit; skipped_bits_total is their sum, 56.",
+      "requirements": ["SYNC-009", "SYNC-011", "SYNC-015"],
+      "config": {"protocol": "aos", "frame_len": 12, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D38FFC69821389DE6033E571BAAA8D67FE0ECCAEE65B015FDE48878F80852AAAAAAAAA8D67FE0EFD5DE9E63399EE4685BFE59D51ACFFC1D5B19D91A5BB6F3B87658B52A"}}, "expect": [{"unit": {"data_hex": "38FFC69821389DE6033E571B", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "995DCCB602BFBC910F1F010A", "errors": 0, "skipped_bits": 13}}, {"unit": {"data_hex": "FABBD3CC6733DC8D0B7FCB3A", "errors": 0, "skipped_bits": 40}}, {"unit": {"data_hex": "5B19D91A5BB6F3B87658B52A", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 4}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 56}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-asm-inside-unit",
+      "description": "A frame that holds the marker (at octet 3; at bit 3 in a second unit) is returned whole: the bits of a unit are not searched. Only two units are returned, with nothing skipped between them.",
+      "requirements": ["SYNC-009"],
+      "config": {"protocol": "uslp", "frame_len": 12, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0000001ACFFC1D11111111111ACFFC1D0359FF83BFFFFFFFFFFFFFFF"}}, "expect": [{"unit": {"data_hex": "0000001ACFFC1D1111111111", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "0359FF83BFFFFFFFFFFFFFFF", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-tail-of-unit-not-reused",
+      "description": "A unit that ends with the first three octets of the marker (1A CF FC) is followed directly by the octet 1D: the window is empty after a unit, so these 32 bits are not a marker and no second unit starts. The CADU after 9 junk bits is then found, with skipped_bits 8 + 9.",
+      "requirements": ["SYNC-007", "SYNC-009"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0102031ACFFC1D550D67FE0ECCE87037811980"}}, "expect": [{"unit": {"data_hex": "0102031ACFFC", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "99D0E06F0233", "errors": 0, "skipped_bits": 17}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-partial-at-end",
+      "description": "A chunk that ends inside the unit returns no action and leaves the engine Collecting; the rest of the unit in the next chunk completes it.",
+      "requirements": ["SYNC-011", "SYNC-012", "SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 20, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DFBF55C388A3E4F786585"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 10}}], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "6DBD09C6B54FCCF20FA5"}}, "expect": [{"unit": {"data_hex": "FBF55C388A3E4F7865856DBD09C6B54FCCF20FA5", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-reset-partial",
+      "description": "A Reset in the middle of a unit discards the partial unit: no action, the state is Searching, the octets that follow are searched as new stream (the rest of the unit, 80 bits, holds no marker), and the next CADU is found with skipped_bits 80; the units already returned stay counted.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 20, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D54536356EFBD6E1360E6D7ACA4D3A62FABDDC703"}}, "expect": [{"unit": {"data_hex": "54536356EFBD6E1360E6D7ACA4D3A62FABDDC703", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 1}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ACFFC1DB5B16963C3318E0F6CC6"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 0}}], "expect_state": "Searching"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "815CC020538F09279C6E1ACFFC1D162F7FB924B4AD3A68274B4C5B0D4C6FE70154CC"}}, "expect": [{"unit": {"data_hex": "162F7FB924B4AD3A68274B4C5B0D4C6FE70154CC", "errors": 0, "skipped_bits": 80}}], "expect_state": "Searching"},
+        {"at_us": 7000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-reset-window",
+      "description": "A Reset empties the window: the first 24 bits of the marker, a Reset, then the last 8 bits do not make a marker. A whole marker after that is found with skipped_bits 8: the 8 bits read after the Reset (the count restarts at the Reset).",
+      "requirements": ["SYNC-007", "SYNC-015"],
+      "config": {"protocol": "aos", "frame_len": 2, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "1ACFFC1D752B"}}, "expect": [{"unit": {"data_hex": "752B", "errors": 0, "skipped_bits": 8}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-reset-keeps-counters",
+      "description": "A Reset keeps units_returned: two units, a Reset, a third unit; the counter reads 2 before the Reset, 2 after it, and 3 after the third unit.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 3, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1DD661B71ACFFC1D37DFBA"}}, "expect": [{"unit": {"data_hex": "D661B7", "errors": 0, "skipped_bits": 0}}, {"unit": {"data_hex": "37DFBA", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1ACFFC1D903D40"}}, "expect": [{"unit": {"data_hex": "903D40", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 6000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-total-after-reset",
+      "description": "The total of skipped bits is the sum of the skipped_bits of the units returned (OI-83 a): 5 junk bits and a unit give 5; bits read in a search that a Reset cuts short, and a unit being collected when it comes, add nothing; a unit after the Reset with 3 skipped bits gives 8.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "50D67FE0EB39A88F4550"}}, "expect": [{"unit": {"data_hex": "673511E8", "errors": 0, "skipped_bits": 5}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1ACFFC1DC093"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 6000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Collecting"},
+        {"at_us": 7000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 8000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 5}}], "expect_state": "Searching"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "4359FF83A41E25AB80"}}, "expect": [{"unit": {"data_hex": "20F12D5C", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"},
+        {"at_us": 10000, "input": {"query": {"counter": "skipped_bits_total"}}, "expect": [{"counter": {"name": "skipped_bits_total", "value": 8}}], "expect_state": "Searching"},
+        {"at_us": 11000, "input": {"query": {"counter": "units_returned"}}, "expect": [{"counter": {"name": "units_returned", "value": 2}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-partial-octets-rounds-down",
+      "description": "The octets of the partial unit are the complete ones (OI-83 b): a marker at bit offset 3 and a 10-octet frame, read up to 5 octets and 5 bits of the unit, give 5; after the next octet (6 octets and 5 bits), 6.",
+      "requirements": ["SYNC-015"],
+      "config": {"protocol": "aos", "frame_len": 10, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "4359FF83B05B6396026C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 5}}], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "6B"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"query": {"counter": "partial_octets"}}, "expect": [{"counter": {"name": "partial_octets", "value": 6}}], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "77E51F60"}}, "expect": [{"unit": {"data_hex": "82DB1CB013635BBF28FB", "errors": 0, "skipped_bits": 3}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-complemented-marker",
+      "description": "The engine does not search for the complemented marker (OI-81): a stream of tolerance 0 that carries the complement of the marker (E530 03E2) and a frame gives no unit and stays Searching, at bit offsets 0 and 5; the true marker that follows after a Reset is found.",
+      "requirements": ["SYNC-019", "SYNC-007"],
+      "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "E53003E25800FB82"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "5729801F15CBF476F8"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1ACFFC1D1ADC94F5"}}, "expect": [{"unit": {"data_hex": "1ADC94F5", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-marker-needs-32-bits",
+      "description": "Tolerance 13: 24 bits of ones read since the start are not a window (a match needs 32 bits): no unit, the engine stays Searching; the fourth octet of ones completes 32 bits, which differ from the marker in 13 bits, and the engine starts Collecting.",
+      "requirements": ["SYNC-007"],
+      "config": {"protocol": "tm", "frame_len": 1, "asm_errors": 13},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "FFFFFF"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "FF"}}, "expect": [], "expect_state": "Collecting"}
+      ]
+    },
+    {
+      "id": "sync-units-length-1",
+      "description": "A 1-octet frame length: the unit has exactly one octet.",
+      "requirements": ["SYNC-009", "SYNC-011"],
+      "config": {"protocol": "tm", "frame_len": 1, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D02"}}, "expect": [{"unit": {"data_hex": "02", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-length-2",
+      "description": "A 2-octet frame length: the unit has exactly 2 octets, found after 2 octets and 6 bits of junk, in chunks of 17 octets.",
+      "requirements": ["SYNC-009", "SYNC-011"],
+      "config": {"protocol": "uslp", "frame_len": 2, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555546B3FF0757460"}}, "expect": [{"unit": {"data_hex": "5D18", "errors": 0, "skipped_bits": 22}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-length-5",
+      "description": "A 5-octet frame length: the unit has exactly 5 octets, found after 2 octets and 6 bits of junk, in chunks of 17 octets.",
+      "requirements": ["SYNC-009", "SYNC-011"],
+      "config": {"protocol": "uslp", "frame_len": 5, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555546B3FF075E3E3D0701C"}}, "expect": [{"unit": {"data_hex": "78F8F41C07", "errors": 0, "skipped_bits": 22}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-units-length-64",
+      "description": "A 64-octet frame length: the unit has exactly 64 octets, found after 2 octets and 6 bits of junk, in chunks of 17 octets.",
+      "requirements": ["SYNC-009", "SYNC-011"],
+      "config": {"protocol": "uslp", "frame_len": 64, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "5555546B3FF077748BBBA6DC4A4EACE73E"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "C39D73D20D4A4B8D88203AC792F868D08D"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "CB934F8F9B35664F859E4ACB0EEC80B3F7"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "F2A549DB3FADE5B3ABE8C2EF1C0F52E47C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "94C16C"}}, "expect": [{"unit": {"data_hex": "DD22EEE9B71293AB39CFB0E75CF4835292E362080EB1E4BE1A342372E4D3E3E6CD5993E16792B2C3BB202CFDFCA95276CFEB796CEAFA30BBC703D4B91F25305B", "errors": 0, "skipped_bits": 22}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}
