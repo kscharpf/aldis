@@ -51,6 +51,7 @@ pub enum Group {
         reason = "test-vectors/link/ holds engine scenarios the host suites run, so no generated case builds it (M4 WP-3)"
     )]
     Link,
+    Sync,
 }
 
 /// The expected outcome of a case.
@@ -473,6 +474,7 @@ pub fn run(t: &mut Tally) {
             Group::Uslp => crate::uslp::vector(case, &mut out, &mut scratch),
             Group::Cop1 => crate::farm1::vector(case),
             Group::Link => crate::link::vector(case),
+            Group::Sync => crate::sync::vector(case, &mut out, &mut scratch),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

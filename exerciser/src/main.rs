@@ -33,6 +33,7 @@ mod link_map;
 mod link_send;
 mod ocf;
 mod spp;
+mod sync;
 mod target;
 mod tc;
 mod time;

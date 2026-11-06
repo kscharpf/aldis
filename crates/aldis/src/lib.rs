@@ -18,6 +18,7 @@
 //! | `tc` | `aldis::tc` (`aldis-tc`): TC Transfer Frames, CLCW | 232.0 | TC-001…TC-031 |
 //! | `aos` | `aldis::aos` (`aldis-aos`): AOS Transfer Frames | 732.0 | AOS-001…AOS-020 |
 //! | `uslp` | `aldis::uslp` (`aldis-uslp`): USLP Transfer Frames, truncated frames, delimiting, validation | 732.1 | USLP-001…USLP-017 |
+//! | `sync` | `aldis::sync` (`aldis-sync`): ASM attach, pseudo-randomizer, ASM search engine | 131.0 §9, §10 | SYNC-001…SYNC-020 |
 //! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-082 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
 //! | `framework` | `aldis::framework` (`aldis-framework`): transports, clocks, stacks | `docs/05-framework.md` | FW-001…FW-021 |
@@ -53,6 +54,10 @@ pub use aldis_link as link;
 /// time secondary header (133.0 §4.1.4.2.2, SPP-008) also needs feature `spp-time`.
 #[cfg(feature = "spp")]
 pub use aldis_spp as spp;
+/// TM synchronization: ASM, CADU, pseudo-randomizer (131.0 §9, §10; SYNC-001…SYNC-020).
+/// Feature `sync`.
+#[cfg(feature = "sync")]
+pub use aldis_sync as sync;
 /// TC Space Data Link Protocol frames and the CLCW (232.0; TC-001…TC-031). Feature `tc`.
 #[cfg(feature = "tc")]
 pub use aldis_tc as tc;

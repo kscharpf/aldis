@@ -28,6 +28,7 @@ aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 aldis-ffi = { path = "../crates/aldis-ffi", default-features = false, features = ["panic-unreachable"] }
 aldis-link = { path = "../crates/aldis-link", default-features = false, features = ["spp", "epp", "tm", "tc", "aos", "uslp"] }
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }
+aldis-sync = { path = "../crates/aldis-sync", default-features = false }
 aldis-tc = { path = "../crates/aldis-tc", default-features = false }
 aldis-time = { path = "../crates/aldis-time", default-features = false }
 aldis-uslp = { path = "../crates/aldis-uslp", default-features = false }

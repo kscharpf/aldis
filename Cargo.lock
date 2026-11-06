@@ -13,6 +13,7 @@ dependencies = [
  "aldis-framework",
  "aldis-link",
  "aldis-spp",
+ "aldis-sync",
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
@@ -98,6 +99,15 @@ dependencies = [
  "aldis-core",
  "aldis-testkit",
  "aldis-time",
+ "serde_json",
+]
+
+[[package]]
+name = "aldis-sync"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+ "aldis-testkit",
  "serde_json",
 ]
 

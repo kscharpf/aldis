@@ -13,6 +13,7 @@ dependencies = [
  "aldis-framework",
  "aldis-link",
  "aldis-spp",
+ "aldis-sync",
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
@@ -73,6 +74,7 @@ dependencies = [
  "aldis-ffi",
  "aldis-link",
  "aldis-spp",
+ "aldis-sync",
  "aldis-tc",
  "aldis-testkit",
  "aldis-time",
@@ -100,6 +102,13 @@ version = "0.4.0"
 dependencies = [
  "aldis-core",
  "aldis-time",
+]
+
+[[package]]
+name = "aldis-sync"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
 ]
 
 [[package]]

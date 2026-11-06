@@ -460,6 +460,7 @@ pub fn run() -> Tally {
     crate::ffi::run(&mut t);
     crate::link::run(&mut t);
     crate::spp::run(&mut t);
+    crate::sync::run(&mut t);
     crate::tc::run(&mut t);
     crate::time::run(&mut t);
     crate::uslp::run(&mut t);
