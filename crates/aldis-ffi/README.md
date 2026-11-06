@@ -38,7 +38,7 @@ if (rc == ALDIS_ERR_INCOMPLETE) {
 - [`src/`](src/): one module per codec (`spp`, `spp_state`, `time`, `epp`, `tm`, `tc`, `aos`, `uslp`), per COP-1 engine (`fop1`, `farm1`), and per shared `aldis-core` module (`crc`, `ocf`, `oid`), the pointer checks (`abi`), the handle storage (`handle`), the status codes (`error`), and two generated modules: `field` (`cargo xtask fields --write`) and `capacities` (`cargo xtask header --write`).
 - [`capacities.toml`](capacities.toml): the engine capacities fixed when the library is built, which become `ALDIS_*_MAX_*` constants in the header (CABI-030, GEN-011). Only the sections that have a C ABI are published: `[spp]`; `[tc]`, the MAPs one TC call takes (`ALDIS_TC_MAX_MAPS`); and `[uslp]`, the channel table of the `aldis_uslp_*` calls (`ALDIS_USLP_MAX_VCS`, `ALDIS_USLP_MAX_MAPS`).
 - [`cbindgen.toml`](cbindgen.toml): the header generator's configuration (CABI-002, CABI-003).
-- [`tests/vectors.rs`](tests/vectors.rs): every live case of `test-vectors/{time,spp,epp,tm,tc,aos,uslp}/` and of `test-vectors/core/{crc16,ocf,oid}.json` through the C ABI (M2 plan D4); [`tests/abi.rs`](tests/abi.rs): the argument, detail, and handle rules; [`tests/tm.rs`](tests/tm.rs): the TM channel arrays, security layout variants, and the OID encoder; [`tests/tc.rs`](tests/tc.rs): the TC channel and MAP arrays, the security layouts of a VC or MAP, the delimiter, the validation reasons, Control Commands, and the CLCW; [`tests/aos.rs`](tests/aos.rs): the same for AOS, with the FHEC and data unit decoders; [`tests/uslp.rs`](tests/uslp.rs): the USLP channel arrays and capacities, the tagged view, the validation reasons, the delimiter, and the OID generator handle; [`tests/c/smoke.c`](tests/c/smoke.c): a C program against the libraries.
+- [`tests/vectors.rs`](tests/vectors.rs): every live case of `test-vectors/{time,spp,epp,tm,tc,aos,uslp}/` and of `test-vectors/core/{crc16,ocf,oid}.json` through the C ABI (M2 plan D4); [`tests/abi.rs`](tests/abi.rs): the argument, detail, and handle rules; [`tests/tm.rs`](tests/tm.rs): the TM channel arrays, security layout variants, and the OID encoder; [`tests/tc.rs`](tests/tc.rs): the TC channel and MAP arrays, the security layouts of a VC or MAP, the delimiter, the validation reasons, Control Commands, and the CLCW; [`tests/aos.rs`](tests/aos.rs): the same for AOS, with the FHEC and data unit decoders; [`tests/uslp.rs`](tests/uslp.rs): the USLP channel arrays and capacities, the tagged view, the validation reasons, the delimiter, and the OID generator handle; [`tests/c/smoke.c`](tests/c/smoke.c): a C program against the libraries; [`tests/cpp/`](tests/cpp/): the engine-scenario vectors of `test-vectors/cop1/` and `test-vectors/link/` through the C++ wrapper, and the lifecycle and capacity checks of its handles.
 
 ## The header
 
@@ -49,7 +49,28 @@ cargo install --locked cbindgen@0.29.4
 cargo xtask header --write            # regenerate after changing src/ or capacities.toml
 cargo xtask header                    # check: what the verify check `header` runs
 cargo xtask header c-smoke cc c++     # libraries built; the header as C99, C11, C23, C++11, C++17 (CABI-001, CABI-003, VER-050)
+cargo xtask header cpp-engines c++    # aldis.hpp as C++20 without exceptions; the engine vectors through it (CABI-072)
 cargo xtask header c-tidy clang-tidy  # CERT C checks of the C code (VER-051)
+```
+
+## The C++ wrapper
+
+`include/aldis/aldis.hpp` is hand-written and header-only: C++20 RAII handle types over the engine handles of `aldis.h` (FOP-1, FARM-1, the CLTU packer, and the link engines), with no exceptions (CABI-072). The codec functions are not wrapped. A handle holds the typed storage struct of the C ABI as a member and is neither copied nor moved; `init` places the engine, the destructor releases it. The capacities are template parameters that `static_assert` against the `ALDIS_*_MAX_*` constants. Every call returns a `[[nodiscard]] aldis::Status` that mirrors the C status codes, and the buffers are `std::span`.
+
+```cpp
+#include "aldis/aldis.hpp"
+
+aldis::Fop1<ALDIS_FOP1_SENT_QUEUE_FRAMES, ALDIS_FOP1_MAX_FRAME_OCTETS> fop1;
+aldis_fop1_config_t config = {/* the managed parameters of 232.1 Table 7-1 */};
+if (aldis::ok(fop1.init(config))) {
+    aldis_fop1_input_t input = {};
+    input.kind = ALDIS_FOP1_INPUT_TIMEOUT;
+    std::uint8_t area[64];
+    aldis_fop1_actions_t actions;
+    if (aldis::ok(fop1.step(input, {}, now_us, area, actions))) {
+        // read actions.items[0 .. actions.count) and the ranges they name in `area`
+    }
+}
 ```
 
 On a merge conflict in the header, merge the sources and regenerate ([M2 plan](../../docs/milestones/m2-frame-codecs.md) §3).
