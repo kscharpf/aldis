@@ -96,13 +96,13 @@ These rules let separate contributors, or separate agents, each own one track.
 
 ## 7. Later standards (proposed order)
 
-After v1, SDLS comes before the framework (maintainer, 2026-11-06). The v1.2 placement of the TM codes is the coordinator's proposal and awaits the maintainer.
+After v1, SDLS comes before the framework (maintainer, 2026-11-06). The TM codes follow in v1.2 (maintainer, 2026-11-06). The v1.1 and v1.2 rows are decided; the rows after them are the proposed order.
 
 | Release | Standards | Rationale |
 |---|---|---|
 | v1.1 | Minimal TC sync/coding: CLTU (BCH) build/parse and the TC randomizer (231.0 §3, §5–6); the TM part (ASM, randomizer) is in M5 (OI-12), and the UTC/TAI leap-second table trait | Lets v1 frames reach real radios without an external modem library |
 | v1.1 | 355.0 SDLS baseline: the 355.0 procedures with the 352.0 baseline algorithms (AES-GCM authenticated encryption). Cryptography goes through a pluggable provider trait: no third-party runtime dependency in Layers 0–2 (GEN-001), a test provider for the vectors, real providers outside the core. Scope and provider boundary: OI-84, OI-85 | Maintainer decision 2026-11-06: SDLS before the framework. Hooks already reserved in v1 (API-070…075) |
-| v1.2 | TM Reed-Solomon (255,223) with interleaving, and convolutional coding (rate 1/2, k=7), from 131.0 (coordinator's proposal, to confirm) | The codes the TM links use most; completes the TM side beyond the CADU of M5 |
+| v1.2 | TM Reed-Solomon (255,223) with interleaving, and convolutional coding (rate 1/2, k=7), from 131.0 | The codes the TM links use most; completes the TM side beyond the CADU of M5 |
 | later | The framework `aldis-framework` (M6, FW requirements of [05](05-framework.md)), and the reference application's move onto its stacks and trace/replay | Taken up when a second user, or the application's move onto it, justifies it; the application's own run loop serves until then |
 | later | 355.1 extended procedures (key and SA management over the link) | Needs the 355.0 baseline first |
 | v2 | 727.0 CFDP (Class 1 and Class 2, sans-I/O, filestore trait) | Highest-demand application protocol |
