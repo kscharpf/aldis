@@ -485,9 +485,9 @@ fn rust() -> Vec<Check> {
             ..check("rust-sparc-leon3", c, false, 67, RUST_LEON3)
         },
     ));
+    out.push(ffi_miri_check());
     // The Kani proof harnesses (OI-42, docs/verification/formal-verification.md): reported, not gating,
     // and run only at night (maintainer decision 2026-10-24).
-    out.push(ffi_miri_check());
     out.push(Check {
         gating: false,
         nightly: true,
@@ -525,8 +525,13 @@ fn c_sanitizer_checks() -> Vec<Check> {
     )]
 }
 
+/// Its typical duration in seconds: the sum of the per-binary times under Miri without the
+/// `vectors` test (M5 plan, WP-5 notes), plus the build.
+const MIRI_SECS: u16 = 600;
+
 /// The check `ffi-miri`: nightly-only and non-gating like `kani`, since Miri over the `aldis-ffi`
-/// tests runs for hours (m5 plan D4, VER-059).
+/// tests takes far longer than 10 minutes (m5 plan D4, VER-059). It leaves out the `vectors`
+/// test, which takes about two hours and runs weekly (`.github/workflows/miri-weekly.yml`).
 fn ffi_miri_check() -> Check {
     Check {
         gating: false,
@@ -594,9 +599,6 @@ fn exerciser(target: &str) -> String {
 /// `no-std-<target>`, and the exerciser runs as in `exerciser-<target>`: the panic-freedom link
 /// check, its canary, and every vector case under QEMU `leon3_generic` (VER-010). The linker
 /// and the QEMU command are in `exerciser/.cargo/config.toml`.
-/// Measured: the `vectors` test of `aldis-ffi` alone took 7830 s under Miri.
-const MIRI_SECS: u16 = 8000;
-
 const RUST_LEON3: &str = r#"
 # Reported against OI-08, never a gate.
 t=sparc-unknown-none-elf
@@ -658,19 +660,24 @@ cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const FFI_MIRI_SCRIPT: &str = r#"
-# The aldis-ffi tests under Miri on the tooling nightly (VER-026, GEN-071; m5 plan D4). The
-# vector tests read test-vectors/, which Miri's isolation forbids. Tree Borrows, not the
-# default Stacked Borrows: the tests hand a caller's buffer to the library through raw
-# pointers, which Stacked Borrows rejects in the test code itself.
+# The aldis-ffi tests under Miri on the tooling nightly, Stacked Borrows (VER-026, GEN-071; m5
+# plan D4): the unit tests and every integration test but `vectors`, which takes about two
+# hours and runs weekly (.github/workflows/miri-weekly.yml). Isolation is off: the tests read
+# test-vectors/.
 nightly="$(cat tooling-nightly)"
-MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-tree-borrows" \
-  cargo +"$nightly" miri test --locked -p aldis-ffi
+tests=()
+for f in crates/aldis-ffi/tests/*.rs; do
+  name="$(basename "$f" .rs)"
+  [ "$name" = vectors ] || tests+=(--test "$name")
+done
+MIRIFLAGS="-Zmiri-disable-isolation" \
+  cargo +"$nightly" miri test --locked -p aldis-ffi --lib "${tests[@]}"
 "#;
 
 const C_SANITIZERS_SCRIPT: &str = "\
-# The C vector harness of aldis-ffi, built with -fsanitize=address,undefined by each pinned
-# compiler, runs the shared vectors through the C ABI (VER-026). It prints the compiler it ran.
-cargo xtask header sanitizers gcc-14
+# The C vector harness of aldis-ffi, built with -fsanitize=address,undefined by the pinned clang,
+# runs the shared vectors through the C ABI (VER-026). It prints the compiler it ran. Clang only,
+# by decision of the maintainer (2026-11-05): GCC stays in the header checks (VER-050).
 cargo xtask header sanitizers clang
 ";
 
@@ -828,7 +835,7 @@ mod tests {
                 assert!(at(quick) < at(slow), "{quick} before {slow}");
             }
         }
-        assert_eq!(order.last().map(|c| c.name.as_str()), Some("ffi-miri"));
+        assert_eq!(order.last().map(|c| c.name.as_str()), Some("kani"));
     }
 
     // req: VER-056, VER-059

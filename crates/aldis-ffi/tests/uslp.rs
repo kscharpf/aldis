@@ -161,6 +161,18 @@ impl Channels {
         out: &mut [u8],
         det: &mut aldis_error_detail_t,
     ) -> (u32, usize) {
+        self.encode_raw(fl, ct, out.as_mut_ptr(), out.len(), det)
+    }
+
+    /// As `encode`, with the output as a raw pointer, for content that points into it.
+    fn encode_raw(
+        &self,
+        fl: &aldis_uslp_fields_t,
+        ct: &aldis_uslp_content_t,
+        out: *mut u8,
+        cap: usize,
+        det: &mut aldis_error_detail_t,
+    ) -> (u32, usize) {
         let mut len = 0;
         // SAFETY: every pointer is to a live local, struct, or vector, with its length.
         let rc = unsafe {
@@ -172,8 +184,8 @@ impl Channels {
                 self.maps.len(),
                 fl,
                 ct,
-                out.as_mut_ptr(),
-                out.len(),
+                out,
+                cap,
                 &raw mut len,
                 det,
             )
@@ -950,13 +962,15 @@ fn content_and_fields_are_checked_as_arguments() {
     }
     // An output overlapping the TFDZ.
     let mut buf = [0_u8; 64];
+    let buf_ptr = buf.as_mut_ptr();
     let overlapping = aldis_uslp_content_t {
-        tfdz: buf.as_ptr().wrapping_add(10),
+        tfdz: buf_ptr.wrapping_add(10).cast_const(),
         tfdz_len: 3,
         ..ct
     };
     assert_eq!(
-        ch.encode(&fl, &overlapping, &mut buf, &mut det).0,
+        ch.encode_raw(&fl, &overlapping, buf_ptr, buf.len(), &mut det)
+            .0,
         ALDIS_ERR_INVALID_FIELD
     );
     // NULL fields and content.
@@ -1148,8 +1162,10 @@ fn stream_rejects_overlapping_pointers() {
 
     // 1. offset pointing into unit buffer is rejected
     let mut buffer = [0_usize; 8];
-    let unit_ptr = buffer.as_ptr().cast::<u8>();
+    // The mutable pointer first, the other derived from it: a later borrow of `buffer` would end
+    // an earlier one (Stacked Borrows).
     let offset_ptr = buffer.as_mut_ptr();
+    let unit_ptr = offset_ptr.cast::<u8>().cast_const();
     // SAFETY: pointers point to valid aligned stack buffer
     let rc = unsafe {
         aldis_uslp_stream_next(

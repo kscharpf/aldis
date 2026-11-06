@@ -464,7 +464,7 @@ fn a_farm1_step_checks_every_argument() {
     unsafe {
         assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
         let good = farm1_ad(0, &data);
-        let call = |s: &mut aldis_farm1_t,
+        let call = |s: *mut aldis_farm1_t,
                     input: *const aldis_farm1_input_t,
                     out: *mut u8,
                     cap: usize,
@@ -473,13 +473,13 @@ fn a_farm1_step_checks_every_argument() {
         };
         let (o, n) = (out.as_mut_ptr(), out.len());
         let a = &raw mut actions;
-        assert_eq!(call(&mut s, null(), o, n, a), ALDIS_ERR_INVALID_FIELD);
+        assert_eq!(call(&raw mut *s, null(), o, n, a), ALDIS_ERR_INVALID_FIELD);
         assert_eq!(
-            call(&mut s, &raw const good, o, n, null_mut()),
+            call(&raw mut *s, &raw const good, o, n, null_mut()),
             ALDIS_ERR_INVALID_FIELD
         );
         assert_eq!(
-            call(&mut s, &raw const good, null_mut(), 1, a),
+            call(&raw mut *s, &raw const good, null_mut(), 1, a),
             ALDIS_ERR_INVALID_FIELD
         );
         // Enumeration with no constant, flag that is not 0 or 1.
@@ -501,7 +501,7 @@ fn a_farm1_step_checks_every_argument() {
             },
         ] {
             assert_eq!(
-                call(&mut s, &raw const bad, o, n, a),
+                call(&raw mut *s, &raw const bad, o, n, a),
                 ALDIS_ERR_INVALID_FIELD
             );
         }
@@ -513,21 +513,21 @@ fn a_farm1_step_checks_every_argument() {
             ..good
         };
         assert_eq!(
-            call(&mut s, &raw const aliased, o, n, a),
+            call(&raw mut *s, &raw const aliased, o, n, a),
             ALDIS_ERR_INVALID_FIELD
         );
         // The output buffer or the actions inside the storage, the actions in the output.
         let inside_mut = (&raw mut *s).cast::<u8>().wrapping_add(16);
         assert_eq!(
-            call(&mut s, &raw const good, inside_mut, 4, a),
+            call(&raw mut *s, &raw const good, inside_mut, 4, a),
             ALDIS_ERR_INVALID_FIELD
         );
         assert_eq!(
-            call(&mut s, &raw const good, o, n, inside_mut.cast()),
+            call(&raw mut *s, &raw const good, o, n, inside_mut.cast()),
             ALDIS_ERR_INVALID_FIELD
         );
         assert_eq!(
-            call(&mut s, &raw const good, a.cast::<u8>(), 8, a),
+            call(&raw mut *s, &raw const good, a.cast::<u8>(), 8, a),
             ALDIS_ERR_INVALID_FIELD
         );
         // The output buffer overlapping the input buffer.
@@ -537,7 +537,7 @@ fn a_farm1_step_checks_every_argument() {
             ..good
         };
         assert_eq!(
-            call(&mut s, &raw const both, o, n, a),
+            call(&raw mut *s, &raw const both, o, n, a),
             ALDIS_ERR_INVALID_FIELD
         );
         // A misaligned detail fails before anything happens.
@@ -562,7 +562,7 @@ fn a_farm1_step_checks_every_argument() {
             buffer_available: 0,
             ..good
         };
-        assert_eq!(call(&mut s, &raw const wait, o, n, a), 0);
+        assert_eq!(call(&raw mut *s, &raw const wait, o, n, a), 0);
         assert_eq!(
             aldis_farm1_step(&raw mut *s, &raw const good, 0, o, n, a, &raw mut d),
             ALDIS_ERR_INVALID_STATE
@@ -715,7 +715,7 @@ fn a_fop1_step_checks_every_argument() {
     // that is rejected before any access through it.
     unsafe {
         assert_eq!(aldis_fop1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
-        let call = |s: &mut aldis_fop1_t, input: *const aldis_fop1_input_t, out: &mut [u8]| {
+        let call = |s: *mut aldis_fop1_t, input: *const aldis_fop1_input_t, out: &mut [u8]| {
             aldis_fop1_step(s, input, 0, out.as_mut_ptr(), out.len(), ap, null_mut())
         };
         let request = aldis_fop1_input_t {
@@ -723,7 +723,7 @@ fn a_fop1_step_checks_every_argument() {
             data_len: data.len(),
             ..fop1_input(ALDIS_FOP1_INPUT_REQUEST_AD)
         };
-        assert_eq!(call(&mut s, null(), &mut out), ALDIS_ERR_INVALID_FIELD);
+        assert_eq!(call(&raw mut *s, null(), &mut out), ALDIS_ERR_INVALID_FIELD);
         for (bad, want) in [
             (fop1_input(99), ALDIS_ERR_INVALID_FIELD),
             (
@@ -764,7 +764,7 @@ fn a_fop1_step_checks_every_argument() {
                 ALDIS_ERR_INVALID_FIELD,
             ),
         ] {
-            assert_eq!(call(&mut s, &raw const bad, &mut out), want, "{bad:?}");
+            assert_eq!(call(&raw mut *s, &raw const bad, &mut out), want, "{bad:?}");
         }
         // An input buffer inside the storage, and an output buffer inside it.
         let inside = (&raw const *s).cast::<u8>().wrapping_add(64);
@@ -774,7 +774,7 @@ fn a_fop1_step_checks_every_argument() {
             ..request
         };
         assert_eq!(
-            call(&mut s, &raw const aliased, &mut out),
+            call(&raw mut *s, &raw const aliased, &mut out),
             ALDIS_ERR_INVALID_FIELD
         );
         let inside_mut = (&raw mut *s).cast::<u8>().wrapping_add(64);
@@ -796,7 +796,7 @@ fn a_fop1_step_checks_every_argument() {
             ..fop1_input(ALDIS_FOP1_INPUT_CLCW)
         };
         assert_eq!(
-            call(&mut s, &raw const other, &mut out),
+            call(&raw mut *s, &raw const other, &mut out),
             ALDIS_ERR_UNKNOWN_CHANNEL
         );
         let own = u32::from_be_bytes([0x01, 1 << 2, 0, 0]);
@@ -804,19 +804,19 @@ fn a_fop1_step_checks_every_argument() {
             clcw: own,
             ..fop1_input(ALDIS_FOP1_INPUT_CLCW)
         };
-        assert_eq!(call(&mut s, &raw const ok, &mut out), 0);
+        assert_eq!(call(&raw mut *s, &raw const ok, &mut out), 0);
         let invalid = aldis_fop1_input_t {
             clcw: own | 0x8000_0000,
             ..fop1_input(ALDIS_FOP1_INPUT_CLCW)
         };
-        assert_eq!(call(&mut s, &raw const invalid, &mut out), 0);
+        assert_eq!(call(&raw mut *s, &raw const invalid, &mut out), 0);
         // A directive value that does not fit is E40, a notification and no error.
         let too_big = aldis_fop1_input_t {
             directive: ALDIS_FOP1_DIRECTIVE_SET_K,
             value: 300,
             ..fop1_input(ALDIS_FOP1_INPUT_DIRECTIVE)
         };
-        assert_eq!(call(&mut s, &raw const too_big, &mut out), 0);
+        assert_eq!(call(&raw mut *s, &raw const too_big, &mut out), 0);
         assert_eq!(actions.count, 1);
         let notice = actions.items[0];
         assert_eq!(
@@ -828,16 +828,16 @@ fn a_fop1_step_checks_every_argument() {
             )
         );
         let unparsed = fop1_input(ALDIS_FOP1_INPUT_INVALID_DIRECTIVE);
-        assert_eq!(call(&mut s, &raw const unparsed, &mut out), 0);
+        assert_eq!(call(&raw mut *s, &raw const unparsed, &mut out), 0);
         assert_eq!(actions.items[0].status, ALDIS_FOP1_NOTICE_REJECT);
         // A frame buffer shorter than the frame.
         let initiate = aldis_fop1_input_t {
             directive: ALDIS_FOP1_DIRECTIVE_INITIATE_AD_WITHOUT_CLCW_CHECK,
             ..fop1_input(ALDIS_FOP1_INPUT_DIRECTIVE)
         };
-        assert_eq!(call(&mut s, &raw const initiate, &mut out), 0);
+        assert_eq!(call(&raw mut *s, &raw const initiate, &mut out), 0);
         assert_eq!(
-            call(&mut s, &raw const request, &mut out[..4]),
+            call(&raw mut *s, &raw const request, &mut out[..4]),
             ALDIS_ERR_BUFFER_TOO_SMALL
         );
         // The state survived all of it.

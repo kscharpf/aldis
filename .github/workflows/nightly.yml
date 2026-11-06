@@ -47,7 +47,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 330 # ffi-miri alone ran 2 h 10 min locally (m5 plan D4)
+    timeout-minutes: 180
     permissions:
       contents: read
       packages: write # push the verification image (VER-060)

@@ -1,14 +1,16 @@
 /*
  * C vector harness of the aldis-ffi library (VER-026, GEN-071): runs live cases of the shared
- * vectors of test-vectors/ through the C ABI of include/aldis/aldis.h. `cargo xtask sanitizers`
- * builds it with -fsanitize=address,undefined and runs it with the path of test-vectors/.
+ * vectors of test-vectors/ through the C ABI of include/aldis/aldis.h. `cargo xtask header
+ * sanitizers <cc>` builds it with -fsanitize=address,undefined and runs it with the path of
+ * test-vectors/.
  *
  * It covers the codecs CRC-16, Space Packet (decode, peek_length, encode), Encapsulation Packet
  * (decode, peek_length), and TM frame (decode, peek_length), and the engine handles of the
  * Space Packet sequence tracker and FARM-1 (caller-provided storage, CABI-031). Every input is
- * copied to a heap block of exactly its length, so that a read past it is an ASan error. A
- * case with an operation or a field this harness does not handle is counted as skipped and
- * printed; the Rust harness `crates/aldis-ffi/tests/vectors.rs` runs every case.
+ * copied to a heap block of exactly its length, so that a read past it is an ASan error. TC,
+ * AOS, USLP, the link engines, and FOP-1 are not run through C yet (recorded in the M5 plan,
+ * WP-5). A case with an operation or a field this harness does not handle is counted as
+ * skipped and printed; the Rust harness `crates/aldis-ffi/tests/vectors.rs` runs every case.
  *
  * Plain C99: the common subset that the header checks of `cargo xtask header` compile.
  */
