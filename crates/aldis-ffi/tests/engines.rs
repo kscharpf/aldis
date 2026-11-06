@@ -151,7 +151,13 @@ fn storage_is_checked_and_tagged() {
         assert_eq!((status.state, status.v_r, status.clcw), (1, 0, 0x0104_0000));
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = farm1_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_farm1_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE

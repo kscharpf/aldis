@@ -66,6 +66,9 @@ commands:
                                regenerate them (CABI-002, CABI-003, CABI-030)
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
                                program with them, as C99 and C++11 (CABI-001, CABI-003)
+  header sanitizers <cc>       build the C vector harness of aldis-ffi with
+                               -fsanitize=address,undefined and run the shared vectors through the
+                               C ABI (VER-026)
   sana [--write]               the SANA registry snapshots in specs/sana/ match their SHA-256
                                and the tables generated from them, or regenerate the tables
                                (M2 plan D13, OI-06)
@@ -242,6 +245,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header"] => header::run(false),
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
+        ["header", "sanitizers", cc] => header::sanitizers(cc),
         ["sana", rest @ ..] => sana::run(rest),
         ["fix"] => fix(),
         ["links"] => links::check(),

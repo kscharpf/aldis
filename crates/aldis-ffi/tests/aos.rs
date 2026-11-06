@@ -741,6 +741,8 @@ fn encode_arguments_are_checked() {
         ALDIS_ERR_BUFFER_TOO_SMALL
     );
     assert!(frame.iter().all(|&b| b == 0xEE));
+    // The writes through `frame` ended the borrow `out` had (Miri, VER-026).
+    let out = frame.as_mut_ptr();
     // VCID 63 is the OID encoder's.
     let oid = fields(63, ALDIS_AOS_POINTER_NONE, 0);
     assert_eq!(

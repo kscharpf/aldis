@@ -219,7 +219,13 @@ fn the_segmenter_storage_is_checked_and_tagged() {
         assert_eq!((armed, at), (0, 0));
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = sg_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_map_segmenter_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -710,7 +716,13 @@ fn the_reassembler_storage_is_checked_and_tagged() {
         );
         assert_eq!(status, aldis_map_reassembler_status_t::default());
         let mut copy = ra_storage();
-        copy.words = s.words;
+        // A byte copy: the engine inside the words has padding, which a typed copy would read
+        // uninitialized (Miri, VER-026).
+        core::ptr::copy_nonoverlapping(
+            (&raw const *s).cast::<u8>(),
+            (&raw mut *copy).cast::<u8>(),
+            size_of_val(&*s),
+        );
         assert_eq!(
             aldis_map_reassembler_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE

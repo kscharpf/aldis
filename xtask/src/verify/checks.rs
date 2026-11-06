@@ -163,6 +163,20 @@ pub const FFI: PathList = PathList {
     patterns: &["crates/**", "include/**"],
 };
 
+/// Read by the check `c-sanitizers` (VER-026): the C ABI crate and what it builds, the header
+/// the C harness includes, and the vectors the harness reads.
+pub const C_SANITIZERS_LIST: PathList = PathList {
+    name: "c-sanitizers",
+    patterns: &["crates/**", "include/**", "test-vectors/**"],
+};
+
+/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build and
+/// the vectors its tests read; not the header, which Miri does not read.
+pub const FFI_MIRI_LIST: PathList = PathList {
+    name: "ffi-miri",
+    patterns: &["crates/**", "test-vectors/**"],
+};
+
 /// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
 /// `proofs.rs` and the code it calls are what the check proves. Their manifests, the workspace,
 /// and `xtask` (which runs the harnesses) are in `RUN`.
@@ -301,6 +315,8 @@ const RUST_TEST_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &XTASK_TESTS]);
 const CPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &CPP]);
 const FFI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI]);
 const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
+const SANITIZER_INPUTS: Inputs = Inputs::Paths(&[&RUN, &C_SANITIZERS_LIST]);
+const MIRI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI_MIRI_LIST]);
 const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
 const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS]);
 
@@ -479,6 +495,7 @@ fn rust() -> Vec<Check> {
             check("kani", c, false, 641, "cargo xtask kani\n"),
         )
     });
+    out.extend(ffi_sanitizer_checks());
     out.extend([
         grouped(
             Group::Coverage,
@@ -492,6 +509,29 @@ fn rust() -> Vec<Check> {
         grouped(Group::Cross, check("deny", c, false, 2, DENY)),
     ]);
     out
+}
+
+/// The checks of the C ABI under sanitizers (VER-026, GEN-071; m5 plan D4): the C vector harness
+/// under `ASan` and `UBSan`, and the `aldis-ffi` tests under Miri. The durations are estimates until
+/// the hosted runs measure them.
+fn ffi_sanitizer_checks() -> Vec<Check> {
+    let c = Host::Container;
+    vec![
+        grouped(
+            Group::Host,
+            reading(
+                SANITIZER_INPUTS,
+                check("c-sanitizers", c, false, 40, C_SANITIZERS_SCRIPT),
+            ),
+        ),
+        grouped(
+            Group::Coverage,
+            reading(
+                MIRI_INPUTS,
+                check("ffi-miri", c, false, MIRI_SECS, FFI_MIRI_SCRIPT),
+            ),
+        ),
+    ]
 }
 
 /// The exerciser check of `target`, in the group that balances the groups by their measured
@@ -544,6 +584,8 @@ fn exerciser(target: &str) -> String {
 /// `no-std-<target>`, and the exerciser runs as in `exerciser-<target>`: the panic-freedom link
 /// check, its canary, and every vector case under QEMU `leon3_generic` (VER-010). The linker
 /// and the QEMU command are in `exerciser/.cargo/config.toml`.
+const MIRI_SECS: u16 = 600;
+
 const RUST_LEON3: &str = r#"
 # Reported against OI-08, never a gate.
 t=sparc-unknown-none-elf
@@ -603,6 +645,20 @@ cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 ";
 
 pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
+
+const FFI_MIRI_SCRIPT: &str = r#"
+# The aldis-ffi tests under Miri on the tooling nightly (VER-026, GEN-071; m5 plan D4). The
+# vector tests read test-vectors/, which Miri's isolation forbids.
+nightly="$(cat tooling-nightly)"
+MIRIFLAGS="-Zmiri-disable-isolation" cargo +"$nightly" miri test --locked -p aldis-ffi
+"#;
+
+const C_SANITIZERS_SCRIPT: &str = "\
+# The C vector harness of aldis-ffi, built with -fsanitize=address,undefined by each pinned
+# compiler, runs the shared vectors through the C ABI (VER-026). It prints the compiler it ran.
+cargo xtask header sanitizers gcc-14
+cargo xtask header sanitizers clang
+";
 
 const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
@@ -853,6 +909,14 @@ mod tests {
             }
             if c.name == "kani" {
                 assert_eq!(lists, [&RUN, &KANI]);
+                continue;
+            }
+            if c.name == "c-sanitizers" {
+                assert_eq!(lists, [&RUN, &C_SANITIZERS_LIST]);
+                continue;
+            }
+            if c.name == "ffi-miri" {
+                assert_eq!(lists, [&RUN, &FFI_MIRI_LIST]);
                 continue;
             }
             if c.name == "stack" {
