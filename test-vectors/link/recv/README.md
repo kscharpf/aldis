@@ -82,6 +82,8 @@ The model raises `Unspecified` for these, so none is in a vector. The cases deci
 * rule `000` on the reassembler, and the state after a refused last segment (the scenarios end there);
 * a gap on TC: the TC `Fdu` input has no gap flag (OI-78).
 
+OI-79 read each of these cases against the Blue Books (M5 WP-8b) and pinned the engine's behaviour by unit tests in `crates/aldis-link/tests` (`frame_receiver.rs`, `engine_housekeeping.rs`, `map_reassembler_engine.rs`); the model still refuses them, and a vector for one needs a new blind-model round (TV-023).
+
 ## Added by the blind-model round of #231
 
 Scenarios for the OI-78 decisions of M4 WP-3, WP-5, WP-6 and the maintainer, written from the text of OI-78, 04, and the Blue Books: `frame_receiver_*`: `*-frame-length-mismatch`, `link-recv-tc-frame-length`, `link-recv-tm-ocf-fsh-disagree`, `link-recv-tm-fsh-length-disagree`, `link-recv-aos-raw-frame-accepted`, `link-recv-uslp-raw-frame-vcf-count`, `link-recv-aos-cycle-use-change`, `link-recv-aos-bdp-beyond-zone`, `link-recv-aos-bdp-last-bit`, and `*-frame-loss-single` (which replace the superseded FrameLoss scenarios); `packet_extractor_*`: `fhp-beyond-zone`, `ends-in-no-start-field`, `partial-idle-discarded`, `partial-header-discarded`, `epp-four-octet-length`, `epp-length-below-header`, `gap-on-idle-field`; `map_reassembler_*`: blocked FDUs refused, `sdu-too-long`, two MAPs in progress, the gap on every MAP of the VC (also before `UnknownMap`, 04 §4), the gap on an octet stream, a segmented packet whose length disagrees, a Last Valid Octet Pointer beyond the zone, a rule of another service, and an idle TFDF. A refused input changes nothing: a refused frame's count is not taken, so the next frame of the VC may show it missing.
