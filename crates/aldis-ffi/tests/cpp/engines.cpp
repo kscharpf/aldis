@@ -2,7 +2,11 @@
 // (CABI-072), linked against the Rust-backed C ABI library. Usage: `engines <test-vectors-dir>`.
 // Built with `-std=c++20 -fno-exceptions -Wall -Wextra -Wpedantic -Werror` (VER-050).
 
+#include <algorithm>
 #include <cstdio>
+#include <filesystem>
+#include <system_error>
+#include <vector>
 #include <string>
 #include <type_traits>
 
@@ -54,39 +58,58 @@ int main(int argc, char** argv) {
     }
     const std::string dir = argv[1];
     int failed = lifecycle();
-    for (const char* name : {"fop1_table", "fop1_ad_service", "fop1_window_timer",
-                             "fop1_wrap_directives", "fop1_clcw"}) {
-        failed |= harness::report(name, cop1::run_fop1(dir + "/cop1/scenarios/" + name + ".json"));
+    // Every scenario file of the three directories, sorted; the engine is named by the file's
+    // prefix. A file no runner handles fails the run, so a new vector file cannot pass unrun.
+    namespace fs = std::filesystem;
+    std::vector<fs::path> files;
+    for (const char* sub : {"cop1/scenarios", "link/send", "link/recv"}) {
+        std::error_code ec;
+        for (fs::directory_iterator it(fs::path(dir) / sub, ec), end; !ec && it != end;
+             it.increment(ec)) {
+            if (it->path().extension() == ".json") {
+                files.push_back(it->path());
+            }
+        }
+        if (ec) {
+            std::fprintf(stderr, "FAIL cannot list %s/%s\n", dir.c_str(), sub);
+            failed = 1;
+        }
     }
-    for (const char* name : {"farm1_table", "farm1_window", "farm1_flow_clcw"}) {
-        failed |= harness::report(name, cop1::run_farm1(dir + "/cop1/scenarios/" + name + ".json"));
-    }
-    const auto vectors = [&](const char* dir_name, const char* name, auto run) {
-        return harness::report(name, run(dir + "/link/" + dir_name + "/" + name + ".json"));
+    std::sort(files.begin(), files.end());
+    struct Runner {
+        const char* prefix;
+        harness::Tally (*run)(const std::string&);
     };
-    for (const char* name : {"packet_generator_tm", "packet_generator_aos",
-                             "packet_generator_aos_issue4", "packet_generator_uslp"}) {
-        failed |= vectors("send", name, linkeng::run<linkeng::PacketGen>);
+    static const Runner runners[] = {
+        {"fop1_", cop1::run_fop1},
+        {"farm1_", cop1::run_farm1},
+        {"packet_generator_", linkeng::run<linkeng::PacketGen>},
+        {"access_generator_", linkeng::run<linkeng::AccessGen>},
+        {"bitstream_generator_", linkeng::run<linkeng::BitstreamGen>},
+        {"packet_extractor_", linkeng::run<linkeng::Extractor>},
+        {"frame_receiver_", linkeng::run<linkeng::Receiver>},
+        {"channel_mux_", linkeng::run<linkeng::Mux>},
+        {"map_segmenter_", linkeng::run<linkeng::Segmenter>},
+        {"map_reassembler_", linkeng::run<linkeng::Reassembler>},
+    };
+    for (const fs::path& file : files) {
+        const std::string name = file.stem().string();
+        bool handled = false;
+        for (const Runner& r : runners) {
+            if (name.rfind(r.prefix, 0) == 0) {
+                failed |= harness::report(name.c_str(), r.run(file.string()));
+                handled = true;
+                break;
+            }
+        }
+        if (!handled) {
+            std::fprintf(stderr, "FAIL %s: no runner handles this vector file\n", file.c_str());
+            failed = 1;
+        }
     }
-    for (const char* name : {"access_generator_tm", "access_generator_aos", "access_generator_uslp"}) {
-        failed |= vectors("send", name, linkeng::run<linkeng::AccessGen>);
-    }
-    failed |= vectors("send", "bitstream_generator_aos", linkeng::run<linkeng::BitstreamGen>);
-    for (const char* name : {"packet_extractor_tm", "packet_extractor_aos", "packet_extractor_uslp"}) {
-        failed |= vectors("recv", name, linkeng::run<linkeng::Extractor>);
-    }
-    for (const char* name : {"frame_receiver_tm", "frame_receiver_tc", "frame_receiver_aos",
-                             "frame_receiver_uslp"}) {
-        failed |= vectors("recv", name, linkeng::run<linkeng::Receiver>);
-    }
-    for (const char* name : {"channel_mux_tm", "channel_mux_aos", "channel_mux_uslp"}) {
-        failed |= vectors("send", name, linkeng::run<linkeng::Mux>);
-    }
-    for (const char* name : {"map_segmenter_tc", "map_segmenter_uslp"}) {
-        failed |= vectors("send", name, linkeng::run<linkeng::Segmenter>);
-    }
-    for (const char* name : {"map_reassembler_tc", "map_reassembler_uslp"}) {
-        failed |= vectors("recv", name, linkeng::run<linkeng::Reassembler>);
+    if (files.empty()) {
+        std::fprintf(stderr, "FAIL no vector files under %s\n", dir.c_str());
+        failed = 1;
     }
     return failed;
 }

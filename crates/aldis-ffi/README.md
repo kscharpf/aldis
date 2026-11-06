@@ -67,7 +67,9 @@ if (aldis::ok(fop1.init(config))) {
     input.kind = ALDIS_FOP1_INPUT_TIMEOUT;
     std::uint8_t area[64];
     aldis_fop1_actions_t actions;
-    const aldis::Status status = fop1.step(input, {}, now_us, area, actions);
+    if (aldis::ok(fop1.step(input, {}, now_us, area, actions))) {
+        // read actions.items[0 .. actions.count) and the ranges they name in `area`
+    }
 }
 ```
 
