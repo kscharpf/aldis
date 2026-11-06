@@ -67,6 +67,9 @@ commands:
   header c-smoke <cc> <c++>    build the aldis-ffi static and shared libraries and run a C
                                program with them, as C99, C11, C23, C++11, and C++17 with
                                -Wall -Wextra -Wpedantic -Werror (CABI-001, CABI-003, VER-050)
+  header cpp-engines <c++>     compile include/aldis/aldis.hpp with the tests of
+                               crates/aldis-ffi/tests/cpp/ as C++20 without exceptions and run
+                               the engine-scenario vectors through it (CABI-072)
   header c-tidy <clang-tidy>   the CERT C checks of clang-tidy over the C code of
                                crates/aldis-ffi/tests/c/ and the README example (VER-051)
   sana [--write]               the SANA registry snapshots in specs/sana/ match their SHA-256
@@ -245,6 +248,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["header"] => header::run(false),
         ["header", "--write"] => header::run(true),
         ["header", "c-smoke", cc, cxx] => header::c_smoke(cc, cxx),
+        ["header", "cpp-engines", cxx] => header::cpp_engines(cxx),
         ["header", "c-tidy", tidy] => header::c_tidy(tidy),
         ["sana", rest @ ..] => sana::run(rest),
         ["fix"] => fix(),

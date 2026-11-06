@@ -156,11 +156,18 @@ pub const CPP: PathList = PathList {
 
 /// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
 /// `aldis` dependency builds with `full`, which the check compiles into the static and shared
-/// libraries, and the committed header `include/`. One pattern for the crates: `full` enables
-/// all of them, and a narrower list would miss a crate when the facade gains it.
+/// libraries, and the committed header `include/` with its C++ wrapper `aldis.hpp`. One pattern
+/// for the crates: `full` enables all of them, and a narrower list would miss a crate when the
+/// facade gains it. The engine-scenario vectors that the C++ tests of `aldis.hpp` run (CABI-072):
+/// `test-vectors/cop1/` and `test-vectors/link/`.
 pub const FFI: PathList = PathList {
     name: "ffi",
-    patterns: &["crates/**", "include/**"],
+    patterns: &[
+        "crates/**",
+        "include/**",
+        "test-vectors/cop1/**",
+        "test-vectors/link/**",
+    ],
 };
 
 /// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
@@ -613,6 +620,11 @@ cargo xtask header
 # against each library runs (CABI-003, VER-050).
 cargo xtask header c-smoke gcc-14 g++-14
 cargo xtask header c-smoke clang clang++
+# The C++20 wrapper aldis.hpp of the engine handles, without exceptions and with -Wall -Wextra
+# -Wpedantic -Werror: the engine-scenario vectors of COP-1 and the link engines run through it,
+# and a capacity that differs from the library's does not compile (CABI-072, CABI-030).
+cargo xtask header cpp-engines g++-14
+cargo xtask header cpp-engines clang++
 # The CERT C checks of the pinned clang-tidy over the C code under crates/aldis-ffi/tests/c/
 # and the README example (VER-051).
 cargo xtask header c-tidy clang-tidy
@@ -969,7 +981,7 @@ mod tests {
         assert!(seen > 0, "no include_str! found");
     }
 
-    // req: CABI-002, VER-056
+    // req: CABI-002, CABI-072, VER-056
     #[test]
     fn the_header_check_reads_the_ffi_crates_and_the_header() {
         let header = all().into_iter().find(|c| c.name == "header").unwrap();
@@ -991,6 +1003,17 @@ mod tests {
         assert!(header.script.contains("c-smoke gcc-14 g++-14"));
         assert!(header.script.contains("c-smoke clang clang++"));
         assert!(header.script.contains("c-tidy clang-tidy"));
+        // CABI-072: the C++ wrapper's tests and the vectors they run are inputs of the check.
+        for path in [
+            "include/aldis/aldis.hpp",
+            "crates/aldis-ffi/tests/cpp/engines.cpp",
+            "test-vectors/cop1/scenarios/fop1_table.json",
+            "test-vectors/link/send/channel_mux_tm.json",
+        ] {
+            assert!(header.inputs.contains(path), "{path}");
+        }
+        assert!(header.script.contains("cpp-engines g++-14"));
+        assert!(header.script.contains("cpp-engines clang++"));
     }
 
     // req: VER-011, VER-056
