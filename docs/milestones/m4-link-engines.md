@@ -8,17 +8,17 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | in progress | | This plan, D1–D5, and `--scope m4` trace gate |
-| WP-1 Spec readings | planned | | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
-| WP-1b Spec follow-up | planned | | The 20 cases in which the blind models of WP-2a and WP-2b found [04](../04-engines.md) silent or in conflict with the Blue Books, decided by the maintainer (OI-73…75); LNK-080…082. Docs and field codes 217, 218 only |
-| WP-2a Blind model & vectors: sending | planned | | Python model written blind (TV-023) and engine-scenario vectors for FHP placement, mux, segmentation |
-| WP-2b Blind model & vectors: receiving | planned | | The same for the receiver, extraction, and reassembly |
-| WP-3 PacketGenerator & PacketExtractor | planned | | Shared link config, action, and status types; absorbs issue #154 |
-| WP-4 ChannelMux, policies, Access/Bitstream generators | planned | | |
-| WP-5 FrameReceiver | planned | | |
-| WP-6 MapSegmenter, MapReassembler, CLTU packer | planned | | FDUs fed to FOP-1 through `aldis-cop1` |
-| WP-7 C ABI handles | planned | | One handle per engine; #217 is its own PR (D5) |
-| WP-8 Gates & hazards | planned | | |
-| WP-9 Exit | planned | | |
+| WP-1 Spec readings | merged | #223 | LNK rows checked clause by clause against the Blue Books; per-engine action bound and output-area bound; field codes 200–249 (API-057, API-062). No engine code |
+| WP-1b Spec follow-up | merged | #226 | The 20 cases in which the blind models of WP-2a and WP-2b found [04](../04-engines.md) silent or in conflict with the Blue Books, decided by the maintainer (OI-73…75); LNK-080…082. Docs and field codes 217, 218 only |
+| WP-2a Blind model & vectors: sending | merged | #225 | Python model written blind (TV-023) and engine-scenario vectors for FHP placement, mux, segmentation |
+| WP-2b Blind model & vectors: receiving | merged | #224 | The same for the receiver, extraction, and reassembly |
+| WP-3 PacketGenerator & PacketExtractor | merged | #227 | Shared link config, action, and status types; absorbs issue #154 |
+| WP-4 ChannelMux, policies, Access/Bitstream generators | merged | #228 | |
+| WP-5 FrameReceiver | merged | #229 | |
+| WP-6 MapSegmenter, MapReassembler, CLTU packer | merged | #234 | FDUs fed to FOP-1 through `aldis-cop1` |
+| WP-7 C ABI handles | merged | #239, #246, #247, #260 | One handle per engine; #217 is its own PR (D5) |
+| WP-8 Gates & hazards | merged | #257 | |
+| WP-9 Exit | merged | #262 | |
 
 A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1).
 
