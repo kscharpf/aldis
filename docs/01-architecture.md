@@ -120,4 +120,4 @@ The goal of GEN-001 to GEN-003 is to **keep the certification surface minimal**.
 
 ## 5. Relationship to native C/C++ implementations (Phase 3)
 
-Native C and C++ implementations are planned in Phase 3 of the [roadmap](08-roadmap.md) (Track C native C++ was retired from v1 and deferred to Phase 3). When implemented, they mirror this layering module for module and expose the same C ABI and C++ wrapper API (`aldis.hpp`).
+Native C and C++ implementations are planned in Phase 3 of the [roadmap](08-roadmap.md) (Track C native C++ was retired from v1 and deferred to Phase 3). When implemented, they mirror this layering module for module and expose the same C ABI and C++ engine-handle wrapper API (`aldis.hpp`).
