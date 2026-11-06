@@ -728,7 +728,7 @@
  * frames.
  *
  * Code 68, a field (132.0 §4.1.1.2, §5.1 Table 5-1; 232.0 §4.1.2.7; 732.1 §4.1.2.7, Table 5-1;
- * 732.0 §4.1.1.2, §5.2 Table 5-1; API-082, CABI-021).
+ * 732.0 §4.1.1.2, §5.2 Table 5-1; 131.0 §11.2.1, §11.3, §11.4; API-082, CABI-021).
  */
 #define ALDIS_FIELD_FRAME_LEN 68
 
@@ -1263,6 +1263,34 @@
  * Code 219, a parameter (732.0 §4.3.7.4; 732.1 §4.3.11.1.4–5; LNK-079; API-082, CABI-021).
  */
 #define ALDIS_FIELD_RAW_FRAMES 219
+
+/**
+ * Number of ASM bit errors the search tolerates.
+ *
+ * Code 250, a parameter (M5 plan D3; SYNC-007, SYNC-016; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_ASM_ERRORS 250
+
+/**
+ * Frame protocol (TM, AOS, USLP) a SYNC configuration is for, which limits the frame length.
+ *
+ * Code 251, a parameter (131.0 §11.1, §11.3; SYNC-002; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_SYNC_PROTOCOL 251
+
+/**
+ * Length of an input chunk of the ASM search, in octets.
+ *
+ * Code 252, a parameter (SYNC-014; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_CHUNK_LEN 252
+
+/**
+ * Which pseudo-random sequence the randomizer uses: 131071 bits or the legacy 255 bits.
+ *
+ * Code 253, a parameter (131.0 §10.4.1–§10.4.2; SYNC-020; API-082, CABI-021).
+ */
+#define ALDIS_FIELD_RANDOMIZER_SEQUENCE 253
 
 /**
  * The most actions one `aldis_fop1_step` returns (COP-006): `fop1_max_actions` of the

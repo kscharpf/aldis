@@ -218,7 +218,7 @@ fn config_one(max: usize) -> MapReassemblerConfig<Tc, M> {
 
 #[test]
 fn a_gap_discards_the_sdus_in_progress_of_every_map_of_the_vc() {
-    // req: LNK-070, LNK-051; OI-78 (two SDUs in progress on one USLP VC)
+    // req: LNK-070, LNK-051, API-054; OI-78 (two SDUs in progress on one USLP VC)
     // 732.1 §4.3.3.1 note: one instance of the reception function for each MAP channel, so two
     // SDUs of one VC are in progress at once; §4.1.4.2.2.1.6: the portions of an SDU are in frames
     // of contiguous VCF Counts, which a gap breaks for whichever MAP lost a frame.

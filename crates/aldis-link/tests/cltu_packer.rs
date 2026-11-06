@@ -239,7 +239,7 @@ fn a_unit_with_a_type_bd_frame_asks_for_no_repetition() {
 fn truncated_and_non_truncated_usl_frames_do_not_share_a_unit() {
     // Given: a truncated frame, a truncated frame, a non-truncated frame, a truncated frame.
     // 732.1 Annex D, D1.2.5: not mixed within a CLTU: [t, t] [n] [t].
-    // req: LNK-044
+    // req: LNK-044, USLP-011
     let mut p = UslpPacker::new(config(8, 60)).unwrap();
     add(&mut p, &frame(4, 1, SC, 1, true)).unwrap();
     add(&mut p, &frame(4, 2, SC, 1, true)).unwrap();
@@ -321,4 +321,38 @@ fn reconfigure_discards_the_unit_in_progress() {
     let r = p.step(CltuInput::Reconfigure(config(2, 65)), &mut out);
     assert_eq!(r.err().map(|e| e.kind()), Some(ErrorKind::CapacityExceeded));
     assert_eq!(p.status().pending.current(), 3);
+}
+
+#[test]
+fn the_actions_of_one_input_are_consumed_after_the_next_input() {
+    // Given: a step whose actions are held, with their output area, while the engine takes
+    // another input. The actions borrow nothing of the engine (this compiles only if they do
+    // not), and the engine holds no copy of them (API-059): the second input behaves as it
+    // would have if the first actions had been consumed at once.
+    // req: API-059
+    let mut p = TcPacker::new(config(2, 50)).unwrap();
+    let mut first_area = [0xEE_u8; 128];
+    let mut second_area = [0xEE_u8; 128];
+    let f = |frame: &'static [u8; 10]| FrameIn {
+        frame,
+        qos: SC,
+        repetitions: rep(1),
+        truncated: false,
+    };
+    p.step(CltuInput::AddFrame(f(&[1; 10])), &mut first_area)
+        .unwrap();
+    let held = p
+        .step(CltuInput::AddFrame(f(&[2; 10])), &mut first_area)
+        .unwrap();
+    let after = p
+        .step(CltuInput::AddFrame(f(&[3; 10])), &mut second_area)
+        .unwrap();
+    assert!(after.is_empty());
+    let Some(CltuOutput::DataUnit(unit)) = held.get(0).copied() else {
+        panic!("the second frame fills the unit")
+    };
+    let want: Vec<u8> = [vec![1; 10], vec![2; 10]].concat();
+    assert_eq!(unit.unit.slice(&first_area), Some(&want[..]));
+    assert_eq!(p.status().pending.current(), 10);
+    assert_eq!(flush(&mut p)[0].1, vec![3; 10]);
 }

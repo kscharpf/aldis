@@ -495,7 +495,7 @@ fn a_usl_service_serves_its_own_content() {
 
 #[test]
 fn next_fdu_needs_the_whole_area_and_changes_nothing_without_it() {
-    // req: LNK-075, API-058
+    // req: LNK-075, API-058, API-054
     let mut s = TcSeg::new(tc_config()).unwrap();
     let mut short = [0_u8; 15];
     // Even with nothing queued, the area is checked.
