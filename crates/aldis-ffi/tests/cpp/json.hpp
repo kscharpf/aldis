@@ -16,6 +16,8 @@
 
 namespace tj {
 
+struct Member;
+
 struct Value {
     enum class Kind { Null, Bool, Number, String, Array, Object };
 
@@ -24,55 +26,20 @@ struct Value {
     std::uint64_t number = 0;
     std::string string;
     std::vector<Value> array;
-    std::vector<std::pair<std::string, Value>> object;
+    // `Member` is completed below: a vector of an incomplete type is valid, a pair of one is not.
+    std::vector<Member> object;
 
-    static Value of_bool(bool b) {
-        Value v;
-        v.kind = Kind::Bool;
-        v.boolean = b;
-        return v;
-    }
-    static Value of_number(std::uint64_t n) {
-        Value v;
-        v.kind = Kind::Number;
-        v.number = n;
-        return v;
-    }
-    static Value of_string(std::string s) {
-        Value v;
-        v.kind = Kind::String;
-        v.string = std::move(s);
-        return v;
-    }
-    static Value of_array() {
-        Value v;
-        v.kind = Kind::Array;
-        return v;
-    }
-    static Value of_object() {
-        Value v;
-        v.kind = Kind::Object;
-        return v;
-    }
+    static Value of_bool(bool b);
+    static Value of_number(std::uint64_t n);
+    static Value of_string(std::string s);
+    static Value of_array();
+    static Value of_object();
 
     /// Adds a member to an object and returns the object, for chaining.
-    Value& set(std::string key, Value value) {
-        object.emplace_back(std::move(key), std::move(value));
-        return *this;
-    }
-    Value& push(Value value) {
-        array.push_back(std::move(value));
-        return *this;
-    }
+    Value& set(std::string key, Value value);
+    Value& push(Value value);
 
-    [[nodiscard]] const Value* find(std::string_view key) const {
-        for (const auto& member : object) {
-            if (member.first == key) {
-                return &member.second;
-            }
-        }
-        return nullptr;
-    }
+    [[nodiscard]] const Value* find(std::string_view key) const;
     [[nodiscard]] bool has(std::string_view key) const { return find(key) != nullptr; }
 
     /// The member `key`; a missing one is a test failure, reported and fatal.
@@ -99,6 +66,59 @@ struct Value {
         return kind == Kind::String && string == text;
     }
 };
+
+struct Member {
+    std::string first;
+    Value second;
+};
+
+inline Value Value::of_bool(bool b) {
+    Value v;
+    v.kind = Kind::Bool;
+    v.boolean = b;
+    return v;
+}
+inline Value Value::of_number(std::uint64_t n) {
+    Value v;
+    v.kind = Kind::Number;
+    v.number = n;
+    return v;
+}
+inline Value Value::of_string(std::string s) {
+    Value v;
+    v.kind = Kind::String;
+    v.string = std::move(s);
+    return v;
+}
+inline Value Value::of_array() {
+    Value v;
+    v.kind = Kind::Array;
+    return v;
+}
+inline Value Value::of_object() {
+    Value v;
+    v.kind = Kind::Object;
+    return v;
+}
+
+inline Value& Value::push(Value value) {
+    array.push_back(std::move(value));
+    return *this;
+}
+
+inline Value& Value::set(std::string key, Value value) {
+    object.push_back(Member{std::move(key), std::move(value)});
+    return *this;
+}
+
+inline const Value* Value::find(std::string_view key) const {
+    for (const auto& member : object) {
+        if (member.first == key) {
+            return &member.second;
+        }
+    }
+    return nullptr;
+}
 
 inline bool equal(const Value& a, const Value& b) {
     if (a.kind != b.kind) {
@@ -288,7 +308,7 @@ private:
                 if (!value(member, depth + 1)) {
                     return false;
                 }
-                out.object.emplace_back(std::move(key), std::move(member));
+                out.object.push_back(Member{std::move(key), std::move(member)});
                 skip();
                 if (eat('}')) {
                     return true;
