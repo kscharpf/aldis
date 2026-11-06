@@ -38,15 +38,31 @@ type Engine = AsmSearch<FRAME, CHUNK, ALDIS_SYNC_SEARCH_MAX_ACTIONS>;
 
 const _: () = assert!(ALDIS_SYNC_SEARCH_MAX_ACTIONS == max_actions(CHUNK));
 
+/// The usual cap on the frame length this target draws, for the initial configuration and every
+/// reconfiguration. A Reset or reconfiguration is drawn on about one step in eight, and a frame
+/// of up to 65536 octets on each made the target slow. Measured over 60 s: about 33 runs/s with
+/// that draw, about 590 runs/s with the cap of 512 alone, about 51 runs/s with a full-length
+/// draw on 1 configuration in 64, and about 91 runs/s on 1 in 1024. The remaining cost is not
+/// explained; untested candidates are the per-run init or reconfigure of a handle built at the
+/// 65536-octet capacity and the per-step output buffers. About one configuration in 1024 draws a
+/// length up to the protocol's real maximum (TM 2048, AOS and USLP 65536), kept so that the
+/// target still reaches the capacity of the C handle. The `sync_search` target uses a small
+/// instance (`FRAME` of 64) and does not cover those lengths; the SYNC-014 largest-frame test of
+/// `crates/aldis-ffi/tests/sync.rs` covers one fixed case.
+const LONG_FRAME_CAP: usize = 512;
+
 fn draw_config(u: &mut Unstructured<'_>) -> Result<(u32, aldis_sync_search_config_t, SyncConfig)> {
-    let (raw, protocol, cap) = match u.int_in_range(0..=2)? {
+    let (raw, protocol, max) = match u.int_in_range(0..=2)? {
         0 => (ALDIS_LINK_PROTOCOL_TM, SyncProtocol::Tm, 2048),
         1 => (ALDIS_LINK_PROTOCOL_AOS, SyncProtocol::Aos, 65536),
         _ => (ALDIS_LINK_PROTOCOL_USLP, SyncProtocol::Uslp, 65536),
     };
-    // Mostly short frames, so that units complete inside a chunk; sometimes a long one.
-    let len = if u.ratio(1, 8)? {
-        u.int_in_range(1..=cap)?
+    // Mostly short frames, so that units complete inside a chunk; sometimes one up to
+    // `LONG_FRAME_CAP`; rarely one up to the protocol's maximum.
+    let len = if u.ratio(1, 1024)? {
+        u.int_in_range(1..=max)?
+    } else if u.ratio(1, 8)? {
+        u.int_in_range(1..=LONG_FRAME_CAP)?
     } else {
         u.int_in_range(1..=40)?
     };
