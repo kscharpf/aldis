@@ -1,0 +1,267 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-search-tol-00",
+      "description": "Tolerance 0. A marker with 1 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 0 flipped bits returns its unit with errors 0 and skipped_bits 0 (the flipped positions are []).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 0},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ECFFC1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ACFFC1DC8F5D7FB2C6F"}}, "expect": [{"unit": {"data_hex": "C8F5D7FB2C6F", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-01",
+      "description": "Tolerance 1. A marker with 2 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 1 flipped bits returns its unit with errors 1 and skipped_bits 0 (the flipped positions are [5]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 1},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ECF7C1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ECFFC1D2953DA1101E2"}}, "expect": [{"unit": {"data_hex": "2953DA1101E2", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-02",
+      "description": "Tolerance 2. A marker with 3 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 2 flipped bits returns its unit with errors 2 and skipped_bits 0 (the flipped positions are [5, 16]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 2},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ECF7C0D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ECF7C1D8AB1E02F6266"}}, "expect": [{"unit": {"data_hex": "8AB1E02F6266", "errors": 2, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-03",
+      "description": "Tolerance 3. A marker with 4 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 3 flipped bits returns its unit with errors 3 and skipped_bits 0 (the flipped positions are [5, 16, 27]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 3},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1CCF7C0D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ECF7C0DEB2FF64447E5"}}, "expect": [{"unit": {"data_hex": "EB2FF64447E5", "errors": 3, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-04",
+      "description": "Tolerance 4. A marker with 5 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 4 flipped bits returns its unit with errors 4 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 4},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1CCF3C0D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1CCF7C0D448DFC92B858"}}, "expect": [{"unit": {"data_hex": "448DFC92B858", "errors": 4, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-05",
+      "description": "Tolerance 5. A marker with 6 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 5 flipped bits returns its unit with errors 5 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 5},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1CCF3C05"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1CCF3C0DA5EB83A89CDC"}}, "expect": [{"unit": {"data_hex": "A5EB83A89CDC", "errors": 5, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-06",
+      "description": "Tolerance 6. A marker with 7 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 6 flipped bits returns its unit with errors 6 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 6},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1DCF3C05"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1CCF3C05064989C6F153"}}, "expect": [{"unit": {"data_hex": "064989C6F153", "errors": 6, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-07",
+      "description": "Tolerance 7. A marker with 8 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 7 flipped bits returns its unit with errors 7 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 7},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1DCF1C05"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1DCF3C0567A79F1CD2D7"}}, "expect": [{"unit": {"data_hex": "67A79F1CD2D7", "errors": 7, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-08",
+      "description": "Tolerance 8. A marker with 9 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 8 flipped bits returns its unit with errors 8 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 8},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1DCF1C01"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1DCF1C05C005A529374A"}}, "expect": [{"unit": {"data_hex": "C005A529374A", "errors": 8, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-09",
+      "description": "Tolerance 9. A marker with 10 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 9 flipped bits returns its unit with errors 9 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 9},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D4F1C01"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1DCF1C012163A84768CE"}}, "expect": [{"unit": {"data_hex": "2163A84768CE", "errors": 9, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-10",
+      "description": "Tolerance 10. A marker with 11 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 10 flipped bits returns its unit with errors 10 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 10},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D4F0C01"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D4F1C0182C0BE9D4C4D"}}, "expect": [{"unit": {"data_hex": "82C0BE9D4C4D", "errors": 10, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-11",
+      "description": "Tolerance 11. A marker with 12 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 11 flipped bits returns its unit with errors 11 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8, 19]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 11},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D4F0C03"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D4F0C01E33E44ABA1C1"}}, "expect": [{"unit": {"data_hex": "E33E44ABA1C1", "errors": 11, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-12",
+      "description": "Tolerance 12. A marker with 13 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 12 flipped bits returns its unit with errors 12 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 12},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D0F0C03"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D4F0C037C9C4AC08244"}}, "expect": [{"unit": {"data_hex": "7C9C4AC08244", "errors": 12, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-13",
+      "description": "Tolerance 13. A marker with 14 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 13 flipped bits returns its unit with errors 13 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 13},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D0F0403"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D0F0C03DCFA511EE738"}}, "expect": [{"unit": {"data_hex": "DCFA511EE738", "errors": 13, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-14",
+      "description": "Tolerance 14. A marker with 15 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 14 flipped bits returns its unit with errors 14 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9, 20]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 14},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D0F0402"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D0F04033D586734D8BF"}}, "expect": [{"unit": {"data_hex": "3D586734D8BF", "errors": 14, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tol-15",
+      "description": "Tolerance 15. A marker with 16 flipped bits (one more than the tolerance) alone gives no unit; after a Reset, a marker with 15 flipped bits returns its unit with errors 15 and skipped_bits 0 (the flipped positions are [5, 16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9, 20, 31]).",
+      "requirements": ["SYNC-007", "SYNC-011", "SYNC-016"],
+      "config": {"protocol": "tm", "frame_len": 6, "asm_errors": 15},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1D2F0402"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1D0F04029EB66D423C33"}}, "expect": [{"unit": {"data_hex": "9EB66D423C33", "errors": 15, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-single-error-every-position",
+      "description": "Tolerance 1: 32 CADUs back to back (one per step), the i-th with bit i of the marker flipped, are each found, with errors 1 and skipped_bits 0.",
+      "requirements": ["SYNC-007", "SYNC-011"],
+      "config": {"protocol": "aos", "frame_len": 2, "asm_errors": 1},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "9ACFFC1D9044"}}, "expect": [{"unit": {"data_hex": "9044", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "5ACFFC1DF1A2"}}, "expect": [{"unit": {"data_hex": "F1A2", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "3ACFFC1D5200"}}, "expect": [{"unit": {"data_hex": "5200", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"chunk": {"data_hex": "0ACFFC1DB37E"}}, "expect": [{"unit": {"data_hex": "B37E", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "12CFFC1D0CDC"}}, "expect": [{"unit": {"data_hex": "0CDC", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 6000, "input": {"chunk": {"data_hex": "1ECFFC1D6D3A"}}, "expect": [{"unit": {"data_hex": "6D3A", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "18CFFC1DCD98"}}, "expect": [{"unit": {"data_hex": "CD98", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 8000, "input": {"chunk": {"data_hex": "1BCFFC1D2EF6"}}, "expect": [{"unit": {"data_hex": "2EF6", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "1A4FFC1D8F54"}}, "expect": [{"unit": {"data_hex": "8F54", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 10000, "input": {"chunk": {"data_hex": "1A8FFC1DE8B5"}}, "expect": [{"unit": {"data_hex": "E8B5", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 11000, "input": {"chunk": {"data_hex": "1AEFFC1D4913"}}, "expect": [{"unit": {"data_hex": "4913", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 12000, "input": {"chunk": {"data_hex": "1ADFFC1DAA71"}}, "expect": [{"unit": {"data_hex": "AA71", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 13000, "input": {"chunk": {"data_hex": "1AC7FC1D0BEF"}}, "expect": [{"unit": {"data_hex": "0BEF", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 14000, "input": {"chunk": {"data_hex": "1ACBFC1D644D"}}, "expect": [{"unit": {"data_hex": "644D", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 15000, "input": {"chunk": {"data_hex": "1ACDFC1DC5AB"}}, "expect": [{"unit": {"data_hex": "C5AB", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 16000, "input": {"chunk": {"data_hex": "1ACEFC1D2609"}}, "expect": [{"unit": {"data_hex": "2609", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 17000, "input": {"chunk": {"data_hex": "1ACF7C1D8767"}}, "expect": [{"unit": {"data_hex": "8767", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 18000, "input": {"chunk": {"data_hex": "1ACFBC1DE0C5"}}, "expect": [{"unit": {"data_hex": "E0C5", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 19000, "input": {"chunk": {"data_hex": "1ACFDC1D4123"}}, "expect": [{"unit": {"data_hex": "4123", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 20000, "input": {"chunk": {"data_hex": "1ACFEC1DA280"}}, "expect": [{"unit": {"data_hex": "A280", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 21000, "input": {"chunk": {"data_hex": "1ACFF41D02FE"}}, "expect": [{"unit": {"data_hex": "02FE", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 22000, "input": {"chunk": {"data_hex": "1ACFF81D635C"}}, "expect": [{"unit": {"data_hex": "635C", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 23000, "input": {"chunk": {"data_hex": "1ACFFE1DFCBA"}}, "expect": [{"unit": {"data_hex": "FCBA", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 24000, "input": {"chunk": {"data_hex": "1ACFFD1D5D18"}}, "expect": [{"unit": {"data_hex": "5D18", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 25000, "input": {"chunk": {"data_hex": "1ACFFC9DBE76"}}, "expect": [{"unit": {"data_hex": "BE76", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 26000, "input": {"chunk": {"data_hex": "1ACFFC5D1FD4"}}, "expect": [{"unit": {"data_hex": "1FD4", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 27000, "input": {"chunk": {"data_hex": "1ACFFC3D7832"}}, "expect": [{"unit": {"data_hex": "7832", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 28000, "input": {"chunk": {"data_hex": "1ACFFC0DD990"}}, "expect": [{"unit": {"data_hex": "D990", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 29000, "input": {"chunk": {"data_hex": "1ACFFC153A0E"}}, "expect": [{"unit": {"data_hex": "3A0E", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 30000, "input": {"chunk": {"data_hex": "1ACFFC199B6F"}}, "expect": [{"unit": {"data_hex": "9B6F", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 31000, "input": {"chunk": {"data_hex": "1ACFFC1FF4CD"}}, "expect": [{"unit": {"data_hex": "F4CD", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 32000, "input": {"chunk": {"data_hex": "1ACFFC1C552B"}}, "expect": [{"unit": {"data_hex": "552B", "errors": 1, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-two-errors-tolerance-one",
+      "description": "Tolerance 1: a marker with two flipped bits alone gives no unit, at any pair of positions tried (each pair is followed by a Reset).",
+      "requirements": ["SYNC-007"],
+      "config": {"protocol": "aos", "frame_len": 2, "asm_errors": 1},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "9ACBFC1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "1ECFDC1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 4000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 5000, "input": {"chunk": {"data_hex": "1AEFFD1D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 6000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 7000, "input": {"chunk": {"data_hex": "1ACEFC15"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 8000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 9000, "input": {"chunk": {"data_hex": "5ACFF41D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 10000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 11000, "input": {"chunk": {"data_hex": "18CFFC5D"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 12000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 13000, "input": {"chunk": {"data_hex": "1ADFFC1F"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 14000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-exact-marker-high-tolerance",
+      "description": "Tolerance 15 and an exact marker at the start: errors 0, skipped_bits 0.",
+      "requirements": ["SYNC-007", "SYNC-011"],
+      "config": {"protocol": "uslp", "frame_len": 4, "asm_errors": 15},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "1ACFFC1D0B41F4B4"}}, "expect": [{"unit": {"data_hex": "0B41F4B4", "errors": 0, "skipped_bits": 0}}], "expect_state": "Searching"}
+      ]
+    },
+    {
+      "id": "sync-search-tolerance-counts-differing-bits",
+      "description": "Tolerance 3: the marker with 3 bits flipped at the start of the stream is found (errors 3); the marker with 4 flipped is not (no unit, Searching); the differing bits are counted over all 32 positions, not only a leading run.",
+      "requirements": ["SYNC-007"],
+      "config": {"protocol": "tm", "frame_len": 3, "asm_errors": 3},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "9ACEFC1CAA0A11"}}, "expect": [{"unit": {"data_hex": "AA0A11", "errors": 3, "skipped_bits": 0}}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "9ACE7C1C"}}, "expect": [], "expect_state": "Searching"},
+        {"at_us": 3000, "input": {"reset": {}}, "expect": [], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}

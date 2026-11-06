@@ -1,0 +1,20 @@
+{
+  "kind": "engine-scenario",
+  "engine": "asm-search",
+  "provenance": "hand-derived",
+  "provenance_note": "Hand-derived from 131.0-B-6 9.2, 9.3.1 Figure 9-1, 10.3.4 and docs/standards/tm-sync.md SYNC-007 to SYNC-016 (OI-80, OI-81). Model test-vectors/models/sync.py, written blind (TV-023) by a Claude agent from the Blue Books and docs/ only, without reading any implementation; for format only it read the existing models (cop1.py, link_recv.py) and the vector schemas. The inputs were chosen by hand; the expected values are the model's, whose sequences it checks against the 40-bit notes of 131.0-B-6 10.4.3 (note 2) and whose search engine it checks against a second, offline formulation. Where the documents are silent the model refuses the case (README of test-vectors/sync/). The file is written by the model (--write) and never edited by hand.",
+  "config": {"protocol": "tm", "frame_len": 4, "asm_errors": 0},
+  "scenarios": [
+    {
+      "id": "sync-capacity-chunk-too-large",
+      "description": "On an instance whose CHUNK capacity is 16 (chunk_capacity): a chunk of 17 octets fails with OutOfRange naming chunk_len and changes nothing; the first 16 octets of it are accepted, and the 17th octet then completes the unit as if the chunk had never been refused.",
+      "requirements": ["SYNC-014"],
+      "config": {"protocol": "tm", "frame_len": 12, "asm_errors": 0, "chunk_capacity": 16},
+      "steps": [
+        {"at_us": 1000, "input": {"chunk": {"data_hex": "551ACFFC1DAEA03083EC11A6F9DB026C06"}}, "expect": [{"error": "OutOfRange", "field": "chunk_len"}], "expect_state": "Searching"},
+        {"at_us": 2000, "input": {"chunk": {"data_hex": "551ACFFC1DAEA03083EC11A6F9DB026C"}}, "expect": [], "expect_state": "Collecting"},
+        {"at_us": 3000, "input": {"chunk": {"data_hex": "06"}}, "expect": [{"unit": {"data_hex": "AEA03083EC11A6F9DB026C06", "errors": 0, "skipped_bits": 8}}], "expect_state": "Searching"}
+      ]
+    }
+  ]
+}
