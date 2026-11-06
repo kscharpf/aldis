@@ -311,7 +311,7 @@ fn a_packet_waits_in_the_queue_behind_a_marked_field() {
 
 #[test]
 fn a_continuation_field_has_no_start() {
-    // req: LNK-011
+    // req: LNK-011, API-054
     let mut g = tm_gen();
     let mut out = [0u8; 24];
     // 60 octets: three fields, 24 + 24 + 12 (the last completed by idle at the deadline).
@@ -923,4 +923,33 @@ fn the_worst_case_of_the_extractor_has_four_actions() {
         a.get(3),
         Some(&ExtractorOutput::Error(ExtractionError::InvalidPvn))
     );
+}
+
+#[test]
+fn the_valid_pvn_set_holds_only_the_versions_the_engines_can_delimit() {
+    // req: LNK-078, LNK-060, LNK-062; OI-79 (2)
+    // 133.0 §4.1.3.2.2 and 133.1 §4.1.2.2.2 give the PVNs `000` and `111` packets whose length
+    // field the engines read; the Blue Books do not give a length rule to another PVN, which
+    // SANA may authorize later (OI-06), so such a packet cannot be delimited and the set that
+    // names one is a construction error. The
+    // maintainer decided (OI-79, 2026-11-05) that v1 keeps {0, 7} until SANA assigns another
+    // PVN with a delimitable format (OI-06).
+    let invalid = Err((ErrorKind::InvalidConfig, Some(field::VALID_PVNS)));
+    for v in (1..=6_u8).chain([8, 255]) {
+        assert_eq!(
+            ValidPvns::from_versions(&[v]).map_err(|e| (e.kind(), e.field())),
+            invalid,
+            "PVN {v}"
+        );
+        assert_eq!(
+            ValidPvns::from_versions(&[0, v, 7]).map_err(|e| (e.kind(), e.field())),
+            invalid,
+            "PVN {v} with 0 and 7"
+        );
+    }
+    assert_eq!(
+        ValidPvns::from_versions(&[]).map_err(|e| (e.kind(), e.field())),
+        invalid
+    );
+    assert_eq!(ValidPvns::from_versions(&[7, 0]), Ok(ValidPvns::BOTH));
 }
