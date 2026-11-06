@@ -29,11 +29,11 @@ v1 covers the **core packet and link standards**:
 The following are **out of scope for v1** and are planned in the [roadmap](08-roadmap.md):
 
 - Synchronization and channel coding (131.x, 231.0): ASM, CLTU, randomizers, RS/convolutional/LDPC/turbo coding. **v1 operates on whole Transfer Frames**, with one exception: it builds and searches CADUs (the ASM) and applies the TM randomizer (M5, OI-12). The integrator's radio or modem, or a later release, does the rest of the coding.
-- SDLS cryptography (355.0/355.1) and the 352.0 algorithms. v1 provides only the **hooks** that reserve and place the Security Header and Trailer (see [03 §7](03-api-model.md#7-security-sdls-applied-by-the-caller)).
+- SDLS cryptography (355.0/355.1) and the 352.0 algorithms: the 355.0 procedures with the 352.0 baseline algorithms are planned for v1.1 and 355.1 for later ([roadmap](08-roadmap.md) §7, OI-84, OI-85). v1 provides only the **hooks** that reserve and place the Security Header and Trailer (see [03 §7](03-api-model.md#7-security-sdls-applied-by-the-caller)).
 - CFDP, DTN (BP/LTP), IP over CCSDS, SLE/CSTS, navigation messages, Proximity-1, COP-P.
 - UTC↔TAI conversion and leap-second tables (see [time codes](standards/time-codes.md) §6).
 - Concrete OS transports inside the core.
-- The framework `aldis-framework` (transport and clock traits, stacks, run loop, reference adapters, trace and replay; [05](05-framework.md), area FW): v1.1. Its requirements do not count toward v1 (§5.3).
+- The framework `aldis-framework` (transport and clock traits, stacks, run loop, reference adapters, trace and replay; [05](05-framework.md), area FW): later, after SDLS (v1.1) and TM coding (v1.2) ([roadmap](08-roadmap.md) §7). Its requirements do not count toward v1 (§5.3).
 
 ## 3. Users and use cases
 
@@ -55,7 +55,7 @@ CCSDS terms (Transfer Frame, Virtual Channel, MAP, FHP, OCF, FECF, CLCW, …) ar
 | **View** | Zero-copy, read-only decoded representation of a data unit that borrows the caller's buffer. |
 | **Writer** | Encoder that writes a data unit into a caller-supplied buffer, optionally in two phases (reserve payload, then finalize). |
 | **Engine** | Deterministic, stateful protocol machine with a **sans-I/O** interface. It never performs I/O, reads clocks, allocates, or spawns. Layer 2. |
-| **Framework** | Optional Layer 3 that drives engines using caller-implemented transport and clock traits. Planned for v1.1, not v1. |
+| **Framework** | Optional Layer 3 that drives engines using caller-implemented transport and clock traits. Planned after v1.2, not v1. |
 | **Managed parameter** | A CCSDS parameter set by management, not signalled in-band, e.g. frame length or FECF presence. Represented as validated **configuration** objects. |
 | **Strict / Lenient decoding** | Strict rejects any deviation from the standard. Lenient accepts deviations in fields the standard says are reserved or ignored, and reports them as **anomalies**. |
 | **Profile** | A language-specific binding of this specification (Rust, C ABI, C++, …). |
@@ -76,7 +76,7 @@ Each requirement has a stable ID: `<AREA>-<NNN>`. IDs are never reused. A withdr
 | GEN | [01 Architecture](01-architecture.md), [02 Design rules](02-design-rules.md) |
 | API | [03 API model](03-api-model.md) |
 | LNK | [04 Engines](04-engines.md) |
-| FW | [05 Framework](05-framework.md) (v1.1, §5.3) |
+| FW | [05 Framework](05-framework.md) (later, §5.3) |
 | VER | [06 Verification](06-verification.md) |
 | TV | [07 Test vectors](07-test-vectors.md) |
 | CMN | [Common link features](standards/common-link-features.md) |
@@ -107,7 +107,7 @@ Requirements appear in tables with these columns:
 
 Every requirement SHALL be traced to at least one verification artefact (see VER-020).
 
-**Release scope.** A requirement belongs to v1 unless its area is deferred. The deferred areas are listed in `DEFERRED_AREAS` in `xtask/src/spec.rs`: today FW (v1.1, [05](05-framework.md)) and CPP (Phase 3: track C, native C++, was retired from v1; [roadmap](08-roadmap.md) §2, maintainer 2026-11-05). A deferred area's requirements keep their IDs and rows; the unscoped `cargo xtask trace` (the v1 trace) leaves them out and prints how many, and no v1 milestone exit table or the v1.0 gate includes them. `cargo xtask trace --scope <id>` still measures a milestone plan that names them, such as M6 once it has a plan.
+**Release scope.** A requirement belongs to v1 unless its area is deferred. The deferred areas are listed in `DEFERRED_AREAS` in `xtask/src/spec.rs`: today FW (later, [05](05-framework.md)) and CPP (Phase 3: track C, native C++, was retired from v1; [roadmap](08-roadmap.md) §2, maintainer 2026-11-05). A deferred area's requirements keep their IDs and rows; the unscoped `cargo xtask trace` (the v1 trace) leaves them out and prints how many, and no v1 milestone exit table or the v1.0 gate includes them. `cargo xtask trace --scope <id>` still measures a milestone plan that names them, such as M6 once it has a plan.
 
 ## 6. References
 
