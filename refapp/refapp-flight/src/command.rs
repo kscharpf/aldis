@@ -8,8 +8,8 @@
 
 use aldis::core::ids::SeqCount;
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat, decode_implicit};
-use refapp_scenario::Crc16;
 use refapp_scenario::generated::time;
+use refapp_scenario::{Crc16, Instant};
 
 use crate::layout::PayloadMode;
 
@@ -119,8 +119,8 @@ pub enum Call {
 pub enum Timing {
     /// When it is delivered.
     Immediate,
-    /// At the instant that many µs after the start of the run (T0 + `at`, §5).
-    At(u64),
+    /// At the instant `at` on the timeline of `StepInput::now`, which starts at T0 (§5).
+    At(Instant),
     /// A time tag before T0, earlier than any instant of the run.
     BeforeRun,
 }
@@ -209,7 +209,7 @@ fn time_tag(t_field: &[u8]) -> Option<Timing> {
     let micros = after_t0
         .checked_mul(1_000_000)?
         .checked_add(u64::from(nanos.checked_div(1_000)?))?;
-    Some(Timing::At(micros))
+    Some(Timing::At(Instant::from_micros(micros)))
 }
 
 /// The function with code `code` and its `args` (§3.3.5).
@@ -247,6 +247,7 @@ mod tests {
     extern crate std;
 
     use aldis::core::ids::SeqCount;
+    use refapp_scenario::Instant;
 
     use super::{Call, Command, DumpRegion, Reject, Timing, parse};
     use crate::layout::PayloadMode;
@@ -336,13 +337,19 @@ mod tests {
         // req: APP-012, APP-060
         // T0 = 2 100 000 000 s = 0x7D2B7500; 12 s, fraction 0.
         let at = |t_field| parse(seq(0), &data(1, 1, t_field, &[])).timing;
-        assert_eq!(at([0x7D, 0x2B, 0x75, 0x0C, 0, 0]), Timing::At(12_000_000));
+        assert_eq!(
+            at([0x7D, 0x2B, 0x75, 0x0C, 0, 0]),
+            Timing::At(Instant::from_micros(12_000_000))
+        );
         // 12.125 s: fraction 0x2000 / 65 536 = 0.125.
         assert_eq!(
             at([0x7D, 0x2B, 0x75, 0x0C, 0x20, 0]),
-            Timing::At(12_125_000)
+            Timing::At(Instant::from_micros(12_125_000))
         );
-        assert_eq!(at([0x7D, 0x2B, 0x75, 0, 0, 0]), Timing::At(0));
+        assert_eq!(
+            at([0x7D, 0x2B, 0x75, 0, 0, 0]),
+            Timing::At(Instant::from_micros(0))
+        );
         // Before T0 is before the run.
         assert_eq!(at([0x7D, 0x2B, 0x74, 0xFF, 0, 0]), Timing::BeforeRun);
         assert_eq!(at([0, 0, 0, 0, 0, 0]), Timing::BeforeRun);

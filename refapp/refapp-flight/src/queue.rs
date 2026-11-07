@@ -1,5 +1,7 @@
 //! The time-tag queue (docs/reference-application.md §2.3; APP-012).
 
+use refapp_scenario::Instant;
+
 use crate::command::{Command, Reject};
 
 /// Capacity of the time-tag queue, commands (§2.3, APP-012).
@@ -8,7 +10,7 @@ pub const CAPACITY: usize = 8;
 /// A queued command with its execution instant and its place in the delivery order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Queued {
-    at_us: u64,
+    at: Instant,
     arrival: u64,
     command: Command,
 }
@@ -23,18 +25,18 @@ pub struct TimeTagQueue {
 }
 
 impl TimeTagQueue {
-    /// Queues `command` for the instant `at_us` µs after the start of the run (§2.3).
+    /// Queues `command` for the instant `at` (§2.3).
     ///
     /// # Errors
     /// [`Reject::QueueFull`] if the queue holds [`CAPACITY`] commands.
-    pub fn push(&mut self, at_us: u64, command: Command) -> Result<(), Reject> {
+    pub fn push(&mut self, at: Instant, command: Command) -> Result<(), Reject> {
         let slot = self
             .slots
             .iter_mut()
             .find(|slot| slot.is_none())
             .ok_or(Reject::QueueFull)?;
         *slot = Some(Queued {
-            at_us,
+            at,
             arrival: self.next_arrival,
             command,
         });
@@ -42,25 +44,22 @@ impl TimeTagQueue {
         Ok(())
     }
 
-    /// Removes and returns the command to execute next at `now_us`: the earliest due one, the
+    /// Removes and returns the command to execute next at `now`: the earliest due one, the
     /// first delivered among equal times (§2.3).
-    pub fn pop_due(&mut self, now_us: u64) -> Option<Command> {
+    pub fn pop_due(&mut self, now: Instant) -> Option<Command> {
         let (_, _, index) = self
             .slots
             .iter()
             .enumerate()
-            .filter_map(|(i, slot)| {
-                slot.filter(|q| q.at_us <= now_us)
-                    .map(|q| (q.at_us, q.arrival, i))
-            })
+            .filter_map(|(i, slot)| slot.filter(|q| q.at <= now).map(|q| (q.at, q.arrival, i)))
             .min()?;
         self.slots.get_mut(index)?.take().map(|q| q.command)
     }
 
-    /// The earliest execution instant in the queue, µs.
+    /// The earliest execution instant in the queue.
     #[must_use]
-    pub fn next_due(&self) -> Option<u64> {
-        self.slots.iter().flatten().map(|q| q.at_us).min()
+    pub fn next_due(&self) -> Option<Instant> {
+        self.slots.iter().flatten().map(|q| q.at).min()
     }
 
     /// Commands in the queue (HK octet 8, §3.3.1).
@@ -77,6 +76,8 @@ impl TimeTagQueue {
 mod tests {
     extern crate std;
 
+    use refapp_scenario::Instant;
+
     use super::{CAPACITY, TimeTagQueue};
     use crate::command::{Call, Command, Reject, Timing};
 
@@ -90,7 +91,7 @@ mod tests {
     }
 
     fn drain(q: &mut TimeTagQueue, now: u64) -> std::vec::Vec<u16> {
-        std::iter::from_fn(|| q.pop_due(now))
+        std::iter::from_fn(|| q.pop_due(Instant::from_micros(now)))
             .map(|c| c.seq)
             .collect()
     }
@@ -100,10 +101,10 @@ mod tests {
         // req: APP-012
         let mut q = TimeTagQueue::default();
         for (at, seq) in [(20, 0), (10, 1), (20, 2), (10, 3), (15, 4)] {
-            q.push(at, cmd(seq)).unwrap();
+            q.push(Instant::from_micros(at), cmd(seq)).unwrap();
         }
-        assert_eq!(q.next_due(), Some(10));
-        assert_eq!(q.pop_due(9), None);
+        assert_eq!(q.next_due(), Some(Instant::from_micros(10)));
+        assert_eq!(q.pop_due(Instant::from_micros(9)), None);
         assert_eq!(drain(&mut q, 15), [1, 3, 4]);
         assert_eq!(q.occupancy(), 2);
         assert_eq!(drain(&mut q, 100), [0, 2]);
@@ -116,13 +117,16 @@ mod tests {
         // req: APP-012
         let mut q = TimeTagQueue::default();
         for seq in 0..8 {
-            q.push(5, cmd(seq)).unwrap();
+            q.push(Instant::from_micros(5), cmd(seq)).unwrap();
         }
         assert_eq!(usize::from(q.occupancy()), CAPACITY);
-        assert_eq!(q.push(5, cmd(8)), Err(Reject::QueueFull));
+        assert_eq!(
+            q.push(Instant::from_micros(5), cmd(8)),
+            Err(Reject::QueueFull)
+        );
         // A freed slot is reused, and delivery order still counts from the new delivery.
-        assert_eq!(q.pop_due(5).map(|c| c.seq), Some(0));
-        q.push(5, cmd(9)).unwrap();
+        assert_eq!(q.pop_due(Instant::from_micros(5)).map(|c| c.seq), Some(0));
+        q.push(Instant::from_micros(5), cmd(9)).unwrap();
         assert_eq!(drain(&mut q, 5), [1, 2, 3, 4, 5, 6, 7, 9]);
     }
 }

@@ -6,7 +6,7 @@
 //! applies the fault script to the units by (direction, index) (APP-075). `flip` needs frames
 //! and is refused until A2.
 
-use refapp_scenario::{Apid, Instant, Node, Output, StepInput};
+use refapp_scenario::{Apid, Delivered, Instant, Node, Output, StepInput};
 
 use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, OpsEntry, Scenario};
 use crate::trace::{Dir, FaultKind, Header, NodeId, Record};
@@ -263,7 +263,7 @@ fn step(
     let units: Vec<&[u8]> = delivered.iter().map(Vec::as_slice).collect();
     let input = StepInput {
         now: Instant::from_micros(t),
-        delivered: &units,
+        delivered: Delivered::new(&units),
         ops: &ops,
         tx_slot: slot,
     };
