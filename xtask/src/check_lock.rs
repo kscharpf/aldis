@@ -1,8 +1,10 @@
 //! The lock of `xtask check`: one run at a time per worktree (VER-069).
 //!
 //! A second run in the same worktree would overlap the first one's builds and mix their output.
-//! The lock is a symlink `xtask-check.lock` in the worktree's own git directory, so that another
-//! worktree is not held up. Its target is `<pid>|<start time>` of the holder, the way
+//! The lock is a symlink `xtask-check.lock` in the worktree's `target/` directory, so that another
+//! worktree is not held up. It is not in the worktree's git directory: a lock left there by a
+//! killed run made Claude Code refuse the worktree for an agent (symbolic links in its git
+//! metadata). `target/` is untracked and ignored, and nothing else inspects it. Its target is `<pid>|<start time>` of the holder, the way
 //! `scripts/reverify` keeps its locks: creating it is one atomic step, and a pid that was reused
 //! has another start time, so a lock left by a killed run is stale and the next run takes it over.
 //! Taking over goes through a second symlink, `xtask-check.lock.take`, so that two takers cannot
@@ -35,17 +37,10 @@ impl Drop for Guard {
 
 /// Takes the lock of this worktree, or fails naming the run that holds it.
 pub fn acquire() -> Result<Guard, String> {
-    let out = Command::new("git")
-        .args(["rev-parse", "--path-format=absolute", "--git-dir"])
-        .current_dir(repo::root())
-        .output()
-        .map_err(|e| format!("git: {e}"))?;
-    if !out.status.success() {
-        return Err("git rev-parse --git-dir failed".into());
-    }
-    let dir = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    let dir = repo::root().join("target");
+    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     acquire_in(
-        &Path::new(&dir).join("xtask-check.lock"),
+        &dir.join("xtask-check.lock"),
         std::process::id(),
         &proc_start,
     )
