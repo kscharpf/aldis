@@ -533,9 +533,9 @@ fn c_sanitizer_checks() -> Vec<Check> {
     )]
 }
 
-/// Its typical duration in seconds: the mean of the check's duration in the nightly run
-/// 42363690903 (535.5 s on `x86_64`), rounded; the `--lib` binary takes about 286 s of it.
-const MIRI_SECS: u16 = 536;
+/// Its typical duration in seconds: 499.6 s, rounded, in the first complete passing run (every
+/// test binary but `vectors`), the hosted verification run 42379660267 on `x86_64`.
+const MIRI_SECS: u16 = 500;
 
 /// The check `ffi-miri`: gating, run when its inputs change (maintainer decision 2026-11-07,
 /// after the nightly of issue #310 found in a test a finding that had merged without Miri; it
