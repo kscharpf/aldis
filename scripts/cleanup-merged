@@ -7,7 +7,9 @@
 # A branch is cleaned only when all hold; otherwise the script says which does not and keeps it:
 #   - a merged pull request has it as its head branch;
 #   - its tip is an ancestor of origin/main (never of the local main, which may be stale);
-#   - its worktree, if it has one, is clean and is not the main checkout.
+#   - its worktree, if it has one, is clean and is not the main checkout. A clean worktree locked
+#     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)`) is unlocked
+#     first; a lock with any other reason fails the removal.
 # Then: the worktree is removed, the local branch deleted (-D: the ancestry test is the proof
 # it is merged), and the remote branch deleted if it still exists and is an ancestor of
 # origin/main. Bulk cleanup of leftovers is scripts/prune-agent-branches.
@@ -40,6 +42,16 @@ worktree_of() {
     g worktree list --porcelain | awk -v ref="refs/heads/$1" '
         $1 == "worktree" { path = substr($0, 10) }
         $1 == "branch" && $2 == ref { print path; exit }'
+}
+
+# Whether worktree $1 is locked by Claude Code for a finished agent (reason `claude agent
+# agent-<id> (pid N)`; N is the coordinator's own session, so liveness cannot tell). Called only
+# for a clean worktree whose branch is merged. Any other lock is not ours to remove.
+claude_lock() {
+    g worktree list --porcelain | awk -v wt="$1" '
+        $1 == "worktree" { in_wt = (substr($0, 10) == wt) }
+        in_wt && $1 == "locked" { print substr($0, 8) }' \
+        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+\)$'
 }
 
 act() { # act <description> <command...>
@@ -85,6 +97,9 @@ clean_one() {
         if [ -n "$(git -C "$wt" status --porcelain)" ]; then
             echo "  KEEP: the worktree $wt is dirty"
             return 1
+        fi
+        if claude_lock "$wt"; then
+            act "the Claude Code lock of worktree $wt" g worktree unlock "$wt" || return 1
         fi
         act "worktree $wt" g worktree remove "$wt" || return 1
     fi

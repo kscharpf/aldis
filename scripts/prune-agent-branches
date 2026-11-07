@@ -3,8 +3,10 @@
 #
 # Usage: scripts/prune-agent-branches [--apply]
 #
-# 1. Worktrees under .claude/worktrees/ that are clean, hold no commit missing from the
-#    remote, and whose branch is merged into origin/main or deleted on the remote: removed.
+# 1. Worktrees under .claude/worktrees/ that are
+#    clean, hold no commit missing from the remote, and whose branch is merged into origin/main
+#    or deleted on the remote: removed. A Claude Code agent lock on such a worktree is unlocked
+#    first.
 # 2. Local branches named worktree-agent-* with no worktree and a tip that is an ancestor of
 #    origin/main (or of their remote branch): deleted.
 set -euo pipefail
@@ -13,7 +15,7 @@ apply=0
 case "${1:-}" in
     "") ;;
     --apply) apply=1 ;;
-    *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
@@ -29,6 +31,16 @@ act() { # act <description> <command...>
     else
         echo "would remove: $what"
     fi
+}
+
+# Whether worktree $1 is locked by Claude Code for a finished agent (reason `claude agent
+# agent-<id> (pid N)`; N is the coordinator's own session, so liveness cannot tell). Called only
+# for a clean worktree, nothing unpushed, branch merged or gone from the remote.
+claude_lock() {
+    g worktree list --porcelain | awk -v wt="$1" '
+        $1 == "worktree" { in_wt = (substr($0, 10) == wt) }
+        in_wt && $1 == "locked" { print substr($0, 8) }' \
+        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+\)$'
 }
 
 merged() { g merge-base --is-ancestor "$1" origin/main 2>/dev/null; }
@@ -56,6 +68,10 @@ while IFS= read -r line; do
                 echo "keep: $wt ($ref has $unpushed unpushed commit(s))"; continue
             fi
             if merged "$ref" || ! has_remote "$ref"; then
+                if claude_lock "$wt"; then
+                    act "the Claude Code lock of worktree $wt" \
+                        git -C "$main_checkout" worktree unlock "$wt" || continue
+                fi
                 act "worktree $wt (branch $ref)" git -C "$main_checkout" worktree remove "$wt"
             else
                 echo "keep: $wt (branch $ref is open on the remote)"
