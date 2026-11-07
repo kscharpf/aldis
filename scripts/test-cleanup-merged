@@ -7,7 +7,8 @@
 # branch); the branch whose remote is already gone is cleaned; each of these is kept with its
 # reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`) is unlocked and
-# removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the branch and leaves its branches in place.
+# removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
+# branch and leaves its branches in place.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -74,7 +75,8 @@ case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac
 EOF
 chmod +x "$work/bin/gh"
 
-merged="merged-claude merged-claude-dirty merged-clean merged-dirty merged-after merged-remote-gone merged-locked main"
+merged="merged-claude merged-claude-dirty merged-clean merged-dirty merged-after"
+merged="$merged merged-remote-gone merged-locked main"
 out="" rc=0
 run() {
     out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" "$script" "$@" 2>&1)"
