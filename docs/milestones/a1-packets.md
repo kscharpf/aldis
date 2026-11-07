@@ -70,6 +70,16 @@ Only what the document lacks; nothing in it is restated.
 - Checklist: "A spec-readings pull request before a codec", for the readings.
 - **Done when:** `cargo xtask spec-lint` passes.
 
+**Results (WP-1).** Added to [reference-application.md](../reference-application.md): §6.5 (script entries), §6.6 (the cases `a1-immediate`, `a1-rejects`, `a1-downlink-faults` with their expected results), and APP-126…APP-130, which are in the exit table (§4). The harness's scenario model and the generated schema carry the `ops` and `faults` arrays; the entries of the cases wait in `refapp/refapp-harness/tests/data/a1-cases.json` until WP-5 moves them into `scenario.json` with their golden traces (a case in `scenario.json` needs a golden trace, which no node can produce before WP-3 and WP-4). The readings, checked against the Blue Books on 2026-11-06:
+
+| Reading | Clauses | Result |
+|---|---|---|
+| Sequence count, continuity, reset | 133.0 §4.1.3.4.3.3–4; §4.3.2.2 | One count per APID, continuous modulo 16 384, reset only if unavoidable (note 2: completeness is then unknown); the extraction function checks continuity. No classification of gap, repeat, or reset is given, so it is Aldis's own rule (SPP-011, CMN-030, CMN-031), written out in [reference-application.md](../reference-application.md) §6.6. No OI |
+| Segmentation of the dump | 133.0 §4.1.3.4.2.1 note, §4.1.3.4.2.2 a to d, §4.1.3.4.2.3 | `01` first, `00` continuation, `10` last, `11` unsegmented, as SPP-013 and APP-016 say; use of the flags is optional. The Octet String service forces `11`, so the dump APID is a Packet service path, which the link plan has (APP-006). No OI |
+| Secondary header with a time code | 133.0 §4.1.4.2.1.5 a, §4.1.4.2.2.3 to 5; 301.0 §3.2.1, §3.2.2 | Time Code Field only; the code, and the presence of the P-field, fixed per managed data path; the P-field precedes the T-field. `0x1E` is extension 0, ID `001`, 4 coarse octets, 2 fractional octets. Implicit for `0x010`, `0x020`, `0x021` and explicit for `0x011` is allowed (SPP-008, OI-30 point 2). No OI |
+| `Instant` to CUC | 301.0 §3.2.1; TIME-011, OI-40 | The conversion from nanoseconds truncates (TIME-011), where the A0 plan's D12 says "ceiling"; the requirement governs and the A0 plan is a record. Moot for the scenario: every on-board time is a multiple of 125 000 µs, which 2 fractional octets hold exactly (APP-061), and APP-128 keeps the arrival of an immediate command on that grid |
+| CRC-16 of the table and of the dump | 132.0 §4.1.6.2.2; CMN-001 | `0x0C4F` and `0x80A8` confirmed by evaluating the defining expression by long division over GF(2), on the 300 table octets of §3.3.6 and the 600 memory octets of §3.3.4. The 300 memory octets of `a1-rejects` give `0x7FE0` |
+
 ### WP-2 Harness: ops script and faults (M) — APP-072…075, APP-082
 - `Case` of `refapp-harness/src/scenario.rs` gets the ops script and the fault script; the schema and the generated constants are regenerated (`gen-scenario`, APP-107).
 - The scheduler wakes at ops-script instants (§6.2), passes the due entries as `StepInput::ops`, and applies scripted faults by (direction, unit index), recording the `fault` record just before the unit's `unit_sent` and the `copy` of a duplicate (§7.3). `flip` and the frame-level rules stay for A2.
@@ -120,6 +130,8 @@ A1 is complete when every item below is green on `main`. Requirements of the sce
 | Time | APP-060 | |
 | Ground node | APP-011, APP-018, APP-019 | |
 | Link model at packet level | APP-072, APP-073, APP-074, APP-075 | |
+| Scenario scripts and A1 cases | APP-126, APP-127, APP-128 | |
+| Event rules of the nodes | APP-129, APP-130 | |
 | Golden traces | APP-082, APP-083, APP-086, APP-090 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a1-*` case (APP-106); `cargo xtask trace --scope a1 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
 | Docs | A0 recorded as exited (D1); roadmap §3, the READMEs, and the ACFS entry gate updated; the new requirements of WP-1 listed here | |
