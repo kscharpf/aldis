@@ -146,7 +146,7 @@ Milestone 4 is complete when every item below is green on `main`. The results co
 
 Property tests for FHP placement and reassembly (VER-023) are part of the roadmap exit. The release `v0.5.0-m4` is the maintainer's.
 
-Not in M4: C ABI versioning and the C++ wrapper `aldis.hpp` (M5); framework runtime stacks (M6, v1.1); sync and channel coding (the ASM and TM randomizer in M5, the rest later, OI-12).
+Not in M4: C ABI versioning and the C++ wrapper `aldis.hpp` (M5); framework runtime stacks (after v1); sync and channel coding (the ASM and TM randomizer in M5, the rest later, OI-12).
 
 ## 5. Risks
 
