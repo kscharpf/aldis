@@ -24,7 +24,7 @@ Wire identifiers are distinct, range-checked types, never bare integers:
 | API-002 | Spacecraft ID validity SHALL depend on the protocol and edition that uses it. Each frame codec SHALL define the identifier width it accepts. | 132.0 §4.1.2.2.3; 232.0 §4.1.2.5; 732.0 §4.1.2.2.3; 732.1 §4.1.2.2.3 | T |
 | API-003 | Instant arithmetic SHALL saturate rather than wrap. A caller supplying a non-monotonic instant SHALL NOT cause undefined behavior; engines SHALL treat time going backwards as zero elapsed time. | — | T |
 | API-018 | Every range-checked identifier type of the core library that has a checked constructor SHALL also have a constructor for a program that holds the value as a constant. It SHALL check the constant at compile time, so that an out-of-range constant fails the build, and SHALL have no error path and no run-time panic (RS-010, RS-020, GEN-020). | — | T |
-| API-020 | The CRC-16 functions of the core library SHALL take and return a distinct CRC-16 value type, not a bare integer, so that a CRC (a FECF, a syndrome, a CRC carried in a command) cannot be taken for a length or a count without a compile error (RS-020). The type SHALL convert from and to the wire value without a check, since every `u16` is a CRC-16. | 132.0 §4.1.6 | T |
+| API-004 | The CRC-16 functions of the core library SHALL take and return a distinct CRC-16 value type, not a bare integer, so that a CRC (a FECF, a syndrome, a CRC carried in a command) cannot be taken for a length or a count without a compile error (RS-020). The type SHALL convert from and to the wire value without a check, since every `u16` is a CRC-16. | 132.0 §4.1.6 | T |
 
 ## 2. Codecs: views and writers
 

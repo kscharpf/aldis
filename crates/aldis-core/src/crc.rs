@@ -14,7 +14,7 @@ const POLY: u16 = 0x1021;
 
 /// A CRC-16 value: the CRC register, a FECF, or a syndrome (CMN-001, CMN-003). Every `u16` is
 /// one, so the type only keeps a CRC from being taken for a length or a count at compile time
-/// (RS-020, API-020).
+/// (RS-020, API-004).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Crc16(u16);
 
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn crc16_is_a_distinct_type_over_the_wire_value() {
-        // req: CMN-001, API-020
+        // req: CMN-001, API-004
         assert_eq!(Crc16::from_wire(0x0C4F).get(), 0x0C4F);
         assert_ne!(Crc16::from_wire(1), Crc16::from_wire(2));
         assert_eq!(Crc16::from_wire(0x29B1).to_be_bytes(), [0x29, 0xB1]);
