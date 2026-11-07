@@ -131,7 +131,7 @@ A1 is complete when every item below is green on `main`. Requirements of the sce
 | Ground node | APP-011, APP-018, APP-019 | |
 | Link model at packet level | APP-072, APP-073, APP-074, APP-075 | |
 | Scenario scripts and A1 cases | APP-126, APP-127, APP-128 | |
-| Event rules of the nodes | APP-129, APP-130 | |
+| Event rules of the nodes | APP-129, APP-130, APP-131 | |
 | Golden traces | APP-082, APP-083, APP-086, APP-090 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a1-*` case (APP-106); `cargo xtask trace --scope a1 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
 | Docs | A0 recorded as exited (D1); roadmap §3, the READMEs, and the ACFS entry gate updated; the new requirements of WP-1 listed here | |
@@ -157,3 +157,5 @@ Each finding is a GitHub issue labelled `api-feedback`; this list names them as 
 | #302 | WP-4 | `Reassembler`'s `Outcome` gives the reason for a discard, not the octets thrown away |
 | #303 | WP-4 | `SpacePacket::decode` ignores trailing octets; a one-packet unit needs its own length check |
 | #304 | WP-4 | `Apid::new` returns `Option`, so a constant APID needs an error path |
+| #312 | WP-3b | No conversion from a CUC time code to an `Instant`; the time tag of a command is converted by hand (reverse of #305) |
+| #318 | WP-3b | aldis-core CRC functions return a bare `u16`; refapp wraps it in `Crc16` |

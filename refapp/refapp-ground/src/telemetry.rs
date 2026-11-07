@@ -4,7 +4,6 @@
 //! APP-018, APP-022, APP-130.
 
 use aldis::core::counter::Continuity;
-use aldis::core::crc::crc16;
 use aldis::core::ids::Apid;
 use aldis::core::{Error, ErrorKind};
 use aldis::spp::{
@@ -12,8 +11,8 @@ use aldis::spp::{
     SpacePacket, SpacePacketHeader, Status, TimeHeaderLayout, Tracked,
 };
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
-use refapp_scenario::Output;
 use refapp_scenario::generated::{apid, time};
+use refapp_scenario::{Crc16, Output};
 
 /// Event code `seq_gap` (§7.4).
 pub const SEQ_GAP: u16 = 1;
@@ -167,7 +166,7 @@ impl Telemetry {
             Some(Ok((address, length, crc))) => {
                 out.app_event(
                     DUMP_REASSEMBLED,
-                    &[u64::from(address), u64::from(length), u64::from(crc)],
+                    &[u64::from(address), u64::from(length), u64::from(crc.get())],
                 );
             }
             Some(Err(e)) => reject(out, e.kind()),
@@ -261,7 +260,7 @@ fn decode(unit: &[u8]) -> Result<Accepted<'_>, Error> {
 /// # Errors
 /// `Incomplete` if the SDU is shorter than its header, `OutOfRange` for a length outside 1 to
 /// 1024, `LengthMismatch` if the memory octets are not as many as the length says.
-fn parse_sdu(sdu: &[u8]) -> Result<(u32, u16, u16), Error> {
+fn parse_sdu(sdu: &[u8]) -> Result<(u32, u16, Crc16), Error> {
     let Some((head, memory)) = sdu.split_first_chunk::<SDU_HEADER_LEN>() else {
         return Err(Error::incomplete(SDU_HEADER_LEN));
     };
@@ -274,13 +273,14 @@ fn parse_sdu(sdu: &[u8]) -> Result<(u32, u16, u16), Error> {
     if memory.len() != usize::from(length) {
         return Err(Error::new(ErrorKind::LengthMismatch));
     }
-    Ok((address, length, crc16(memory)))
+    Ok((address, length, Crc16::of(memory)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{decode, parse_sdu};
     use aldis::core::ErrorKind;
+    use refapp_scenario::Crc16;
 
     #[test]
     fn sdu_of_the_nominal_dump() {
@@ -291,7 +291,10 @@ mod tests {
             let a = 0x0001_0000 + i;
             u8::try_from((a ^ (a >> 8)) & 0xFF).unwrap()
         }));
-        assert_eq!(parse_sdu(&sdu).unwrap(), (65_536, 600, 0x80A8));
+        assert_eq!(
+            parse_sdu(&sdu).unwrap(),
+            (65_536, 600, Crc16::from_wire(0x80A8))
+        );
     }
 
     #[test]

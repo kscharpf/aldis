@@ -10,7 +10,9 @@
 
 pub mod generated;
 pub mod node;
+pub mod table;
 
 pub use aldis::core::ids::Apid;
 pub use aldis::core::time::Instant;
 pub use node::{Node, Output, StepInput};
+pub use table::{Crc16, TableId, TableLength};
