@@ -155,8 +155,8 @@ pub const CPP: PathList = PathList {
 };
 
 /// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
-/// `aldis` dependency builds with `full`, which the check compiles into the static and shared
-/// libraries, and the committed header `include/` with its C++ wrapper `aldis.hpp`. One pattern
+/// `aldis` dependency builds with `full`, which the check compiles into the static library,
+/// and the committed header `include/` with its C++ wrapper `aldis.hpp`. One pattern
 /// for the crates: `full` enables all of them, and a narrower list would miss a crate when the
 /// facade gains it. The engine-scenario vectors that the C++ tests of `aldis.hpp` run (CABI-072):
 /// `test-vectors/cop1/` and `test-vectors/link/`.
@@ -745,9 +745,9 @@ const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
 # <stdint.h>, <stddef.h>, and <stdbool.h>, and wraps its declarations in extern \"C\" (CABI-003).
 cargo xtask header
-# The static and shared libraries on the host (CABI-001), and the header as C99, C11, C23, C++11,
+# The static library on the host (CABI-001), and the header as C99, C11, C23, C++11,
 # and C++17 with -Wall -Wextra -Wpedantic -Werror on the pinned GCC and Clang: a C program built
-# against each library runs (CABI-003, VER-050).
+# against the library runs (CABI-003, VER-050).
 cargo xtask header c-smoke gcc-14 g++-14
 cargo xtask header c-smoke clang clang++
 # The C++20 wrapper aldis.hpp of the engine handles, without exceptions and with -Wall -Wextra
