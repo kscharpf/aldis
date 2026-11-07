@@ -34,6 +34,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | Document | What it defines |
 |---|---|
 | [Decision rights](process/decision-rights.md) | Who decides what: the maintainer, the coordinating session, or the agent of a work package, per category (spec readings, scope, plans, API and ABI, vectors, reviews, process, dependencies, releases, merges, housekeeping, approvals); how to ask the maintainer, and what continues meanwhile (VER-062) |
+| [Coordinator](process/coordinator.md) | The coordinator's standing rules: dispatch, review, verification, after a merge, reporting, changing the process, and several coordinators at once (agent definitions live in `.claude/agents/`) |
 | [Independent review](process/review.md) | Protocol for independent PR review: verification evidence over re-running checks, suppression verification, unautomated review focus, and citation of code file:line |
 
 ### Reference ([`reference/`](reference/))
