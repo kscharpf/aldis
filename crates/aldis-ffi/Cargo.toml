@@ -10,7 +10,7 @@ repository.workspace = true
 publish = false
 
 [lib]
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 aldis = { path = "../aldis", default-features = false, features = ["full"] }

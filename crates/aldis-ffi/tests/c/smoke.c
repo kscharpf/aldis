@@ -1,7 +1,7 @@
 /*
- * C smoke test of the aldis-ffi libraries and the generated header (CABI-001, CABI-003).
+ * C smoke test of the aldis-ffi static library and the generated header (CABI-001, CABI-003).
  * `cargo xtask header c-smoke <cc> <c++>` compiles it as C99 against the static library and
- * as C++11 against the shared library, with -pedantic -Wall -Wextra -Werror, and runs both.
+ * as C++11 against the static library too, with -pedantic -Wall -Wextra -Werror, and runs both.
  * It is written in the common subset of C99 and C++11: no designated initializers.
  */
 #include "aldis/aldis.h"
