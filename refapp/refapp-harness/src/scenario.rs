@@ -1061,7 +1061,16 @@ mod tests {
         // req: APP-107
         for &(pointer, min, max) in RANGES {
             for v in [min, max] {
-                let r = Scenario::parse(&mutated(pointer, v));
+                let mut doc: serde_json::Value =
+                    serde_json::from_str(&mutated(pointer, v)).unwrap();
+                if pointer == "/link/frame_slot_us" {
+                    // The ops' execution times must lie on the slot grid (APP-061), a rule
+                    // across fields that no slot but the A0 one meets; this test is of the range.
+                    for case in doc["cases"].as_array_mut().unwrap() {
+                        case.as_object_mut().unwrap().remove("ops");
+                    }
+                }
+                let r = Scenario::parse(&doc.to_string());
                 assert!(r.is_ok(), "{pointer} = {v}: {:?}", r.err());
             }
         }
