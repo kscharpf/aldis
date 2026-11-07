@@ -157,8 +157,10 @@ status_one() {
                     and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")]
                | max_by(.createdAt) // empty | @MODE@ end'
     reply_filter_new="${reply_filter_new//@MARKER@/$marker}"
-    reply_at="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter_new//@MODE@/.createdAt}")"
-    reply_body="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter_new//@MODE@/.body}")"
+    reply_at="$(gh pr view "$n" --json reviews,comments \
+        --jq "${reply_filter_new//@MODE@/.createdAt}")"
+    reply_body="$(gh pr view "$n" --json reviews,comments \
+        --jq "${reply_filter_new//@MODE@/.body}")"
     reviews_n="$(gh pr view "$n" --json reviews --jq '[.reviews[] | select(.submittedAt != null)]
         | length')"
     labels="$(gh pr view "$n" --json labels --jq '[.labels[].name] | join(",")')"

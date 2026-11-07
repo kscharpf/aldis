@@ -96,7 +96,8 @@ pr() {
             body: ("Fix round, head " + ($sha | .[0:9]) + ".\n\n" + $m)}]' --arg sha "$sha")"
     fi
     jq -nc --arg b "$2" --arg t "$3" --arg s "${4:-OPEN}" --argjson d "${5:-false}" \
-        --arg sha "$sha" --arg base "${BASE:-main}" --arg labels "${6:-}" --argjson reviews "$reviews" \
+        --arg sha "$sha" --arg base "${BASE:-main}" --arg labels "${6:-}" \
+        --argjson reviews "$reviews" \
         --argjson comments "$comments" '{
         state: $s, isDraft: $d, headRefName: $b, headRepositoryOwner: {login: "o"},
         baseRefName: $base,

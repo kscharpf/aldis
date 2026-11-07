@@ -168,10 +168,13 @@ pr "$current" "[$review]" "[$reply]" feature ""
 expect "NOT READY" "a reply that does not name the head" "does not name the head"
 pr "$current" "[$review]" "[$(named "$old")]" feature ""
 expect "NOT READY" "a reply that names an earlier head (a push after it)" "does not name the head"
-echo '[{"event":"head_ref_force_pushed","created_at":"2026-01-04T00:00:00Z"}]' >"$STUB/timeline.json"
+forced() { # forced <time>: the timeline holds one force-push of the head branch
+    echo '[{"event":"head_ref_force_pushed","created_at":"'"$1"'"}]' >"$STUB/timeline.json"
+}
+forced 2026-01-04T00:00:00Z
 pr "$current" "[$review]" "[$(named "$current")]" feature ""
 expect "NOT READY" "a force-push after the reply" "force-pushed"
-echo '[{"event":"head_ref_force_pushed","created_at":"2026-01-02T12:00:00Z"}]' >"$STUB/timeline.json"
+forced 2026-01-02T12:00:00Z
 expect "READY FOR TRAIN" "a force-push before the reply"
 echo '[]' >"$STUB/timeline.json"
 pr "$current" "[$review]" "[$(named "$current")]" feature "" "needs-maintainer"
