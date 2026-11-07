@@ -50,8 +50,8 @@ ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one 
 | Phase | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
-| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles (M5 C ABI) | `a2-*` traces reproduced in nightly CI |
-| **P3 COP-1** | FARM-1 through its C ABI handle | P2; A3; the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
+| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI | `a2-*` traces reproduced in nightly CI |
+| **P3 COP-1** | FARM-1 through its C ABI handle | P2 (so M4); A3; the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
 
 The alternative to one milestone with phases is three milestones, one per row; the plan's D1 compares them.
 
@@ -63,11 +63,12 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 |---|---|---|
 | 1 | M1 (complete, `v0.2.0-m1`) | A0 |
 | 2 | M2 (complete, `v0.3.0-m2`) | A1 |
-| 3 | M3 | A2 |
-| 4 | M4 | A3 |
-| 5 | M5 | A4 |
-| 6 | v1.0 release (M5 exited) | A5 |
-| 7 | | A6 |
+| 3 | M3 | |
+| 4 | M4 | A2 (entry gate M4, D3) |
+| 5 | M5 | A3 |
+| 6 | v1.0 release (M5 exited) | A4 |
+| 7 | | A5 |
+| 8 | | A6 |
 
 ## 5. Releases
 

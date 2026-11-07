@@ -1,7 +1,7 @@
 # Milestone ACFS — cFS flight side
 
-**Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1), and COP-1 (A3), both through the link engines. It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
-**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A3 and the C ABI of M2–M5 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
+**Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1, P1; the M1 codecs only), frames (A2, P2), and COP-1 (A3, P3), the last two through the link engine handles. It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A3 and the C ABI of M2–M4 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
 
 **Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (not yet) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
 
@@ -12,7 +12,7 @@
 | WP-2 Harness: cFS node and TCP transport | planned | — | Decisions D9, D18 accepted |
 | WP-3 Tooling: C header, trace scan, verify inputs | planned | — | Decisions D12, D15, D17 accepted |
 | WP-4 P1 Packets | planned | — | Entry: A1 exited; WP-1 to WP-3 |
-| WP-5 P2 Frames | planned | — | Entry: A2 exited; the M4 engine handles in the C ABI (M5) |
+| WP-5 P2 Frames | planned | — | Entry: A2 exited; the M4 engine handles in the C ABI |
 | WP-6 P3 COP-1 | planned | — | Entry: A3 exited; the M3 FARM-1 handle |
 | WP-7 Review and exit | planned | — | |
 
@@ -90,7 +90,7 @@ Size is relative effort: **S** small, **M** medium, **L** large. WP-1 to WP-3 ca
 ```
 plan accepted ─┬─▶ WP-1 cFS build skeleton ──┐
                ├─▶ WP-2 harness, transport ──┼─▶ WP-4 P1 ─▶ WP-5 P2 ─▶ WP-6 P3 ─▶ WP-7 exit
-               └─▶ WP-3 tooling ─────────────┘   (A1)       (A2, M4)   (A3, M3)
+               └─▶ WP-3 tooling ─────────────┘   (A1)       (A2, M4)   (A3, M3, M4 via P2)
 ```
 
 ### WP-1 cFS build skeleton (M) — APP-111, APP-112, APP-123, APP-124
