@@ -371,6 +371,10 @@ mod tests {
         assert_eq!(COUNT.get(), SeqCount::MAX);
         assert_eq!(VERSION, PacketVersion::ENCAPSULATION);
         assert_eq!(Apid::from_const::<0>().get(), 0);
+        // Called at run time as well, so that coverage sees the bodies (the consts above are
+        // evaluated by the compiler).
+        assert_eq!(SeqCount::from_const::<5>().get(), 5);
+        assert_eq!(PacketVersion::from_const::<0>().get(), 0);
         assert_eq!(SpacecraftId::<10>::from_const::<1023>().get(), 1023);
         assert_eq!(VcId::<3>::from_const::<7>(), VcId::<3>::new(7).unwrap());
         assert_eq!(MapId::<4>::from_const::<0>().get(), 0);
