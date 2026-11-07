@@ -122,13 +122,15 @@
           "description": "Downlink frame slot period, µs (A2 on).",
           "type": "integer",
           "format": "uint64",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 18446744073709551615
         },
         "uplink_slot_us": {
           "description": "Uplink slot period, µs (A2 on).",
           "type": "integer",
           "format": "uint64",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 18446744073709551615
         }
       },
       "additionalProperties": false,

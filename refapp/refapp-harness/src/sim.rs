@@ -143,7 +143,7 @@ pub fn records(
         node: ground,
         deadline: None,
         tx_dir: Dir::Up,
-        slot_us: link.uplink_slot_us,
+        slot_us: link.uplink_slot_us.get(),
         next_index: 0,
         ops_us: case.ops.iter().map(OpsEntry::at_us).collect(),
         ops_done: 0,
@@ -153,7 +153,7 @@ pub fn records(
         node: flight,
         deadline: None,
         tx_dir: Dir::Down,
-        slot_us: link.frame_slot_us,
+        slot_us: link.frame_slot_us.get(),
         next_index: 0,
         ops_us: Vec::new(),
         ops_done: 0,
@@ -191,7 +191,7 @@ pub fn records(
         .flatten()
         .min();
         if case.level == Level::Frames {
-            for period in [link.frame_slot_us, link.uplink_slot_us] {
+            for period in [link.frame_slot_us.get(), link.uplink_slot_us.get()] {
                 next = next.into_iter().chain(next_slot(t, period)).min();
             }
         }
