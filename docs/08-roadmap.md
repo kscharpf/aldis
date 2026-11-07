@@ -36,7 +36,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer (exited 2026-11-06) |
-| **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI |
+| **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI (exited 2026-11-07; [plan](milestones/a1-packets.md)) |
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases |
 | **A4 Variants** | The AOS and USLP variants of [reference-application.md](reference-application.md) §4.3, on the same engines. The engines are used from A2 on, so A4 no longer replaces loops | A3; M4 | `a4-*` traces reproduced in CI, with the packet projection of the nominal case (APP-003) |
