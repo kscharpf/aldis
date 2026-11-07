@@ -19,7 +19,7 @@ decode_implicit_lenient(bytes, &Format) -> Lenient<Decoded, TimeAnomaly>
 encode(&TimeCode, include_pfield, out) -> len
 TimeFormat::encoded_len(include_pfield) -> len                  // const; the length encode writes (TIME-007)
 Cuc::from_instant(format, epoch_offset, Instant) -> Cuc         // TIME-015
-Cuc::to_instant(&self, epoch_offset) -> Instant                 // TIME-016
+Cuc::to_instant(&self, epoch_offset) -> Result<Instant>        // TIME-016
 CalendarDate::to_variation(self, CcsVariation) -> CalendarDate  // TIME-035
 ```
 

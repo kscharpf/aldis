@@ -183,15 +183,12 @@ impl CalendarDate {
         })
     }
 
-    /// A month/day date the caller already knows exists (conversions, from [`civil`]).
-    pub(crate) const fn from_month_day_unchecked(
-        year: Year,
-        month: Month,
-        day: u8,
-    ) -> CalendarDate {
+    /// The month/day date of a [`civil`] result: `civil` gives a month 1-12 (the range of
+    /// `Month`) and a day that exists in that month of the year.
+    pub(crate) const fn from_civil(year: Year, month: u8, day: u8) -> CalendarDate {
         CalendarDate {
             year,
-            day: Day::MonthDay(month, day),
+            day: Day::MonthDay(Month(month), day),
         }
     }
 
@@ -233,13 +230,8 @@ impl CalendarDate {
                 }
             }
             (Day::Ordinal(_), CcsVariation::MonthDay) => {
-                // `civil` gives a month 1-12 (the range of `Month`) and a day that exists in the same year.
                 let (_, month, day) = civil(self.day_number());
-                let month = Month(month);
-                CalendarDate {
-                    year: self.year,
-                    day: Day::MonthDay(month, day),
-                }
+                CalendarDate::from_civil(self.year, month, day)
             }
             (Day::MonthDay(..), CcsVariation::MonthDay)
             | (Day::Ordinal(_), CcsVariation::DayOfYear) => self,
@@ -370,11 +362,7 @@ mod tests {
         );
         let date = CalendarDate::from_day_of_year(Year::new(2024).unwrap(), 60).unwrap();
         assert_eq!(date.day_number(), day_number(2024, 2, 29));
-        let md = CalendarDate::from_month_day_unchecked(
-            Year::new(2024).unwrap(),
-            Month::new(2).unwrap(),
-            29,
-        );
+        let md = CalendarDate::from_civil(Year::new(2024).unwrap(), 2, 29);
         assert_eq!(md.day_number(), date.day_number());
         assert_eq!((Year::default().get(), Hour::default().get()), (1, 0));
     }

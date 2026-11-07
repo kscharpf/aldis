@@ -409,8 +409,8 @@ impl Cuc {
     ///
     /// # Errors
     /// `OutOfRange` (`coarse`) if the code is before `epoch_offset` (the limit is the offset), or
-    /// if the microseconds do not fit `u64` (the limit is the largest coarse time whose whole seconds do, which a fraction can still overflow)
-    /// (TIME-016).
+    /// if the microseconds do not fit `u64` (the limit is the largest coarse time whose whole
+    /// seconds do, which a fraction can still overflow) (TIME-016).
     pub fn to_instant(&self, epoch_offset: u64) -> Result<Instant> {
         let (seconds, nanos) = self.to_seconds_nanos();
         let after = seconds
