@@ -1,5 +1,5 @@
 //! Time codes with an explicit or implicit P-field: decode, encode, agency-defined codes
-//! (301.0 §3, §3.6; TIME-001…TIME-006).
+//! (301.0 §3, §3.6; TIME-001…TIME-007).
 
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Lenient, Result};
 
@@ -9,7 +9,7 @@ use crate::cds::{Cds, CdsFormat};
 use crate::cuc::{Cuc, CucFormat};
 use crate::field;
 use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail, ReservedPField, TimeCodeId};
-use crate::util::wide8;
+use crate::util::{octets, wide8};
 
 /// Longest agency-defined T-field, 16 octets (301.0 §3.6.2, TIME-006).
 pub const MAX_AGENCY_LEN: u8 = 16;
@@ -53,8 +53,13 @@ impl AgencyFormat {
 
     /// T-field length in octets (301.0 §3.6.2, TIME-006).
     #[must_use]
-    pub fn t_len(&self) -> usize {
-        usize::from(self.t_len)
+    pub const fn t_len(&self) -> usize {
+        octets(self.t_len)
+    }
+
+    /// P-field length in octets: octet 1 and the undefined tail (301.0 §3.6.2, TIME-003).
+    pub(crate) const fn pfield_len(&self) -> usize {
+        self.tail.len().wrapping_add(1)
     }
 
     /// Undefined P-field octets (301.0 §3.6.2, TIME-005).
@@ -145,13 +150,33 @@ pub enum TimeFormat {
 impl TimeFormat {
     /// T-field length in octets (301.0 §3.1.2, TIME-003).
     #[must_use]
-    pub fn t_len(&self) -> usize {
+    pub const fn t_len(&self) -> usize {
         match self {
             TimeFormat::Cuc(f) => f.t_len(),
             TimeFormat::Cds(f) => f.t_len(),
             TimeFormat::Ccs(f) => f.t_len(),
             TimeFormat::Agency(f) => f.t_len(),
         }
+    }
+
+    /// Length in octets of a time code of this format as [`TimeCode::encode`] writes it: the
+    /// P-field (with its octet 2 and undefined tail, if the format has them) if `include_pfield`,
+    /// then the T-field. A caller sizes a buffer, or the secondary header of a Space Packet, from
+    /// the format alone, without a trial encode; in a `const` context the length is a compile-time
+    /// constant (301.0 §3.1; TIME-003, TIME-007).
+    #[must_use]
+    pub const fn encoded_len(&self, include_pfield: bool) -> usize {
+        let p_len = if include_pfield {
+            match self {
+                TimeFormat::Cuc(f) => f.pfield_len(),
+                TimeFormat::Cds(f) => f.pfield_len(),
+                TimeFormat::Ccs(f) => f.pfield_len(),
+                TimeFormat::Agency(f) => f.pfield_len(),
+            }
+        } else {
+            0
+        };
+        p_len.wrapping_add(self.t_len())
     }
 
     /// The P-field describing this format (301.0 §3.1.1, TIME-001).
@@ -445,8 +470,75 @@ mod tests {
     };
     use crate::cuc::{Cuc, CucEpoch, CucFormat, CucValue};
     use crate::field;
-    use crate::pfield::{PField, PFieldTail};
+    use crate::pfield::{MAX_PFIELD_LEN, PField, PFieldTail};
     use aldis_core::{ErrorDetail, ErrorKind};
+
+    /// The encoded length of a Level 1 CUC with 4 + 2 octets, as a compile-time constant.
+    const LEN: usize = match CucFormat::new(CucEpoch::Tai1958, 4, 2) {
+        Ok(f) => TimeFormat::Cuc(f).encoded_len(true),
+        Err(_) => 0,
+    };
+
+    fn check_len(f: TimeFormat) {
+        let p = f.pfield().len();
+        assert_eq!(f.encoded_len(true), p.wrapping_add(f.t_len()), "{f:?}");
+        assert_eq!(f.encoded_len(false), f.t_len(), "{f:?}");
+        assert!(f.encoded_len(true) <= MAX_PFIELD_LEN.wrapping_add(super::MAX_T_LEN));
+        if let TimeFormat::Cuc(c) = f {
+            let code = TimeCode::Cuc(Cuc::new(c, CucValue::new(0, 0)).unwrap());
+            for include in [false, true] {
+                let mut out = [0_u8; 64];
+                assert_eq!(code.encode(include, &mut out), Ok(f.encoded_len(include)));
+            }
+        }
+    }
+
+    #[test]
+    fn encoded_len_matches_encode() {
+        // req: TIME-003, TIME-007
+        let tail = PFieldTail::new(&[0x80, 0x01]).unwrap();
+        for epoch in [CucEpoch::Tai1958, CucEpoch::Agency] {
+            for co in 1..=7 {
+                for fo in 0..=10 {
+                    let f = CucFormat::new(epoch, co, fo).unwrap();
+                    for f in [f, f.with_octet2(), f.with_tail(tail).unwrap()] {
+                        check_len(TimeFormat::Cuc(f));
+                    }
+                }
+            }
+        }
+        for epoch in [CdsEpoch::Ccsds1958, CdsEpoch::Agency] {
+            for day in [CdsDayLen::Bits16, CdsDayLen::Bits24] {
+                for subms in [CdsSubMs::None, CdsSubMs::Micros, CdsSubMs::Picos] {
+                    let f = CdsFormat::new(epoch, day, subms);
+                    check_len(TimeFormat::Cds(f));
+                    check_len(TimeFormat::Cds(f.with_tail(tail)));
+                }
+            }
+        }
+        for variation in [CcsVariation::MonthDay, CcsVariation::DayOfYear] {
+            for n in 0..=6 {
+                let f = CcsFormat::new(variation, n).unwrap();
+                check_len(TimeFormat::Ccs(f));
+                check_len(TimeFormat::Ccs(f.with_tail(tail)));
+            }
+        }
+        for n in 1..=16 {
+            let f = AgencyFormat::new(n).unwrap();
+            check_len(TimeFormat::Agency(f));
+            check_len(TimeFormat::Agency(f.with_tail(tail)));
+        }
+        // Against a real encode, for every kind of code `samples` builds.
+        for code in samples() {
+            let f = code.format().unwrap();
+            for include in [false, true] {
+                let mut out = [0_u8; 64];
+                assert_eq!(code.encode(include, &mut out), Ok(f.encoded_len(include)));
+            }
+        }
+        // A `const` context gives a compile-time buffer size.
+        assert_eq!(LEN, 7);
+    }
 
     fn samples() -> [TimeCode; 4] {
         let tail = PFieldTail::new(&[0x01]).unwrap();

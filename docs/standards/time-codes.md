@@ -17,6 +17,8 @@ decode_with_pfield_lenient(bytes)    -> Lenient<Decoded, TimeAnomaly>    // leni
 decode_implicit(bytes, &Format)      -> Decoded                          // P-field known from management, strict
 decode_implicit_lenient(bytes, &Format) -> Lenient<Decoded, TimeAnomaly>
 encode(&TimeCode, include_pfield, out) -> len
+TimeFormat::encoded_len(include_pfield) -> len                  // const; the length encode writes (TIME-007)
+Cuc::from_instant(format, epoch_offset, Instant) -> Cuc         // TIME-015
 ```
 
 | ID | Requirement | Source | Verif. |
@@ -27,6 +29,7 @@ encode(&TimeCode, include_pfield, out) -> len
 | TIME-004 | No time code operation SHALL depend on the host clock or time zone (GEN-031). | — | I |
 | TIME-005 | P-field extension octets that 301.0 does not define (CUC octet 3 and later; octet 2 and later of CDS, CCS, and agency-defined codes) SHALL be `ReservedValue` in strict mode. In lenient mode the decoder SHALL keep them raw for round trip, count them in the consumed length, and raise the anomaly UndefinedPFieldExtension. A P-field SHALL be at most 8 octets; a longer chain SHALL be `Malformed` in both modes (OI-18). | 301.0 §3.1.1 | V |
 | TIME-006 | An agency-defined code (time code ID `110`) SHALL be decoded as its raw P-field and a raw T-field of (P-field bits 4–7) + 1 octets, 1 to 16. | 301.0 §3.6 | V |
+| TIME-007 | The length in octets that `encode` writes SHALL be available from a time code format alone, as a `const fn` taking `include_pfield`, equal to the T-field length, plus the P-field length (octet 1, octet 2 of a CUC that has one, and any undefined extension octets of the format) if `include_pfield`. It SHALL depend on the format alone, so a caller can size a buffer, or the secondary header of a Space Packet (SPP-008), without a trial encode. | 301.0 §3.1.1, §3.1.2 | T |
 
 ## 3. CUC — CCSDS Unsegmented Code (§3.2)
 
@@ -40,6 +43,7 @@ The encoder puts as many octets as it can in octet 1 (up to 4 coarse and 3 fract
 | TIME-011 | A CUC value SHALL hold coarse time as a 64-bit unsigned integer and fine time as a left-aligned binary fraction (up to 80 bits). Conversion **to** `(seconds, nanoseconds)` SHALL truncate toward zero. Conversion **from** nanoseconds SHALL also truncate, rounding the fraction down to a value of the format (OI-40); the fraction then stays below one second, so nothing carries into the coarse time. With these rules a round trip never gives a later time, and the following SHALL be documented. The conversion from a CUC value to nanoseconds and back is exact if and only if the value is a multiple of 2⁻⁹ s: always for 0 and 1 fractional octets (2⁻⁸ s is exactly 3 906 250 ns), and otherwise one unit of the last fractional octet earlier for 2 or 3 octets. With 4 or more fractional octets, finer than a nanosecond, the conversion from nanoseconds to a CUC value and back gives the nanoseconds back if they are a multiple of 1 953 125 (2⁻⁹ s) and one fewer otherwise. The conversions SHALL take the basic time unit to be the second, the unit of the CCSDS codes (301.0 §1.2) and the one §3.2.1 recommends, and SHALL document that for a Level 2 code they give the time in seconds only if the agency's unit is the second (#82). | 301.0 §1.2, §3.2.1 | T/V |
 | TIME-012 | Encoding a value that does not fit the configured coarse width SHALL fail with `OutOfRange`. It SHALL NOT wrap. | — | T |
 | TIME-013 | The mission-defined bits (octet 2 bits 6–7) SHALL be preserved on round trip. | 301.0 §3.2 | V |
+| TIME-015 | A conversion from the caller-supplied monotonic time (microseconds, API-003) and an epoch offset in coarse time units SHALL give the CUC code whose coarse time is the offset plus the whole seconds of that time and whose fraction is the remaining microseconds converted as `from_seconds_nanos` does (TIME-011: rounded down to a value of the format). It SHALL return `OutOfRange` (`coarse`) if the sum overflows `u64` or does not fit the format's coarse octets (TIME-012), and SHALL NOT clamp or wrap. The basic time unit is taken to be the second, as in TIME-011. | 301.0 §3.2.1 | T |
 | TIME-014 | Level 1 CUC SHALL be documented as TAI-based with no leap seconds. The library SHALL NOT apply leap-second corrections to CUC. | 301.0 §3.2 | I |
 
 ## 4. CDS — CCSDS Day Segmented Code (§3.3)

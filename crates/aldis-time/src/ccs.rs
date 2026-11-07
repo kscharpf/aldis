@@ -9,7 +9,7 @@ use crate::anomaly::TimeAnomaly;
 use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
 use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::wide8;
+use crate::util::{octets, wide8};
 
 /// One past the largest sub-second value for `octets` sub-second octets: 10^(2 × octets), for
 /// 0–6 octets (301.0 §3.4.2).
@@ -91,8 +91,13 @@ impl CcsFormat {
 
     /// T-field length in octets: 7 plus the sub-second octets (301.0 §3.4.1, TIME-003).
     #[must_use]
-    pub fn t_len(&self) -> usize {
-        usize::from(self.subsecond).wrapping_add(7)
+    pub const fn t_len(&self) -> usize {
+        octets(self.subsecond).wrapping_add(7)
+    }
+
+    /// P-field length in octets: octet 1 and the undefined tail (301.0 §3.4.2, TIME-003).
+    pub(crate) const fn pfield_len(&self) -> usize {
+        self.tail.len().wrapping_add(1)
     }
 
     /// The P-field for this format (301.0 §3.4.2, TIME-030).
