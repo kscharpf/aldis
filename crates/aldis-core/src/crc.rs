@@ -11,8 +11,45 @@
 use crate::error::{Error, ErrorKind, Result, u8_to_u16};
 
 const POLY: u16 = 0x1021;
+
+/// A CRC-16 value: the CRC register, a FECF, or a syndrome (CMN-001). Every `u16` is
+/// one, so the type only keeps a CRC from being taken for a length or a count at compile time
+/// (RS-020, API-004).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Crc16(u16);
+
+impl Crc16 {
+    /// The all-zero CRC: the syndrome of a frame in which no error is detected (CMN-003).
+    pub const ZERO: Crc16 = Crc16(0);
+
+    /// The CRC-16 as carried on the wire or held in a register, such as the argument of a
+    /// command; no check applies (CMN-001).
+    #[must_use]
+    pub const fn from_wire(value: u16) -> Crc16 {
+        Crc16(value)
+    }
+
+    /// The CRC-16 of two octets, MSB first, as in the FECF (CMN-003).
+    #[must_use]
+    pub const fn from_be_bytes(octets: [u8; 2]) -> Crc16 {
+        Crc16(u16::from_be_bytes(octets))
+    }
+
+    /// The numeric value.
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+
+    /// The two octets of the FECF, MSB first (CMN-003).
+    #[must_use]
+    pub const fn to_be_bytes(self) -> [u8; 2] {
+        self.0.to_be_bytes()
+    }
+}
+
 /// Initial CRC-16 register value (all ones, 132.0 §4.1.6.2; CMN-001).
-pub const PRESET: u16 = 0xFFFF;
+pub const PRESET: Crc16 = Crc16(0xFFFF);
 
 /// One bitwise CRC step for one octet.
 const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
@@ -32,19 +69,20 @@ const fn step_bitwise(mut crc: u16, octet: u8) -> u16 {
 
 /// Updates an in-progress CRC-16 `crc` (initially [`PRESET`]) over `data`, bit by bit (CMN-001).
 #[must_use]
-pub const fn crc16_update_bitwise(mut crc: u16, data: &[u8]) -> u16 {
+pub const fn crc16_update_bitwise(crc: Crc16, data: &[u8]) -> Crc16 {
+    let mut crc = crc.0;
     let mut rest = data;
     // bound: data.len() passes; each pass drops the first octet of `rest`.
     while let [octet, tail @ ..] = rest {
         crc = step_bitwise(crc, *octet);
         rest = tail;
     }
-    crc
+    Crc16(crc)
 }
 
 /// CRC-16 of `data`, computed bit by bit (CMN-001, CMN-004).
 #[must_use]
-pub const fn crc16_bitwise(data: &[u8]) -> u16 {
+pub const fn crc16_bitwise(data: &[u8]) -> Crc16 {
     crc16_update_bitwise(PRESET, data)
 }
 
@@ -74,8 +112,8 @@ static TABLE: [u16; 256] = {
 /// table (CMN-001, CMN-004).
 #[cfg(feature = "crc-table")]
 #[must_use]
-pub fn crc16_update_table(crc: u16, data: &[u8]) -> u16 {
-    data.iter().fold(crc, |crc, &octet| {
+pub fn crc16_update_table(crc: Crc16, data: &[u8]) -> Crc16 {
+    Crc16(data.iter().fold(crc.0, |crc, &octet| {
         let [hi, _] = crc.to_be_bytes();
         let index = usize::from(hi ^ octet);
         #[expect(
@@ -84,13 +122,13 @@ pub fn crc16_update_table(crc: u16, data: &[u8]) -> u16 {
         )]
         let entry = TABLE[index];
         (crc << 8) ^ entry
-    })
+    }))
 }
 
 /// CRC-16 of `data`, computed with the 256-entry table (CMN-001, CMN-004).
 #[cfg(feature = "crc-table")]
 #[must_use]
-pub fn crc16_table(data: &[u8]) -> u16 {
+pub fn crc16_table(data: &[u8]) -> Crc16 {
     crc16_update_table(PRESET, data)
 }
 
@@ -104,7 +142,7 @@ pub fn crc16_table(data: &[u8]) -> u16 {
         reason = "the `crc-table` path is not const, and `const` must not depend on a feature (RS-019)"
     )
 )]
-pub fn crc16_update(crc: u16, data: &[u8]) -> u16 {
+pub fn crc16_update(crc: Crc16, data: &[u8]) -> Crc16 {
     #[cfg(feature = "crc-table")]
     {
         crc16_update_table(crc, data)
@@ -117,17 +155,17 @@ pub fn crc16_update(crc: u16, data: &[u8]) -> u16 {
 
 /// CRC-16 of `data` with the implementation selected at build time (CMN-001, CMN-004).
 #[must_use]
-pub fn crc16(data: &[u8]) -> u16 {
+pub fn crc16(data: &[u8]) -> Crc16 {
     crc16_update(PRESET, data)
 }
 
 /// Splits a frame into the covered octets and its trailing FECF.
-fn split_fecf(frame: &[u8]) -> Result<(&[u8], u16)> {
+fn split_fecf(frame: &[u8]) -> Result<(&[u8], Crc16)> {
     let body_len = frame.len().checked_sub(2).ok_or(Error::incomplete(2))?;
     let (body, fecf) = frame.split_at(body_len);
     Ok((
         body,
-        u16::from_be_bytes([
+        Crc16::from_be_bytes([
             fecf.first().copied().unwrap_or(0),
             fecf.get(1).copied().unwrap_or(0),
         ]),
@@ -151,7 +189,7 @@ pub fn verify_fecf(frame: &[u8]) -> Result<()> {
 /// The error-detection syndrome over a whole frame including its FECF: zero exactly when no
 /// error is detected (132.0 §4.1.6.3; CMN-003, method 2).
 #[must_use]
-pub fn syndrome(frame: &[u8]) -> u16 {
+pub fn syndrome(frame: &[u8]) -> Crc16 {
     crc16(frame)
 }
 
@@ -173,24 +211,34 @@ pub fn write_fecf(frame: &mut [u8]) -> Result<()> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome, verify_fecf,
-        write_fecf,
+        Crc16, PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome,
+        verify_fecf, write_fecf,
     };
     use crate::error::ErrorKind;
 
     #[test]
     fn check_value_and_incremental() {
         // req: CMN-001, CMN-002
-        const _: () = assert!(crc16_bitwise(b"123456789") == 0x29B1);
-        assert_eq!(crc16_bitwise(b"123456789"), 0x29B1);
-        assert_eq!(crc16(b"123456789"), 0x29B1);
+        const _: () = assert!(crc16_bitwise(b"123456789").get() == 0x29B1);
+        assert_eq!(crc16_bitwise(b"123456789"), Crc16::from_wire(0x29B1));
+        assert_eq!(crc16(b"123456789"), Crc16::from_wire(0x29B1));
         assert_eq!(crc16(&[]), PRESET);
         let mid = crc16_update(PRESET, b"1234");
-        assert_eq!(crc16_update(mid, b"56789"), 0x29B1);
+        assert_eq!(crc16_update(mid, b"56789"), Crc16::from_wire(0x29B1));
         assert_eq!(
             crc16_update_bitwise(crc16_update_bitwise(PRESET, b"1234"), b"56789"),
-            0x29B1
+            Crc16::from_wire(0x29B1)
         );
+    }
+
+    #[test]
+    fn crc16_is_a_distinct_type_over_the_wire_value() {
+        // req: CMN-001, API-004
+        assert_eq!(Crc16::from_wire(0x0C4F).get(), 0x0C4F);
+        assert_ne!(Crc16::from_wire(1), Crc16::from_wire(2));
+        assert_eq!(Crc16::from_wire(0x29B1).to_be_bytes(), [0x29, 0xB1]);
+        assert_eq!(Crc16::from_be_bytes([0x29, 0xB1]), crc16(b"123456789"));
+        assert_eq!(Crc16::ZERO.get(), 0);
     }
 
     #[test]
@@ -200,13 +248,13 @@ mod tests {
         write_fecf(&mut frame).unwrap();
         assert_eq!(&frame[9..], &[0x29, 0xB1]);
         assert_eq!(verify_fecf(&frame), Ok(()));
-        assert_eq!(syndrome(&frame), 0);
+        assert_eq!(syndrome(&frame), Crc16::ZERO);
         frame[0] ^= 0x01;
         assert_eq!(
             verify_fecf(&frame).unwrap_err().kind(),
             ErrorKind::CrcMismatch
         );
-        assert_ne!(syndrome(&frame), 0);
+        assert_ne!(syndrome(&frame), Crc16::ZERO);
         assert_eq!(
             verify_fecf(&[0x00]).unwrap_err().kind(),
             ErrorKind::Incomplete

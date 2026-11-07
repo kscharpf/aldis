@@ -65,7 +65,7 @@ impl GroundNode {
     pub fn new(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
         Ok(GroundNode {
             script: Script::new(script).map_err(GroundError::Script)?,
-            telemetry: Telemetry::new().map_err(GroundError::Setup)?,
+            telemetry: Telemetry::new(),
         })
     }
 

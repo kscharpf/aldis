@@ -1,5 +1,6 @@
 //! The table store (docs/reference-application.md §2.1, §3.3.6; APP-017).
 
+use aldis::core::crc::crc16;
 use aldis::core::{Error, ErrorKind};
 use refapp_scenario::{Crc16, TableId, TableLength};
 
@@ -56,7 +57,7 @@ impl TableStore {
         self.stored = Some(Table {
             id,
             length,
-            crc: Crc16::of(octets),
+            crc: crc16(octets),
         });
         Ok((id, length))
     }

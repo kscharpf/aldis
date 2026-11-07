@@ -206,6 +206,8 @@ pub struct aldis_spp_segmenter_config_t {
 pub struct aldis_spp_reassembly_t {
     /// Why a partial SDU was thrown away: `ALDIS_SPP_DISCARD_*`, `_NONE` if none was.
     pub discarded: u32,
+    /// For a `discarded` that is not `_NONE`: the octets of user data the partial SDU held.
+    pub discarded_octets: usize,
     /// `ALDIS_SPP_REASSEMBLY_*`.
     pub status: u32,
     /// For `ALDIS_SPP_REASSEMBLY_DROPPED`: `ALDIS_SPP_DISCARD_ORPHAN` or `_OVERFLOW`.
@@ -705,7 +707,10 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
                 Status::Dropped(why) => (ALDIS_SPP_REASSEMBLY_DROPPED, discard(why), 0),
             };
             out.write(aldis_spp_reassembly_t {
-                discarded: outcome.discarded.map_or(ALDIS_SPP_DISCARD_NONE, discard),
+                discarded: outcome
+                    .discarded
+                    .map_or(ALDIS_SPP_DISCARD_NONE, |d| discard(d.reason)),
+                discarded_octets: outcome.discarded.map_or(0, |d| d.octets),
                 status,
                 reason,
                 sdu_len,

@@ -774,7 +774,7 @@ mod tests {
         assert_eq!(f.tfdz(), full.tfdz());
         assert_eq!(f.tfdf_header(), full.tfdf_header());
         assert_eq!(full.ocf(), Some(Ocf::decode([1, 2, 3, 4])));
-        assert_eq!(full.fecf(), Some(crc16(&bytes[..62])));
+        assert_eq!(full.fecf(), Some(crc16(&bytes[..62]).get()));
         assert!(full.security_header().is_empty() && full.security_trailer().is_empty());
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
         assert_eq!((f.len(), full.len(), full.is_empty()), (64, 64, false));

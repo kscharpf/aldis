@@ -18,7 +18,7 @@ fuzz_target!(|data: &[u8]| {
     write_fecf(&mut frame).unwrap();
     assert_eq!(frame[data.len()..], crc.to_be_bytes());
     assert_eq!(verify_fecf(&frame), Ok(()));
-    assert_eq!(syndrome(&frame), 0);
+    assert_eq!(syndrome(&frame).get(), 0);
 
     // Any single-bit error is detected by both methods.
     if !frame.is_empty() {
@@ -28,12 +28,12 @@ fuzz_target!(|data: &[u8]| {
             verify_fecf(&frame).map_err(|e| e.kind()),
             Err(ErrorKind::CrcMismatch)
         );
-        assert_ne!(syndrome(&frame), 0);
+        assert_ne!(syndrome(&frame).get(), 0);
     }
 
     // Arbitrary input: verify and syndrome agree.
     if data.len() >= 2 {
-        assert_eq!(verify_fecf(data).is_ok(), syndrome(data) == 0);
+        assert_eq!(verify_fecf(data).is_ok(), syndrome(data).get() == 0);
     } else {
         assert_eq!(
             verify_fecf(data).map_err(|e| e.kind()),

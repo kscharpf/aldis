@@ -713,7 +713,7 @@ mod tests {
         assert_eq!((done.len(), done.octets().len()), (32, 32));
         assert!(!done.is_empty());
         assert_eq!(out[32..], [0xEE; 8], "nothing written past the frame");
-        assert_eq!(syndrome(&out[..32]), 0);
+        assert_eq!(syndrome(&out[..32]).get(), 0);
         // SCID 0x0AB, VC 0, OCF 1; FSH 1, sync 0, POF 0, SLID 11, FHP 3; FSH ID 0x03.
         assert_eq!(out[..7], [0x0A, 0xB1, 7, 9, 0x98, 0x03, 0x03]);
         let pc = *mc.pc();
@@ -835,7 +835,7 @@ mod tests {
             .unwrap()
             .finalize()
             .into_octets();
-        assert_eq!(syndrome(octets), 0);
+        assert_eq!(syndrome(octets).get(), 0);
         let f = TmFrame::decode_with(octets, mc.pc(), &mc).unwrap();
         assert_eq!(
             (f.security_header(), f.security_trailer()),
@@ -1226,7 +1226,7 @@ mod tests {
         assert_eq!(fib_frame[..32], two_frame);
         assert_eq!(gal_frame[..32], two_frame);
         assert_eq!(fib_frame[32..], [0xEE; 8], "nothing written past the frame");
-        assert_eq!(syndrome(&two_frame), 0);
+        assert_eq!(syndrome(&two_frame).get(), 0);
         assert_eq!(fib, two_phase);
         assert_eq!(gal.next_octet(), fib.next_octet());
         let frame = TmFrame::decode_with(&two_frame, mc.pc(), &mc).unwrap();
@@ -1290,7 +1290,7 @@ mod tests {
         let mut out = [0xEE_u8; 32];
         let n = encode_oid(&mc, vcid(5), 1, 2, &[], None, &mut oid, &mut out).unwrap();
         assert_eq!(n, 32);
-        assert_eq!(syndrome(&out), 0);
+        assert_eq!(syndrome(&out).get(), 0);
         let frame = TmFrame::decode_with(&out, mc.pc(), &mc).unwrap();
         assert_eq!(frame.ocf(), None);
         assert_eq!(frame.data_field().len(), 32 - 6 - 2);

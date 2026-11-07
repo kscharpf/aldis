@@ -4,7 +4,9 @@
 //! coverage run. Each harness states its bound and why the unwinding depth suffices.
 
 use crate::counter::{Continuity, ModCounter};
-use crate::crc::{PRESET, crc16, crc16_bitwise, crc16_update, syndrome, verify_fecf, write_fecf};
+use crate::crc::{
+    Crc16, PRESET, crc16, crc16_bitwise, crc16_update, syndrome, verify_fecf, write_fecf,
+};
 use crate::error::ErrorKind;
 use crate::{ErrorDetail, bits};
 
@@ -47,7 +49,7 @@ fn crc16_matches_reference() {
     // req: CMN-001, CMN-004, GEN-020
     let buf: [u8; CRC_MAX] = kani::any();
     let data = any_prefix(&buf);
-    let expected = reference_crc(data);
+    let expected = Crc16::from_wire(reference_crc(data));
     assert_eq!(crc16_bitwise(data), expected);
     assert_eq!(crc16(data), expected);
     #[cfg(feature = "crc-table")]
@@ -69,16 +71,16 @@ fn fecf_methods_agree() {
     kani::assume(len <= CRC_MAX);
     let frame = &mut buf[..len];
     match verify_fecf(frame) {
-        Ok(()) => assert_eq!(syndrome(frame), 0),
+        Ok(()) => assert_eq!(syndrome(frame), Crc16::ZERO),
         Err(e) if len < 2 => assert_eq!(e.kind(), ErrorKind::Incomplete),
         Err(e) => {
             assert_eq!(e.kind(), ErrorKind::CrcMismatch);
-            assert_ne!(syndrome(frame), 0);
+            assert_ne!(syndrome(frame), Crc16::ZERO);
         }
     }
     if write_fecf(frame).is_ok() {
         assert_eq!(verify_fecf(frame), Ok(()));
-        assert_eq!(syndrome(frame), 0);
+        assert_eq!(syndrome(frame), Crc16::ZERO);
     } else {
         assert!(len < 2);
     }

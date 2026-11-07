@@ -73,9 +73,9 @@ impl core::fmt::Write for Text {
 
 fn vectors(t: &mut Tally) {
     for c in CRC {
-        t.check(crc16(bb(c.input)) == c.value);
-        t.check(crc16_bitwise(bb(c.input)) == c.value);
-        t.check(crc16_table(bb(c.input)) == c.value);
+        t.check(crc16(bb(c.input)).get() == c.value);
+        t.check(crc16_bitwise(bb(c.input)).get() == c.value);
+        t.check(crc16_table(bb(c.input)).get() == c.value);
     }
     let (mut fib, mut gal) = (OidGenerator::new(), OidGeneratorGalois::new());
     for &expected in OID_START {
@@ -285,12 +285,12 @@ fn apis_time_crc_oid_counter(tally: &mut Tally) {
     tally.check(
         write_fecf(bb(&mut frame)).is_ok()
             && verify_fecf(bb(&frame)).is_ok()
-            && syndrome(bb(&frame)) == 0,
+            && syndrome(bb(&frame)).get() == 0,
     );
     tally.check(
-        crc16_update(bb(PRESET), bb(&frame)) == 0
-            && crc16_update_bitwise(bb(PRESET), bb(&frame)) == 0
-            && crc16_update_table(bb(PRESET), bb(&frame)) == 0,
+        crc16_update(bb(PRESET), bb(&frame)).get() == 0
+            && crc16_update_bitwise(bb(PRESET), bb(&frame)).get() == 0
+            && crc16_update_table(bb(PRESET), bb(&frame)).get() == 0,
     );
     tally.check(verify_fecf(bb(&[0])).is_err() && write_fecf(bb(&mut [0])).is_err());
 
