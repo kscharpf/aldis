@@ -112,7 +112,7 @@ The resulting telemetry: 30 HK packets, 13 payload packets (t = 0.5…18.5 s and
 | APP-014 | The nominal case SHALL use only time-tagged commands, each released at least 5 s before its execution time. | — | I |
 | APP-015 | The payload application SHALL generate one packet at t = 0.5 + 2k s (k ≥ 0, t < 30 s) while its mode is *on*, and none while it is *off*. `SET_PAYLOAD_MODE` SHALL change the mode at its execution instant. | — | T |
 | APP-016 | The memory dump SHALL build the dump SDU of §3.3.4 and send it as Space Packets with Sequence Flags `01`, `00`, `10` (or `11` for a single packet), at most 128 user-data octets each, one packet every 125 000 µs from the execution instant, followed by `DUMP_COMPLETED` in the step of the last packet. A `DUMP_MEMORY` command executed while a dump is in progress SHALL be rejected with reason 5. | 133.0 §4.1.3.4.2.2 | T |
-| APP-017 | The table store SHALL keep the most recently uploaded table (one table of up to 512 octets). `ACTIVATE_TABLE` SHALL report reason 1 if the stored table has another ID or none was uploaded, and otherwise compare the CRC-16 (CMN-001) of the stored table with the command's argument and report `TABLE_ACTIVATED` or `TABLE_REJECTED`. | — | T |
+| APP-017 | The table store SHALL keep the most recently uploaded table (one table of up to 503 octets, so that its packet, 9 octets longer (§3.3.6), fits the 512-octet Maximum Packet Length of APP-041). `ACTIVATE_TABLE` SHALL report reason 1 if the stored table has another ID or none was uploaded, and otherwise compare the CRC-16 (CMN-001) of the stored table with the command's argument and report `TABLE_ACTIVATED` or `TABLE_REJECTED`. | — | T |
 | APP-018 | The ground node SHALL report each sequence gap, repeat, and reset (SPP-011), each reassembled or discarded dump, and each packet rejected by a strict decoder as the application events of §7.4. | — | T |
 | APP-019 | The nominal case SHALL follow the timeline of §2.4. Ops-script entries marked with a later milestone SHALL apply only from that link level on. | — | T |
 
@@ -203,7 +203,7 @@ The dump SDU is address (u32) ‖ length L (u16, 1…1024) ‖ L memory octets. 
 
 #### 3.3.6 Table upload (`0x081`)
 
-Table ID (u8, 1…255) ‖ length L (u16, 1…512) ‖ L table octets. Every table of the scenario has octet i = (3 · i + 1) mod 256, whatever its ID and length; the nominal table is ID 1, L = 300. Its packet (309 octets) is longer than one TC frame data field, so it is segmented on MAP 1 (§4.2).
+Table ID (u8, 1…255) ‖ length L (u16, 1…503) ‖ L table octets. Every table of the scenario has octet i = (3 · i + 1) mod 256, whatever its ID and length; the nominal table is ID 1, L = 300. Its packet (309 octets) is longer than one TC frame data field, so it is segmented on MAP 1 (§4.2).
 
 ### 3.4 Spacecraft ID
 
