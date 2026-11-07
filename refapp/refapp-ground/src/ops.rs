@@ -8,7 +8,7 @@
 //! (RS-020).
 
 use aldis::core::ids::{Apid, SeqCount};
-use aldis::core::{Error, ErrorKind};
+use aldis::core::Error;
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
