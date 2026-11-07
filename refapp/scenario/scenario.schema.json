@@ -351,7 +351,8 @@
           "type": "integer",
           "format": "uint8",
           "minimum": 2,
-          "maximum": 254
+          "maximum": 254,
+          "multipleOf": 2
         },
         "t1_initial_us": {
           "description": "`T1_Initial`, µs.",
