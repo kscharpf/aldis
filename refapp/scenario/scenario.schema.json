@@ -420,6 +420,22 @@
           "items": {
             "type": "string"
           }
+        },
+        "ops": {
+          "description": "The ops script: what the ground node releases, and when (§6.5, APP-126). Entry `i` is\nthe ops-script entry index `i` of the node interface (§8.1).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OpsEntry"
+          },
+          "default": []
+        },
+        "faults": {
+          "description": "The fault script: faults by (direction, unit index) (§6.3, §6.5, APP-075, APP-126).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FaultEntry"
+          },
+          "default": []
         }
       },
       "additionalProperties": false,
@@ -443,6 +459,432 @@
           "description": "A2 on: one frame per slot.",
           "type": "string",
           "const": "frames"
+        }
+      ]
+    },
+    "OpsEntry": {
+      "description": "One entry of a case's ops script (§6.5, APP-126).\n\nEntries are in release order. An entry names its kind and the parameters of the packet the\nground node builds from it (§3.3.5, §3.3.6), never its octets, so that a node in another\nlanguage reads the same file.",
+      "oneOf": [
+        {
+          "description": "A command packet on the commands APID (§3.3.5).",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "command"
+            },
+            "at_us": {
+              "description": "Release instant, µs: the ground node outputs the packet then (§6.2).",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "execution": {
+              "description": "Execution mode and time.",
+              "$ref": "#/$defs/Execution"
+            },
+            "call": {
+              "description": "Function and arguments.",
+              "$ref": "#/$defs/Call"
+            },
+            "extra_octets": {
+              "description": "Octets appended after the arguments, so that the packet length does not match the\nfunction code (APP-024). Absent: none.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "at_us",
+            "execution",
+            "call"
+          ]
+        },
+        {
+          "description": "A table-upload packet on the table-upload APID (§3.3.6). Table octet `i` is\n`(3 · i + 1) mod 256`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "table_upload"
+            },
+            "at_us": {
+              "description": "Release instant, µs.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "table_id": {
+              "description": "Table ID.",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 1,
+              "maximum": 255
+            },
+            "length": {
+              "description": "Table length, octets.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 1,
+              "maximum": 512
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "at_us",
+            "table_id",
+            "length"
+          ]
+        },
+        {
+          "description": "A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fop1_directive"
+            },
+            "at_us": {
+              "description": "Release instant, µs.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "directive": {
+              "description": "The directive; A3 adds the others it needs (APP-002).",
+              "$ref": "#/$defs/Fop1Directive"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "at_us",
+            "directive"
+          ]
+        }
+      ]
+    },
+    "Execution": {
+      "description": "Execution mode of a command (§2.3, §3.3.5).",
+      "oneOf": [
+        {
+          "description": "Executes when delivered; the execution-time field is zero.",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "immediate"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ]
+        },
+        {
+          "description": "Executes at the on-board time T0 + `exec_us`, a multiple of the frame slot (APP-061).",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "time_tagged"
+            },
+            "exec_us": {
+              "description": "Execution instant, µs after T0.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "exec_us"
+          ]
+        }
+      ]
+    },
+    "Call": {
+      "description": "Function and arguments of a command (§3.3.5).",
+      "oneOf": [
+        {
+          "description": "`NOOP`, function code `0x01`.",
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "const": "noop"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "function"
+          ]
+        },
+        {
+          "description": "`DUMP_MEMORY`, function code `0x02`.",
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "const": "dump_memory"
+            },
+            "address": {
+              "description": "First address of the dump.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "length": {
+              "description": "Length, octets.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 1,
+              "maximum": 1024
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "function",
+            "address",
+            "length"
+          ]
+        },
+        {
+          "description": "`ACTIVATE_TABLE`, function code `0x03`.",
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "const": "activate_table"
+            },
+            "table_id": {
+              "description": "Table ID.",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 1,
+              "maximum": 255
+            },
+            "crc": {
+              "description": "CRC-16 of the table that the command claims (CMN-001).",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "function",
+            "table_id",
+            "crc"
+          ]
+        },
+        {
+          "description": "`SET_PAYLOAD_MODE`, function code `0x04`.",
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "const": "set_payload_mode"
+            },
+            "mode": {
+              "description": "New mode: 0 off, 1 on.",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "function",
+            "mode"
+          ]
+        },
+        {
+          "description": "A function code that no function has (reason 1 of `CMD_REJECTED`, §3.3.2).",
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "const": "unknown"
+            },
+            "code": {
+              "description": "The code; not one of `0x01`…`0x04`, and chosen from outside the codes that\nAPP-025 hands out next.",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "function",
+            "code"
+          ]
+        }
+      ]
+    },
+    "Fop1Directive": {
+      "description": "A FOP-1 directive (§2.4).",
+      "oneOf": [
+        {
+          "description": "*Initiate AD Service (without CLCW Check)* (232.1 §4.1).",
+          "type": "string",
+          "const": "initiate_ad_without_clcw"
+        }
+      ]
+    },
+    "FaultEntry": {
+      "description": "One entry of a case's fault script (§6.3, APP-075): the fault applied to the unit sent in\ndirection `dir` with index `index`, counted from 0.",
+      "type": "object",
+      "properties": {
+        "dir": {
+          "description": "Direction in which the unit travels.",
+          "$ref": "#/$defs/Direction"
+        },
+        "index": {
+          "description": "Index of the unit among those sent in that direction.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "fault": {
+          "description": "The fault.",
+          "$ref": "#/$defs/Fault"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "dir",
+        "index",
+        "fault"
+      ]
+    },
+    "Direction": {
+      "description": "Direction of a link unit (§6.3).",
+      "oneOf": [
+        {
+          "description": "Flight node to ground node.",
+          "type": "string",
+          "const": "down"
+        },
+        {
+          "description": "Ground node to flight node.",
+          "type": "string",
+          "const": "up"
+        }
+      ]
+    },
+    "Fault": {
+      "description": "A fault and its arguments (§6.3).",
+      "oneOf": [
+        {
+          "description": "The unit is not delivered.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "drop"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The unit is delivered twice at the same instant.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "duplicate"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The unit arrives `delay_us` later than normal.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "delay"
+            },
+            "delay_us": {
+              "description": "Extra delay, µs.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "delay_us"
+          ]
+        },
+        {
+          "description": "One bit is inverted; frame levels only, where the FECF catches it.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "flip"
+            },
+            "octet": {
+              "description": "Octet number, from 0.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "bit": {
+              "description": "Bit number in the octet, 0 the most significant (GEN-050).",
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 7
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "octet",
+            "bit"
+          ]
+        },
+        {
+          "description": "Only the first `octets` octets are delivered.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "truncate"
+            },
+            "octets": {
+              "description": "Octets kept.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "octets"
+          ]
         }
       ]
     }

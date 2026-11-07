@@ -198,6 +198,163 @@ pub struct Case {
     pub trace_version: u32,
     /// Requirement IDs the case verifies, sorted (§7.2).
     pub requirements: Vec<String>,
+    /// The ops script: what the ground node releases, and when (§6.5, APP-126). Entry `i` is
+    /// the ops-script entry index `i` of the node interface (§8.1).
+    #[serde(default)]
+    pub ops: Vec<OpsEntry>,
+    /// The fault script: faults by (direction, unit index) (§6.3, §6.5, APP-075, APP-126).
+    #[serde(default)]
+    pub faults: Vec<FaultEntry>,
+}
+
+/// One entry of a case's ops script (§6.5, APP-126).
+///
+/// Entries are in release order. An entry names its kind and the parameters of the packet the
+/// ground node builds from it (§3.3.5, §3.3.6), never its octets, so that a node in another
+/// language reads the same file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OpsEntry {
+    /// A command packet on the commands APID (§3.3.5).
+    Command {
+        /// Release instant, µs: the ground node outputs the packet then (§6.2).
+        at_us: u64,
+        /// Execution mode and time.
+        execution: Execution,
+        /// Function and arguments.
+        call: Call,
+        /// Octets appended after the arguments, so that the packet length does not match the
+        /// function code (APP-024). Absent: none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        extra_octets: Option<u8>,
+    },
+    /// A table-upload packet on the table-upload APID (§3.3.6). Table octet `i` is
+    /// `(3 · i + 1) mod 256`.
+    TableUpload {
+        /// Release instant, µs.
+        at_us: u64,
+        /// Table ID.
+        #[schemars(range(min = 1, max = 255))]
+        table_id: u8,
+        /// Table length, octets.
+        #[schemars(range(min = 1, max = 512))]
+        length: u16,
+    },
+    /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
+    Fop1Directive {
+        /// Release instant, µs.
+        at_us: u64,
+        /// The directive; A3 adds the others it needs (APP-002).
+        directive: Fop1Directive,
+    },
+}
+
+/// Execution mode of a command (§2.3, §3.3.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Execution {
+    /// Executes when delivered; the execution-time field is zero.
+    Immediate {},
+    /// Executes at the on-board time T0 + `exec_us`, a multiple of the frame slot (APP-061).
+    TimeTagged {
+        /// Execution instant, µs after T0.
+        exec_us: u64,
+    },
+}
+
+/// Function and arguments of a command (§3.3.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "function", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Call {
+    /// `NOOP`, function code `0x01`.
+    Noop {},
+    /// `DUMP_MEMORY`, function code `0x02`.
+    DumpMemory {
+        /// First address of the dump.
+        address: u32,
+        /// Length, octets.
+        #[schemars(range(min = 1, max = 1024))]
+        length: u16,
+    },
+    /// `ACTIVATE_TABLE`, function code `0x03`.
+    ActivateTable {
+        /// Table ID.
+        #[schemars(range(min = 1, max = 255))]
+        table_id: u8,
+        /// CRC-16 of the table that the command claims (CMN-001).
+        crc: u16,
+    },
+    /// `SET_PAYLOAD_MODE`, function code `0x04`.
+    SetPayloadMode {
+        /// New mode: 0 off, 1 on.
+        #[schemars(range(max = 1))]
+        mode: u8,
+    },
+    /// A function code that no function has (reason 1 of `CMD_REJECTED`, §3.3.2).
+    Unknown {
+        /// The code; not one of `0x01`…`0x04`, and chosen from outside the codes that
+        /// APP-025 hands out next.
+        code: u8,
+    },
+}
+
+/// A FOP-1 directive (§2.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Fop1Directive {
+    /// *Initiate AD Service (without CLCW Check)* (232.1 §4.1).
+    InitiateAdWithoutClcw,
+}
+
+/// Direction of a link unit (§6.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    /// Flight node to ground node.
+    Down,
+    /// Ground node to flight node.
+    Up,
+}
+
+/// One entry of a case's fault script (§6.3, APP-075): the fault applied to the unit sent in
+/// direction `dir` with index `index`, counted from 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FaultEntry {
+    /// Direction in which the unit travels.
+    pub dir: Direction,
+    /// Index of the unit among those sent in that direction.
+    pub index: u64,
+    /// The fault.
+    pub fault: Fault,
+}
+
+/// A fault and its arguments (§6.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Fault {
+    /// The unit is not delivered.
+    Drop {},
+    /// The unit is delivered twice at the same instant.
+    Duplicate {},
+    /// The unit arrives `delay_us` later than normal.
+    Delay {
+        /// Extra delay, µs.
+        delay_us: u64,
+    },
+    /// One bit is inverted; frame levels only, where the FECF catches it.
+    Flip {
+        /// Octet number, from 0.
+        octet: u32,
+        /// Bit number in the octet, 0 the most significant (GEN-050).
+        #[schemars(range(max = 7))]
+        bit: u8,
+    },
+    /// Only the first `octets` octets are delivered.
+    Truncate {
+        /// Octets kept.
+        octets: u32,
+    },
 }
 
 impl Scenario {
@@ -267,6 +424,67 @@ impl Scenario {
                     c.id
                 ));
             }
+            self.check_scripts(c)
+                .map_err(|e| format!("scenario.json: case `{}`: {e}", c.id))?;
+        }
+        Ok(())
+    }
+
+    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128).
+    fn check_scripts(&self, c: &Case) -> Result<(), String> {
+        let slot = self.link.frame_slot_us;
+        let mut previous = 0;
+        for (i, entry) in c.ops.iter().enumerate() {
+            let at_us = match entry {
+                OpsEntry::Command {
+                    at_us,
+                    execution,
+                    call,
+                    ..
+                } => {
+                    match execution {
+                        Execution::Immediate {}
+                            if !(at_us.saturating_add(self.link.one_way_delay_us))
+                                .is_multiple_of(slot) =>
+                        {
+                            return Err(format!(
+                                "ops[{i}]: an immediate command must arrive on a multiple of \
+                                 {slot} µs (APP-128)"
+                            ));
+                        }
+                        Execution::TimeTagged { exec_us } if !exec_us.is_multiple_of(slot) => {
+                            return Err(format!(
+                                "ops[{i}]: execution time must be a multiple of {slot} µs (APP-061)"
+                            ));
+                        }
+                        Execution::Immediate {} | Execution::TimeTagged { .. } => {}
+                    }
+                    if matches!(call, Call::Unknown { code: 1..=4 }) {
+                        return Err(format!("ops[{i}]: an unknown function code is 1 to 4"));
+                    }
+                    *at_us
+                }
+                OpsEntry::TableUpload { at_us, .. } | OpsEntry::Fop1Directive { at_us, .. } => {
+                    *at_us
+                }
+            };
+            if at_us < previous {
+                return Err(format!("ops[{i}]: release instants must not decrease"));
+            }
+            if at_us >= c.end_us {
+                return Err(format!("ops[{i}]: released at or after the end instant"));
+            }
+            previous = at_us;
+        }
+        if c.level == Level::Packets
+            && let Some(i) = c
+                .faults
+                .iter()
+                .position(|f| matches!(f.fault, Fault::Flip { .. }))
+        {
+            return Err(format!(
+                "faults[{i}]: `flip` needs a FECF, so frame level only"
+            ));
         }
         Ok(())
     }
@@ -629,7 +847,10 @@ pub fn generate(check: bool) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Scenario, is_requirement_id, literal};
+    use super::{
+        Call, Case, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
+        literal,
+    };
 
     #[test]
     fn literals_and_ids() {
@@ -663,5 +884,103 @@ mod tests {
         assert!(Scenario::parse(&bad_id).is_err());
         let wrong_name = good.replace("\"aldis-refapp\"", "\"other\"");
         assert!(Scenario::parse(&wrong_name).is_err());
+    }
+
+    /// The scenario file with the A1 cases of `tests/data/a1-cases.json` added.
+    fn with_a1_cases() -> Scenario {
+        let mut s = Scenario::load().unwrap();
+        let cases: Vec<Case> = serde_json::from_str(A1_CASES).unwrap();
+        s.cases.extend(cases);
+        s
+    }
+
+    const A1_CASES: &str = include_str!("../tests/data/a1-cases.json");
+
+    fn rejects(s: &Scenario, what: &str) -> bool {
+        s.check().is_err_and(|e| e.contains(what))
+    }
+
+    #[test]
+    fn script_entries_of_the_a1_cases_parse_and_check() {
+        // req: APP-126, APP-127, APP-128
+        let s = with_a1_cases();
+        s.check().unwrap();
+        let rejects_case = s.case("a1-rejects").unwrap();
+        assert_eq!(rejects_case.ops.len(), 18);
+        assert_eq!(s.case("a1-downlink-faults").unwrap().faults.len(), 5);
+        // An entry names parameters, not octets: it serializes back to the same JSON.
+        let entries: Vec<serde_json::Value> = serde_json::from_str(A1_CASES).unwrap();
+        for (case, json) in s.cases[1..].iter().zip(&entries) {
+            assert_eq!(&serde_json::to_value(case).unwrap()["ops"], &json["ops"]);
+        }
+    }
+
+    #[test]
+    fn script_rules_the_schema_cannot_express() {
+        // req: APP-061, APP-126, APP-128
+        let ok = with_a1_cases();
+        let mut s = ok.clone();
+        // An immediate command that arrives off the 125 000 µs grid.
+        s.cases[3].ops[0] = OpsEntry::Command {
+            at_us: 100_000,
+            execution: Execution::Immediate {},
+            call: Call::Noop {},
+            extra_octets: None,
+        };
+        assert!(rejects(&s, "APP-128"));
+        // An execution time off the grid.
+        let mut s = ok.clone();
+        s.cases[1].ops[0] = OpsEntry::Command {
+            at_us: 1_000_000,
+            execution: Execution::TimeTagged { exec_us: 6_000_001 },
+            call: Call::Noop {},
+            extra_octets: None,
+        };
+        assert!(rejects(&s, "APP-061"));
+        // A function code that exists.
+        let mut s = ok.clone();
+        s.cases[3].ops[1] = OpsEntry::Command {
+            at_us: 615_000,
+            execution: Execution::Immediate {},
+            call: Call::Unknown { code: 4 },
+            extra_octets: None,
+        };
+        assert!(rejects(&s, "unknown function"));
+        // Release order, and the end instant.
+        let mut s = ok.clone();
+        s.cases[3].ops.swap(0, 1);
+        assert!(rejects(&s, "must not decrease"));
+        let mut s = ok.clone();
+        s.cases[3].end_us = 10_000_000;
+        assert!(rejects(&s, "end instant"));
+        // A bit flip needs a FECF.
+        let mut s = ok;
+        s.cases[4].faults.push(FaultEntry {
+            dir: Direction::Down,
+            index: 0,
+            fault: Fault::Flip { octet: 0, bit: 0 },
+        });
+        assert!(rejects(&s, "flip"));
+    }
+
+    #[test]
+    fn script_entries_reject_unknown_fields_and_kinds() {
+        // req: APP-126
+        let entry = |text: &str| serde_json::from_str::<super::OpsEntry>(text);
+        assert!(entry(r#"{"kind":"table_upload","at_us":1,"table_id":1,"length":3}"#).is_ok());
+        assert!(
+            entry(r#"{"kind":"fop1_directive","at_us":0,"directive":"initiate_ad_without_clcw"}"#)
+                .is_ok()
+        );
+        assert!(
+            entry(r#"{"kind":"table_upload","at_us":1,"table_id":1,"length":3,"hex":"00"}"#)
+                .is_err()
+        );
+        assert!(entry(r#"{"kind":"octets","at_us":1,"hex":"00"}"#).is_err());
+        let fault = |text: &str| serde_json::from_str::<super::FaultEntry>(text);
+        assert!(
+            fault(r#"{"dir":"up","index":0,"fault":{"kind":"flip","octet":3,"bit":7}}"#).is_ok()
+        );
+        assert!(fault(r#"{"dir":"up","index":0,"fault":{"kind":"drop","octet":3}}"#).is_err());
     }
 }

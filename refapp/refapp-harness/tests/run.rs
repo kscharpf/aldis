@@ -13,6 +13,8 @@ fn case(level: Level, end_us: u64) -> Case {
         end_us,
         trace_version: 1,
         requirements: vec![],
+        ops: vec![],
+        faults: vec![],
     }
 }
 
