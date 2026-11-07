@@ -183,23 +183,12 @@ impl CalendarDate {
         })
     }
 
-    /// A month/day date the caller already knows exists (conversions, from [`civil`]).
-    pub(crate) const fn from_month_day_unchecked(
-        year: Year,
-        month: Month,
-        day: u8,
-    ) -> CalendarDate {
+    /// The month/day date of a [`civil`] result: `civil` gives a month 1-12 (the range of
+    /// `Month`) and a day that exists in that month of the year.
+    pub(crate) const fn from_civil(year: Year, month: u8, day: u8) -> CalendarDate {
         CalendarDate {
             year,
-            day: Day::MonthDay(month, day),
-        }
-    }
-
-    /// A day-of-year date the caller already knows exists (conversions).
-    pub(crate) const fn from_day_of_year_unchecked(year: Year, day_of_year: u16) -> CalendarDate {
-        CalendarDate {
-            year,
-            day: Day::Ordinal(day_of_year),
+            day: Day::MonthDay(Month(month), day),
         }
     }
 
@@ -214,6 +203,38 @@ impl CalendarDate {
             Day::Ordinal(doy) => day_number(self.year.0, 1, 1)
                 .wrapping_add(doy as u32)
                 .wrapping_sub(1),
+        }
+    }
+
+    /// The same day expressed in `variation`: month and day of month, or day of year (301.0
+    /// §3.4.1.1, §3.4.1.2, Annex A; TIME-035).
+    ///
+    /// It cannot fail, because every date exists in both variations. The day number is
+    /// unchanged, so the result is the same day. Converting to the variation the date already
+    /// has returns it unchanged.
+    #[must_use]
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "the day of year is at most 366"
+    )]
+    pub const fn to_variation(self, variation: CcsVariation) -> CalendarDate {
+        match (self.day, variation) {
+            (Day::MonthDay(month, day), CcsVariation::DayOfYear) => {
+                let doy = day_number(self.year.0, month.0, day)
+                    .wrapping_sub(day_number(self.year.0, 1, 1))
+                    .wrapping_add(1);
+                CalendarDate {
+                    year: self.year,
+                    day: Day::Ordinal(doy as u16),
+                }
+            }
+            (Day::Ordinal(_), CcsVariation::MonthDay) => {
+                let (_, month, day) = civil(self.day_number());
+                CalendarDate::from_civil(self.year, month, day)
+            }
+            (Day::MonthDay(..), CcsVariation::MonthDay)
+            | (Day::Ordinal(_), CcsVariation::DayOfYear) => self,
         }
     }
 
@@ -341,17 +362,34 @@ mod tests {
         );
         let date = CalendarDate::from_day_of_year(Year::new(2024).unwrap(), 60).unwrap();
         assert_eq!(date.day_number(), day_number(2024, 2, 29));
-        assert_eq!(
-            CalendarDate::from_day_of_year_unchecked(Year::new(2024).unwrap(), 60),
-            date
-        );
-        let md = CalendarDate::from_month_day_unchecked(
-            Year::new(2024).unwrap(),
-            Month::new(2).unwrap(),
-            29,
-        );
+        let md = CalendarDate::from_civil(Year::new(2024).unwrap(), 2, 29);
         assert_eq!(md.day_number(), date.day_number());
         assert_eq!((Year::default().get(), Hour::default().get()), (1, 0));
+    }
+
+    #[test]
+    fn variations_name_the_same_day() {
+        // req: TIME-035
+        use crate::ccs::CcsVariation::{DayOfYear, MonthDay};
+        for year in 1..=9999_u16 {
+            let y = Year::new(year).unwrap();
+            let mut doy = 0;
+            for month in 1..=12_u8 {
+                for day in 1..=days_in_month(year, month) {
+                    doy += 1;
+                    let md =
+                        CalendarDate::from_month_day(y, Month::new(month).unwrap(), day).unwrap();
+                    let o = md.to_variation(DayOfYear);
+                    assert_eq!(o, CalendarDate::from_day_of_year(y, doy).unwrap());
+                    assert_eq!(o.day_number(), md.day_number());
+                    assert_eq!(o.to_variation(MonthDay), md, "{year}-{month}-{day}");
+                    // The variation it has returns it unchanged.
+                    assert_eq!(md.to_variation(MonthDay), md);
+                    assert_eq!(o.to_variation(DayOfYear), o);
+                }
+            }
+            assert_eq!(doy, days_in_year(year));
+        }
     }
 
     #[test]

@@ -30,7 +30,7 @@ fn main() -> Result<(), aldis_core::Error> {
 }
 ```
 
-A caller with an `Instant` clock converts it with `Cuc::from_instant` (T0 plus the `Instant`), and sizes a buffer from the format alone with `TimeFormat::encoded_len`, so a Space Packet secondary header needs no trial encode:
+A caller with an `Instant` clock converts it with `Cuc::from_instant` (T0 plus the `Instant`) and back with `Cuc::to_instant` (minus T0), and sizes a buffer from the format alone with `TimeFormat::encoded_len`, so a Space Packet secondary header needs no trial encode:
 
 ```rust
 use aldis_core::time::Instant;
@@ -45,6 +45,8 @@ fn main() -> Result<(), aldis_core::Error> {
     // T0 = 2 100 000 000 s, 3.125 s after it.
     let cuc = Cuc::from_instant(format, 2_100_000_000, Instant::from_micros(3_125_000))?;
     assert_eq!(cuc.to_seconds_nanos(), (2_100_000_003, 125_000_000));
+    // The way back subtracts T0 and truncates to whole microseconds.
+    assert_eq!(cuc.to_instant(2_100_000_000)?, Instant::from_micros(3_125_000));
 
     let mut buf = [0_u8; 7];
     assert_eq!(TimeCode::Cuc(cuc).encode(true, &mut buf)?, len);

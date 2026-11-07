@@ -19,6 +19,8 @@ decode_implicit_lenient(bytes, &Format) -> Lenient<Decoded, TimeAnomaly>
 encode(&TimeCode, include_pfield, out) -> len
 TimeFormat::encoded_len(include_pfield) -> len                  // const; the length encode writes (TIME-007)
 Cuc::from_instant(format, epoch_offset, Instant) -> Cuc         // TIME-015
+Cuc::to_instant(&self, epoch_offset) -> Result<Instant>        // TIME-016
+CalendarDate::to_variation(self, CcsVariation) -> CalendarDate  // TIME-035
 ```
 
 | ID | Requirement | Source | Verif. |
@@ -45,6 +47,7 @@ The encoder puts as many octets as it can in octet 1 (up to 4 coarse and 3 fract
 | TIME-013 | The mission-defined bits (octet 2 bits 6–7) SHALL be preserved on round trip. | 301.0 §3.2 | V |
 | TIME-014 | Level 1 CUC SHALL be documented as TAI-based with no leap seconds. The library SHALL NOT apply leap-second corrections to CUC. | 301.0 §3.2 | I |
 | TIME-015 | A conversion from the caller-supplied monotonic time (microseconds, API-003) and an epoch offset in coarse time units SHALL give the CUC code whose coarse time is the offset plus the whole seconds of that time and whose fraction is the remaining microseconds converted as `from_seconds_nanos` does (TIME-011: rounded down to a value of the format). It SHALL return `OutOfRange` (`coarse`) if the sum overflows `u64` or does not fit the format's coarse octets (TIME-012), and SHALL NOT clamp or wrap. The basic time unit is taken to be the second, as in TIME-011. | 301.0 §3.2.1 | T |
+| TIME-016 | A conversion from a CUC code and an epoch offset in coarse time units (the coarse time at which the caller-supplied monotonic time, API-003, reads zero) SHALL give that time in microseconds: the whole seconds after the offset times 10⁶ plus the nanoseconds of the code divided by 1000, truncated toward zero (TIME-011). It SHALL return `OutOfRange` (`coarse`) if the code is before the offset or the result does not fit `u64`, and SHALL NOT clamp or wrap. It is the counterpart of TIME-015, and the library, not the caller, handles the epoch offset. The basic time unit is taken to be the second, as in TIME-011. | 301.0 §3.2.1 | T |
 
 ## 4. CDS — CCSDS Day Segmented Code (§3.3)
 
@@ -70,6 +73,7 @@ ASCII Time Code A `YYYY-MM-DDThh:mm:ss.d…dZ` and B `YYYY-DDDThh:mm:ss.d…dZ`.
 | TIME-032 | ASCII subsets (calendar-only, time-only, truncated subfields, §3.5.1.3) SHALL be supported for **parsing** behind an explicit subset option. Formatting subsets is optional in v1. | 301.0 §3.5.1.3 | V |
 | TIME-033 | The library SHALL provide conversions between CDS, CCS, and ASCII representations of the same UTC instant, with no time-scale change. When the target format has coarser sub-second resolution than the source, the conversion SHALL truncate toward zero. A value the target cannot represent (before the CDS epoch, beyond the CDS day count, or outside years 1–9999) SHALL be `OutOfRange` (OI-18). | — | V |
 | TIME-034 | In the CCS day-of-year variation, a non-zero value in the four most significant bits of the 16-bit DOY segment SHALL be `ReservedValue` in strict mode and SHALL raise the anomaly NonZeroDoyHighNibble in lenient mode. The encoder SHALL write them as zero (OI-15). | 301.0 §3.4.1.2 | V |
+| TIME-035 | A calendar date SHALL be convertible between the month/day and day-of-year variations without failing: the result SHALL be the same day of the same year (the same day number), because every valid date exists in both variations, and converting to the variation the date has SHALL return it unchanged. | 301.0 §3.4.1.1, §3.4.1.2, Annex A | T |
 
 ### 5.1 ASCII grammar (TIME-031, TIME-032; OI-29)
 

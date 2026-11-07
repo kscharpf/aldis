@@ -2,7 +2,7 @@
 //! docs/reference-application.md §6.5, §6.6).
 
 use refapp_ground::GroundNode;
-use refapp_harness::scenario::{Case, Scenario};
+use refapp_harness::scenario::Scenario;
 use refapp_harness::sim;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
@@ -18,9 +18,7 @@ impl Node for Silent {
 #[test]
 fn every_a1_case_releases_its_script_at_its_instants() {
     // req: APP-011, APP-126
-    let mut scenario = Scenario::load().unwrap();
-    let cases: Vec<Case> = serde_json::from_str(include_str!("data/a1-cases.json")).unwrap();
-    scenario.cases.extend(cases);
+    let scenario = Scenario::load().unwrap();
     for id in [
         "a1-nominal",
         "a1-immediate",
