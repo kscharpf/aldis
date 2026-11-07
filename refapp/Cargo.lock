@@ -7,11 +7,28 @@ name = "aldis"
 version = "0.4.0"
 dependencies = [
  "aldis-core",
+ "aldis-spp",
+ "aldis-time",
 ]
 
 [[package]]
 name = "aldis-core"
 version = "0.4.0"
+
+[[package]]
+name = "aldis-spp"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+ "aldis-time",
+]
+
+[[package]]
+name = "aldis-time"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+]
 
 [[package]]
 name = "dyn-clone"
