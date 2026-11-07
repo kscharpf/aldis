@@ -8,7 +8,7 @@ use aldis::core::crc::crc16;
 use aldis::core::ids::Apid;
 use aldis::core::{Error, ErrorKind};
 use aldis::spp::{
-    Discard, PacketType, ReassemblerState, SecondaryHeaderLayout, SequenceFlags, SequenceTracker,
+    PacketType, ReassemblerState, SecondaryHeaderLayout, SequenceFlags, SequenceTracker,
     SpacePacket, SpacePacketHeader, Status, TimeHeaderLayout, Tracked,
 };
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
@@ -150,30 +150,18 @@ impl Telemetry {
             Status::InProgress | Status::Dropped(_) => None,
         };
         self.dump = reassembler.suspend();
-        // The partial SDU is gone with a discard; an overflow also loses this packet's octets
-        // (an orphan loses nothing the node held, so it raises no event, APP-130).
-        let overflow = outcome.status == Status::Dropped(Discard::Overflow);
         self.dump_held = match (outcome.status, header.sequence_flags()) {
             (Status::InProgress, SequenceFlags::First) => user_data.len(),
             (Status::InProgress, _) => held_before.saturating_add(user_data.len()),
             (Status::Complete(_) | Status::Dropped(_), _) => 0,
         };
-        if outcome.discarded.is_some() || overflow {
-            let mut lost = if outcome.discarded.is_some() {
-                held_before
-            } else {
-                0
+        // Only a discarded partial SDU is an event, with the octets it held; a packet dropped
+        // with nothing held (an orphan, an oversized first segment) raises none (APP-130).
+        if outcome.discarded.is_some() {
+            let Ok(lost) = u64::try_from(held_before) else {
+                return reject(out, ErrorKind::OutOfRange);
             };
-            if overflow {
-                lost = lost.saturating_add(user_data.len());
-            }
-            out.app_event(
-                DUMP_DISCARDED,
-                &[
-                    u64::from(header.apid().get()),
-                    u64::try_from(lost).unwrap_or(u64::MAX),
-                ],
-            );
+            out.app_event(DUMP_DISCARDED, &[u64::from(header.apid().get()), lost]);
         }
         match complete {
             Some(Ok((address, length, crc))) => {

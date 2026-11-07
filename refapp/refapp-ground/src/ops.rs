@@ -218,9 +218,10 @@ fn on_board_time(offset_us: u64) -> Result<[u8; T_FIELD_LEN], Error> {
         time::CUC_COARSE_OCTETS,
         time::CUC_FINE_OCTETS,
     )?;
-    let whole = offset_us.checked_div(US_PER_S).unwrap_or(0);
+    let whole = offset_us / US_PER_S;
     let seconds = u64::from(time::T0_COARSE_S).saturating_add(whole);
-    let micros = u32::try_from(offset_us.checked_rem(US_PER_S).unwrap_or(0)).unwrap_or(0);
+    let micros =
+        u32::try_from(offset_us % US_PER_S).map_err(|_| Error::new(ErrorKind::OutOfRange))?;
     let cuc = Cuc::from_seconds_nanos(format, seconds, micros.saturating_mul(NS_PER_US))?;
     let mut octets = [0_u8; T_FIELD_LEN];
     TimeCode::Cuc(cuc).encode(false, &mut octets)?;

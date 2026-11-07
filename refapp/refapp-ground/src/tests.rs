@@ -474,7 +474,8 @@ fn a_restarted_dump_discards_what_was_held() {
 #[test]
 fn a_dump_that_does_not_fit_is_discarded_with_its_octets() {
     // req: APP-018
-    // Eight 128-octet segments are 1 024 octets, then 128 more overflow the 1 030-octet buffer.
+    // Eight 128-octet segments are 1 024 octets, then 128 more overflow the buffer of 6 + 1 024 octets (`SDU_HEADER_LEN` and
+    // `MAX_DUMP_LENGTH` in telemetry.rs).
     let mut units = vec![tm(DUMP, SequenceFlags::First, 0, false, &[0; 128])];
     for count in 1..=8 {
         units.push(tm(
@@ -486,22 +487,35 @@ fn a_dump_that_does_not_fit_is_discarded_with_its_octets() {
         ));
     }
     let recs = deliver(&mut node(), &units);
-    // The ninth segment (1 152 octets in all) overflows: the 1 024 held and its own 128.
+    // The ninth segment overflows: the event counts the 1 024 octets held, not its own 128.
     assert_eq!(
         events(&recs),
-        [(telemetry::DUMP_DISCARDED, vec![33, 1_152])]
+        [(telemetry::DUMP_DISCARDED, vec![33, 1_024])]
     );
 }
 
 #[test]
+fn an_oversized_segment_with_nothing_held_raises_no_event() {
+    // req: APP-130
+    for flags in [SequenceFlags::First, SequenceFlags::Unsegmented] {
+        let recs = deliver(&mut node(), &[tm(DUMP, flags, 0, false, &[0; 1_100])]);
+        assert!(
+            matches!(recs[..], [Rec::PacketIn(DUMP, _)]),
+            "{flags:?}: {recs:?}"
+        );
+    }
+}
+
+#[test]
 fn a_malformed_dump_sdu_is_a_rejection() {
-    // req: APP-011
+    // req: APP-011, APP-130
     // A complete SDU of 3 octets has no header.
     let recs = deliver(
         &mut node(),
         &[tm(DUMP, SequenceFlags::Unsegmented, 0, false, &[1, 2, 3])],
     );
-    assert!(matches!(recs[0], Rec::PacketIn(DUMP, _)));
+    // The rejection follows packet_in: the failure is found only once the SDU is complete.
+    assert!(matches!(recs[..], [Rec::PacketIn(DUMP, _), Rec::Event(..)]));
     assert_eq!(
         events(&recs),
         [(telemetry::PACKET_REJECTED, vec![INCOMPLETE])]
