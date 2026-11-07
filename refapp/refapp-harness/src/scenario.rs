@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::ranged::{EvenRanged, Ranged};
 use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -25,8 +26,7 @@ pub struct Scenario {
     /// Scenario version (§7.2, APP-002).
     pub scenario_version: u16,
     /// Spacecraft ID of every frame (§3.4, APP-026); fictional (OI-26).
-    #[schemars(range(max = 1023))]
-    pub spacecraft_id: u16,
+    pub spacecraft_id: Ranged<u16, 0, 1023>,
     /// Time model (§5).
     pub time: Time,
     /// Link model (§6.1).
@@ -50,11 +50,9 @@ pub struct Time {
     /// CUC coarse time of the run's start, seconds since 1958-01-01 TAI.
     pub t0_coarse_s: u32,
     /// CUC coarse octets.
-    #[schemars(range(min = 1, max = 4))]
-    pub cuc_coarse_octets: u8,
+    pub cuc_coarse_octets: Ranged<u8, 1, 4>,
     /// CUC fractional octets.
-    #[schemars(range(max = 3))]
-    pub cuc_fine_octets: u8,
+    pub cuc_fine_octets: Ranged<u8, 0, 3>,
     /// Explicit P-field octet (301.0 §3.2.2).
     pub cuc_explicit_pfield: u8,
 }
@@ -66,11 +64,9 @@ pub struct Link {
     /// One-way delay, both directions, µs.
     pub one_way_delay_us: u64,
     /// Downlink frame slot period, µs (A2 on).
-    #[schemars(range(min = 1))]
-    pub frame_slot_us: u64,
+    pub frame_slot_us: Ranged<u64, 1, 18_446_744_073_709_551_615>,
     /// Uplink slot period, µs (A2 on).
-    #[schemars(range(min = 1))]
-    pub uplink_slot_us: u64,
+    pub uplink_slot_us: Ranged<u64, 1, 18_446_744_073_709_551_615>,
 }
 
 /// APIDs (§3.1, APP-020).
@@ -78,23 +74,17 @@ pub struct Link {
 #[serde(deny_unknown_fields)]
 pub struct Apids {
     /// Housekeeping.
-    #[schemars(range(max = 2046))]
-    pub housekeeping: u16,
+    pub housekeeping: Ranged<u16, 0, 2046>,
     /// Event reports.
-    #[schemars(range(max = 2046))]
-    pub events: u16,
+    pub events: Ranged<u16, 0, 2046>,
     /// Payload science.
-    #[schemars(range(max = 2046))]
-    pub payload: u16,
+    pub payload: Ranged<u16, 0, 2046>,
     /// Memory dump.
-    #[schemars(range(max = 2046))]
-    pub dump: u16,
+    pub dump: Ranged<u16, 0, 2046>,
     /// Commands.
-    #[schemars(range(max = 2046))]
-    pub commands: u16,
+    pub commands: Ranged<u16, 0, 2046>,
     /// Table upload.
-    #[schemars(range(max = 2046))]
-    pub table_upload: u16,
+    pub table_upload: Ranged<u16, 0, 2046>,
 }
 
 /// TM downlink (§4.1, APP-030…APP-034).
@@ -102,19 +92,15 @@ pub struct Apids {
 #[serde(deny_unknown_fields)]
 pub struct Tm {
     /// Transfer frame length, octets.
-    #[schemars(range(max = 2048))]
-    pub frame_length: u16,
+    pub frame_length: Ranged<u16, 0, 2048>,
     /// FECF present.
     pub fecf: bool,
     /// VC of housekeeping and events.
-    #[schemars(range(max = 7))]
-    pub vcid_realtime: u8,
+    pub vcid_realtime: Ranged<u8, 0, 7>,
     /// VC of payload and dump.
-    #[schemars(range(max = 7))]
-    pub vcid_payload: u8,
+    pub vcid_payload: Ranged<u8, 0, 7>,
     /// VC of OID frames.
-    #[schemars(range(max = 7))]
-    pub vcid_idle: u8,
+    pub vcid_idle: Ranged<u8, 0, 7>,
     /// Release deadline of the real-time VC, µs.
     pub release_deadline_realtime_us: u64,
     /// Release deadline of the payload VC, µs.
@@ -130,22 +116,17 @@ pub struct Tm {
 #[serde(deny_unknown_fields)]
 pub struct Tc {
     /// Maximum transfer frame length, octets.
-    #[schemars(range(max = 1024))]
-    pub max_frame_length: u16,
+    pub max_frame_length: Ranged<u16, 0, 1024>,
     /// FECF present.
     pub fecf: bool,
     /// The uplink VC.
-    #[schemars(range(max = 63))]
-    pub vcid: u8,
+    pub vcid: Ranged<u8, 0, 63>,
     /// MAP of real-time commands.
-    #[schemars(range(max = 63))]
-    pub map_commands: u8,
+    pub map_commands: Ranged<u8, 0, 63>,
     /// MAP of the table upload.
-    #[schemars(range(max = 63))]
-    pub map_table_upload: u8,
+    pub map_table_upload: Ranged<u8, 0, 63>,
     /// Maximum frame data unit length, octets.
-    #[schemars(range(max = 1019))]
-    pub max_fdu_length: u16,
+    pub max_fdu_length: Ranged<u16, 0, 1019>,
     /// Maximum packet length, octets.
     pub max_packet_length: u16,
 }
@@ -155,22 +136,17 @@ pub struct Tc {
 #[serde(deny_unknown_fields)]
 pub struct Cop1 {
     /// FOP sliding window width K.
-    #[schemars(range(min = 1, max = 255))]
-    pub k: u8,
+    pub k: Ranged<u8, 1, 255>,
     /// FARM sliding window width W.
-    #[schemars(range(min = 2, max = 254))]
-    pub w: u8,
+    pub w: EvenRanged<u8, 2, 254>,
     /// `T1_Initial`, µs.
     pub t1_initial_us: u64,
     /// `Transmission_Limit`.
-    #[schemars(range(min = 1))]
-    pub transmission_limit: u8,
+    pub transmission_limit: Ranged<u8, 1, 255>,
     /// `Timeout_Type` (0 or 1).
-    #[schemars(range(max = 1))]
-    pub timeout_type: u8,
+    pub timeout_type: Ranged<u8, 0, 1>,
     /// FARM-1 internal buffer depth (COP-032).
-    #[schemars(range(min = 1))]
-    pub farm_buffer_depth: u8,
+    pub farm_buffer_depth: Ranged<u8, 1, 255>,
 }
 
 /// Link level of a case (§1, §6.1).
@@ -452,9 +428,6 @@ impl Scenario {
                 self.scenario
             ));
         }
-        if self.link.frame_slot_us == 0 || self.link.uplink_slot_us == 0 {
-            return Err("scenario.json: slot periods must be at least 1 µs".to_owned());
-        }
         let mut ids = BTreeSet::new();
         for c in &self.cases {
             if !ids.insert(c.id.as_str()) {
@@ -491,7 +464,7 @@ impl Scenario {
     /// The rules of §6.5 that the schema cannot express, and the ranges of the entries
     /// (APP-061, APP-126, APP-128).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
-        let slot = self.link.frame_slot_us;
+        let slot = self.link.frame_slot_us.get();
         let delay = self.link.one_way_delay_us;
         let mut previous = 0;
         // Execution times of the time-tagged commands the flight node holds (§2.3).
@@ -694,7 +667,7 @@ pub fn rust_constants(s: &Scenario) -> String {
          pub const SPACECRAFT_ID: u16 = {};",
         s.scenario,
         n(s.scenario_version.into()),
-        n(s.spacecraft_id.into())
+        n(s.spacecraft_id.get().into())
     );
     module(
         &mut out,
@@ -710,13 +683,13 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "CUC_COARSE_OCTETS",
                 "u8",
-                n(s.time.cuc_coarse_octets.into()),
+                n(s.time.cuc_coarse_octets.get().into()),
                 "CUC coarse octets.",
             ),
             (
                 "CUC_FINE_OCTETS",
                 "u8",
-                n(s.time.cuc_fine_octets.into()),
+                n(s.time.cuc_fine_octets.get().into()),
                 "CUC fractional octets.",
             ),
             (
@@ -741,13 +714,13 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "FRAME_SLOT_US",
                 "u64",
-                n(s.link.frame_slot_us),
+                n(s.link.frame_slot_us.get()),
                 "Downlink frame slot period, µs (APP-071).",
             ),
             (
                 "UPLINK_SLOT_US",
                 "u64",
-                n(s.link.uplink_slot_us),
+                n(s.link.uplink_slot_us.get()),
                 "Uplink slot period, µs (APP-071).",
             ),
         ],
@@ -761,17 +734,22 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "HOUSEKEEPING",
                 "u16",
-                n(a.housekeeping.into()),
+                n(a.housekeeping.get().into()),
                 "Housekeeping.",
             ),
-            ("EVENTS", "u16", n(a.events.into()), "Event reports."),
-            ("PAYLOAD", "u16", n(a.payload.into()), "Payload science."),
-            ("DUMP", "u16", n(a.dump.into()), "Memory dump."),
-            ("COMMANDS", "u16", n(a.commands.into()), "Commands."),
+            ("EVENTS", "u16", n(a.events.get().into()), "Event reports."),
+            (
+                "PAYLOAD",
+                "u16",
+                n(a.payload.get().into()),
+                "Payload science.",
+            ),
+            ("DUMP", "u16", n(a.dump.get().into()), "Memory dump."),
+            ("COMMANDS", "u16", n(a.commands.get().into()), "Commands."),
             (
                 "TABLE_UPLOAD",
                 "u16",
-                n(a.table_upload.into()),
+                n(a.table_upload.get().into()),
                 "Table upload.",
             ),
         ],
@@ -785,7 +763,7 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "FRAME_LENGTH",
                 "u16",
-                n(tm.frame_length.into()),
+                n(tm.frame_length.get().into()),
                 "Transfer frame length, octets (APP-030).",
             ),
             (
@@ -797,19 +775,19 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "VCID_REALTIME",
                 "u8",
-                n(tm.vcid_realtime.into()),
+                n(tm.vcid_realtime.get().into()),
                 "VC of housekeeping and events (APP-032).",
             ),
             (
                 "VCID_PAYLOAD",
                 "u8",
-                n(tm.vcid_payload.into()),
+                n(tm.vcid_payload.get().into()),
                 "VC of payload and dump (APP-032).",
             ),
             (
                 "VCID_IDLE",
                 "u8",
-                n(tm.vcid_idle.into()),
+                n(tm.vcid_idle.get().into()),
                 "VC of OID frames (APP-034).",
             ),
             (
@@ -847,7 +825,7 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "MAX_FRAME_LENGTH",
                 "u16",
-                n(tc.max_frame_length.into()),
+                n(tc.max_frame_length.get().into()),
                 "Maximum transfer frame length, octets (APP-040).",
             ),
             (
@@ -856,23 +834,28 @@ pub fn rust_constants(s: &Scenario) -> String {
                 tc.fecf.to_string(),
                 "FECF present (APP-040).",
             ),
-            ("VCID", "u8", n(tc.vcid.into()), "The uplink VC (APP-041)."),
+            (
+                "VCID",
+                "u8",
+                n(tc.vcid.get().into()),
+                "The uplink VC (APP-041).",
+            ),
             (
                 "MAP_COMMANDS",
                 "u8",
-                n(tc.map_commands.into()),
+                n(tc.map_commands.get().into()),
                 "MAP of real-time commands (APP-041).",
             ),
             (
                 "MAP_TABLE_UPLOAD",
                 "u8",
-                n(tc.map_table_upload.into()),
+                n(tc.map_table_upload.get().into()),
                 "MAP of the table upload (APP-041).",
             ),
             (
                 "MAX_FDU_LENGTH",
                 "u16",
-                n(tc.max_fdu_length.into()),
+                n(tc.max_fdu_length.get().into()),
                 "Maximum frame data unit length, octets (APP-041).",
             ),
             (
@@ -889,8 +872,18 @@ pub fn rust_constants(s: &Scenario) -> String {
         "cop1",
         "COP-1 parameters (§4.2, APP-044).",
         &[
-            ("K", "u8", n(c.k.into()), "FOP sliding window width K."),
-            ("W", "u8", n(c.w.into()), "FARM sliding window width W."),
+            (
+                "K",
+                "u8",
+                n(c.k.get().into()),
+                "FOP sliding window width K.",
+            ),
+            (
+                "W",
+                "u8",
+                n(c.w.get().into()),
+                "FARM sliding window width W.",
+            ),
             (
                 "T1_INITIAL_US",
                 "u64",
@@ -900,19 +893,19 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "TRANSMISSION_LIMIT",
                 "u8",
-                n(c.transmission_limit.into()),
+                n(c.transmission_limit.get().into()),
                 "`Transmission_Limit`.",
             ),
             (
                 "TIMEOUT_TYPE",
                 "u8",
-                n(c.timeout_type.into()),
+                n(c.timeout_type.get().into()),
                 "`Timeout_Type`.",
             ),
             (
                 "FARM_BUFFER_DEPTH",
                 "u8",
-                n(c.farm_buffer_depth.into()),
+                n(c.farm_buffer_depth.get().into()),
                 "FARM-1 internal buffer depth (COP-032).",
             ),
         ],
@@ -963,7 +956,7 @@ pub fn generate(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Call, Case, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
+        Call, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
         literal,
     };
 
@@ -1001,15 +994,107 @@ mod tests {
         assert!(Scenario::parse(&wrong_name).is_err());
     }
 
-    /// The scenario file with the A1 cases of `tests/data/a1-cases.json` added.
-    fn with_a1_cases() -> Scenario {
-        let mut s = Scenario::load().unwrap();
-        let cases: Vec<Case> = serde_json::from_str(A1_CASES).unwrap();
-        s.cases.extend(cases);
-        s
+    /// The scenario file with the value at JSON pointer `pointer` replaced by `value`.
+    fn mutated(pointer: &str, value: u64) -> String {
+        let mut doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        *doc.pointer_mut(pointer).unwrap() = value.into();
+        doc.to_string()
     }
 
-    const A1_CASES: &str = include_str!("../tests/data/a1-cases.json");
+    /// Every field of the A0 scenario with a range: the pointer, the lowest and the highest
+    /// value.
+    const RANGES: &[(&str, u64, u64)] = &[
+        ("/spacecraft_id", 0, 1023),
+        ("/time/cuc_coarse_octets", 1, 4),
+        ("/time/cuc_fine_octets", 0, 3),
+        ("/link/frame_slot_us", 1, u64::MAX),
+        ("/link/uplink_slot_us", 1, u64::MAX),
+        ("/apid/housekeeping", 0, 2046),
+        ("/apid/events", 0, 2046),
+        ("/apid/payload", 0, 2046),
+        ("/apid/dump", 0, 2046),
+        ("/apid/commands", 0, 2046),
+        ("/apid/table_upload", 0, 2046),
+        ("/tm/frame_length", 0, 2048),
+        ("/tm/vcid_realtime", 0, 7),
+        ("/tm/vcid_payload", 0, 7),
+        ("/tm/vcid_idle", 0, 7),
+        ("/tc/max_frame_length", 0, 1024),
+        ("/tc/vcid", 0, 63),
+        ("/tc/map_commands", 0, 63),
+        ("/tc/map_table_upload", 0, 63),
+        ("/tc/max_fdu_length", 0, 1019),
+        ("/cop1/k", 1, 255),
+        ("/cop1/w", 2, 254),
+        ("/cop1/transmission_limit", 1, 255),
+        ("/cop1/timeout_type", 0, 1),
+        ("/cop1/farm_buffer_depth", 1, 255),
+    ];
+
+    #[test]
+    fn a_value_outside_its_range_is_rejected() {
+        // req: APP-107
+        for &(pointer, min, max) in RANGES {
+            if let Some(below) = min.checked_sub(1) {
+                let e = Scenario::parse(&mutated(pointer, below)).unwrap_err();
+                assert!(e.contains("outside the range"), "{pointer} = {below}: {e}");
+            }
+            if let Some(above) = max.checked_add(1) {
+                // A value above the range of the field's type fails in the type, not the range.
+                let e = Scenario::parse(&mutated(pointer, above)).unwrap_err();
+                assert!(e.contains("scenario.json"), "{pointer} = {above}: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_odd_window_is_rejected() {
+        // req: APP-107
+        let e = Scenario::parse(&mutated("/cop1/w", 5)).unwrap_err();
+        assert!(e.contains("odd"), "{e}");
+        let schema: serde_json::Value = serde_json::from_str(&super::schema().unwrap()).unwrap();
+        assert_eq!(schema["$defs"]["Cop1"]["properties"]["w"]["multipleOf"], 2);
+    }
+
+    #[test]
+    fn the_ends_of_every_range_are_accepted() {
+        // req: APP-107
+        for &(pointer, min, max) in RANGES {
+            for v in [min, max] {
+                let mut doc: serde_json::Value =
+                    serde_json::from_str(&mutated(pointer, v)).unwrap();
+                if pointer == "/link/frame_slot_us" {
+                    // The ops' execution times must lie on the slot grid (APP-061), a rule
+                    // across fields that no slot but the A0 one meets; this test is of the range.
+                    for case in doc["cases"].as_array_mut().unwrap() {
+                        case.as_object_mut().unwrap().remove("ops");
+                    }
+                }
+                let r = Scenario::parse(&doc.to_string());
+                assert!(r.is_ok(), "{pointer} = {v}: {:?}", r.err());
+            }
+        }
+    }
+
+    #[test]
+    fn the_schema_states_the_ranges_the_parser_enforces() {
+        // req: APP-107
+        let schema: serde_json::Value = serde_json::from_str(&super::schema().unwrap()).unwrap();
+        for &(pointer, min, max) in RANGES {
+            let (section, field) = pointer[1..].split_once('/').unwrap_or(("", &pointer[1..]));
+            let def = if section.is_empty() {
+                &schema["properties"][field]
+            } else {
+                let name = match section {
+                    "apid" => "Apids".to_owned(),
+                    _ => format!("{}{}", section[..1].to_uppercase(), &section[1..]),
+                };
+                &schema["$defs"][name]["properties"][field]
+            };
+            assert_eq!(def["minimum"], min, "{pointer}");
+            assert_eq!(def["maximum"], max, "{pointer}");
+        }
+    }
 
     fn rejects(s: &Scenario, what: &str) -> bool {
         s.check().is_err_and(|e| e.contains(what))
@@ -1018,14 +1103,15 @@ mod tests {
     #[test]
     fn script_entries_of_the_a1_cases_parse_and_check() {
         // req: APP-126, APP-127, APP-128
-        let s = with_a1_cases();
+        let s = Scenario::load().unwrap();
         s.check().unwrap();
         let rejects_case = s.case("a1-rejects").unwrap();
         assert_eq!(rejects_case.ops.len(), 18);
         assert_eq!(s.case("a1-downlink-faults").unwrap().faults.len(), 5);
         // An entry names parameters, not octets: it serializes back to the same JSON.
-        let entries: Vec<serde_json::Value> = serde_json::from_str(A1_CASES).unwrap();
-        for (case, json) in s.cases[1..].iter().zip(&entries) {
+        let file: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let entries = file["cases"].as_array().unwrap();
+        for (case, json) in s.cases.iter().zip(entries).skip(1) {
             assert_eq!(&serde_json::to_value(case).unwrap()["ops"], &json["ops"]);
         }
     }
@@ -1033,7 +1119,7 @@ mod tests {
     #[test]
     fn script_rules_the_schema_cannot_express() {
         // req: APP-061, APP-126, APP-128
-        let ok = with_a1_cases();
+        let ok = Scenario::load().unwrap();
         let mut s = ok.clone();
         // An immediate command that arrives off the 125 000 µs grid.
         s.cases[3].ops[0] = OpsEntry::Command {
@@ -1080,7 +1166,7 @@ mod tests {
 
     /// The `a1-rejects` case with its ops entry `i` replaced.
     fn rejects_with(i: usize, entry: OpsEntry) -> Scenario {
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[i] = entry;
         s
     }
@@ -1108,7 +1194,7 @@ mod tests {
                 .is_ok()
         );
         // Reason 4: the ninth command of a full queue, released off the grid.
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[17] = command(
             10_115_001,
             Execution::TimeTagged {
@@ -1118,7 +1204,7 @@ mod tests {
         );
         assert!(rejects(&s, "rejected at delivery"));
         // A command that only queues needs no grid: `a1-nominal` releases on whole seconds.
-        with_a1_cases().check().unwrap();
+        Scenario::load().unwrap().check().unwrap();
     }
 
     #[test]
@@ -1183,7 +1269,7 @@ mod tests {
             };
             assert!(rejects(&rejects_with(idx, entry), what), "{what}");
         }
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[4].level = super::Level::Frames;
         s.cases[4].faults.push(FaultEntry {
             dir: Direction::Down,

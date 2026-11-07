@@ -155,8 +155,8 @@ pub const CPP: PathList = PathList {
 };
 
 /// Read by the `header` check (CABI-001…003): the C ABI crate `aldis-ffi`, every crate that its
-/// `aldis` dependency builds with `full`, which the check compiles into the static and shared
-/// libraries, and the committed header `include/` with its C++ wrapper `aldis.hpp`. One pattern
+/// `aldis` dependency builds with `full`, which the check compiles into the static library,
+/// and the committed header `include/` with its C++ wrapper `aldis.hpp`. One pattern
 /// for the crates: `full` enables all of them, and a narrower list would miss a crate when the
 /// facade gains it. The engine-scenario vectors that the C++ tests of `aldis.hpp` run (CABI-072):
 /// `test-vectors/cop1/` and `test-vectors/link/`.
@@ -177,11 +177,12 @@ pub const C_SANITIZERS_LIST: PathList = PathList {
     patterns: &["crates/**", "include/**", "test-vectors/**"],
 };
 
-/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build and
-/// the vectors its tests read; not the header, which Miri does not read.
+/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build, the
+/// vectors its tests read, and the committed header, which a unit test of `aldis-ffi` embeds with
+/// `include_str!` (`crates/aldis-ffi/src/mirror.rs`) and compares with the mirror enums.
 pub const FFI_MIRI_LIST: PathList = PathList {
     name: "ffi-miri",
-    patterns: &["crates/**", "test-vectors/**"],
+    patterns: &["crates/**", "include/**", "test-vectors/**"],
 };
 
 /// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
@@ -344,7 +345,7 @@ pub struct Check {
     /// A nightly-only check: it runs only in a run with `--all`, which is what the nightly
     /// verification run uses (VER-059), and every other run records it as not run with
     /// [`NIGHTLY_ONLY`]. It is never skipped, reused, or a source (VER-056). Only `kani` (OI-42,
-    /// maintainer decision 2026-10-24).
+    /// maintainer decision 2026-10-24) and `ffi-miri-lib` (2026-11-07).
     pub nightly: bool,
     /// Its typical duration in seconds, which orders the run only ([`run_order`]) and balances
     /// the groups (VER-067): the mean of its durations in three full GitHub-hosted runs of VER-060
@@ -493,6 +494,7 @@ fn rust() -> Vec<Check> {
         },
     ));
     out.push(ffi_miri_check());
+    out.push(ffi_miri_lib_check());
     // The Kani proof harnesses (OI-42, docs/verification/formal-verification.md): reported, not gating,
     // and run only at night (maintainer decision 2026-10-24).
     out.push(Check {
@@ -532,18 +534,29 @@ fn c_sanitizer_checks() -> Vec<Check> {
     )]
 }
 
-/// Its typical duration in seconds: the sum of the per-binary times under Miri without the
-/// `vectors` test (M5 plan, WP-5 notes), plus the build.
-const MIRI_SECS: u16 = 600;
+/// The durations of the two Miri checks, from the logs of the hosted verification runs
+/// 42379660267 and 42382085361 (`x86_64`). In the first, the integration binaries took 357.6 s
+/// under Miri (`sync` 319.7 s) and the `--lib` unit tests 118.6 s; each check bears about 20 s
+/// of set-up. In the second, `ffi-miri` took 408.6 s with the whole of `sync`. One test of
+/// `sync`, `a_frame_of_the_largest_length_goes_through_attach_randomize_and_search`, takes about
+/// 315 s of that (1945.6 s of 1951.4 s locally on aarch64 macOS, the other five tests 5.8 s), so
+/// the gating check, which skips it under Miri (`cfg_attr(miri, ignore)`), takes about 95 s and
+/// the nightly-only check, which runs it with `--ignored`, 140 + 315 = 455 s.
+const MIRI_SECS: u16 = 95;
+const MIRI_LIB_SECS: u16 = 455;
 
-/// The check `ffi-miri`: nightly-only and non-gating like `kani`, since Miri over the `aldis-ffi`
-/// tests takes far longer than 10 minutes (m5 plan D4, VER-059). It leaves out the `vectors`
-/// test, which takes about two hours and runs weekly (`.github/workflows/miri-weekly.yml`).
+/// The check `ffi-miri`: gating, run when its inputs change (maintainer decision 2026-11-07,
+/// after the nightly of issue #310 found in a test a finding that had merged without Miri; it
+/// amends m5 plan D4). It runs the integration tests of `aldis-ffi` under Miri, leaving out
+/// `--lib` and the one slow test of `sync`, which are in the nightly-only check `ffi-miri-lib`,
+/// and `vectors`, which takes about two hours and runs weekly
+/// (`.github/workflows/miri-weekly.yml`). At about 95 s it still fits the `coverage` group
+/// (VER-067): that group sums to about 320 s of estimates, against about 310 s for `host` and
+/// `cross`, so the check adds at most a few seconds to the longest group.
 fn ffi_miri_check() -> Check {
-    Check {
-        gating: false,
-        nightly: true,
-        ..reading(
+    grouped(
+        Group::Coverage,
+        reading(
             MIRI_INPUTS,
             check(
                 "ffi-miri",
@@ -551,6 +564,27 @@ fn ffi_miri_check() -> Check {
                 false,
                 MIRI_SECS,
                 FFI_MIRI_SCRIPT,
+            ),
+        ),
+    )
+}
+
+/// The check `ffi-miri-lib`: the unit tests of `aldis-ffi` and the integration tests that the gating
+/// check skips (today one, about 5 minutes under Miri) under Miri, nightly-only and
+/// non-gating like `kani` (maintainer decision 2026-11-07: Miri over all of `aldis-ffi` in the
+/// gate took too long). Same inputs as `ffi-miri`.
+fn ffi_miri_lib_check() -> Check {
+    Check {
+        gating: false,
+        nightly: true,
+        ..reading(
+            MIRI_INPUTS,
+            check(
+                "ffi-miri-lib",
+                Host::Container,
+                false,
+                MIRI_LIB_SECS,
+                FFI_MIRI_LIB_SCRIPT,
             ),
         )
     }
@@ -667,10 +701,11 @@ cargo clippy --locked --manifest-path crosscheck/Cargo.toml --all-targets
 pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n";
 
 const FFI_MIRI_SCRIPT: &str = r#"
-# The aldis-ffi tests under Miri on the tooling nightly, Stacked Borrows (VER-026, GEN-071; m5
-# plan D4): the unit tests and every integration test but `vectors`, which takes about two
-# hours and runs weekly (.github/workflows/miri-weekly.yml). Isolation is off: the tests read
-# test-vectors/.
+# Every integration test of aldis-ffi but `vectors` under Miri on the tooling nightly, Stacked
+# Borrows (VER-026, GEN-071; m5 plan D4): the unit tests and every test marked
+# `cfg_attr(miri, ignore)` (today one in `sync`) are the nightly check `ffi-miri-lib`, and
+# `vectors`, which takes about two hours, runs weekly (.github/workflows/miri-weekly.yml).
+# Isolation is off: the tests read test-vectors/.
 nightly="$(cat tooling-nightly)"
 tests=()
 for f in crates/aldis-ffi/tests/*.rs; do
@@ -678,7 +713,25 @@ for f in crates/aldis-ffi/tests/*.rs; do
   [ "$name" = vectors ] || tests+=(--test "$name")
 done
 MIRIFLAGS="-Zmiri-disable-isolation" \
-  cargo +"$nightly" miri test --locked -p aldis-ffi --lib "${tests[@]}"
+  cargo +"$nightly" miri test --locked -p aldis-ffi "${tests[@]}"
+"#;
+
+const FFI_MIRI_LIB_SCRIPT: &str = r#"
+# The unit tests of aldis-ffi, and the integration tests that the gate skips under Miri
+# (`cfg_attr(miri, ignore)`; today the largest-frame test of `sync`, about 5 minutes), under Miri
+# on the tooling nightly, Stacked Borrows (VER-026, GEN-071). The ignored run takes the test list
+# of the gating script, so it covers whatever that skips. Nightly-only: the gate runs the other
+# integration tests (`ffi-miri`).
+nightly="$(cat tooling-nightly)"
+tests=()
+for f in crates/aldis-ffi/tests/*.rs; do
+  name="$(basename "$f" .rs)"
+  [ "$name" = vectors ] || tests+=(--test "$name")
+done
+MIRIFLAGS="-Zmiri-disable-isolation" \
+  cargo +"$nightly" miri test --locked -p aldis-ffi --lib
+MIRIFLAGS="-Zmiri-disable-isolation" \
+  cargo +"$nightly" miri test --locked -p aldis-ffi "${tests[@]}" -- --ignored
 "#;
 
 const C_SANITIZERS_SCRIPT: &str = "\
@@ -692,9 +745,9 @@ const HEADER: &str = "\
 # The committed C header is a fresh generation by the pinned cbindgen (CABI-002), includes only
 # <stdint.h>, <stddef.h>, and <stdbool.h>, and wraps its declarations in extern \"C\" (CABI-003).
 cargo xtask header
-# The static and shared libraries on the host (CABI-001), and the header as C99, C11, C23, C++11,
+# The static library on the host (CABI-001), and the header as C99, C11, C23, C++11,
 # and C++17 with -Wall -Wextra -Wpedantic -Werror on the pinned GCC and Clang: a C program built
-# against each library runs (CABI-003, VER-050).
+# against the library runs (CABI-003, VER-050).
 cargo xtask header c-smoke gcc-14 g++-14
 cargo xtask header c-smoke clang clang++
 # The C++20 wrapper aldis.hpp of the engine handles, without exceptions and with -Wall -Wextra
@@ -854,10 +907,10 @@ mod tests {
 
     // req: VER-056, VER-059
     #[test]
-    fn only_kani_and_ffi_miri_are_nightly_only_and_they_do_not_gate() {
+    fn only_kani_and_ffi_miri_lib_are_nightly_only_and_they_do_not_gate() {
         let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
         let names: Vec<&str> = nightly.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["ffi-miri", "kani"]);
+        assert_eq!(names, ["ffi-miri-lib", "kani"]);
         for c in &nightly {
             assert!(!c.gating, "{}", c.name);
             assert_eq!(c.host, Host::Container, "{}", c.name);
@@ -866,13 +919,13 @@ mod tests {
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_kani_and_miri_checks_are_non_gating() {
+    fn only_the_leon3_kani_and_miri_lib_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "ffi-miri", "kani"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "ffi-miri-lib", "kani"]);
     }
 
     // req: VER-067
@@ -956,7 +1009,7 @@ mod tests {
                 assert_eq!(lists, [&RUN, &C_SANITIZERS_LIST]);
                 continue;
             }
-            if c.name == "ffi-miri" {
+            if matches!(c.name.as_str(), "ffi-miri" | "ffi-miri-lib") {
                 assert_eq!(lists, [&RUN, &FFI_MIRI_LIST]);
                 continue;
             }
