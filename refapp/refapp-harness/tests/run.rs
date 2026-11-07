@@ -294,7 +294,7 @@ const fn fault(dir: Direction, index: u64, fault: Fault) -> FaultEntry {
 
 #[test]
 fn ops_entries_wake_the_ground_node_when_due() {
-    // req: APP-073, APP-074
+    // req: APP-073
     let scenario = Scenario::load().unwrap();
     let mut c = case(Level::Packets, 5_000_000);
     // Two entries at one instant, one later; the ground node asks for no deadline.
@@ -466,4 +466,43 @@ fn faults_that_cannot_apply_fail_the_run() {
     });
     c.faults = vec![fault(Direction::Down, 0, Fault::Flip { octet: 0, bit: 0 })];
     assert!(sim::records(&scenario, &c, &mut sender, &mut ground).is_err());
+}
+
+#[test]
+fn extra_wake_ups_do_not_change_the_trace() {
+    // req: APP-074
+    let scenario = Scenario::load().unwrap();
+    let c = case(Level::Packets, 1_000_000);
+    let run = |wake_every: Option<u64>| {
+        // The flight node sends at t = 0; the ground node echoes what it receives. Both only
+        // act on what is due, and may ask for extra wake-ups.
+        let mut flight = Scripted(|t: u64, _d: &[&[u8]], _tx: bool, out: &mut dyn Output| {
+            if t == 0 {
+                out.unit(&[7]);
+            }
+            wake_every.map(|p| (t / p + 1) * p)
+        });
+        let mut ground = Scripted(|t: u64, d: &[&[u8]], _tx: bool, out: &mut dyn Output| {
+            for u in d {
+                out.packet_in(apid(16), u);
+                out.unit(u);
+            }
+            wake_every.map(|p| (t / p + 1) * p)
+        });
+        sim::records(&scenario, &c, &mut flight, &mut ground).unwrap()
+    };
+    let quiet = run(None);
+    assert_eq!(quiet.len(), 5);
+    assert_eq!(run(Some(50_000)), quiet);
+}
+
+#[test]
+fn a_decreasing_release_instant_fails_the_run() {
+    // req: APP-126
+    let scenario = Scenario::load().unwrap();
+    let mut c = case(Level::Packets, 5_000_000);
+    c.ops = vec![noop_at(2_000_000), noop_at(1_000_000)];
+    let mut flight = Scripted(|_t: u64, _d: &[&[u8]], _tx: bool, _o: &mut dyn Output| None);
+    let mut ground = Scripted(|_t: u64, _d: &[&[u8]], _tx: bool, _o: &mut dyn Output| None);
+    assert!(sim::records(&scenario, &c, &mut flight, &mut ground).is_err());
 }

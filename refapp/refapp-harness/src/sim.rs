@@ -166,6 +166,14 @@ pub fn records(
         faults: &case.faults,
         fault_hit: vec![false; case.faults.len()],
     };
+    // The loader checks this too; a `Case` built in code gets the same rule (APP-126).
+    if let Some(i) = ground.ops_us.windows(2).position(|w| w[1] < w[0]) {
+        return Err(format!(
+            "case `{}`: ops[{}] is released before ops[{i}]",
+            case.id,
+            i + 1
+        ));
+    }
     let mut t = 0;
     while t < case.end_us {
         let (to_ground, to_flight) = deliver(&mut world, t);
@@ -345,7 +353,9 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
                 (FaultKind::Delay, vec![delay_us])
             }
             Fault::Truncate { octets: n } => {
-                octets.truncate(usize::try_from(n).unwrap_or(usize::MAX));
+                let keep = usize::try_from(n)
+                    .map_err(|_| format!("faults[{i}]: truncate length {n} does not fit"))?;
+                octets.truncate(keep);
                 (FaultKind::Truncate, vec![u64::from(n)])
             }
             Fault::Flip { .. } => {
