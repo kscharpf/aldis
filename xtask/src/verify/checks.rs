@@ -177,11 +177,12 @@ pub const C_SANITIZERS_LIST: PathList = PathList {
     patterns: &["crates/**", "include/**", "test-vectors/**"],
 };
 
-/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build and
-/// the vectors its tests read; not the header, which Miri does not read.
+/// Read by the check `ffi-miri` (VER-026, GEN-071): the crates the `aldis-ffi` tests build, the
+/// vectors its tests read, and the committed header, which a unit test of `aldis-ffi` embeds with
+/// `include_str!` (`crates/aldis-ffi/src/mirror.rs`) and compares with the mirror enums.
 pub const FFI_MIRI_LIST: PathList = PathList {
     name: "ffi-miri",
-    patterns: &["crates/**", "test-vectors/**"],
+    patterns: &["crates/**", "include/**", "test-vectors/**"],
 };
 
 /// Read by the non-gating check `kani` (OI-42): the crates with Kani proof harnesses, whose
@@ -532,18 +533,19 @@ fn c_sanitizer_checks() -> Vec<Check> {
     )]
 }
 
-/// Its typical duration in seconds: the sum of the per-binary times under Miri without the
-/// `vectors` test (M5 plan, WP-5 notes), plus the build.
-const MIRI_SECS: u16 = 600;
+/// Its typical duration in seconds: the mean of the check's duration in the nightly run
+/// 42363690903 (535.5 s on `x86_64`), rounded; the `--lib` binary takes about 286 s of it.
+const MIRI_SECS: u16 = 536;
 
-/// The check `ffi-miri`: nightly-only and non-gating like `kani`, since Miri over the `aldis-ffi`
-/// tests takes far longer than 10 minutes (m5 plan D4, VER-059). It leaves out the `vectors`
-/// test, which takes about two hours and runs weekly (`.github/workflows/miri-weekly.yml`).
+/// The check `ffi-miri`: gating, run when its inputs change (maintainer decision 2026-11-07,
+/// after the nightly of issue #310 found in a test a finding that had merged without Miri; it
+/// replaces the nightly-only placement of m5 plan D4). It leaves out the `vectors` test, which
+/// takes about two hours and runs weekly (`.github/workflows/miri-weekly.yml`). It is the
+/// longest gating check; the `coverage` group has the least other work (VER-067).
 fn ffi_miri_check() -> Check {
-    Check {
-        gating: false,
-        nightly: true,
-        ..reading(
+    grouped(
+        Group::Coverage,
+        reading(
             MIRI_INPUTS,
             check(
                 "ffi-miri",
@@ -552,8 +554,8 @@ fn ffi_miri_check() -> Check {
                 MIRI_SECS,
                 FFI_MIRI_SCRIPT,
             ),
-        )
-    }
+        ),
+    )
 }
 
 /// The exerciser check of `target`, in the group that balances the groups by their measured
@@ -854,10 +856,10 @@ mod tests {
 
     // req: VER-056, VER-059
     #[test]
-    fn only_kani_and_ffi_miri_are_nightly_only_and_they_do_not_gate() {
+    fn only_kani_is_nightly_only_and_it_does_not_gate() {
         let nightly: Vec<Check> = all().into_iter().filter(|c| c.nightly).collect();
         let names: Vec<&str> = nightly.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["ffi-miri", "kani"]);
+        assert_eq!(names, ["kani"]);
         for c in &nightly {
             assert!(!c.gating, "{}", c.name);
             assert_eq!(c.host, Host::Container, "{}", c.name);
@@ -866,13 +868,13 @@ mod tests {
 
     // req: VER-056
     #[test]
-    fn only_the_leon3_kani_and_miri_checks_are_non_gating() {
+    fn only_the_leon3_and_kani_checks_are_non_gating() {
         let non_gating: Vec<String> = all()
             .into_iter()
             .filter(|c| !c.gating)
             .map(|c| c.name)
             .collect();
-        assert_eq!(non_gating, ["rust-sparc-leon3", "ffi-miri", "kani"]);
+        assert_eq!(non_gating, ["rust-sparc-leon3", "kani"]);
     }
 
     // req: VER-067
