@@ -1,0 +1,48 @@
+# The coordinator's standing rules
+
+For the coordinator: the main Claude session that dispatches agents, reviews, verifies, opens and readies pull requests ([decision-rights.md](decision-rights.md) §1). Each rule is a standing decision of the maintainer; the reason names the pull request or date it came from. What the coordinator may decide and what it asks is in [decision-rights.md](decision-rights.md); how to brief an agent is in [agent-brief.md](agent-brief.md).
+
+## Dispatch
+
+- **Delegate.** Do not implement pull-request-sized work yourself. Dispatch `wp-implementer` (Sonnet, [`.claude/agents/wp-implementer.md`](../../.claude/agents/wp-implementer.md)) with a self-contained brief ([agent-brief.md](agent-brief.md)) that carries every decision made in chat. Fork only when the work needs the chat's context: a fork inherits the parent model (45% of usage on 2026-10-30). Check an agent's claims with `scripts/pr-status <n>` before relaying them.
+- **Overlap check before dispatch.** Compare the paths the work will touch with the files of the open pull requests (`gh pr list --json number,files`). On an overlap, stack the work ([roadmap §6](../08-roadmap.md) rule 10), serialise it behind the other pull request, or combine the branches. In M3, #180 and #184 shared 18 paths, and #195 and #196 edited the same README.
+- **Combine branches** of the same kind that touch overlapping or generated files into one pull request, unless one carries an open maintainer question, the kinds differ, or the diff would pass about 10k lines. Say what was decided (2026-10-24).
+- **Don't ask about internals.** A choice internal to tooling that either way meets the specification: pick the smaller, reversible change and state it in the pull request. Ask only about what [decision-rights.md](decision-rights.md) reserves to the maintainer (2026-10-29).
+
+## Review
+
+- **Review with the reviewer agent.** Reviews use `reviewer` ([`.claude/agents/reviewer.md`](../../.claude/agents/reviewer.md)), fresh, given the pull request number and head only: never your conclusions or the implementer's report. Run it after the implementer reports a pull request ready, and after each fix round ([review.md](review.md)).
+- **Answer every review.** Watch open pull requests for reviews and comments. Every review (the reviewer agent's included) and every comment not written by an agent gets a point-by-point reply on the pull request quoting the fix commit; the reply ends in the marker of [AGENTS.md](../../AGENTS.md). A fix-round brief tells the implementer to post that reply (2026-10-21 #74; 2026-10-31 #205, #206).
+- **Order inversions.** Tell the maintainer at once when they approve a pull request that depends (by branch ancestry or merge order) on an unreviewed one. Review latency in raw time is the maintainer's availability, not a process delay; count only active time.
+
+## Verification
+
+- **Verify after review.** A pull request's first verify run starts only once its review is in and any fix round is pushed (2026-11-05: every M5 pull request was verified twice because review fixes made the first run stale). Two exceptions: a pull request stacked under [roadmap §6](../08-roadmap.md) rule 10 may verify while the pull request below it is in review; and a brief that grants the gate ([agent-brief.md](agent-brief.md) item 3) is the coordinator's choice to verify before review, made only when no review round is expected.
+- **Don't wait on an agent's report.** When an implementer fixes a gate failure, start `scripts/reverify` as soon as the new head is on the pull request branch (2026-10-31, #201 stalled an hour).
+- **Merge readiness.** `scripts/pr-status <n>...` prints the required contexts, the newest verify run, the review text, and a `READY` or `NOT READY: <reasons>` verdict. It says `NOT READY` when the head does not contain `origin/main` (`behind origin/main by <n>`), and when the newest submitted review has no later pull request comment (`gh pr comment`) whose last line is the reply marker of [AGENTS.md](../../AGENTS.md) (`review unanswered`); a review without findings, and a review that itself ends in the marker, need a reply too, and a later review is not a reply. `scripts/test-pr-status` tests it with no network and a stub `gh`.
+- **No admin bypass.** Never propose force-merging or bypassing branch protection, even during a CI outage; a fallback keeps the same verification (2026-10-22).
+
+## After a merge to main
+
+- **Refresh the next pull request.** Keeping pull requests up to date needs no question ([decision-rights.md](decision-rights.md) §2.11, §4, §5). The order is what this rule adds: refresh the next pull request in the agreed merge order first, and start its run at once: `scripts/reverify <n>`, or every open pull request behind `origin/main` with `scripts/reverify --all-behind`. On a conflict in a generated file, regenerate it; never hand-merge it (2026-10-24). `scripts/test-reverify` tests the script with no network, no container, and no real `gh` or `cargo`; run it after changing the script. The `shell` check (VER-071, `scripts/check-shell`) runs shellcheck, a 100-byte line limit, and every `scripts/test-*` on the shell files of the repository.
+- **Clean up.** `scripts/cleanup-merged <branch>` (dry run, then `--apply`). It keeps a branch whose tip is not an ancestor of `origin/main`, a dirty worktree, and a branch without a merged pull request, and it stops a branch at the first step that fails. The auto-mode permission check refuses raw `git worktree remove` and `git branch -D` (2026-10-21: stale worktrees filled the disk). `scripts/prune-agent-branches` clears leftovers in bulk (see Multiple coordinators); `scripts/test-cleanup-merged` tests the cleanup script with no network and no real `gh`.
+- **No bookkeeping commits.** Never a commit just for a pull request number or a status row. Record a maintainer answer where [decision-rights.md](decision-rights.md) §1 says, batched into the change it governs before the final verify run (2026-10-24, #94, #97, #98).
+
+## Reporting to the maintainer
+
+- **Nightly metrics.** After each "Process metrics" report (pinned issue #87, VER-063), compare it with the previous one. When a process-created wait worsens, propose a fix with the numbers. Never change the gate; changes go to the maintainer as proposals.
+- **Weigh mechanism cost.** A proposed check or tool states how often the problem occurred and how large the mechanism is. Prefer detection plus a manual fix, or a reviewer rule, when classification needs judgement. When reviews keep finding new edge cases in a mechanism, offer a smaller design (2026-11-01: #216 and the slice-fallback check were cut back).
+
+## Changing the process
+
+- **Only by pull request.** Said once, in [AGENTS.md](../../AGENTS.md) (the sentence on dispatching an agent). Branches for process changes take the prefix of [roadmap §6](../08-roadmap.md) rule 3.
+
+## Multiple coordinators
+
+The maintainer may run several coordinators at once (decision of 2026-11-06).
+
+- **Scope.** Each coordinator is its own Claude session in the base checkout, named after its scope. Each owns one milestone in flight (for example A1 or M6); one owns process work.
+- **Ownership.** A pull request belongs to the coordinator of the milestone its title scope names (`m6/…`, `a1/…`; [pr-body.md](pr-body.md)). Any other pull request belongs to the process coordinator. Except for the cross-scope duties below, a coordinator dispatches, reviews, refreshes, and cleans up only its own pull requests and their branches (`scripts/cleanup-merged`). While more than one coordinator runs, only the maintainer runs `scripts/prune-agent-branches --apply`: it removes any clean worktree whose branch is an ancestor of `origin/main` or whose remote branch is gone, including a peer's new worktree that has no commits yet. Leftover `worktree-agent-*` branches wait for that prune.
+- **Cross-scope duties** belong to the process coordinator: the nightly metrics duty, flagging order inversions across scopes, and refreshing other scopes' pull requests after a merge. A scope coordinator may refresh its own pull requests too. While several coordinators run, every refresh uses `--wait` (`scripts/reverify --wait <pr>…`; the process coordinator uses `--all-behind --wait`): without it a call exits 3 and refreshes nothing when any lock is held. With no process coordinator running, these duties wait. The merge order across scopes stays the maintainer's.
+- **Context.** A coordinator's working context stays in its session and reaches agents through briefs. It resumes from GitHub: the plan's status table (`cargo xtask status-table`), its open pull requests, and the open issues. Decisions go where [decision-rights.md](decision-rights.md) §1 says; lessons go in as process pull requests. Nothing specific to one scope goes into the shared auto-memory, which every coordinator in the checkout reads.
+- **Talking to peers.** Before dispatching work that touches a shared file ([roadmap §6](../08-roadmap.md) rule 2, and generated files), or when a change affects another scope, send the owning coordinator a message by its session name with the one fact that matters, not a transcript. It is a notification, not a record, and is never posted as a pull request comment: `scripts/pr-status` would read it as a reply to the review. With no peer session running, send none; the peer sees the change when it resumes from GitHub, and a conflict surfaces at the merge of `main`. The overlap check against open pull requests still applies. The repeated-conflicts row of the metrics report (#87) measures whether this is enough; add a claim mechanism only if that row rises.
