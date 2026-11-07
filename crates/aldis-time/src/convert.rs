@@ -219,18 +219,9 @@ impl UtcInstant {
         let (y, m, d) = civil(self.day);
         let year = Year::try_from(u16::try_from(y).unwrap_or(u16::MAX))?;
         // Valid by construction of the day-number algorithm (M1 D3).
-        Ok(match variation {
-            CcsVariation::MonthDay => {
-                CalendarDate::from_month_day_unchecked(year, Month::new(m).unwrap_or_default(), d)
-            }
-            CcsVariation::DayOfYear => {
-                let doy = self
-                    .day
-                    .wrapping_sub(day_number(year.get(), 1, 1))
-                    .wrapping_add(1);
-                CalendarDate::from_day_of_year_unchecked(year, u16::try_from(doy).unwrap_or(1))
-            }
-        })
+        let date =
+            CalendarDate::from_month_day_unchecked(year, Month::new(m).unwrap_or_default(), d);
+        Ok(date.to_variation(variation))
     }
 
     /// Hour (301.0 Annex A, TIME-033).

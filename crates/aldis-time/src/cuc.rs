@@ -1,4 +1,4 @@
-//! CCSDS Unsegmented Code, CUC (301.0 §3.2; TIME-010…TIME-015).
+//! CCSDS Unsegmented Code, CUC (301.0 §3.2; TIME-010…TIME-016).
 //!
 //! Level 1 CUC counts TAI seconds from 1958 January 1. It is not UTC-based, and the library
 //! applies no leap-second correction to it (TIME-014). Level 2 uses an agency-defined epoch;
@@ -397,6 +397,38 @@ impl Cuc {
         micros_to_nanos(sub_micros).and_then(|nanos| Cuc::from_seconds_nanos(format, coarse, nanos))
     }
 
+    /// The `Instant` of this code when the caller's epoch falls at coarse time `epoch_offset`:
+    /// the microseconds from that epoch to the code, with the fraction truncated to whole
+    /// microseconds; the counterpart of [`from_instant`](Self::from_instant) (301.0 §3.2.1;
+    /// TIME-011, TIME-016).
+    ///
+    /// `epoch_offset` is T0, the coarse time in the basic time unit of the format at which the
+    /// `Instant` clock reads zero, so the library subtracts the offset and the caller does not
+    /// handle the epoch. The basic time unit is taken to be the second, as for
+    /// [`to_seconds_nanos`](Self::to_seconds_nanos) (TIME-011). Nothing is clamped or wrapped.
+    ///
+    /// # Errors
+    /// `OutOfRange` (`coarse`) if the code is before `epoch_offset` (the limit is the offset), or
+    /// if the microseconds do not fit `u64` (the limit is the largest coarse time whose whole seconds do, which a fraction can still overflow)
+    /// (TIME-016).
+    pub fn to_instant(&self, epoch_offset: u64) -> Result<Instant> {
+        let (seconds, nanos) = self.to_seconds_nanos();
+        let after = seconds
+            .checked_sub(epoch_offset)
+            .ok_or_else(|| range(field::COARSE, epoch_offset, seconds))?;
+        after
+            .checked_mul(MICROS)
+            .and_then(|micros| micros.checked_add(u64::from(nanos) / 1000))
+            .map(Instant::from_micros)
+            .ok_or_else(|| {
+                range(
+                    field::COARSE,
+                    epoch_offset.saturating_add(u64::MAX / MICROS),
+                    seconds,
+                )
+            })
+    }
+
     /// The code as whole seconds and nanoseconds, truncated toward zero; the counterpart of
     /// [`from_seconds_nanos`](Self::from_seconds_nanos) (301.0 §3.2.1, TIME-011). See
     /// [`CucValue::to_seconds_nanos`].
@@ -588,6 +620,48 @@ mod tests {
         // The largest Instant with a zero offset.
         let c = Cuc::from_instant(fmt(7, 0), 0, Instant::from_micros(u64::MAX)).unwrap();
         assert_eq!(c.value().coarse(), u64::MAX / 1_000_000);
+    }
+
+    #[test]
+    fn to_instant() {
+        // req: TIME-016
+        use aldis_core::time::Instant;
+        let f = fmt(4, 2);
+        let t0 = 2_100_000_000;
+        let c = Cuc::from_instant(f, t0, Instant::from_micros(3_125_000)).unwrap();
+        assert_eq!(c.to_instant(t0), Ok(Instant::from_micros(3_125_000)));
+        // The code at T0 is the zero Instant; the fraction truncates to whole microseconds.
+        let c = Cuc::from_seconds_nanos(fmt(4, 3), t0, 0).unwrap();
+        assert_eq!(c.to_instant(t0), Ok(Instant::from_micros(0)));
+        let c = Cuc::from_seconds_nanos(fmt(4, 3), t0 + 1, 1_999).unwrap();
+        assert_eq!(c.to_instant(t0), Ok(Instant::from_micros(1_000_001)));
+        // Before T0.
+        let c = Cuc::from_seconds_nanos(f, t0 - 1, 999_000_000).unwrap();
+        let e = c.to_instant(t0).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(crate::field::COARSE));
+        // The largest second that Instant microseconds hold, with its largest fraction.
+        let max = u64::MAX / 1_000_000;
+        let c = Cuc::from_seconds_nanos(fmt(7, 0), max, 0).unwrap();
+        assert_eq!(c.to_instant(0), Ok(Instant::from_micros(max * 1_000_000)));
+        // u64::MAX is 551 615 us into the next second after max seconds.
+        let c = Cuc::from_seconds_nanos(fmt(7, 1), max, 550_781_250).unwrap();
+        assert_eq!(
+            c.to_instant(0),
+            Ok(Instant::from_micros(max * 1_000_000 + 550_781))
+        );
+        let c = Cuc::from_seconds_nanos(fmt(7, 1), max, 554_687_500).unwrap();
+        assert!(c.to_instant(0).is_err());
+        // One second more overflows.
+        let c = Cuc::from_seconds_nanos(fmt(7, 0), max + 1, 0).unwrap();
+        let e = c.to_instant(0).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(crate::field::COARSE));
+        // The offset moves the limit.
+        let c = Cuc::from_seconds_nanos(fmt(7, 0), max + 5, 0).unwrap();
+        assert_eq!(c.to_instant(5), Ok(Instant::from_micros(max * 1_000_000)));
+        let c = Cuc::from_seconds_nanos(fmt(7, 0), max + 6, 0).unwrap();
+        assert!(c.to_instant(5).is_err());
     }
 
     #[test]
