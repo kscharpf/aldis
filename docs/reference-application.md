@@ -101,7 +101,7 @@ Applications generate packets while t < 30 s; the run ends at t = 35 s, so every
 | 5.0 | Command `NOOP`, seq 4 (same instant: blocked with seq 3 from A2, LNK-071) | A1 | 20.0 | `CMD_EXECUTED` |
 | 6.0 | Command `SET_PAYLOAD_MODE` (on), seq 5 | A1 | 24.0 | `CMD_EXECUTED`, `PAYLOAD_MODE` (1) |
 
-The resulting telemetry: 30 HK packets, 13 payload packets (t = 0.5…18.5 s and 24.5…28.5 s), 5 dump packets, and 10 event packets. Derived values, to be cross-checked when A1 implements them: CRC-16 (CMN-001) of the table is `0x0C4F`, and of the 600 dumped memory octets `0x80A8`.
+The resulting telemetry: 30 HK packets, 13 payload packets (t = 0.5…18.5 s and 24.5…28.5 s), 5 dump packets, and 10 event packets. Derived values, cross-checked in A1 WP-1: the CRC-16 (CMN-001) of the 300 table octets is `0x0C4F`, and of the 600 dumped memory octets `0x80A8`. Both were recomputed from the defining expression of 132.0 §4.1.6.2.2 (the message polynomial with the preset term, reduced modulo the generator by long division over GF(2)), not from the shift-register figure or from the library, and the same evaluation gives `0x29B1` for the ASCII octets "123456789" (CMN-002). The ground node's `dump_reassembled` event of this case therefore has the arguments 65 536, 600, 32 936 (§7.4).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -203,7 +203,7 @@ The dump SDU is address (u32) ‖ length L (u16, 1…1024) ‖ L memory octets. 
 
 #### 3.3.6 Table upload (`0x081`)
 
-Table ID (u8, 1…255) ‖ length L (u16, 1…512) ‖ L table octets. The nominal table (ID 1, L = 300) has octet i = (3 · i + 1) mod 256. Its packet (309 octets) is longer than one TC frame data field, so it is segmented on MAP 1 (§4.2).
+Table ID (u8, 1…255) ‖ length L (u16, 1…512) ‖ L table octets. Every table of the scenario has octet i = (3 · i + 1) mod 256, whatever its ID and length; the nominal table is ID 1, L = 300. Its packet (309 octets) is longer than one TC frame data field, so it is segmented on MAP 1 (§4.2).
 
 ### 3.4 Spacecraft ID
 
@@ -379,7 +379,9 @@ Faults are **scripted** per case, not seeded: each entry addresses one link unit
 |---|---|---|---|
 | `a0-empty` | A1 rules (packets) | none | Harness self-test: no applications, end instant 0, header-only trace |
 | `a1-nominal` | A1 | none | The timeline of §2.4 (end 35 s) |
-| `a1-immediate` | A1 | none | `a1-nominal` plus immediate commands (outside APP-003); defined in A1 |
+| `a1-immediate` | A1 | none | `a1-nominal` plus immediate commands (outside APP-003); §6.6 |
+| `a1-rejects` | A1 | none | Every rejection reason of §3.3.2, both `TABLE_REJECTED` reasons, and immediate execution (APP-013, APP-017, APP-024); §6.6 |
+| `a1-downlink-faults` | A1 | `drop`, `duplicate`, `delay`, `truncate` of downlink packets | The ground node's sequence, dump, and rejected-packet events (APP-018) before frames hide them; §6.6 |
 | `a2-nominal` | A2 | none | Same timeline over TM/TC frames |
 | `a2-downlink-*` | A2 | Frame loss and corruption | Frame-gap and packet-sequence detection (LNK-051, SPP-011); defined in A2 |
 | `a3-nominal` | A3 | none | Same timeline over COP-1; frozen from A3 (APP-004) |
@@ -398,6 +400,76 @@ The fault scripts of the A2 and A3 cases are fixed by the milestone that adds th
 | APP-075 | Faults SHALL be scripted per case as §6.3 defines, addressed by (direction, unit index), and applied by the harness only. | — | T |
 | APP-076 | The cases SHALL be those of §6.4, each with its end instant, ops script, and fault script in the scenario file (APP-107). | — | I |
 | APP-077 | The harness and the nodes SHALL NOT read a wall clock, use threads for anything that affects outputs, iterate hash-based containers, or use randomness (GEN-031 applied to the application). | GEN-031 | I |
+
+### 6.5 Script entries in the scenario file
+
+A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file (the ranges of the other sections of the file are only in the schema so far, #299); this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
+
+| Ops entry `kind` | Parameters | Meaning |
+|---|---|---|
+| `command` | `at_us`; `execution`: `{"mode":"immediate"}` or `{"mode":"time_tagged","exec_us":…}`; `call`: `function` (`noop`, `dump_memory`, `activate_table`, `set_payload_mode`, `unknown`) with its arguments of §3.3.5 (`address` and `length`; `table_id` and `crc`; `mode`; `code`); optional `extra_octets` | A command packet on APID `0x080`, output by the ground node at `at_us` (§6.2). `exec_us` is the execution time as µs after T0. `unknown` carries a function code that no function has. `extra_octets` appends that many `0x00` octets after the arguments, so that the packet length does not match the function code (APP-024) |
+| `table_upload` | `at_us`, `table_id`, `length` | A table-upload packet on APID `0x081` with the table octets of §3.3.6 |
+| `fop1_directive` | `at_us`, `directive` | A FOP-1 directive (§2.4). Reserved from A1: issued from A3 on and ignored below that link level (APP-019). A3 adds the directives it needs (APP-002) |
+
+| Fault entry | Parameters | Meaning |
+|---|---|---|
+| (one entry per fault) | `dir` (`down` or `up`), `index`, `fault`: `{"kind":"drop"}`, `{"kind":"duplicate"}`, `{"kind":"delay","delay_us":d}`, `{"kind":"flip","octet":n,"bit":b}`, or `{"kind":"truncate","octets":n}` | The fault of §6.3 on the unit with that index among those sent in that direction. `flip` is valid at frame levels only |
+
+Rules:
+- An entry's index is its position in the array. It is the ops-script entry index of the node interface (§8.1, §8.2).
+- Ops entries are in release order, so release instants never decrease, and entries with one instant are released in array order. Command sequence counts (APID `0x080`) follow the release order of the `command` entries; table uploads have their own count (APID `0x081`, §3.1).
+- A fault script addresses units by their index in the direction as sent, before any fault; the index of a downlink unit therefore follows from the per-instant order of §2.1.
+- Every entry is released before the case's end instant. Every `exec_us` is a multiple of the frame slot (APP-061). The harness rejects a file that breaks these rules.
+
+### 6.6 Cases of A1
+
+`a1-nominal` has the ops script of §2.4 (its entries marked A1, in release order) and no faults. The three cases below are added by APP-002: each is a new case, and none changes another. Each case's ops script and fault script are written out in the scenario file together with its golden trace (A1 WP-5); `refapp/refapp-harness/tests/data/a1-cases.json` holds the entries until then, and a harness test checks them of all four cases (`a1-nominal` too) against the Rust model of the scenario file and the rules of §6.5.
+
+Every command of these cases that has an effect at its delivery instant (§2.3: immediate execution, rejection at delivery) is released at an instant that is 115 000 µs after a multiple of 125 000 µs, so that it arrives on the 125 000 µs grid and every on-board time stamp stays exact (APP-061, APP-128). Commands that only queue need no such care. Events listed below are the event packets of §3.3.2 on APID `0x011` unless called an application event; the flight node also raises `cmd_received` for each command packet delivered and `table_received` for each table stored (APP-129), which the tables leave out.
+
+**`a1-immediate`** (end 35 s): the ops script of `a1-nominal`, then two immediate commands. Everything else is as in `a1-nominal`, and the packet projection differs from it (not part of APP-003).
+
+| Release (s) | Entry | Seq | Report |
+|---|---|---|---|
+| 14.115 | `NOOP`, immediate | 6 | `CMD_EXECUTED` (1, 6) at 14.125 s |
+| 21.115 | `SET_PAYLOAD_MODE` (on), immediate | 7 | `CMD_EXECUTED` (4, 7), `PAYLOAD_MODE` (1) at 21.125 s; the payload packet at 22.5 s is generated, which the nominal timeline does not do |
+
+**`a1-rejects`** (end 21 s): one command for each rejection reason of §3.3.2 and both `TABLE_REJECTED` reasons of APP-017. Seqs follow release order. Each report carries the arguments of §3.3.2, written (p1, p2, p3).
+
+| Release (s) | Entry | Seq | Report |
+|---|---|---|---|
+| 0.115 | `NOOP`, immediate | 0 | `CMD_EXECUTED` (1, 0, 0) at 0.125 s |
+| 0.615 | Function code 127 (`unknown`), immediate | 1 | `CMD_REJECTED` (127, 1, 1), unknown function, at 0.625 s |
+| 1.115 | `NOOP` with one extra octet, time tag 3.0 s | 2 | `CMD_REJECTED` (1, 2, 3), malformed arguments, at 3.0 s |
+| 3.615 | `NOOP`, time tag 3.0 s (before the arrival at 3.625 s) | 3 | `CMD_REJECTED` (1, 3, 2), time tag in the past, at 3.625 s |
+| 4.115 | `ACTIVATE_TABLE` (table 1, CRC `0x0C4F`), immediate, no table yet | 4 | `CMD_EXECUTED` (3, 4, 0), `TABLE_REJECTED` (1, 1, 0): no table, at 4.125 s |
+| 5.115 | Table upload, table 1, 300 octets (APID `0x081`, seq 0) | — | Stored at 5.125 s; no report |
+| 6.115 | `ACTIVATE_TABLE` (table 1, CRC `0x0C4E`), immediate | 5 | `CMD_EXECUTED` (3, 5, 0), `TABLE_REJECTED` (1, 2, 0): CRC mismatch, at 6.125 s (`0x0C4F` is the CRC of the table, §2.4) |
+| 8.115 | `DUMP_MEMORY` (address `0x00010000`, 300 octets), immediate | 6 | `CMD_EXECUTED` (2, 6, 0) at 8.125 s; three dump packets (128, 128, 50 SDU octets) at 8.125, 8.250, and 8.375 s; `DUMP_COMPLETED` (1, 0, 300) at 8.375 s |
+| 8.240 | `DUMP_MEMORY`, same arguments, immediate, while the dump runs | 7 | `CMD_REJECTED` (2, 7, 5), dump in progress, at 8.250 s, before that step's dump packet (§2.1) |
+| 10.115 | Nine `NOOP`, time tag 20.0 s, released at one instant | 8…16 | Seqs 8…15 queue (the queue holds 8, §2.3); seq 16 gives `CMD_REJECTED` (1, 16, 4), queue full, at 10.125 s; at 20.0 s `CMD_EXECUTED` (1, n, 0) for n = 8…15 in queue order |
+
+The ground node raises one application event: `dump_reassembled` with the arguments 65 536, 300, 32 736 at 8.385 s (the CRC-16 of the 300 memory octets from `0x00010000`, computed as in §2.4). It raises no sequence or rejected-packet event.
+
+**`a1-downlink-faults`** (end 35 s): the ops script of `a1-nominal` and five scripted faults on downlink packets, `drop`, `duplicate`, `delay`, and `truncate` (no `flip`: there is no FECF at packet level). The flight node's output is that of `a1-nominal`; the faults change only what the ground node receives. Packets are given by their downlink unit index and by their APID and Packet Sequence Count. Ground events are (APID, …) as in §7.4, and times are arrival instants (send instant plus 10 000 µs, plus the delay).
+
+| Unit | Packet | Fault | Ground node |
+|---|---|---|---|
+| 2 | HK `0x010`, count 1 (t = 1 s) | `drop` | At 2.010 s count 2 arrives after count 0: `seq_gap` (16, 1) |
+| 4 | Payload `0x020`, count 1 (t = 2.5 s) | `duplicate` | `packet_in` twice at 2.510 s; the second raises `seq_repeat` (32, 1) |
+| 5 | HK `0x010`, count 3 (t = 3 s) | `delay` 1 500 000 µs, so it arrives at 4.510 s | Count 4 arrives first at 4.010 s: `seq_gap` (16, 1). Count 3 arrives at 4.510 s: `seq_reset` (16, 3). Count 5 arrives at 5.010 s after count 3, the tracker's last count: `seq_gap` (16, 1) |
+| 11 | Payload `0x020`, count 3 (t = 6.5 s) | `truncate` to 20 octets | At 6.510 s the strict decoder rejects the unit: `packet_rejected` (2), `Incomplete` (03 §9), and no `packet_in`. Count 4 arrives at 8.510 s after count 2: `seq_gap` (32, 1) |
+| 25 | Dump `0x021`, count 2 (the third packet, t = 12.25 s) | `drop` | Count 3 arrives at 12.385 s after count 1: `seq_gap` (33, 1), then `dump_discarded` (33, 256), the 256 SDU octets of the two packets held. Count 3 (`00`) and count 4 (`10`) are dropped as orphans without an event, and no `dump_reassembled` follows |
+
+The classification is Aldis's own (SPP-011, CMN-030, CMN-031): a forward distance of 1 is in sequence, 0 a repeat, 2 to 8 192 a gap with distance minus 1 missing, anything else a reset, and the tracker takes every received count as the new last count. The reassembler's reasons are those of `docs/standards/space-packet.md` §5.4.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-126 | The ops script and the fault script of a case SHALL be the optional arrays `ops` and `faults` of the scenario file, with the entries of §6.5: parameters, not octets, in release order, each released before the case's end instant, and each execution time a multiple of the frame slot. The harness SHALL reject a file that breaks these rules, and the schema SHALL describe the entries. | — | T |
+| APP-127 | The cases `a1-immediate`, `a1-rejects`, and `a1-downlink-faults` SHALL be those of §6.6, each in the scenario file with its golden trace, and their reports and ground events SHALL be those the tables of §6.6 give. | — | T |
+| APP-128 | An immediate command SHALL be released at an instant that, with the one-way delay, is a multiple of the frame slot; the harness SHALL reject a file in which one is not. The same SHALL hold for a time-tagged command that is rejected at delivery (§2.3: a time tag before the arrival, or a full queue), which the harness finds by following the queue of the script. | — | T |
+| APP-129 | For every command packet delivered the flight node SHALL raise `cmd_received` (function code, command sequence count) before any other event of that packet, and for every table stored `table_received`. A command whose function code is unknown or whose length does not match its function SHALL be rejected with reason 1 or 3 at its execution instant; an `ACTIVATE_TABLE` that finds no table, another table ID, or a CRC mismatch is an executed command and raises `CMD_EXECUTED` before its `TABLE_REJECTED`. | — | T |
+| APP-130 | For every link unit delivered the ground node SHALL output, in this order: `packet_rejected` if the strict decoder fails, and nothing further; otherwise `packet_in`, then the sequence event of the packet (none for the first packet of an APID or an in-sequence one), then for the dump APID `dump_discarded` if a partial SDU was thrown away (arguments: APID, SDU octets held) and `dump_reassembled` if the SDU is complete. A packet that the reassembler drops without discarding an SDU (an orphan) raises no event. | 133.0 §4.1.3.4.3.3–4, §4.3.2.2 | T |
 
 ## 7. Golden traces
 
