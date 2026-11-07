@@ -8,6 +8,7 @@
 
 use aldis::core::ids::SeqCount;
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat, decode_implicit};
+use refapp_scenario::Crc16;
 use refapp_scenario::generated::time;
 
 use crate::layout::PayloadMode;
@@ -107,7 +108,7 @@ pub enum Call {
         /// Table ID.
         table_id: u8,
         /// CRC-16 of the table that the command claims (CMN-001).
-        crc: u16,
+        crc: Crc16,
     },
     /// `SET_PAYLOAD_MODE`.
     SetPayloadMode(PayloadMode),
@@ -229,7 +230,7 @@ fn call(code: u8, args: &[u8]) -> Result<Call, Reject> {
             let &[table_id, c1, c0] = <&[u8; 3]>::try_from(args).map_err(|_| malformed)?;
             Ok(Call::ActivateTable {
                 table_id,
-                crc: u16::from_be_bytes([c1, c0]),
+                crc: Crc16::from_wire(u16::from_be_bytes([c1, c0])),
             })
         }
         FN_SET_PAYLOAD_MODE => match args {
@@ -249,6 +250,7 @@ mod tests {
 
     use super::{Call, Command, DumpRegion, Reject, Timing, parse};
     use crate::layout::PayloadMode;
+    use refapp_scenario::Crc16;
 
     /// A command's user data: function, mode, T-field, arguments.
     fn data(function: u8, mode: u8, t_field: [u8; 6], args: &[u8]) -> std::vec::Vec<u8> {
@@ -278,7 +280,7 @@ mod tests {
             call_of(3, &[1, 0x0C, 0x4F]),
             Ok(Call::ActivateTable {
                 table_id: 1,
-                crc: 0x0C4F
+                crc: Crc16::from_wire(0x0C4F)
             })
         );
         assert_eq!(call_of(4, &[0]), Ok(Call::SetPayloadMode(PayloadMode::Off)));

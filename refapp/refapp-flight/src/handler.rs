@@ -74,7 +74,7 @@ impl FlightNode {
             Ok((table_id, length)) => {
                 out.app_event(
                     APP_TABLE_RECEIVED,
-                    &[u64::from(table_id), u64::from(length)],
+                    &[u64::from(table_id.get()), u64::from(length.get())],
                 );
             }
             Err(e) => reject_unit(out, e.kind()),
@@ -129,11 +129,11 @@ impl FlightNode {
                     },
                     Activation::Activated { length, crc } => {
                         self.status.table_id = table_id;
-                        self.status.table_crc = crc;
+                        self.status.table_crc = crc.get();
                         Event::TableActivated {
                             table_id: u16::from(table_id),
-                            length,
-                            crc,
+                            length: length.get(),
+                            crc: crc.get(),
                         }
                     }
                 };

@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use refapp_scenario::{Crc16, TableId, TableLength};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -251,10 +252,13 @@ pub enum OpsEntry {
 
 impl OpsEntry {
     /// The entry as the ground node takes it (§6.5).
-    #[must_use]
-    pub fn to_node(&self) -> refapp_ground::OpsEntry {
+    ///
+    /// # Errors
+    /// `InvalidField` or `OutOfRange` for a table upload whose ID or length is outside its range,
+    /// which [`Scenario::check`] rejects first.
+    pub fn to_node(&self) -> Result<refapp_ground::OpsEntry, String> {
         use refapp_ground as node;
-        match *self {
+        Ok(match *self {
             OpsEntry::Command {
                 execution,
                 call,
@@ -270,9 +274,10 @@ impl OpsEntry {
                     Call::DumpMemory { address, length } => {
                         node::Call::DumpMemory { address, length }
                     }
-                    Call::ActivateTable { table_id, crc } => {
-                        node::Call::ActivateTable { table_id, crc }
-                    }
+                    Call::ActivateTable { table_id, crc } => node::Call::ActivateTable {
+                        table_id,
+                        crc: Crc16::from_wire(crc),
+                    },
                     Call::SetPayloadMode { mode } => node::Call::SetPayloadMode { mode },
                     Call::Unknown { code } => node::Call::Unknown { code },
                 },
@@ -280,9 +285,14 @@ impl OpsEntry {
             },
             OpsEntry::TableUpload {
                 table_id, length, ..
-            } => node::OpsEntry::TableUpload { table_id, length },
+            } => node::OpsEntry::TableUpload {
+                table_id: TableId::new(table_id)
+                    .map_err(|e| format!("table_id: {:?}", e.kind()))?,
+                length: TableLength::new(length)
+                    .map_err(|e| format!("table length: {:?}", e.kind()))?,
+            },
             OpsEntry::Fop1Directive { .. } => node::OpsEntry::Fop1Directive,
-        }
+        })
     }
 
     /// The release instant, µs (§6.5).
@@ -515,10 +525,10 @@ impl Scenario {
                     table_id,
                     length,
                 } => {
-                    if *table_id == 0 {
+                    if TableId::new(*table_id).is_err() {
                         return Err(format!("ops[{i}]: table_id is 1 to 255"));
                     }
-                    if !(1..=503).contains(length) {
+                    if TableLength::new(*length).is_err() {
                         return Err(format!("ops[{i}]: table length is 1 to 503"));
                     }
                     *at_us

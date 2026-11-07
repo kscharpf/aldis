@@ -158,3 +158,4 @@ Each finding is a GitHub issue labelled `api-feedback`; this list names them as 
 | #303 | WP-4 | `SpacePacket::decode` ignores trailing octets; a one-packet unit needs its own length check |
 | #304 | WP-4 | `Apid::new` returns `Option`, so a constant APID needs an error path |
 | #312 | WP-3b | No conversion from a CUC time code to an `Instant`; the time tag of a command is converted by hand (reverse of #305) |
+| #318 | WP-3b | aldis-core CRC functions return a bare `u16`; refapp wraps it in `Crc16` |

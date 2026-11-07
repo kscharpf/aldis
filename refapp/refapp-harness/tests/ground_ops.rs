@@ -2,7 +2,7 @@
 //! docs/reference-application.md §6.5, §6.6).
 
 use refapp_ground::GroundNode;
-use refapp_harness::scenario::{Case, OpsEntry, Scenario};
+use refapp_harness::scenario::{Case, Scenario};
 use refapp_harness::sim;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
@@ -31,7 +31,7 @@ fn every_a1_case_releases_its_script_at_its_instants() {
         let mut case = scenario.case(id).unwrap().clone();
         case.faults.clear();
         let case = &case;
-        let script: Vec<_> = case.ops.iter().map(OpsEntry::to_node).collect();
+        let script: Vec<_> = case.ops.iter().map(|e| e.to_node().unwrap()).collect();
         let mut ground = GroundNode::new(&script).unwrap();
         let trace = sim::run(&scenario, case, &mut Silent, &mut ground).unwrap();
         let released: Vec<&str> = trace
