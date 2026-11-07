@@ -1,5 +1,5 @@
 # The vector tests of aldis-ffi under Miri (VER-026, m5 plan D4). They take about two hours, so
-# the gating check `ffi-miri` leaves them out and they run here once a week. Report only: a
+# the checks `ffi-miri` and `ffi-miri-lib` leave them out and they run here once a week. Report only: a
 # failure fails this run and gates no merge. Nightly Rust is tooling only (RS-002), always the
 # date pinned in `tooling-nightly`.
 name: Miri weekly

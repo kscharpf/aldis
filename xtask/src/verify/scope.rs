@@ -1154,7 +1154,10 @@ mod tests {
     fn fail_safe() {
         let everything = names(|_| true);
         let but_nightly = names(|c| !c.nightly);
-        let nightly = |d: &Decision| d.name == "kani" && d.outcome() == Some(Outcome::NotRun);
+        let nightly = |d: &Decision| {
+            matches!(d.name.as_str(), "kani" | "ffi-miri-lib")
+                && d.outcome() == Some(Outcome::NotRun)
+        };
         let default = Force::default();
         let all = Force {
             all: true,
@@ -1251,11 +1254,11 @@ mod tests {
         };
         assert_eq!(
             of(Some(Outcome::Reused)),
-            names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"))
+            names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "ffi-miri-lib" | "shell"))
         );
         assert_eq!(of(Some(Outcome::Skipped)), ["shell"]);
         // kani is nightly-only: neither skipped nor reused, whatever the records say.
-        assert_eq!(of(Some(Outcome::NotRun)), ["kani"]);
+        assert_eq!(of(Some(Outcome::NotRun)), ["ffi-miri-lib", "kani"]);
         let kani = p.checks.iter().find(|d| d.name == "kani").unwrap();
         assert_eq!((kani.why.as_str(), &kani.source), (NIGHTLY_ONLY, &None));
         assert_eq!(of(None), ["spec"]);
@@ -1713,20 +1716,24 @@ mod tests {
         assert_eq!(p.base_record.as_deref(), Some(r.head1.as_str()));
         assert_eq!(p.branch, std::slice::from_ref(&r.p1));
         // The Rust checks: their inputs are those of the branch's verified head.
-        let rust = names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"));
+        let rust =
+            names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "ffi-miri-lib" | "shell"));
         assert_eq!(
             decided(&p, Some(Outcome::Reused)),
             (rust.clone(), vec![r.p1.clone()])
         );
         // `shell` reads no changed path either.
         assert_eq!(decided(&p, Some(Outcome::Skipped)).0, ["shell"]);
-        assert_eq!(decided(&p, Some(Outcome::NotRun)).0, ["kani"]);
+        assert_eq!(
+            decided(&p, Some(Outcome::NotRun)).0,
+            ["ffi-miri-lib", "kani"]
+        );
         // spec reads docs/b.md.
         assert_eq!(decided(&p, None).0, ["spec"]);
         let lines = describe(&p, &checks);
         assert!(
             lines[0].ends_with(&format!(
-                "1 of {} checks run, 1 skipped, {} reused, 1 nightly only",
+                "1 of {} checks run, 1 skipped, {} reused, 2 nightly only",
                 checks.len(),
                 rust.len()
             )),
@@ -1825,14 +1832,17 @@ mod tests {
         // No check runs: each takes its result from B's verified head, or is skipped on the
         // strength of the record that covers the base; kani is nightly only.
         assert_eq!(decided(&decisions, None).0, Vec::<String>::new());
-        assert_eq!(decided(&decisions, Some(Outcome::NotRun)).0, ["kani"]);
+        assert_eq!(
+            decided(&decisions, Some(Outcome::NotRun)).0,
+            ["ffi-miri-lib", "kani"]
+        );
         let (mut taken, mut sources_used) = decided(&decisions, Some(Outcome::Reused));
         let (skipped, skip_sources) = decided(&decisions, Some(Outcome::Skipped));
         taken.extend(skipped);
         sources_used.extend(skip_sources);
         sources_used.sort();
         sources_used.dedup();
-        assert_eq!(taken.len(), checks.len() - 1);
+        assert_eq!(taken.len(), checks.len() - 2);
         assert!(sources_used.contains(&head_b), "{sources_used:?}");
         // So the run starts no container, and its record passes the gate with every reuse
         // re-derived from git.
@@ -1886,7 +1896,8 @@ mod tests {
         // The record that reused it no longer passes.
         let problems = recheck(&r.clone.0, &rec, &checks);
         // One problem per reused check: the Rust checks outside spec.
-        let reused = names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "shell"));
+        let reused =
+            names(|c| !matches!(c.name.as_str(), "spec" | "kani" | "ffi-miri-lib" | "shell"));
         assert_eq!(problems.len(), reused.len(), "{problems:?}");
         assert!(
             problems[0].ends_with(&format!(
