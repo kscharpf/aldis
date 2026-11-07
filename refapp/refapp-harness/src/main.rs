@@ -17,7 +17,7 @@ commands:
                              with refapp/golden/<case>.jsonl
   bless <case>               write the run's trace to refapp/golden/<case>.jsonl (changing a
                              released trace needs a trace_version bump and a CHANGES.md row)
-  check-golden               every file in refapp/golden/ is a canonical trace
+  check-golden               every file in refapp/golden/ is canonical and strictly decodes
   gen-scenario [--check]     (re)generate the schema and Rust constants from
                              refapp/scenario/scenario.json, or check that they are current
 ";
@@ -79,7 +79,7 @@ fn check_golden() -> Result<usize, String> {
     let mut failed = 0;
     for f in &files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
-        if let Err(e) = trace::check_canonical(&text) {
+        if let Err(e) = trace::decode_strict(&text) {
             println!("error: {}: {e}", f.display());
             failed += 1;
         }

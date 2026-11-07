@@ -134,6 +134,7 @@ dependencies = [
 name = "refapp-harness"
 version = "0.1.0"
 dependencies = [
+ "aldis",
  "refapp-flight",
  "refapp-ground",
  "refapp-scenario",
