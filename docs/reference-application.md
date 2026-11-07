@@ -162,7 +162,7 @@ All integers are unsigned and big-endian (GEN-050). Octet offsets count from the
 | 14–15 | Dumps completed |
 | 16–31 | Sensor channels j = 0…7, u16 each: (1000 · (j + 1) + 3 · k) mod 2¹⁶ |
 
-A housekeeping packet reports the state after steps 1–3 of its instant (§2.1). A command executed at that instant is counted (executed, rejected, payload mode, table, dumps completed). The queue occupancy is the number of time-tagged commands then queued, so a command delivered later in the same second is not counted: deliveries arrive 10 000 µs after their release instant (§6.1), at an instant of their own.
+A housekeeping packet reports the state after steps 1–3 of its instant (§2.1). A command executed at that instant is counted (executed, rejected, payload mode, table, dumps completed). The queue occupancy is the number of time-tagged commands then queued, so a command delivered after the HK instant is not counted until the next HK packet. A delivery at the HK instant itself is handled in step 1 and counted. Deliveries arrive 10 000 µs after their release instant (§6.1).
 
 #### 3.3.2 Event reports (`0x011`, 8 octets; packet length 21)
 
