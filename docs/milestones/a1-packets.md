@@ -150,4 +150,10 @@ APP-075 and the fault case leave the table if D4 is decided without `a1-downlink
 
 ## 6. API feedback found
 
-None yet. Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101).
+Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101).
+
+| Issue | Found in | Finding |
+|---|---|---|
+| #302 | WP-4 | `Reassembler`'s `Outcome` gives the reason for a discard, not the octets thrown away |
+| #303 | WP-4 | `SpacePacket::decode` ignores trailing octets; a one-packet unit needs its own length check |
+| #304 | WP-4 | `Apid::new` returns `Option`, so a constant APID needs an error path |
