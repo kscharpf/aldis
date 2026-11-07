@@ -348,3 +348,14 @@ Search of 2026-11-04 (M4 WP-9) for an independent implementation of the link-lay
 | Open Space Data Link Protocol (C/C++; [slides](https://events.libre.space/event/5/contributions/147/attachments/115/142/session%204-2%20OSDLP.pdf)) | not checked | Virtual channels and MAP segmentation for TC, per the slides of its authors | Not evaluated: a presentation was found, not a version to run |
 
 None was run against the vector files. The independent check of the link engines is the pair of blind Python models `test-vectors/models/link_send.py` and `test-vectors/models/link_recv.py`, written from the Blue Books and `docs/` without sight of the Rust engines (TV-023, M4 WP-2a and WP-2b), whose scenarios the Rust runners and the C ABI runners pass. **Accepted for M4** (maintainer decision 2026-11-05): VER-040 for the link engines is met by this search and the blind models; running `eu.dariolucia.ccsds` through a Java harness against the TM and AOS packet scenarios is not required for the M4 exit, and stays open with OI-32.
+
+## 7. Reference application (A1)
+
+A1 D5(c): the blind Python model `file:refapp/model/a1_nominal.py`, written from `docs/reference-application.md`, `file:refapp/scenario/scenario.json`, and 133.0, 301.0, and 132.0 §4.1.6.2.2 (CMN-001) without sight of the refapp crates (TV-023), regenerates the `packet_out` records of `a1-nominal`.
+
+| Item | Value |
+|---|---|
+| Run | `python3 refapp/model/a1_nominal.py --compare <golden>` (Python 3, standard library; no CI step) |
+| Date | 2026-11-07 |
+| Golden file | `refapp/golden/a1-nominal.jsonl`, trace version 1, as on branch `a1/wp-5-golden` (#323) |
+| Result | **Match**: 65 model records, 65 golden `packet_out` records (7 ground, 30 HK, 10 event, 13 payload, 5 dump), 0 mismatches, compared in order and octet for octet |
