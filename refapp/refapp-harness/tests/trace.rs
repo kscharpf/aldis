@@ -2,7 +2,7 @@
 //! (docs/reference-application.md §7; A0 WP-2).
 
 use refapp_harness::trace::{
-    Dir, FaultKind, Header, Mismatch, NodeId, Record, check_canonical, compare,
+    Dir, FaultKind, Header, Mismatch, NodeId, Record, check_canonical, compare, decode_strict,
 };
 
 const SAMPLE: &str = include_str!("data/sample.jsonl");
@@ -213,4 +213,49 @@ fn comparator_reports_the_first_difference() {
     assert_eq!(m.line, 4);
     assert_eq!(m.actual, None);
     assert!(m.to_string().contains("<end of trace>"));
+}
+
+#[test]
+fn golden_traces_decode_with_the_strict_codecs() {
+    // req: APP-086
+    let dir = refapp_harness::golden_path("a1-nominal");
+    let dir = dir.parent().unwrap();
+    let mut traces = 0;
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|x| x == "jsonl") {
+            let text = std::fs::read_to_string(&path).unwrap();
+            decode_strict(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            traces += 1;
+        }
+    }
+    assert!(traces >= 5);
+}
+
+#[test]
+fn a_planted_malformed_packet_fails_the_strict_decode() {
+    // req: APP-086
+    let line = |kind: &str, hex: &str| {
+        format!(
+            "{{\"t_us\":0,\"kind\":\"{kind}\",\"node\":\"flight\",\"apid\":16,\"hex\":\"{hex}\"}}\n"
+        )
+    };
+    let header = SAMPLE.lines().next().unwrap();
+    let good = "0810C00000057D2B75000000";
+    let ok = format!("{header}\n{}", line("packet_out", good));
+    assert_eq!(decode_strict(&ok), Ok(1));
+    // Version 1 (SPP-001), truncated, and trailing octets after the packet.
+    for bad in [
+        "2810C00000057D2B75000000",
+        "0810C00000057D2B750000",
+        "0810C00000057D2B75000000FF",
+    ] {
+        let text = format!("{header}\n{}", line("packet_out", bad));
+        let e = decode_strict(&text).unwrap_err();
+        assert!(e.starts_with("line 2:"), "{e}");
+    }
+    let unit = format!(
+        "{header}\n{{\"t_us\":0,\"kind\":\"unit_sent\",\"dir\":\"down\",\"index\":0,\"hex\":\"2810C00000057D2B75000000\"}}\n"
+    );
+    assert!(decode_strict(&unit).is_err());
 }
