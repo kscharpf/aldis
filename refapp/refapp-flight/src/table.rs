@@ -42,7 +42,7 @@ impl TableStore {
     ///
     /// # Errors
     /// `Incomplete` for user data shorter than the 3 octets before the table, `InvalidField` for
-    /// table ID 0 or length 0, `OutOfRange` for a length above [`TABLE_MAX_LENGTH`],
+    /// table ID 0 or length 0, `OutOfRange` for a length above [`TableLength::MAX`],
     /// `LengthMismatch` if the octets after the length are not L.
     pub fn store(&mut self, data: &[u8]) -> Result<(TableId, TableLength), Error> {
         let &[id, l1, l0, ref octets @ ..] = data else {
