@@ -4,13 +4,13 @@
 //! APP-018, APP-022, APP-130.
 
 use aldis::core::counter::Continuity;
+use aldis::core::crc::crc16;
 use aldis::core::ids::Apid;
 use aldis::core::{Error, ErrorKind};
 use aldis::spp::{
     PacketType, ReassemblerState, SecondaryHeaderLayout, SequenceFlags, SequenceTracker,
     SpacePacket, SpacePacketHeader, Status, TimeHeaderLayout, Tracked,
 };
-use aldis::core::crc::crc16;
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
 use refapp_scenario::generated::{apid, time};
 use refapp_scenario::{Crc16, Output};
