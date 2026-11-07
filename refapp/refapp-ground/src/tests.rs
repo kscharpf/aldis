@@ -8,7 +8,7 @@
 use crate::{Call, Execution, GroundNode, OpsEntry, telemetry};
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode};
-use refapp_scenario::{Instant, Node, Output, StepInput, TableId, TableLength};
+use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, TableId, TableLength};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +101,7 @@ fn deliver(node: &mut GroundNode, units: &[Vec<u8>]) -> Vec<Rec> {
         let delivered: [&[u8]; 1] = [unit];
         let input = StepInput {
             now,
-            delivered: &delivered,
+            delivered: Delivered::new(&delivered),
             ops: &[],
             tx_slot: true,
         };
@@ -529,7 +529,7 @@ fn several_units_in_one_step_are_handled_in_delivery_order() {
     let delivered: [&[u8]; 2] = [&a, &b];
     let input = StepInput {
         now: Instant::from_micros(1),
-        delivered: &delivered,
+        delivered: Delivered::new(&delivered),
         ops: &[],
         tx_slot: true,
     };
@@ -570,7 +570,7 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
     let delivered: [&[u8]; 1] = [&unit];
     let input = StepInput {
         now: Instant::from_micros(1_000_000),
-        delivered: &delivered,
+        delivered: Delivered::new(&delivered),
         ops: &[0, 1, 2],
         tx_slot: true,
     };
@@ -596,7 +596,7 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
     // A later entry takes the next command count; a stale or unknown index sends nothing.
     let input = StepInput {
         now: Instant::from_micros(3_000_000),
-        delivered: &[],
+        delivered: Delivered::new(&[]),
         ops: &[3, 9],
         tx_slot: true,
     };
@@ -614,7 +614,7 @@ fn stepping_with_nothing_due_changes_nothing() {
     let mut n = node();
     let input = StepInput {
         now: Instant::from_micros(5),
-        delivered: &[],
+        delivered: Delivered::new(&[]),
         ops: &[],
         tx_slot: true,
     };

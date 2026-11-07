@@ -168,7 +168,7 @@ pub(crate) mod tests {
     use aldis::spp::{SecondaryHeaderLayout, SequenceFlags, SpacePacket, TimeHeaderLayout};
     use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
     use refapp_scenario::generated::apid;
-    use refapp_scenario::{Instant, Node, Output, StepInput};
+    use refapp_scenario::{Delivered, Instant, Node, Output, StepInput};
 
     use super::{Event, FlightNode, PayloadMode};
 
@@ -206,7 +206,7 @@ pub(crate) mod tests {
     pub(crate) fn input(now: u64) -> StepInput<'static> {
         StepInput {
             now: Instant::from_micros(now),
-            delivered: &[],
+            delivered: Delivered::new(&[]),
             ops: &[],
             tx_slot: true,
         }

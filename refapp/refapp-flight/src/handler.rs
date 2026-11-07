@@ -5,7 +5,7 @@
 use aldis::core::ErrorKind;
 use aldis::spp::{PacketType, SequenceFlags, SpacePacket};
 use refapp_scenario::generated::apid;
-use refapp_scenario::{Instant, Output};
+use refapp_scenario::{Delivered, Instant, Output};
 
 use crate::FlightNode;
 use crate::command::{Call, Command, Reject, Timing, parse};
@@ -16,8 +16,8 @@ use crate::table::Activation;
 impl FlightNode {
     /// Step 1 of §2.1: handles the delivered link units in delivery order. An immediate command
     /// executes here.
-    pub(crate) fn handle_delivered(&mut self, now: Instant, units: &[&[u8]], out: &mut dyn Output) {
-        for unit in units {
+    pub(crate) fn handle_delivered(&mut self, now: Instant, units: Delivered<'_>, out: &mut dyn Output) {
+        for unit in units.iter() {
             self.handle_unit(now, unit, out);
         }
     }

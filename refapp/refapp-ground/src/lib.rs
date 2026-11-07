@@ -79,7 +79,7 @@ impl GroundNode {
 
 impl Node for GroundNode {
     fn step(&mut self, input: &StepInput<'_>, out: &mut dyn Output) -> Option<Instant> {
-        for unit in input.delivered {
+        for unit in input.delivered.iter() {
             self.telemetry.receive(unit, out);
         }
         for &index in input.ops {
