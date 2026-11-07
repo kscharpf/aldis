@@ -10,6 +10,7 @@ use aldis::spp::{
     PacketType, ReassemblerState, SecondaryHeaderLayout, SequenceFlags, SequenceTracker,
     SpacePacket, SpacePacketHeader, Status, TimeHeaderLayout, Tracked,
 };
+use aldis::core::crc::crc16;
 use aldis::time::{CucEpoch, CucFormat, TimeCode, TimeFormat};
 use refapp_scenario::generated::{apid, time};
 use refapp_scenario::{Crc16, Output};
@@ -258,7 +259,7 @@ fn parse_sdu(sdu: &[u8]) -> Result<(u32, u16, Crc16), Error> {
     if memory.len() != usize::from(length) {
         return Err(Error::new(ErrorKind::LengthMismatch));
     }
-    Ok((address, length, Crc16::of(memory)))
+    Ok((address, length, crc16(memory)))
 }
 
 #[cfg(test)]

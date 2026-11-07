@@ -3,33 +3,7 @@
 //! Each type holds a value of its range only (RS-020): the ops-script checks of the harness, the
 //! ground node's table upload, and the flight node's table store share them.
 
-use aldis::core::crc::crc16;
 use aldis::core::{Error, ErrorKind};
-
-/// A CRC-16 (CMN-001): every `u16` is one, so the type only keeps a CRC from being taken for a
-/// length or a sequence count (api-feedback #318: aldis-core's CRC functions return a bare `u16`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Crc16(u16);
-
-impl Crc16 {
-    /// The CRC-16 of `data` (CMN-001).
-    #[must_use]
-    pub fn of(data: &[u8]) -> Crc16 {
-        Crc16(crc16(data))
-    }
-
-    /// The CRC-16 carried on the wire, such as the argument of `ACTIVATE_TABLE` (§3.3.5).
-    #[must_use]
-    pub const fn from_wire(value: u16) -> Crc16 {
-        Crc16(value)
-    }
-
-    /// The value, for encoding.
-    #[must_use]
-    pub const fn get(self) -> u16 {
-        self.0
-    }
-}
 
 /// A table ID: 1 to 255 (§3.3.6, APP-017).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +63,7 @@ impl TableLength {
 mod tests {
     use aldis::core::ErrorKind;
 
-    use super::{Crc16, TableId, TableLength};
+    use super::{TableId, TableLength};
 
     #[test]
     fn table_lengths_are_one_to_503() {
@@ -101,14 +75,6 @@ mod tests {
         assert_eq!(TableLength::MAX, 503);
         assert_eq!(kind(504), ErrorKind::OutOfRange);
         assert_eq!(kind(u16::MAX), ErrorKind::OutOfRange);
-    }
-
-    #[test]
-    fn crc16_of_the_check_string_and_the_wire_value() {
-        // req: APP-017
-        assert_eq!(Crc16::of(b"123456789").get(), 0x29B1);
-        assert_eq!(Crc16::from_wire(0x0C4F).get(), 0x0C4F);
-        assert_ne!(Crc16::from_wire(1), Crc16::from_wire(2));
     }
 
     #[test]

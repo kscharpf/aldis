@@ -459,7 +459,7 @@ mod tests {
         assert_eq!((f.sequence_number().get(), f.len()), (4, 10));
         assert_eq!(f.data_field(), [1, 2, 3]);
         assert!(f.security_header().is_empty() && f.security_trailer().is_empty());
-        assert_eq!(f.fecf(), Some(crc16(&bytes[..8])));
+        assert_eq!(f.fecf(), Some(crc16(&bytes[..8]).get()));
         assert_eq!(
             (f.segment_header(), f.control_command(), f.is_empty()),
             (None, None, false)

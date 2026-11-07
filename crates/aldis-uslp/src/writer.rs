@@ -1050,7 +1050,7 @@ mod tests {
         assert!(!done.is_empty());
         assert_eq!(done.octets().len(), done.len());
         let octets = done.into_octets();
-        assert_eq!(syndrome(octets), 0);
+        assert_eq!(syndrome(octets).get(), 0);
         let dec = UslpFrame::decode(octets, &tbl).unwrap();
         assert_eq!(
             (dec.security_header(), dec.tfdz(), dec.security_trailer()),
