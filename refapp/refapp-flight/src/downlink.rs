@@ -10,8 +10,8 @@ use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, time};
 use refapp_scenario::{Instant, Output};
 
-/// Octets of the largest packet buffer: the maximum packet length of the downlink (§4.1,
-/// APP-032).
+/// Octets of the packet buffer: the Maximum Packet Length of the downlink, 512 octets
+/// (§4.1 packet-transfer parameters; APP-032; `generated::tm::MAX_PACKET_LENGTH`).
 const PACKET_BUFFER: usize = 512;
 
 /// A downlink packet stream: one APID with its own sequence count and the form of its

@@ -74,35 +74,39 @@ impl FlightNode {
         let sent = self
             .downlink
             .send(stream, SequenceFlags::Unsegmented, now, user_data, out);
+        // WP-3b surfaces this counter as an application event.
         if sent.is_err() {
             self.build_failures = self.build_failures.saturating_add(1);
         }
     }
 
-    /// Housekeeping, step 4 of §2.1: one packet at every slot instant reached (APP-010).
+    /// Housekeeping, step 4 of §2.1: one packet at every slot instant reached (APP-010). A
+    /// packet of a slot passed before this step (a late step) is stamped with its own slot
+    /// instant and reports the status as it is now.
     fn housekeeping(&mut self, now: Instant, out: &mut dyn Output) {
-        // bound: each pass takes one slot; `Periodic::at` is `None` from the 30th slot on.
-        while Periodic::HOUSEKEEPING
+        // bound: each pass takes one slot; `Periodic::at` is `None` from slot index 30 on.
+        while let Some(at) = Periodic::HOUSEKEEPING
             .at(self.hk_slot)
-            .is_some_and(|at| at <= now.as_micros())
+            .filter(|at| *at <= now.as_micros())
         {
             let data = housekeeping(&self.status, self.hk_slot);
-            self.send(Stream::Housekeeping, now, &data, out);
+            self.send(Stream::Housekeeping, Instant::from_micros(at), &data, out);
             self.hk_slot = self.hk_slot.saturating_add(1);
         }
     }
 
     /// Payload, step 5 of §2.1: one packet at every slot instant reached while the mode is
-    /// *on*; a slot reached while it is *off* produces nothing (APP-015).
+    /// *on*; a slot reached while it is *off* produces nothing (APP-015). A late step stamps
+    /// each packet with its own slot instant and uses the mode as it is now.
     fn payload(&mut self, now: Instant, out: &mut dyn Output) {
-        // bound: each pass takes one slot; `Periodic::at` is `None` from the 15th slot on.
-        while Periodic::PAYLOAD
+        // bound: each pass takes one slot; `Periodic::at` is `None` from slot index 15 on.
+        while let Some(at) = Periodic::PAYLOAD
             .at(self.payload_slot)
-            .is_some_and(|at| at <= now.as_micros())
+            .filter(|at| *at <= now.as_micros())
         {
             if self.status.payload_mode == PayloadMode::On {
                 let data = payload(self.payload_number);
-                self.send(Stream::Payload, now, &data, out);
+                self.send(Stream::Payload, Instant::from_micros(at), &data, out);
                 self.payload_number = self.payload_number.saturating_add(1);
             }
             self.payload_slot = self.payload_slot.saturating_add(1);
@@ -283,6 +287,26 @@ mod tests {
             .collect();
         assert_eq!(order[..3], [apid::HOUSEKEEPING; 3]);
         assert_eq!(order[3..], [apid::PAYLOAD; 2]);
+        // Each packet carries the time stamp of its own slot, not of the late step (APP-060):
+        // the coarse low octet is the seconds after T0 and the fraction is octets 10 and 11.
+        let stamps: Vec<(u8, [u8; 2])> = rec
+            .0
+            .iter()
+            .filter_map(|(_, o)| match o {
+                Out::Packet(_, p) => Some((p[9], [p[10], p[11]])),
+                Out::Unit(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            stamps,
+            [
+                (0, [0, 0]),
+                (1, [0, 0]),
+                (2, [0, 0]),
+                (0, [0x80, 0]),
+                (2, [0x80, 0])
+            ]
+        );
     }
 
     #[test]
