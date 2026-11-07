@@ -2,7 +2,7 @@
 
 An end-to-end flight↔ground application that uses Aldis only through its public API, as an integrator would. The scenario is specified in [docs/reference-application.md](../docs/reference-application.md) (requirement area APP); the plan for each milestone is in [docs/milestones/](../docs/milestones/) (`a0-…` to `a6-…`). Track A owns this directory ([roadmap](../docs/08-roadmap.md) §3, §6).
 
-**Status: A0 skeleton.** The nodes have no applications yet (they arrive in A1, after M1). The harness, trace writer, canonical-form check, comparator, and scenario generator work, and the header-only case `a0-empty` is reproduced in CI.
+**Status: A1 packets complete.** The flight node produces the telemetry packets and executes the commands of the scenario, and the ground node decodes them with the strict codecs; the nodes have no frame layer yet (A2). The harness, trace writer, canonical-form check, comparator, and scenario generator work, and the golden traces of `a0-empty` and the four `a1-*` cases are reproduced in CI.
 
 The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0x155`) is **fictional**, confirmed by the maintainer on 2026-10-19 ([OI-26](../docs/09-open-issues.md)).
 
