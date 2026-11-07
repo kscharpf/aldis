@@ -11,7 +11,8 @@ use super::stages::{self, ApprovalKind, Stages};
 use super::time;
 use super::waits::{self, Commit, Waits};
 
-/// The line the agent's replies end with; a comment that contains it is a reply, not a review.
+/// The line the agent's replies end with; a conversation or inline comment that contains it is a
+/// reply, not a review. A review of the pull request counts with it (#287).
 pub const MARKER: &str = "Generated with [Claude Code]";
 
 /// The commit status a published passing record sets (VER-058).
@@ -427,8 +428,12 @@ fn final_record(record: &Value) -> Final {
     f
 }
 
-/// The time a review item arrived.
-fn review_times(raw: &Raw) -> Vec<i64> {
+/// The time a review item arrived. A review of the pull request counts even when it carries
+/// [`MARKER`], as the reviewer agent posts under the maintainer's account (#287); the agent's
+/// replies are conversation and inline comments, which the marker still excludes. With `agent`
+/// false, only the maintainer's own items: those are the events of their active time and the
+/// words that approve.
+fn review_times(raw: &Raw, agent: bool) -> Vec<i64> {
     // A `COMMENTED` review without a body only holds inline comments, counted below.
     let reviews = raw
         .reviews
@@ -436,7 +441,7 @@ fn review_times(raw: &Raw) -> Vec<i64> {
         .filter(|r| {
             let body = str_of(r, "body");
             let container = body.trim().is_empty() && str_of(r, "state") == "COMMENTED";
-            !container && !body.contains(MARKER)
+            !container && (agent || !body.contains(MARKER))
         })
         .filter_map(|r| time_of(r, "submitted_at"));
     let inline = raw
@@ -515,7 +520,8 @@ fn timeline(
     head: &str,
 ) -> (Stages, Vec<i64>) {
     let finished = |r: &Value| time_of(r, "finished");
-    let reviews = review_times(raw);
+    let reviews = review_times(raw, true);
+    let own = review_times(raw, false);
     // Inline comments are review items; a decision is given in the conversation.
     let comments: Vec<i64> = raw
         .issue_comments
@@ -530,7 +536,7 @@ fn timeline(
         .filter(|r| str_of(r, "state") == "APPROVED" && !str_of(r, "body").contains(MARKER))
         .filter_map(|r| time_of(r, "submitted_at"))
         .min();
-    let words: Vec<i64> = reviews.iter().chain(&decisions).copied().collect();
+    let words: Vec<i64> = own.iter().chain(&decisions).copied().collect();
     let work: Vec<i64> = commits
         .iter()
         .filter(|c| !c.merge)
@@ -548,7 +554,7 @@ fn timeline(
         final_pass: raw.records.get(head).and_then(finished),
         merged,
     };
-    let mut events: Vec<i64> = reviews.into_iter().chain(comments).collect();
+    let mut events: Vec<i64> = own.into_iter().chain(comments).collect();
     events.push(merged);
     (stages, events)
 }
@@ -636,7 +642,7 @@ pub fn compute(raw: &Raw) -> Result<Pr, String> {
         .flatten()
         .filter(|s| str_of(s, "context") == STATUS)
         .count();
-    let first_review = review_times(raw).into_iter().min();
+    let first_review = review_times(raw, true).into_iter().min();
     let fix_commits = first_review.map_or(0, |first| {
         raw.commits
             .iter()
@@ -688,7 +694,7 @@ pub fn compute(raw: &Raw) -> Result<Pr, String> {
         check_ms,
         final_record: raw.records.get(head).map(final_record),
         merges: merges(raw),
-        reviews: review_times(raw).len(),
+        reviews: review_times(raw, true).len(),
         first_review,
         fix_commits,
         follow_ups,
@@ -1164,6 +1170,28 @@ pub mod tests {
         let pr = compute(&raw).unwrap();
         assert_eq!(pr.stages.approval.kind, ApprovalKind::Review);
         assert_eq!(pr.waits.after_approval.runs, 1);
+    }
+
+    // req: VER-063
+    #[test]
+    fn an_agent_review_counts_and_its_reply_does_not() {
+        // The reviewer agent posts a review under the maintainer's account, ending in the
+        // marker (#287); the implementer answers in a conversation comment naming the head.
+        let mut raw = fixture();
+        raw.review_comments.clear();
+        raw.reviews = vec![json!({"user": {"login": "me"}, "state": "COMMENTED",
+            "submitted_at": "2026-10-21T13:46:03Z",
+            "body": format!("Independent review of head e.\n\n{MARKER}")})];
+        raw.issue_comments = vec![json!({"user": {"login": "me"},
+            "created_at": "2026-10-21T13:48:00Z",
+            "body": format!("Fix round, head e1234567\n\n{MARKER}")})];
+        let pr = compute(&raw).unwrap();
+        assert_eq!(pr.reviews, 1);
+        assert_eq!(pr.first_review, time::parse("2026-10-21T13:46:03Z"));
+        // Commit e was authored after the review: one fix; the agent's words approve nothing.
+        assert_eq!(pr.fix_commits, 1);
+        assert_eq!(pr.stages.approval.kind, ApprovalKind::Merge);
+        assert_eq!(pr.stages.first_review, pr.first_review);
     }
 
     // req: VER-063
