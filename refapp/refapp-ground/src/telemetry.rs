@@ -71,17 +71,14 @@ pub(crate) struct Telemetry {
 
 impl Telemetry {
     /// A ground node that has received nothing.
-    ///
-    /// # Errors
-    /// `InvalidField` if the dump APID of the scenario is not an APID (cannot happen).
-    pub(crate) fn new() -> Result<Telemetry, Error> {
+    pub(crate) fn new() -> Telemetry {
         let dump = Apid::from_const::<{ apid::DUMP }>();
-        Ok(Telemetry {
+        Telemetry {
             tracker: SequenceTracker::new(),
             dump: ReassemblerState::new(dump),
             dump_buf: vec![0; SDU_HEADER_LEN.saturating_add(MAX_DUMP_LENGTH)],
             last_time: None,
-        })
+        }
     }
 
     /// The time stamp of the last accepted packet.
