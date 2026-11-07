@@ -18,7 +18,7 @@
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
 | Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep protocol for the A5 C++ and A6 QEMU flight nodes over stdin/stdout (OI-24) and for the cFS node over loopback TCP (§10.6) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
-| cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in four phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
+| cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in three phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
 
 **Open items that affect this document:** none. Resolved: OI-11 (OID frames, §4.1; 2026-11-01), OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
@@ -31,9 +31,9 @@ The reference application shows an integrator how the libraries fit together end
 | Milestone | Link level | Adds |
 |---|---|---|
 | A1 | Packets: one Space Packet per link unit | All applications, the nominal timeline, the first golden traces |
-| A2 | Frames: TM down, TC Type-BD up, hand-written loops | Downlink faults |
-| A3 | COP-1: FOP-1 on the ground, FARM-1 on board | Uplink faults; the link-level trace is frozen from here on |
-| A4 | Engines replace the loops; AOS and USLP variants | Nothing on the TM/TC link |
+| A2 | Frames: TM down, TC Type-BD up, through the `aldis-link` engines | Downlink faults |
+| A3 | COP-1: FOP-1 on the ground, FARM-1 on board, through the COP-1 engines | Uplink faults; the link-level trace is frozen from here on |
+| A4 | AOS and USLP variants, on the same engines | Nothing on the TM/TC link |
 | A5 | C++ flight node over `aldis.hpp` (engine handles) and `aldis.h` (codecs), Rust-backed and native | Nothing |
 | A6 | Flight node bare-metal under QEMU, with the application's own run loop (the `aldis-framework` stacks come after SDLS and TM coding, roadmap §7) | Nothing |
 
@@ -44,7 +44,7 @@ Not covered: synchronization and channel coding, SDLS, CFDP, and time correlatio
 | APP-001 | The reference application SHALL consist of a flight node and a ground node that exchange link units only through the harness (§6), and SHALL use only the public Aldis APIs (APP-100). | — | I |
 | APP-002 | The **timeline** (what each application does, and when, §2.4) SHALL be fixed in A1 and only extended. A later scenario version MAY add applications, commands, ops-script entries, record kinds, event codes, or cases, and SHALL NOT change or remove an existing one. | — | I |
 | APP-003 | For the nominal case, the **packet projection** SHALL be identical at every link level (A1, A2, A3, the A4 variants) and in every implementation. The packet projection is, for each node, record kind (`packet_out`, `packet_in`), and APID, the ordered sequence of packet octets (§7.3). Order across APIDs and instants are not part of it. | — | T |
-| APP-004 | From A3 on, the link-level traces SHALL be frozen: the A4, A5, and A6 implementations SHALL reproduce the golden traces of every `a3-*` case byte for byte. | GEN-030 | T |
+| APP-004 | From A3 on, the link-level traces, made by the `aldis-link` engines, SHALL be frozen: the A5 and A6 implementations and the cFS flight node SHALL reproduce the golden traces of every `a3-*` case byte for byte. | GEN-030 | T |
 | APP-005 | A later milestone SHALL add cases and SHALL NOT redefine an existing case. A released golden trace SHALL change only through a new trace version (APP-087). | — | I |
 | APP-006 | Link units SHALL be whole Space Packets (A1) or whole Transfer Frames (A2 on), without synchronization or channel coding. Every channel SHALL use a zero-length security layout (the no-security hook, API-073). | — | I |
 
@@ -434,7 +434,7 @@ Every line after the header records one observable event, in the order of §6.2.
 | `packet_in` | `t_us`, `kind`, `node`, `apid`, `hex` | A packet is delivered to an application of `node` |
 | `app_event` | `t_us`, `kind`, `node`, `code`, `name`, `args` | A node raises an application event (§7.4); `args` is a list of unsigned integers |
 
-Library-internal events and step instants are **not** recorded, so the hand-written loops (A2, A3) and the engines (A4) can produce the same trace.
+Library-internal events and step instants are **not** recorded, so an implementation that drives the engines through the C ABI or the C++ wrapper can produce the same trace as the Rust nodes.
 
 ### 7.4 Application events
 
@@ -564,8 +564,8 @@ harness (refapp-harness, std)        cFS process core-cpu1 (pc-linux PSP, SIMULA
 |---|---|---|---|
 | `refapp_aldis` (cFE library) | — | Wraps the static `libaldis_ffi.a` built from the same commit. The startup script loads it first, so its symbols resolve the apps loaded after it (F4, F17) | — |
 | `refapp_step` | SCH_LAB | **Bridge and sequencer.** Holds the harness connection (§10.6); turns each STEP into WAKE messages to the scenario apps in the order of §2.1, one app at a time (§10.5); collects the outputs and the next deadlines; answers STEP_RESULT | None |
-| `refapp_ci` | CI_LAB | **Command ingest.** Decodes the delivered link units with the strict decoders and puts each command and table-upload packet on the Software Bus. P1: Space Packets. P2: TC frames, MAP demultiplexing, and segment reassembly, with the FARM-B Counter for the CLCW. P3: FARM-1 through its C ABI handle. P4: the receiving side of the link engines | `aldis_spp_*`; from P2 `aldis_tc_*` with the CLCW; from P3 FARM-1; from P4 the M4 engine handles |
-| `refapp_to` | TO_LAB | **Telemetry output.** Receives the scenario's telemetry and output messages in one pipe. Builds each Space Packet as the message arrives (per-APID sequence count, secondary header of §3.2, on-board time of §5); from P2 also the TM frames of §4.1 (VC packet generation, mux, idle fill, OID frames, frame counts, the CLCW in the OCF); forwards every other output to `refapp_step` in order | `aldis_spp_*`, `aldis_time_*`; from P2 `aldis_tm_*`, the OID generator, CRC-16; from P4 the M4 engine handles |
+| `refapp_ci` | CI_LAB | **Command ingest.** Decodes the delivered link units with the strict decoders and puts each command and table-upload packet on the Software Bus. P1: Space Packets. P2: TC frames, MAP demultiplexing, and segment reassembly, with the FARM-B Counter for the CLCW. P3: FARM-1 through its C ABI handle | `aldis_spp_*`; from P2 the receiving-side engine handles with the CLCW; from P3 FARM-1 |
+| `refapp_to` | TO_LAB | **Telemetry output.** Receives the scenario's telemetry and output messages in one pipe. Builds each Space Packet as the message arrives (per-APID sequence count, secondary header of §3.2, on-board time of §5); from P2 also the TM frames of §4.1 (VC packet generation, mux, idle fill, OID frames, frame counts, the CLCW in the OCF); forwards every other output to `refapp_step` in order | `aldis_spp_*`, `aldis_time_*`; from P2 the sending-side engine handles of the M4 link engines (`aldis_tm_*`, the OID generator, CRC-16 behind them) |
 | `refapp_cmd` | — | Command handler with the time-tag queue, the table store, and the memory dump (§2.1, §2.3): the applications that share the command path | `aldis_time_*` (execution times), `aldis_spp_segmenter_*` (dump), CRC-16 |
 | `refapp_hk` | — | Housekeeping (§3.3.1), from status messages of `refapp_cmd`, `refapp_pl`, and from P3 `refapp_ci` (FARM-1 status) | None |
 | `refapp_pl` | — | Payload (§3.3.3) | None |
@@ -583,11 +583,10 @@ Each phase starts when the Rust milestone it follows has released its golden tra
 | Phase | Link level | Needs from track R (C ABI) | Needs from track A | Reproduces | Link code in the cFS apps |
 |---|---|---|---|---|---|
 | P1 Packets | Space Packets, one per unit | The M1 codecs (time, SPP, EPP): M2 WP-0c, merged (#72) | A1 exited | `a1-*` | None |
-| P2 Frames | TM down, TC Type-BD up | The M2 frame codecs: `aldis-tm`, `aldis-tc` with the CLCW, CRC-16, the OID generator (M2 WP-1 to WP-3) | A2 exited | `a2-*` | Hand-written C loops that mirror A2's Rust loops (plan D10) |
-| P3 COP-1 | FARM-1 on board | The FARM-1 handle (M3) | A3 exited | `a3-*` | As P2, with FARM-1 |
-| P4 Engines | As P3 | The link engine handles (M4) | A4 exited | `a3-*` (frozen from A3, APP-004) | The M4 engines replace the loops |
+| P2 Frames | TM down, TC Type-BD up | The M4 link engine handles (the frame engines and multiplexers, with the CLCW, CRC-16, and the OID generator behind them) | A2 exited | `a2-*` | None: the engine handles, as in A2's Rust nodes (plan D10) |
+| P3 COP-1 | FARM-1 on board | The FARM-1 handle (M3) | A3 exited | `a3-*` | None: as P2, with FARM-1 |
 
-The AOS and USLP variants of §4.3 (`a4-aos-nominal`, `a4-uslp-nominal`) are not part of P4; they can be added as cases once their C ABI exists.
+The AOS and USLP variants of §4.3 (`a4-aos-nominal`, `a4-uslp-nominal`) are not part of any phase; they can be added as cases once their C ABI exists.
 
 ### 10.5 Determinism and the golden trace
 

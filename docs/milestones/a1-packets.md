@@ -20,7 +20,7 @@
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
 History:
-- 2026-11-06: plan drafted after the M5 exit; D1–D5 accepted by the maintainer. A0 close-out (D1) and the `--scope a1` trace gate (D2) are in the plan's pull request; the amendments of D3 (roadmap, `reference-application.md`, ACFS plan) are a follow-up pull request.
+- 2026-11-06: plan drafted after the M5 exit; D1–D5 accepted by the maintainer. A0 close-out (D1) and the `--scope a1` trace gate (D2) are in the plan's pull request; the amendments of D3 (roadmap, `reference-application.md`, ACFS plan) are made in the follow-up pull request `a1/d3-fold-a2-a4`.
 
 ## 1. Starting point
 
@@ -33,7 +33,7 @@ History:
 | `cargo xtask trace` scans `refapp/` for `// req:` and reads the `requirements` of every golden-trace header (APP-108); `cargo xtask refapp-deps` enforces the facade-only rule (APP-100, APP-105) | `trace --scope a1`: see D2 |
 | The A1 row of the roadmap and of [§2.1 of the A0 plan](a0-scenario.md): "All applications of D1; CUC on-board time; per-APID sequence counts (SPP-011); dump segmented into packets (SPP-013)" on the flight side; "Packet decoding, time-code decoding, sequence tracking (SPP-011), dump reassembly; ops script" on the ground side | |
 
-What A1 does not do: frames, FECF, virtual channels, Idle Packets, and OID frames (A2); COP-1 (A3); the `aldis-link` engines (A4, or A2 if D3 is accepted); any C or C++ node (A5, ACFS). The `packet projection` of APP-003 is established here as the baseline and checked against the second link level in A2, so APP-003 is not in A1's exit table.
+What A1 does not do: frames, FECF, virtual channels, Idle Packets, and OID frames (A2); COP-1 (A3); the `aldis-link` engines (used from A2 on, D3); any C or C++ node (A5, ACFS). The `packet projection` of APP-003 is established here as the baseline and checked against the second link level in A2, so APP-003 is not in A1's exit table.
 
 ## 2. Decisions
 
