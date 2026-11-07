@@ -12,13 +12,7 @@ use aldis::core::{Error, ErrorKind};
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
-use refapp_scenario::{Crc16, Duration, TableId, TableLength};
-
-/// Microseconds in a second.
-const US_PER_S: u64 = 1_000_000;
-
-/// Nanoseconds in a microsecond.
-const NS_PER_US: u32 = 1_000;
+use refapp_scenario::{Crc16, Duration, Instant, TableId, TableLength};
 
 /// Function code of `NOOP` (§3.3.5).
 const FN_NOOP: u8 = 0x01;
@@ -219,19 +213,15 @@ fn table_data(table_id: TableId, length: TableLength) -> Vec<u8> {
 /// The CUC T-field of the on-board time T0 + `offset` (§5, APP-060, TIME-011).
 ///
 /// # Errors
-/// `OutOfRange` if the time does not fit 4 coarse octets.
+/// `OutOfRange` if the time does not fit 4 coarse octets (TIME-015).
 fn on_board_time(offset: Duration) -> Result<[u8; T_FIELD_LEN], Error> {
     let format = CucFormat::new(
         CucEpoch::Tai1958,
         time::CUC_COARSE_OCTETS,
         time::CUC_FINE_OCTETS,
     )?;
-    let offset_us = offset.as_micros();
-    let whole = offset_us / US_PER_S;
-    let seconds = u64::from(time::T0_COARSE_S).saturating_add(whole);
-    let micros =
-        u32::try_from(offset_us % US_PER_S).map_err(|_| Error::new(ErrorKind::OutOfRange))?;
-    let cuc = Cuc::from_seconds_nanos(format, seconds, micros.saturating_mul(NS_PER_US))?;
+    let instant = Instant::from_micros(offset.as_micros());
+    let cuc = Cuc::from_instant(format, u64::from(time::T0_COARSE_S), instant)?;
     let mut octets = [0_u8; T_FIELD_LEN];
     TimeCode::Cuc(cuc).encode(false, &mut octets)?;
     Ok(octets)

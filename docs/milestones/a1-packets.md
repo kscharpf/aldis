@@ -8,14 +8,14 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | in progress | | This plan, D1–D5, `--scope a1` trace gate (D2), A0 close-out (D1) |
-| WP-1 Scenario additions | planned | | Only what [reference-application.md](../reference-application.md) lacks for A1: the extra cases (D4), the ops-script and fault-script entries of the scenario file, the check of the derived values; no code |
-| WP-2 Harness: ops script and faults | planned | | Ops-script instants in the scheduler, scripted faults, the `fault` record, `ops` in `StepInput` |
-| WP-3a Flight node: telemetry | planned | | On-board time, housekeeping, events, payload |
-| WP-3b Flight node: commands and dump | planned | | Command handler, time-tag queue, table store, memory dump |
-| WP-4 Ground node | planned | | Strict decoding, sequence tracking, time decoding, dump reassembly, ops script |
-| WP-5 Golden traces | planned | | `a1-*` cases blessed, hand-checked against the Blue Books, invariants tested |
-| WP-6 Strict decoding of golden traces | planned | | APP-086 in the `refapp` check |
-| WP-7 Exit | planned | | `trace --scope a1 --strict`; roadmap, README, ACFS entry gate |
+| WP-1 Scenario additions | merged | #298 | Only what [reference-application.md](../reference-application.md) lacks for A1: the extra cases (D4), the ops-script and fault-script entries of the scenario file, the check of the derived values; no code |
+| WP-2 Harness: ops script and faults | merged | #301 | Ops-script instants in the scheduler, scripted faults, the `fault` record, `ops` in `StepInput` |
+| WP-3a Flight node: telemetry | merged | #307 | On-board time, housekeeping, events, payload |
+| WP-3b Flight node: commands and dump | merged | #315 | Command handler, time-tag queue, table store, memory dump |
+| WP-4 Ground node | merged | #308 | Strict decoding, sequence tracking, time decoding, dump reassembly, ops script |
+| WP-5 Golden traces | merged | #323, #324 | `a1-*` cases blessed, hand-checked against the Blue Books, invariants tested |
+| WP-6 Strict decoding of golden traces | merged | #333 | APP-086 in the `refapp` check |
+| WP-7 Exit | merged | #335 | `trace --scope a1 --strict`; roadmap, README, ACFS entry gate |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
@@ -89,7 +89,7 @@ Only what the document lacks; nothing in it is restated.
 
 ### WP-3a Flight node: telemetry (L) — APP-010, APP-015, APP-021…023, APP-060
 - `refapp-flight` (`no_std`, no heap, flight lint set, APP-102): on-board time as T0 + `Instant` converted by `aldis-time` to CUC (APP-060); housekeeping, the event reporter, and the payload application with the layouts of §3.3.1 to §3.3.3, each APID with its own sequence count (SPP-011/012) and its secondary header form (SPP-008); the per-instant order of §2.1.
-- Features `core`, `time`, `spp-time` of the facade only (APP-100); every API pain point filed as `api-feedback` (APP-101).
+- Features `core`, `time`, `spp-time` of the facade only (APP-100); every API pain point filed as `api-feedback` (APP-101); a "Resolved by" names the track-R pull request.
 - Unit tests with `// req:`; the `thumbv7em-none-eabihf` build and Clippy stay green.
 - Checklist: none of the library ones applies (no codec, crate, or engine is added); the `refapp` check is the gate.
 
@@ -151,12 +151,14 @@ APP-075 and the fault case leave the table if D4 is decided without `a1-downlink
 
 ## 6. API feedback found
 
-Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101).
+Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101); a "Resolved by" names the track-R pull request.
 
-| Issue | Found in | Finding |
-|---|---|---|
-| #302 | WP-4 | `Reassembler`'s `Outcome` gives the reason for a discard, not the octets thrown away |
-| #303 | WP-4 | `SpacePacket::decode` ignores trailing octets; a one-packet unit needs its own length check |
-| #304 | WP-4 | `Apid::new` returns `Option`, so a constant APID needs an error path |
-| #312 | WP-3b | No conversion from a CUC time code to an `Instant`; the time tag of a command is converted by hand (reverse of #305) |
-| #318 | WP-3b | aldis-core CRC functions return a bare `u16`; refapp wraps it in `Crc16` |
+| Issue | Found in | Finding | Resolved by |
+|---|---|---|---|
+| #302 | WP-4 | `Reassembler`'s `Outcome` gives the reason for a discard, not the octets thrown away | #334 |
+| #303 | WP-4 | `SpacePacket::decode` ignores trailing octets; a one-packet unit needs its own length check | #334 |
+| #304 | WP-4 | `Apid::new` returns `Option`, so a constant APID needs an error path | #334 |
+| #305 | WP-3a | No conversion from an `Instant` to a CUC time code; the caller splits microseconds into seconds and nanoseconds | #314 |
+| #306 | WP-3a | `TimeCode::encode` needs a scratch buffer whose size the caller must guess | #314 |
+| #312 | WP-3b | No conversion from a CUC time code to an `Instant`; the time tag of a command is converted by hand (reverse of #305) | #322 |
+| #318 | WP-3b | aldis-core CRC functions return a bare `u16`; refapp wraps it in `Crc16` | #334 |
