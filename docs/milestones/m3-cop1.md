@@ -155,7 +155,7 @@ Milestone 3 is complete when every item below is green on `main`. The results co
 
 The maintainer decided on 2026-10-31 that the blind COP-1 model (`test-vectors/models/cop1.py`, TV-023) counts as the second review of the hand-derived vectors and as the VER-040 cross-check search for M3 ([cross-checks.md](../verification/cross-checks.md) §5). The release `v0.4.0-m3` is the maintainer's; the release notes and the version bump are not in the exit pull request.
 
-Not in M3: Link layer multiplexing and packet generator/extractor engines (M4); full C ABI versioning and C++ wrapper `aldis.hpp` (M5); framework runtime stacks (M6); sync and channel coding (v1.1, OI-12).
+Not in M3: Link layer multiplexing and packet generator/extractor engines (M4); full C ABI versioning and C++ wrapper `aldis.hpp` (M5); framework runtime stacks (after v1); sync and channel coding (v1.1, OI-12).
 
 ## 5. Risks
 
