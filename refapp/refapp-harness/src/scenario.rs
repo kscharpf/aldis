@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use crate::ranged::Ranged;
+use crate::ranged::{EvenRanged, Ranged};
 use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -138,7 +138,7 @@ pub struct Cop1 {
     /// FOP sliding window width K.
     pub k: Ranged<u8, 1, 255>,
     /// FARM sliding window width W.
-    pub w: Ranged<u8, 2, 254>,
+    pub w: EvenRanged<u8, 2, 254>,
     /// `T1_Initial`, µs.
     pub t1_initial_us: u64,
     /// `Transmission_Limit`.
@@ -1048,15 +1048,21 @@ mod tests {
     }
 
     #[test]
+    fn an_odd_window_is_rejected() {
+        // req: APP-107
+        let e = Scenario::parse(&mutated("/cop1/w", 5)).unwrap_err();
+        assert!(e.contains("odd"), "{e}");
+        let schema: serde_json::Value = serde_json::from_str(&super::schema().unwrap()).unwrap();
+        assert_eq!(schema["$defs"]["Cop1"]["properties"]["w"]["multipleOf"], 2);
+    }
+
+    #[test]
     fn the_ends_of_every_range_are_accepted() {
         // req: APP-107
         for &(pointer, min, max) in RANGES {
             for v in [min, max] {
-                // Only the range is under test: a later rule, such as a slot that the ops
-                // script no longer fits, may still reject the file.
-                if let Err(e) = Scenario::parse(&mutated(pointer, v)) {
-                    assert!(!e.contains("outside the range"), "{pointer} = {v}: {e}");
-                }
+                let r = Scenario::parse(&mutated(pointer, v));
+                assert!(r.is_ok(), "{pointer} = {v}: {:?}", r.err());
             }
         }
     }
