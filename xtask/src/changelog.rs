@@ -257,7 +257,7 @@ fn merged_pull_request(sha: &str, branch: &str) -> Option<(u64, String)> {
             "--json",
             "number,title,headRefOid,headRefName",
             "--jq",
-            r#".[] | [.number, .title, .headRefOid, .headRefName] | @tsv"#,
+            r".[] | [.number, .title, .headRefOid, .headRefName] | @tsv",
         ])
         .output();
     let found = match out {
