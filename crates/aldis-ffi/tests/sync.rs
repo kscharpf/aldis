@@ -435,6 +435,10 @@ fn a_step_checks_its_arguments_and_the_chunk_capacity() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "about 5 minutes under Miri: the nightly-only check ffi-miri-lib runs it (VER-026, VER-059)"
+)]
 fn a_frame_of_the_largest_length_goes_through_attach_randomize_and_search() {
     // req: SYNC-014, CABI-030, CABI-040
     // One case at the largest frame: a prefix of 3 octets, no flipped bit. SYNC-017 (every offset,
