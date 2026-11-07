@@ -423,7 +423,7 @@ Rules:
 
 ### 6.6 Cases of A1
 
-`a1-nominal` has the ops script of §2.4 (its entries marked A1, in release order) and no faults. The three cases below are added by APP-002: each is a new case, and none changes another. Each case's ops script and fault script are written out in the scenario file together with its golden trace (A1 WP-5); `refapp/refapp-harness/tests/data/a1-cases.json` holds the entries until then, and a harness test checks them of all four cases (`a1-nominal` too) against the Rust model of the scenario file and the rules of §6.5.
+`a1-nominal` has the ops script of §2.4 (its entries marked A1, in release order) and no faults. The three cases below are added by APP-002: each is a new case, and none changes another. Each case's ops script and fault script are written out in `refapp/scenario/scenario.json` together with its golden trace, and a harness test checks them of all four cases (`a1-nominal` too) against the Rust model of the scenario file and the rules of §6.5; `refapp/refapp-harness/tests/a1_golden.rs` checks the reports and ground events of §2.4 and this section on the golden traces.
 
 Every command of these cases that has an effect at its delivery instant (§2.3: immediate execution, rejection at delivery) is released at an instant that is 115 000 µs after a multiple of 125 000 µs, so that it arrives on the 125 000 µs grid and every on-board time stamp stays exact (APP-061, APP-128). Commands that only queue need no such care. Events listed below are the event packets of §3.3.2 on APID `0x011` unless called an application event; the flight node also raises `cmd_received` for each command packet delivered and `table_received` for each table stored (APP-129), which the tables leave out.
 

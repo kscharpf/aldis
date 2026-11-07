@@ -963,7 +963,7 @@ pub fn generate(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Call, Case, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
+        Call, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
         literal,
     };
 
@@ -1001,15 +1001,10 @@ mod tests {
         assert!(Scenario::parse(&wrong_name).is_err());
     }
 
-    /// The scenario file with the A1 cases of `tests/data/a1-cases.json` added.
+    /// The scenario file, with the A1 cases it holds.
     fn with_a1_cases() -> Scenario {
-        let mut s = Scenario::load().unwrap();
-        let cases: Vec<Case> = serde_json::from_str(A1_CASES).unwrap();
-        s.cases.extend(cases);
-        s
+        Scenario::load().unwrap()
     }
-
-    const A1_CASES: &str = include_str!("../tests/data/a1-cases.json");
 
     fn rejects(s: &Scenario, what: &str) -> bool {
         s.check().is_err_and(|e| e.contains(what))
@@ -1024,8 +1019,9 @@ mod tests {
         assert_eq!(rejects_case.ops.len(), 18);
         assert_eq!(s.case("a1-downlink-faults").unwrap().faults.len(), 5);
         // An entry names parameters, not octets: it serializes back to the same JSON.
-        let entries: Vec<serde_json::Value> = serde_json::from_str(A1_CASES).unwrap();
-        for (case, json) in s.cases[1..].iter().zip(&entries) {
+        let file: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let entries = file["cases"].as_array().unwrap();
+        for (case, json) in s.cases.iter().zip(entries).skip(1) {
             assert_eq!(&serde_json::to_value(case).unwrap()["ops"], &json["ops"]);
         }
     }
