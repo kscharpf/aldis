@@ -417,7 +417,7 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Merge, generate, insert_release, marker, parse_merges, parse_title, render,
+        Merge, expand_trains, generate, insert_release, marker, parse_merges, parse_title, render,
         untagged_releases,
     };
 
