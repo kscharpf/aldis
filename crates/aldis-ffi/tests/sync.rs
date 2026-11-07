@@ -133,7 +133,9 @@ fn the_storage_is_checked_and_tagged() {
         assert_eq!(status, aldis_sync_search_status_t::default());
         // A copy of live storage is foreign: the tag holds its own address.
         let mut copy = storage();
-        copy.words = s.words;
+        // An untyped copy, as a C caller's `memcpy`: init leaves padding bytes in the words
+        // uninitialized, and a typed read of `words` is undefined behavior (Miri).
+        core::ptr::copy_nonoverlapping(&raw const *s, &raw mut *copy, 1);
         assert_eq!(
             aldis_sync_search_status(&raw mut *copy, &raw mut status, null_mut()),
             ALDIS_ERR_INVALID_HANDLE
@@ -265,13 +267,15 @@ fn the_codec_functions_check_their_pointers() {
             ),
             ALDIS_ERR_INVALID_FIELD
         );
-        // The CADU may not be built over the frame.
+        // The CADU may not be built over the frame. Both pointers come from one borrow, as a C
+        // caller's do; a shared pointer taken before the `as_mut_ptr` would be dead (Miri).
+        let base = out.as_mut_ptr();
         assert_eq!(
             attach(
                 &raw const cfg,
-                out.as_ptr().wrapping_add(4),
+                base.wrapping_add(4).cast_const(),
                 3,
-                out.as_mut_ptr(),
+                base,
                 7,
                 &raw mut len
             ),
@@ -351,13 +355,14 @@ fn a_step_checks_its_arguments_and_the_chunk_capacity() {
             step(&raw mut *s, &inside, area.as_mut_ptr(), area.len()),
             ALDIS_ERR_INVALID_FIELD
         );
+        let area_ptr = area.as_mut_ptr();
         let over = aldis_sync_search_input_t {
-            data: area.as_ptr(),
+            data: area_ptr.cast_const(),
             data_len: 8,
             ..chunk
         };
         assert_eq!(
-            step(&raw mut *s, &over, area.as_mut_ptr(), area.len()),
+            step(&raw mut *s, &over, area_ptr, area.len()),
             ALDIS_ERR_INVALID_FIELD
         );
         // The actions may not overlap the area.
@@ -365,12 +370,12 @@ fn a_step_checks_its_arguments_and_the_chunk_capacity() {
             clippy::cast_ptr_alignment,
             reason = "the call rejects the overlap before it reads or writes"
         )]
-        let overlap = area.as_mut_ptr().cast::<aldis_sync_search_actions_t>();
+        let overlap = area_ptr.cast::<aldis_sync_search_actions_t>();
         assert_eq!(
             aldis_sync_search_step(
                 &raw mut *s,
                 &raw const chunk,
-                area.as_mut_ptr(),
+                area_ptr,
                 area.len(),
                 overlap,
                 null_mut()
