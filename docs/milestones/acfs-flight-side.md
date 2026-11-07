@@ -1,7 +1,7 @@
 # Milestone ACFS — cFS flight side
 
-**Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1), frames (A2), COP-1 (A3), and the link engines (A4). It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
-**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A4 and the C ABI of M2–M4 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
+**Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1), and COP-1 (A3), both through the link engines. It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A3 and the C ABI of M2–M5 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
 
 **Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (not yet) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
 
@@ -12,10 +12,9 @@
 | WP-2 Harness: cFS node and TCP transport | planned | — | Decisions D9, D18 accepted |
 | WP-3 Tooling: C header, trace scan, verify inputs | planned | — | Decisions D12, D15, D17 accepted |
 | WP-4 P1 Packets | planned | — | Entry: A1 exited; WP-1 to WP-3 |
-| WP-5 P2 Frames | planned | — | Entry: A2 exited; the M2 frame C ABI |
+| WP-5 P2 Frames | planned | — | Entry: A2 exited; the M4 engine handles in the C ABI (M5) |
 | WP-6 P3 COP-1 | planned | — | Entry: A3 exited; the M3 FARM-1 handle |
-| WP-7 P4 Engines | planned | — | Entry: A4 exited; the M4 engine handles |
-| WP-8 Review and exit | planned | — | |
+| WP-7 Review and exit | planned | — | |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
@@ -64,7 +63,7 @@ Plan and scope decisions for the maintainer ([decision rights](../process/decisi
 
 | # | Decision | Choice (recommended), and alternatives | Status |
 |---|---|---|---|
-| D1 | Milestone shape and name | **One milestone, ACFS, with four phases P1–P4**, each with its own entry gate and exit (roadmap §3, §4 here), plan `acfs-flight-side.md`, scope `--scope acfs`, branch prefix `acfs/`. One plan makes the cFS choices (pin, build, determinism, transport) once, adds one row to the track A table, and does not renumber A1–A6. Alternatives: four milestones A1-cFS…A4-cFS, each with a plan and scope (more plans for little content, and a file named `a1-cfs-…` would collide with A1's scope prefix, so they would need IDs such as `a1c`); or a column of cFS steps in the track A table (no plan file, so no scope) | Accepted (2026-10-21) |
+| D1 | Milestone shape and name | **One milestone, ACFS, with three phases P1–P3** (four until D3 of `a1-packets.md`, 2026-11-06, dropped P4, because A2 and A3 use the engines), each with its own entry gate and exit (roadmap §3, §4 here), plan `acfs-flight-side.md`, scope `--scope acfs`, branch prefix `acfs/`. One plan makes the cFS choices (pin, build, determinism, transport) once, adds one row to the track A table, and does not renumber A1–A6. Alternatives: three milestones A1-cFS…A3-cFS, each with a plan and scope (more plans for little content, and a file named `a1-cfs-…` would collide with A1's scope prefix, so they would need IDs such as `a1c`); or a column of cFS steps in the track A table (no plan file, so no scope) | Accepted (2026-10-21) |
 | D2 | Where the code lives | **`refapp/cfs/`**, track A's directory: `defs/` (the mission's defs directory: `targets.cmake`, platform and mission configuration, startup script, tables), `apps/` (the apps of [§10.3](../reference-application.md#103-architecture)), `fetch.sh` (fetches the pin), `README.md`. Its own build, the cFE mission build (F3, F4), not part of the Cargo workspace; cFS sources are never committed (APP-111). Alternatives: a separate repository (keeps cFS out of this one, but the golden traces and harness would have to be shared across repositories); a new top-level `cfs/` (a fourth owned directory, changing the roadmap's ownership table) | Accepted (2026-10-21) |
 | D3 | cFS release to pin | **nasa/cFS `v7.0.1`** (`088b2fa828db9ff7e00733f1908e0eeb59f66ce3`), with cFE, OSAL, PSP, and the lab apps at the commits of F1; only the components used are fetched (cFE, OSAL, PSP; the lab apps only for reference). An upgrade is its own pull request and re-runs every phase's cases. Alternatives: `v7.0.0` (older, same API generation); the `dev` branch (moving, not reproducible) | Accepted (2026-10-21) |
 | D4 | One pin shared with the cFE `MSG` cross-check | **One machine-readable pin file, `xtask/cfs.lock`** (repository, tag, commit per component), read by both the cFE `MSG` cross-check of track R (branch `m2/crosscheck-cfe`, not yet pushed) and this milestone; whichever lands first creates it. `xtask/` is shared (roadmap §6 rule 2), and a pin change then re-runs every check, which is right for a rare change. Alternatives: each consumer records its own pin and `cargo xtask consistency` checks that they are equal; or the pin lives in `refapp/cfs/` and track R reads it from track A's directory | Accepted (2026-10-21) |
@@ -73,7 +72,7 @@ Plan and scope decisions for the maintainer ([decision rights](../process/decisi
 | D7 | App split and names | **One module per role** ([§10.3](../reference-application.md#103-architecture)): `refapp_step` (bridge and sequencer), `refapp_ci`, `refapp_to`, `refapp_cmd` (command handler, time-tag queue, table store, memory dump), `refapp_hk`, `refapp_pl`, and the cFE library `refapp_aldis`. Events are Software Bus messages to `refapp_to`. Scenario logic and Aldis calls in sans-I/O C cores, cFS glue apart (APP-121). Names avoid `aldis_`/`ALDIS_`, the C ABI's prefix. Alternatives: one cFS app holding every flight application (simplest and trivially ordered, but shows no Software Bus integration); one app per scenario application, the event reporter included (more apps and messages, no extra evidence); housekeeping as a table-driven message (the sensor values of §3.3.1 are computed, so a table holds little) | Accepted (2026-10-21) |
 | D8 | Determinism | **Option C of [§10.5](../reference-application.md#105-determinism-and-the-golden-trace): lockstep sequencing.** The harness is the clock; `refapp_step` wakes one app at a time and every output passes through one pipe; scenario time comes from the WAKE, never from cFE TIME, which runs as shipped and outside the trace. No change to the trace format. Alternatives: A, cFE TIME and the scheduler driven from simulated time (needs a PSP change or a clock shim, F5, F6, F10; OI-36); B, real time with normalised comparison (weak evidence, fault cases not reproducible); D, C plus a real-time demonstration (later) | Accepted (2026-10-21) |
 | D9 | Link transport | **The node protocol of §8.2 over a loopback TCP stream**, through the OSAL socket API (F15): the harness listens on a port fixed in the bridge's platform configuration (D2's defs), and the bridge connects after cFE start-up (F18); units travel only inside the protocol (APP-118). Alternatives: stdin/stdout, as §8.2 (the OSAL console writes to stdout, F15; separating them needs non-OSAL file-descriptor code in the bridge); UDP as the lab apps use (F13, F14; asynchronous, so no lockstep); a POSIX local-domain socket (not in OSAL, F15, so not portable to the other OSAL targets) | Accepted (2026-10-21) |
-| D10 | Link code in P2 and P3 | **Hand-written C link loops in P2 and P3**, mirroring A2's and A3's Rust loops and following the same LNK requirements, replaced by the M4 engines in P4. Integrators who keep their heritage link layer use Aldis exactly this way, codecs only, and it gives track R C ABI feedback on the frame codecs before the v1.0 freeze. Alternative: skip P2 and P3 and go from P1 to P4 once M4 exits (less C code thrown away; no codec-only evidence, and API feedback on the frame C ABI comes late) | Accepted (2026-10-21) |
+| D10 | Link code in P2 and P3 | **The M4 engine handles of the C ABI in P2 and P3**, following the same LNK requirements as A2's and A3's Rust nodes, which use the engines (D3 of `a1-packets.md`, 2026-11-06, amends this row: it was hand-written C link loops in P2 and P3, replaced by the engines in P4). Alternative: hand-written C loops over the codecs (what integrators with a heritage link layer do; codec-only evidence, but code written to be thrown away, and the Rust nodes no longer have loops to mirror) | Accepted (2026-10-21) |
 | D11 | Linking the C ABI | **The static `libaldis_ffi.a` (CABI-001)**, hosted build with default features, from the commit under test, wrapped in one cFE library module, `refapp_aldis`, that the startup script loads before the apps, so its symbols resolve theirs (F17). Alternatives: link the archive into each app (one copy of the Rust code per loaded module, each with global symbols, F17); the shared `libaldis_ffi.so` (another file to stage and find at run time) | Accepted (2026-10-21) |
 | D12 | CI placement and verify inputs | **Nightly only** for the cFS build and the trace reproduction (APP-123), as a night-only job of `nightly.yml` beside fuzzing and mutation testing (VER-059), also on manual dispatch, declaring its inputs (`refapp/cfs/**`, `refapp/golden/**`, `refapp/scenario/**`, `refapp/refapp-*/**`, `crates/**`, `include/**`, `xtask/cfs.lock`). In the gate: one light check, `refapp-cfs`, that formats, analyses (D15), and unit-tests the sans-I/O C cores (APP-121) with a host C compiler and `aldis.h`, without cFS; its inputs are `refapp/cfs/**`, `include/**`, and `refapp/scenario/**`. Today `refapp/**` is an input of every Rust check, so WP-3 narrows that pattern to the Cargo workspace's paths. Alternatives: no gating check, with `refapp/cfs/**` left under `refapp/**` (every change there re-runs the Rust checks; a path read by no named check would make every check run, VER-056); the cFS build in the gate (minutes of build per pull request, and the gate would depend on cFS) | Accepted (2026-10-21) |
 | D13 | Trace comparison | **Byte equality with the same `refapp/golden/<case>.jsonl`** (APP-085), no new comparison mode; the run manifest (APP-084) names the cFS components and the `aldis-ffi` build; every case runs twice per night (APP-117). Alternative: the packet projection of APP-003 only (weaker; defined for the nominal case only) | Accepted (2026-10-21) |
@@ -86,12 +85,12 @@ Plan and scope decisions for the maintainer ([decision rights](../process/decisi
 
 ## 3. Work packages
 
-Size is relative effort: **S** small, **M** medium, **L** large. WP-1 to WP-3 can run in parallel once their decisions are accepted; WP-4 to WP-7 each wait for their phase gate (§4).
+Size is relative effort: **S** small, **M** medium, **L** large. WP-1 to WP-3 can run in parallel once their decisions are accepted; WP-4 to WP-6 each wait for their phase gate (§4).
 
 ```
 plan accepted ─┬─▶ WP-1 cFS build skeleton ──┐
-               ├─▶ WP-2 harness, transport ──┼─▶ WP-4 P1 ─▶ WP-5 P2 ─▶ WP-6 P3 ─▶ WP-7 P4 ─▶ WP-8 exit
-               └─▶ WP-3 tooling ─────────────┘   (A1)       (A2, M2)   (A3, M3)   (A4, M4)
+               ├─▶ WP-2 harness, transport ──┼─▶ WP-4 P1 ─▶ WP-5 P2 ─▶ WP-6 P3 ─▶ WP-7 exit
+               └─▶ WP-3 tooling ─────────────┘   (A1)       (A2, M4)   (A3, M3)
 ```
 
 ### WP-1 cFS build skeleton (M) — APP-111, APP-112, APP-123, APP-124
@@ -136,7 +135,7 @@ Entry: A1 exited; WP-1 to WP-3 merged. The apps of D7 with packet-level link uni
 
 ### WP-5 P2 Frames (L) — APP-110, APP-113, APP-114
 
-Entry: A2 exited; the M2 frame C ABI merged (TM, TC with the CLCW, CRC-16, the OID generator). Hand-written C loops (D10) for VC packet generation, mux, idle fill, OID frames, frame counts, and the OCF in `refapp_to`, and for TC frame validation, MAP demultiplexing, and segment reassembly with the FARM-B Counter in `refapp_ci`.
+Entry: A2 exited; the M4 engine handles merged in the C ABI. The engine handles (D10) for VC packet generation, mux, idle fill, OID frames, frame counts, and the OCF in `refapp_to`, and for TC frame validation, MAP demultiplexing, and segment reassembly with the FARM-B Counter in `refapp_ci`.
 
 **Done when:** the nightly job reproduces every `a2-*` golden trace twice.
 
@@ -146,13 +145,7 @@ Entry: A3 exited; the M3 FARM-1 handle merged. FARM-1 in `refapp_ci`, its CLCW i
 
 **Done when:** the nightly job reproduces every `a3-*` golden trace twice, the fault cases included.
 
-### WP-7 P4 Engines (M) — APP-110, APP-004
-
-Entry: A4 exited; the M4 engine handles merged. The C loops of WP-5 and WP-6 replaced by the engines.
-
-**Done when:** the nightly job still reproduces every `a3-*` golden trace twice (APP-004).
-
-### WP-8 Review and exit (S) — APP-101, APP-119
+### WP-7 Review and exit (S) — APP-101, APP-119
 
 `refapp/cfs/README.md` written for integrators: how the apps map onto the scenario, how to build and run, where Aldis is called. The API feedback issues filed (APP-101) listed here. OI-36 to OI-38 decided or carried with an owner. The maintainer's review of the plan's exit.
 
@@ -163,15 +156,14 @@ Phase gates and exits, as in roadmap §3:
 | Phase | Entry gate | Exit |
 |---|---|---|
 | P1 Packets | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in the nightly job |
-| P2 Frames | P1; A2; the M2 frame C ABI | `a2-*` traces reproduced in the nightly job |
+| P2 Frames | P1; A2; the M4 engine handles | `a2-*` traces reproduced in the nightly job |
 | P3 COP-1 | P2; A3; the M3 FARM-1 handle | `a3-*` traces reproduced in the nightly job, fault cases included |
-| P4 Engines | P3; A4; the M4 engine handles | `a3-*` traces reproduced through the engines in the nightly job |
 
 ACFS is complete when every item below is green on `main` and in the nightly job. `cargo xtask trace --scope acfs` measures the requirements.
 
 | Area | Criteria |
 |---|---|
-| Traces | APP-110 for every phase, APP-117 (every case twice), APP-004 (P4), APP-092 and APP-118 (transports) |
+| Traces | APP-110 for every phase, APP-117 (every case twice), APP-004 (P3), APP-092 and APP-118 (transports) |
 | cFS apps | APP-113, APP-114, APP-115, APP-116, APP-121 |
 | Build and linking | APP-111, APP-112, APP-120 |
 | Code rules | APP-122, VER-051 |
@@ -189,7 +181,7 @@ ACFS is complete when every item below is green on `main` and in the nightly job
 | OSAL truncates Software Bus pipes to `/proc/sys/fs/mqueue/msg_max` without an error when run without privileges (F16), so a step's messages overflow a pipe | Bound the messages per wake; set `fs.mqueue.msg_max` for the container; `refapp_step` checks the pipe depths at start-up and fails the run |
 | `libaldis_ffi.a` inside a `dlopen`ed cFE library: position-independent code, symbol visibility, and two copies of the Rust runtime | One library module loaded first (D11, F17); WP-1 proves the link before any app uses Aldis |
 | A cFS upgrade changes the build or API | Pinned (D3, D4); an upgrade is its own pull request that re-runs every phase |
-| The hand-written C loops (P2, P3) diverge from A2's and A3's Rust loops | The same LNK requirements and managed parameters (§4 of the scenario); divergences are resolved against the Blue Book, never by tuning the trace; the loops are replaced in P4 |
+| The C use of the engine handles (P2, P3) diverges from A2's and A3's Rust nodes | The same engines, LNK requirements, and managed parameters (§4 of the scenario); divergences are resolved against the Blue Book, never by tuning the trace |
 | Scenario logic is written twice, in Rust and C | Values from one file (APP-120); the golden traces catch any difference |
 | The C ABI changes under the apps while track R is in M2–M4 | The nightly job builds against the commit's header; header changes are announced to track C and A (roadmap §6 rule 4); breakages become `api-feedback` issues |
 | Moving the node protocol ahead of A5 (D18) changes A5's plan | OI-38; the protocol is specified (§8.2), and A5 uses what WP-2 builds |
@@ -200,7 +192,7 @@ ACFS is complete when every item below is green on `main` and in the nightly job
 
 Questions to decide before WP-1 starts, in the order they block work, in the shape of the [decision rights](../process/decision-rights.md) §3:
 
-1. **D1 (`plan`).** One milestone ACFS with phases P1–P4, or four milestones? Recommended: one.
+1. **D1 (`plan`).** One milestone ACFS with phases P1–P3, or three milestones? Recommended: one.
 2. **D8 (`plan`).** Lockstep sequencing (option C), with cFE TIME untouched? Recommended: yes. OI-36 stays open.
 3. **D18 and OI-38 (`scope`).** Build the harness side of the node protocol in this milestone, ahead of A5, with a TCP transport? Recommended: yes.
 4. **D12 (`process`).** A nightly-only cFS job, plus a light gating check for the C cores, with `refapp/**` narrowed in the Rust inputs? Recommended: yes.

@@ -162,6 +162,6 @@ Not in M4: C ABI versioning and the C++ wrapper `aldis.hpp` (M5); framework runt
 
 | Track | Needs from M4 | When |
 |---|---|---|
-| A — A4 (refapp engines) | The `aldis-link` engines replacing the hand-written loops of A2 and A3 | M4 exit (A4 entry gate) |
-| ACFS — P4 (engines) | The C ABI handles of the link engines | M4 exit |
+| A — A2 to A4 (refapp engines) | The `aldis-link` engines, used by the application from A2 on (a1-packets.md D3) | M4 exit (A2 entry gate) |
+| ACFS — P2 and P3 (engine handles) | The C ABI handles of the link engines | M4 exit |
 | R — M5 | The link handles in the C ABI for the sanitizer harness, header checks, and ABI versioning | M4 exit |

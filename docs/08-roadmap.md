@@ -38,23 +38,22 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 |---|---|---|---|
 | **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer (exited 2026-11-06) |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI |
-| **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
-| **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
-| **A4 Engines** | The hand-written loops are replaced by the `aldis-link` engines | A3; M4 | Same trace as A3 for the same scenario |
+| **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed |
+| **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases |
+| **A4 Variants** | The AOS and USLP variants of [reference-application.md](reference-application.md) §4.3, on the same engines. The engines are used from A2 on, so A4 no longer replaces loops | A3; M4 | `a4-*` traces reproduced in CI, with the packet projection of the nominal case (APP-003) |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
 | **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay goes with M6, later (§7) | A5 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
-| **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Four phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
+| **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Three phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
 ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one Rust-side milestone of track A and the C ABI it needs:
 
 | Phase | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
-| **P2 Frames** | TM and TC frames, hand-written C link loops | P1; A2; the M2 frame C ABI | `a2-*` traces reproduced in nightly CI |
-| **P3 COP-1** | FARM-1 through its C ABI handle | P2; A3; M3 | `a3-*` traces reproduced in nightly CI, fault cases included |
-| **P4 Engines** | The link engines' C ABI handles replace the loops | P3; A4; M4 | `a3-*` traces reproduced through the engines in nightly CI |
+| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles (M5 C ABI) | `a2-*` traces reproduced in nightly CI |
+| **P3 COP-1** | FARM-1 through its C ABI handle | P2; A3; the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
 
-The alternative to one milestone with phases is four milestones, one per row; the plan's D1 compares them.
+The alternative to one milestone with phases is three milestones, one per row; the plan's D1 compares them.
 
 ## 4. Overlap
 
