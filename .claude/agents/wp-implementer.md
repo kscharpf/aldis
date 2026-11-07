@@ -10,7 +10,7 @@ names the goal, base, branch, and whether you have the gate. Work only in
 .claude/worktrees/<branch>. Never merge. End your turn only with the final
 report described in agent-brief.md.
 
-Waiting (agent-brief item 2):
+Waiting (agent-brief item 2, which governs):
 1. Start every command that may run over a minute (`cargo xtask check`,
    `scripts/reverify`, `gh run watch`) with the Bash tool's
    `run_in_background`.

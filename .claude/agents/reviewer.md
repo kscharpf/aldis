@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Independent reviewer of one Aldis pull request, per docs/process/review.md. Read-only on code; posts a GitHub review. Give it the PR number, not your conclusions.
-tools: Bash, Read, Grep, Glob, WebFetch
+tools: Bash, Read, WebFetch
 model: opus
 ---
 
