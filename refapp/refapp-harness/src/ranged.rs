@@ -23,11 +23,28 @@ impl Bounded for u8 {
 impl Bounded for u16 {
     const LIMIT: u64 = u16::MAX as u64;
 }
+impl Bounded for u32 {
+    const LIMIT: u64 = u32::MAX as u64;
+}
 impl Bounded for u64 {
     const LIMIT: u64 = u64::MAX;
 }
 
 /// An integer of type `T` in `MIN..=MAX`.
+///
+/// A range with `MIN > MAX` does not compile:
+///
+/// ```compile_fail
+/// use refapp_harness::ranged::Ranged;
+/// let _ = Ranged::<u8, 5, 4>::new(4);
+/// ```
+///
+/// Nor does a `MAX` beyond the largest value of `T`:
+///
+/// ```compile_fail
+/// use refapp_harness::ranged::Ranged;
+/// let _ = Ranged::<u8, 0, 256>::new(4);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Ranged<T, const MIN: u64, const MAX: u64>(T);
@@ -87,7 +104,8 @@ where
     }
 }
 
-/// An even integer of type `T` in `MIN..=MAX` (the COP-1 window W, 232.1-B-2 Cor. 1 §6.1.8.3).
+/// An even integer of type `T` in `MIN..=MAX`, such as the COP-1 window W (232.1-B-2 Cor. 1
+/// §6.1.8.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct EvenRanged<T, const MIN: u64, const MAX: u64>(Ranged<T, MIN, MAX>);
