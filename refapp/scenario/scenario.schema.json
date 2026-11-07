@@ -532,7 +532,7 @@
               "type": "integer",
               "format": "uint16",
               "minimum": 1,
-              "maximum": 512
+              "maximum": 503
             }
           },
           "additionalProperties": false,

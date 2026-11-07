@@ -237,7 +237,7 @@ pub enum OpsEntry {
         #[schemars(range(min = 1, max = 255))]
         table_id: u8,
         /// Table length, octets.
-        #[schemars(range(min = 1, max = 512))]
+        #[schemars(range(min = 1, max = 503))]
         length: u16,
     },
     /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
@@ -518,8 +518,8 @@ impl Scenario {
                     if *table_id == 0 {
                         return Err(format!("ops[{i}]: table_id is 1 to 255"));
                     }
-                    if !(1..=512).contains(length) {
-                        return Err(format!("ops[{i}]: table length is 1 to 512"));
+                    if !(1..=503).contains(length) {
+                        return Err(format!("ops[{i}]: table length is 1 to 503"));
                     }
                     *at_us
                 }
@@ -1121,7 +1121,7 @@ mod tests {
         for (entry, what) in [
             (table(0, 300), "table_id"),
             (table(1, 0), "table length"),
-            (table(1, 513), "table length"),
+            (table(1, 504), "table length"),
             (
                 command(
                     115_000,
@@ -1181,6 +1181,19 @@ mod tests {
         assert!(rejects(&s, "bit is 0 to 7"));
         s.cases[4].faults[5].fault = Fault::Flip { octet: 0, bit: 7 };
         s.check().unwrap();
+    }
+
+    #[test]
+    fn table_length_limit_is_503() {
+        // req: APP-017
+        // req: APP-126
+        let table = |length| OpsEntry::TableUpload {
+            at_us: 5_115_000,
+            table_id: 1,
+            length,
+        };
+        rejects_with(5, table(503)).check().unwrap();
+        assert!(rejects(&rejects_with(5, table(504)), "table length"));
     }
 
     #[test]
