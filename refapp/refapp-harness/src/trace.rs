@@ -518,12 +518,12 @@ pub fn decode_strict(text: &str) -> Result<usize, String> {
 }
 
 fn unhex(s: &str) -> Result<Vec<u8>, String> {
-    let digits = s.as_bytes();
-    if digits.len() % 2 != 0 {
+    let (pairs, rest) = s.as_bytes().as_chunks::<2>();
+    if !rest.is_empty() {
         return Err("odd number of hex digits".to_owned());
     }
-    digits
-        .chunks_exact(2)
+    pairs
+        .iter()
         .map(|pair| {
             let text = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
             u8::from_str_radix(text, 16).map_err(|e| e.to_string())
