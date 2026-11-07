@@ -62,7 +62,7 @@ Not covered: synchronization and channel coding, SDLS, CFDP, and time correlatio
 | Command handler | Executes commands (§3.3.5), immediately or at their time tag | `0x080` (in) |
 | Table store | Stores an uploaded table (§3.3.6); a command activates it | `0x081` (in) |
 
-Within one instant the flight node works in this order: (1) handle delivered link units and the packets they carry, in delivery order (immediate commands execute here); (2) execute the time-tagged commands due, in queue order; (3) emit a due dump segment; (4) housekeeping; (5) payload. This order is part of the timeline (APP-002).
+Within one instant the flight node works in this order: (1) handle delivered link units and the packets they carry, in delivery order (immediate commands execute here); (2) execute the time-tagged commands due, in queue order; (3) emit a due dump segment and, after the last segment of a dump, `DUMP_COMPLETED` (so the event follows the last dump packet and precedes the housekeeping and payload packets of the same instant); (4) housekeeping; (5) payload. This order is part of the timeline (APP-002).
 
 ### 2.2 Ground node
 
@@ -105,13 +105,13 @@ The resulting telemetry: 30 HK packets, 13 payload packets (t = 0.5…18.5 s and
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| APP-010 | The flight node SHALL implement the applications of §2.1, in the per-instant order of §2.1. | — | T |
+| APP-010 | The flight node SHALL implement the applications of §2.1, in the per-instant order of §2.1; a housekeeping packet SHALL report the state after steps 1–3 of its instant (§3.3.1). | — | T |
 | APP-011 | The ground node SHALL implement the applications of §2.2. It SHALL decode every received link unit and packet with the strict codecs (API-030), track sequence counts per APID (SPP-011), decode time codes (SPP-008, TIME-010), and reassemble dumps (SPP-013). | 133.0 §4.1.3.4.3.3–4 | T |
 | APP-012 | The command handler SHALL follow §2.3: immediate commands execute when delivered; time-tagged commands execute in the first step at or after their execution time, in delivery order for equal times; the queue holds 8 commands. | — | T |
 | APP-013 | Every command SHALL produce exactly one verification report, `CMD_EXECUTED` or `CMD_REJECTED`, at its execution instant, except the rejections at delivery of §2.3 (reasons 2 and 4), which are reported at the delivery instant, and a rejection with reason 3 of a command that has no valid execution instant (an execution mode other than `0x00` and `0x01`, a non-zero execution time in an immediate command, or an undecodable time tag), which is reported at the delivery instant too. | — | T |
 | APP-014 | The nominal case SHALL use only time-tagged commands, each released at least 5 s before its execution time. | — | I |
-| APP-015 | The payload application SHALL generate one packet at t = 0.5 + 2k s (k ≥ 0, t < 30 s) while its mode is *on*, and none while it is *off*. `SET_PAYLOAD_MODE` SHALL change the mode at its execution instant. | — | T |
-| APP-016 | The memory dump SHALL build the dump SDU of §3.3.4 and send it as Space Packets with Sequence Flags `01`, `00`, `10` (or `11` for a single packet), at most 128 user-data octets each, one packet every 125 000 µs from the execution instant, followed by `DUMP_COMPLETED` in the step of the last packet. A `DUMP_MEMORY` command executed while a dump is in progress SHALL be rejected with reason 5. | 133.0 §4.1.3.4.2.2 | T |
+| APP-015 | The payload application SHALL generate one packet at t = 0.5 + 2k s (k ≥ 0, t < 30 s) while its mode is *on*, and none while it is *off*; the payload packet number counts the packets generated, so a skipped slot uses none (§3.3.3). `SET_PAYLOAD_MODE` SHALL change the mode at its execution instant. | — | T |
+| APP-016 | The memory dump SHALL build the dump SDU of §3.3.4 and send it as Space Packets with Sequence Flags `01`, `00`, `10` (or `11` for a single packet), at most 128 user-data octets each, one packet every 125 000 µs from the execution instant, followed by `DUMP_COMPLETED` in the step of the last packet, after that packet and before the housekeeping and payload packets of the same instant (§2.1). A `DUMP_MEMORY` command executed while a dump is in progress SHALL be rejected with reason 5. | 133.0 §4.1.3.4.2.2 | T |
 | APP-017 | The table store SHALL keep the most recently uploaded table (one table of up to 503 octets, so that its packet, 9 octets longer (§3.3.6), fits the 512-octet Maximum Packet Length of §4.2, 232.0 Table 5-5). `ACTIVATE_TABLE` SHALL report reason 1 if the stored table has another ID or none was uploaded, and otherwise compare the CRC-16 (CMN-001) of the stored table with the command's argument and report `TABLE_ACTIVATED` or `TABLE_REJECTED`. | — | T |
 | APP-018 | The ground node SHALL report each sequence gap, repeat, and reset (SPP-011), each reassembled or discarded dump, and each packet rejected by a strict decoder as the application events of §7.4. | — | T |
 | APP-019 | The nominal case SHALL follow the timeline of §2.4. Ops-script entries marked with a later milestone SHALL apply only from that link level on. | — | T |
@@ -162,6 +162,8 @@ All integers are unsigned and big-endian (GEN-050). Octet offsets count from the
 | 14–15 | Dumps completed |
 | 16–31 | Sensor channels j = 0…7, u16 each: (1000 · (j + 1) + 3 · k) mod 2¹⁶ |
 
+A housekeeping packet reports the state after steps 1–3 of its instant (§2.1). A command executed at that instant is counted (executed, rejected, payload mode, table, dumps completed). The queue occupancy is the number of time-tagged commands then queued, so a command delivered after the HK instant is not counted until the next HK packet. A delivery at the HK instant itself is handled in step 1 and counted. Deliveries arrive 10 000 µs after their release instant (§6.1).
+
 #### 3.3.2 Event reports (`0x011`, 8 octets; packet length 21)
 
 Layout: event code (u16) ‖ p1 (u16) ‖ p2 (u16) ‖ p3 (u16). Unused parameters are 0. Several events at one instant are emitted in the order the flight node raises them (§2.1).
@@ -179,7 +181,7 @@ On execution a command raises `CMD_EXECUTED` first and its effect events after i
 
 #### 3.3.3 Payload science (`0x020`, 400 octets; packet length 412)
 
-Octets 0–3: payload packet number n (0, 1, … over all payload packets of the run). Octets 4–399: octet i = (n + i) mod 256. A payload packet is longer than one TM data field (211 octets, §4.1), so it spans frames (LNK-011).
+Octets 0–3: payload packet number n (0, 1, … over all payload packets of the run). n counts only the payload packets generated, so a slot skipped while the payload mode is *off* uses no number. Octets 4–399: octet i = (n + i) mod 256. A payload packet is longer than one TM data field (211 octets, §4.1), so it spans frames (LNK-011).
 
 #### 3.3.4 Memory dump (`0x021`)
 
