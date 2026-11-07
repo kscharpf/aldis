@@ -1,5 +1,5 @@
 //! Time codes with an explicit or implicit P-field: decode, encode, agency-defined codes
-//! (301.0 §3, §3.6; TIME-001…TIME-007).
+//! (301.0 §3, §3.6; TIME-001…TIME-003, TIME-005…TIME-007).
 
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Lenient, Result};
 
@@ -163,7 +163,7 @@ impl TimeFormat {
     /// P-field (with its octet 2 and undefined tail, if the format has them) if `include_pfield`,
     /// then the T-field. A caller sizes a buffer, or the secondary header of a Space Packet, from
     /// the format alone, without a trial encode; in a `const` context the length is a compile-time
-    /// constant (301.0 §3.1; TIME-003, TIME-007).
+    /// constant (301.0 §3.1.1, §3.1.2; TIME-003, TIME-007).
     #[must_use]
     pub const fn encoded_len(&self, include_pfield: bool) -> usize {
         let p_len = if include_pfield {
