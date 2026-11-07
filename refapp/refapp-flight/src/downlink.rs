@@ -67,6 +67,8 @@ const STAMP_BUFFER: usize = match cuc_format() {
     Err(_) => 0,
 };
 
+const _: () = assert!(STAMP_BUFFER > 0, "the CUC format of §5 must exist");
+
 /// On-board time for `now`: CUC Level 1, 4 coarse and 2 fractional octets, equal to
 /// T0 + `now` (§5, APP-060).
 ///

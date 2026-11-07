@@ -1001,11 +1001,6 @@ mod tests {
         assert!(Scenario::parse(&wrong_name).is_err());
     }
 
-    /// The scenario file, with the A1 cases it holds.
-    fn with_a1_cases() -> Scenario {
-        Scenario::load().unwrap()
-    }
-
     fn rejects(s: &Scenario, what: &str) -> bool {
         s.check().is_err_and(|e| e.contains(what))
     }
@@ -1013,7 +1008,7 @@ mod tests {
     #[test]
     fn script_entries_of_the_a1_cases_parse_and_check() {
         // req: APP-126, APP-127, APP-128
-        let s = with_a1_cases();
+        let s = Scenario::load().unwrap();
         s.check().unwrap();
         let rejects_case = s.case("a1-rejects").unwrap();
         assert_eq!(rejects_case.ops.len(), 18);
@@ -1029,7 +1024,7 @@ mod tests {
     #[test]
     fn script_rules_the_schema_cannot_express() {
         // req: APP-061, APP-126, APP-128
-        let ok = with_a1_cases();
+        let ok = Scenario::load().unwrap();
         let mut s = ok.clone();
         // An immediate command that arrives off the 125 000 µs grid.
         s.cases[3].ops[0] = OpsEntry::Command {
@@ -1076,7 +1071,7 @@ mod tests {
 
     /// The `a1-rejects` case with its ops entry `i` replaced.
     fn rejects_with(i: usize, entry: OpsEntry) -> Scenario {
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[i] = entry;
         s
     }
@@ -1104,7 +1099,7 @@ mod tests {
                 .is_ok()
         );
         // Reason 4: the ninth command of a full queue, released off the grid.
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[17] = command(
             10_115_001,
             Execution::TimeTagged {
@@ -1114,7 +1109,7 @@ mod tests {
         );
         assert!(rejects(&s, "rejected at delivery"));
         // A command that only queues needs no grid: `a1-nominal` releases on whole seconds.
-        with_a1_cases().check().unwrap();
+        Scenario::load().unwrap().check().unwrap();
     }
 
     #[test]
@@ -1179,7 +1174,7 @@ mod tests {
             };
             assert!(rejects(&rejects_with(idx, entry), what), "{what}");
         }
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[4].level = super::Level::Frames;
         s.cases[4].faults.push(FaultEntry {
             dir: Direction::Down,

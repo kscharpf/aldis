@@ -171,14 +171,20 @@ fn nominal_has_no_gap_and_the_dump_arrives_whole() {
     // Every packet the flight node generated is delivered, in order.
     let p =
         packet_projection(&std::fs::read_to_string(golden_path("a1-nominal")).unwrap()).unwrap();
-    for ((record, node, apid), packets) in &p {
-        if *record == PacketRecord::In && *node == GROUND {
-            assert_eq!(
-                p.get(&(PacketRecord::Out, FLIGHT, *apid)),
-                Some(packets),
-                "apid {apid}"
-            );
-        }
+    let apids = |record, node| -> Vec<u16> {
+        p.keys()
+            .filter(|k| k.0 == record && k.1 == node)
+            .map(|k| k.2)
+            .collect()
+    };
+    let sent = apids(PacketRecord::Out, FLIGHT);
+    assert_eq!(sent, apids(PacketRecord::In, GROUND), "APIDs delivered");
+    for apid in sent {
+        assert_eq!(
+            p.get(&(PacketRecord::In, GROUND, apid)),
+            p.get(&(PacketRecord::Out, FLIGHT, apid)),
+            "apid {apid}"
+        );
     }
 }
 
@@ -426,6 +432,11 @@ fn nominal_packet_projection_is_the_baseline_of_every_link_level() {
         ]
     );
     // The flight node raises `cmd_received` and `table_received` instead of `packet_in`.
+    assert!(
+        records("a1-nominal")
+            .iter()
+            .all(|r| r["kind"] != "packet_in" || r["node"] == "ground")
+    );
     // A non-canonical text has no projection.
     assert!(packet_projection("{}\n").is_err());
 }
