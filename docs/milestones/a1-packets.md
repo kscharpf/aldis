@@ -1,0 +1,148 @@
+# Milestone A1 — Packets
+
+**Goal:** the first working reference application: the flight node produces every telemetry packet of the scenario's nominal timeline (housekeeping, events, payload, dump) as Space Packets with CUC time stamps and executes the uplink commands; the ground node decodes the packets with the strict codecs, tracks sequence counts, decodes time codes, reassembles dumps, and runs the ops script; the harness reproduces the first golden traces byte for byte in CI. The link level is packets: one Space Packet per link unit ([reference-application.md](../reference-application.md) §6.1).
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A0](a0-scenario.md) (scenario, skeleton, harness) and [M1](m1-packets-time.md) (`v0.2.0-m1`: `aldis-time`, `aldis-spp`) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
+
+**Status: plan proposed (2026-11-06).** Decisions D1–D5 (§2) are proposed, for the maintainer. Entry gate: M1 met (`v0.2.0-m1`); A0 merged but not recorded as exited, see §1 and D1.
+
+| WP | State | PRs | Notes |
+|---|---|---|---|
+| WP-0 Plan | in review | | This plan, D1–D5 |
+| WP-0b Trace gate | planned | | `trace --scope a1` in `cargo xtask ci`, the `spec` check, and `ci.yml` (D2); an `xtask` pull request |
+| WP-1 Scenario additions | planned | | Only what [reference-application.md](../reference-application.md) lacks for A1: the extra cases (D4), the ops-script and fault-script entries of the scenario file, the check of the derived values; A0 close-out (D1). No code |
+| WP-2 Harness: ops script and faults | planned | | Ops-script instants in the scheduler, scripted faults, the `fault` record, `ops` in `StepInput` |
+| WP-3a Flight node: telemetry | planned | | On-board time, housekeeping, events, payload |
+| WP-3b Flight node: commands and dump | planned | | Command handler, time-tag queue, table store, memory dump |
+| WP-4 Ground node | planned | | Strict decoding, sequence tracking, time decoding, dump reassembly, ops script |
+| WP-5 Golden traces | planned | | `a1-*` cases blessed, hand-checked against the Blue Books, invariants tested |
+| WP-6 Strict decoding of golden traces | planned | | APP-086 in the `refapp` check |
+| WP-7 Exit | planned | | `trace --scope a1 --strict`; roadmap, README, ACFS entry gate |
+
+A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
+
+History:
+- 2026-11-06: plan drafted after the M5 exit; A0 close-out (D1) and the fold of A2's loops into A4 (D3) raised for the maintainer.
+
+## 1. Starting point
+
+| In place | Missing for A1 |
+|---|---|
+| **Entry gate, M1:** met. Released as `v0.2.0-m1`, status "complete (2026-10-20)" in [m1-packets-time.md](m1-packets-time.md); `aldis-time` (CUC, P-field, implicit and explicit decode) and `aldis-spp` (packet codec, `Segmenter`, `Reassembler`, `SequenceTracker`, the `spp-time` secondary header) are on `main`. M2 to M5 have exited too (`v0.3.0-m2` to `v0.6.0-m5`), so no library is missing for later milestones either | |
+| **Entry gate, A0:** the work is on `main`: the scenario document with area APP (#33), the `refapp/` skeleton and the `xtask` checks and CI job (#35), the plan (#28), OI-23 to OI-26 decided (#37), all merged 2026-10-19. **Not recorded as exited:** the status line of [a0-scenario.md](a0-scenario.md) still says the document and the skeleton are "in review", WP-4 (maintainer review and the approval recorded in the status line) has no entry, the root `README.md` lists A0 as "In progress", and the roadmap §3 A0 row carries no marker | A0's exit record. What remains is only the record, no work: the maintainer's confirmation that merging #33, #35, and #37 was the WP-4 approval, and the status edits listed in D1 |
+| The scenario for A1: applications and command handling ([§2](../reference-application.md#2-roles-and-applications)), APIDs and every packet layout ([§3](../reference-application.md#3-identifiers-and-packet-formats)), time ([§5](../reference-application.md#5-time)), the link model, scheduler and fault kinds ([§6](../reference-application.md#6-link-model-and-faults)), the trace format and application events ([§7](../reference-application.md#7-golden-traces)), the node interface ([§8](../reference-application.md#8-node-interface)), implementation rules ([§9](../reference-application.md#9-implementation-rules)), and the nominal timeline with its expected results | The cases `a1-immediate` ("defined in A1", §6.4), and, if D4 is accepted, `a1-rejects` and `a1-downlink-faults`; how the ops script and the fault script are written in the scenario file (APP-107); the derived values of §2.4 (CRC-16 of the table and of the dump) are stated "to be cross-checked when A1 implements them" |
+| `refapp/`: the four crates, `Node`/`StepInput`/`Output` in `refapp-scenario`, the scheduler with slots, delay and tie order, the trace writer, canonical-form check and comparator, the generated scenario constants, the case `a0-empty` reproduced in CI by the check `refapp` | Applications in the nodes (`refapp-flight` and `refapp-ground` have no logic); the `Case` of the scenario file has no ops script and no fault script, and the harness passes `ops: &[]` to every step (`refapp/refapp-harness/src/sim.rs`); the facade features the nodes need (`spp-time`, `time`) are not enabled |
+| `cargo xtask trace` scans `refapp/` for `// req:` and reads the `requirements` of every golden-trace header (APP-108); `cargo xtask refapp-deps` enforces the facade-only rule (APP-100, APP-105) | `trace --scope a1`: see D2 |
+| The A1 row of the roadmap and of [§2.1 of the A0 plan](a0-scenario.md): "All applications of D1; CUC on-board time; per-APID sequence counts (SPP-011); dump segmented into packets (SPP-013)" on the flight side; "Packet decoding, time-code decoding, sequence tracking (SPP-011), dump reassembly; ops script" on the ground side | |
+
+What A1 does not do: frames, FECF, virtual channels, Idle Packets, and OID frames (A2); COP-1 (A3); the `aldis-link` engines (A4, or A2 if D3 is accepted); any C or C++ node (A5, ACFS). The `packet projection` of APP-003 is established here as the baseline and checked against the second link level in A2, so APP-003 is not in A1's exit table.
+
+## 2. Decisions
+
+All proposed, none yet accepted. Each row gives the recommended option first.
+
+| # | Decision | Choice (recommended) | Status |
+|---|---|---|---|
+| D1 | Closing A0 | Treat the merge of #33, #35, and #37 (2026-10-19) as the WP-4 approval, if the maintainer confirms it in one line; a small docs change inside WP-1 then (a) sets the A0 status line to "exited" with the four PRs and the date of the confirmation, (b) marks the A0 row of roadmap §3, (c) sets the root `README.md` row to complete, (d) states the A0 exit in the A1 status line. Not a new review: the document was reviewed in #33 and the skeleton in #35. Alternative: a dedicated WP-4 review of the scenario document before A1's WP-3 starts, recorded the same way; costs a review for text A1's WP-1 will re-read clause by clause anyway. A1's WP-2 to WP-5 do not wait for the record, since the scenario they implement is on `main` | Proposed |
+| D2 | Trace scope | `cargo xtask trace --scope a1` needs no change in the trace tool: `scope_ids` finds `docs/milestones/a1-*.md` and reads the `Area` / `Criteria` table of §4, and the tool already scans `refapp/` and the golden headers. Add the non-strict run to `cargo xtask ci` (the `CI` list in `xtask/src/main.rs`), the check `spec` (`xtask/src/verify/checks.rs`), and `ci.yml`, in a small `xtask` pull request (WP-0b) rather than in this plan's, so that the plan PR stays documentation only; `--strict` replaces it at the exit (WP-7), as for M4 and M5 | Proposed |
+| D3 | Hand-written frame loops in A2, or the engines from A2 on | **Fold the hand-written loops into A4: the application uses the `aldis-link` engines from A2 on** (the coordinator's proposal of 2026-11-06). *For:* one milestone less, since A4 ("Same trace as A3") would no longer exist as a replacement step; the engines are released (`v0.5.0-m4`, M5 done), so the loops would be written only to be thrown away; the engines are already cross-checked by blind models (TV-023) and the engine-scenario vectors; the application gets API feedback on the engines a milestone or two earlier, before the v1.0 freeze; the ACFS phases P2 to P4 shrink in the same way. *Against:* the hand-written loops (A2, A3) are an independent implementation of the same link rules, and "A4 reproduces the A3 trace" is a cross-check of the engines by code written without them, which the blind models cover only per unit and not for a whole run; a divergence found only at A4 shows where the spec leaves room (the A0 plan §5 risk), and it would go unseen; the trace freeze of the A0 plan (D2 rule 3, APP-004) would apply to a trace made by the engines themselves. *Alternative:* keep A2 to A4 as the roadmap has them. A1 has no frame loop and is the same either way. If accepted, a follow-up pull request amends roadmap §3 (the A2 and A4 rows and the §4 stage table), the A0 plan's §2.1 (not edited here, it is a record), `reference-application.md` §1 and APP-004, and the ACFS plan's phases | Proposed |
+| D4 | Cases beyond the nominal one | The scenario defines `a1-nominal` and `a1-immediate` for A1 (§6.4). Add two cases, each by APP-002 (a case, no change of an existing one): **`a1-rejects`**, one command per rejection reason of §3.3.2 (unknown function, time tag in the past, malformed arguments, time-tag queue full, dump in progress) plus the immediate-execution path, so that APP-013 and APP-024 are exercised beyond the nominal commands; **`a1-downlink-faults`**, scripted `drop`, `duplicate`, `delay`, and `truncate` of downlink packets (no `flip`: there is no FECF at packet level), so that the ground node's `seq_gap`, `seq_repeat`, `dump_discarded`, and `packet_rejected` events (APP-018) exist before A2 puts them behind frames. *For:* the rejection paths and the ground's error paths would otherwise first run in A2 or later, in frame context, where a defect is harder to place; the fault engine of the harness is needed in A2 anyway. *Against:* it moves the fault machinery from A2 to A1 and so enlarges A1 (the A0 plan D8 and §6.4 list the downlink faults under A2); the fault script of such a case is then fixed here, not in A2 (APP-005). If the maintainer prefers A0's split, A1 keeps `a1-rejects` only and APP-075 leaves §4 | Proposed |
+| D5 | Independent check of the first golden traces | A golden trace records what the implementation did (A0 plan §5). For A1: (a) every unit is decoded with the strict codecs in CI (APP-086, WP-6); (b) the first packet of each APID and the two derived values are checked by hand against 133.0 and 301.0 and written up in the WP-5 pull request, naming the clauses; (c) an independent program, written blind from `reference-application.md` and the Blue Books only (TV-023, no implementation path given to its author), regenerates the `packet_out` records of `a1-nominal` and is run once, its result recorded in [cross-checks.md](../verification/cross-checks.md) (VER-040); the program is committed under `refapp/model/` but gets no CI step. *Alternative:* run it in CI as `cargo xtask vectors validate` does for the vector models, which adds a Python dependency to the `refapp` check and a mechanism to maintain for a trace that A2 and A3 re-test through the packet projection (APP-003). *Alternative:* (a) and (b) only | Proposed |
+
+Raised with this plan: no open issue. The pain points that `refapp/` finds in the public API of M1 are filed as GitHub issues labelled `api-feedback` for track R (APP-101); this plan lists them as found (§6).
+
+## 3. Work packages
+
+Size: **S** ≈ small, **M** ≈ medium, **L** ≈ large. The nodes are written against the node interface of A0 and need the scenario format of WP-1 and the harness inputs of WP-2 only to run; their unit tests run on scripted inputs.
+
+```
+WP-0 Plan ─▶ WP-0b Trace gate ──────────────────────────────────────────────┐
+         └─▶ WP-1 Scenario additions ─▶ WP-2 Harness ─┬─▶ WP-3a Flight telemetry ─▶ WP-3b Flight commands ─┐
+                                                      └─▶ WP-4 Ground node ────────────────────────────────┼─▶ WP-5 Golden traces ─▶ WP-6 Strict decode ─▶ WP-7 Exit
+```
+
+WP-3a and WP-4 run in parallel. WP-3b needs the ground node's command builder (WP-4) only for the integrated run of WP-5.
+
+### WP-0b Trace gate (S) — VER-020, APP-108
+- `trace --scope a1` in the three places of D2, non-strict.
+- **Done when:** `cargo xtask trace --scope a1` runs on `main` and reports the A1 exit table.
+
+### WP-1 Scenario additions (S) — area APP, no code
+Only what the document lacks; nothing in it is restated.
+- The cases of D4 in §6.4 with their end instants, ops scripts, and fault scripts, each with its expected result in the manner of §2.4 (what the flight node reports, which application events the ground node raises). `a1-immediate` is defined from §2.3 and APP-012: which commands are sent as immediate commands and when. The scenario version stays 1 (APP-002 allows added cases).
+- How an ops-script entry and a fault-script entry are written in the language-neutral scenario file and its schema (APP-107): an entry names its release instant and kind (`command`, `table_upload`; `fop1_directive` from A3) and the parameters of §3.3.5 and §3.3.6, not the octets, so that the ground node builds the packets and the A5 C++ node can read the same file.
+- The two derived values of §2.4 (CRC-16 of the table `0x0C4F` and of the 600 dumped octets `0x80A8`) checked by a hand derivation against CMN-001 and the simulated memory of §3.3.4, and the result written into §2.4 in place of "to be cross-checked".
+- The A1 readings the nodes rely on, checked clause by clause against the Blue Books before code: the sequence classification of a gap, a repeat, and a reset (SPP-011; 133.0 §4.1.3.4.3.3–4); segmentation of the dump (SPP-013; 133.0 §4.1.3.4.2.2); the implicit and explicit P-field (SPP-008; 301.0 §3.2.2); the conversion of an `Instant` to a CUC value (TIME-011). A reading the Blue Book does not settle becomes an OI for the maintainer (decision rights §2.1); the scenario already avoids the known ones (APP-061).
+- New requirements take the next free ID of area APP (the decades per section are full, so `APP-126` on) and go in the exit table (§4).
+- The A0 close-out of D1, if accepted.
+- Checklist: "A spec-readings pull request before a codec", for the readings.
+- **Done when:** `cargo xtask spec-lint` passes and the maintainer has accepted D1 to D5.
+
+### WP-2 Harness: ops script and faults (M) — APP-072…075, APP-082
+- `Case` of `refapp-harness/src/scenario.rs` gets the ops script and the fault script; the schema and the generated constants are regenerated (`gen-scenario`, APP-107).
+- The scheduler wakes at ops-script instants (§6.2), passes the due entries as `StepInput::ops`, and applies scripted faults by (direction, unit index), recording the `fault` record just before the unit's `unit_sent` and the `copy` of a duplicate (§7.3). `flip` and the frame-level rules stay for A2.
+- Tests on scripted test nodes, as for A0, each with `// req:`; the case `a0-empty` stays byte-identical.
+- **Done when:** a scripted node pair reproduces a hand-written trace with every fault kind of D4, and `compare` for `a0-empty` is unchanged.
+
+### WP-3a Flight node: telemetry (L) — APP-010, APP-015, APP-021…023, APP-060
+- `refapp-flight` (`no_std`, no heap, flight lint set, APP-102): on-board time as T0 + `Instant` converted by `aldis-time` to CUC (APP-060); housekeeping, the event reporter, and the payload application with the layouts of §3.3.1 to §3.3.3, each APID with its own sequence count (SPP-011/012) and its secondary header form (SPP-008); the per-instant order of §2.1.
+- Features `core`, `time`, `spp-time` of the facade only (APP-100); every API pain point filed as `api-feedback` (APP-101).
+- Unit tests with `// req:`; the `thumbv7em-none-eabihf` build and Clippy stay green.
+- Checklist: none of the library ones applies (no codec, crate, or engine is added); the `refapp` check is the gate.
+
+### WP-3b Flight node: commands and dump (L) — APP-012, APP-013, APP-016, APP-017, APP-024
+- Command handler: execution mode, time-tag queue of 8, rejection reasons (§2.3, §3.3.2); table store with the CRC-16 check (APP-017); memory dump segmented with `Segmenter` (SPP-013), one segment every 125 000 µs, `DUMP_COMPLETED` in the step of the last packet (APP-016); `cmd_received` and `table_received` application events (§7.4).
+- Unit tests with `// req:`, including every rejection reason and the dump-in-progress rule.
+
+### WP-4 Ground node (M) — APP-011, APP-018, APP-019, APP-024
+- `refapp-ground` (restriction lints, APP-103): decodes every unit in `Strict` mode (API-030), delivers `packet_in`; per-APID `SequenceTracker` events (`seq_gap`, `seq_repeat`, `seq_reset`); CUC decoding with implicit and explicit P-fields; dump reassembly with `Reassembler` (`dump_reassembled`, `dump_discarded`); `packet_rejected` for a strict decoder error.
+- The ops script: builds the command and table-upload packets from the entries of WP-1 and releases them at their instants (`packet_out`).
+- Unit tests with `// req:`.
+
+### WP-5 Golden traces (M) — APP-019, APP-082, APP-083, APP-090
+- The `a1-*` cases added to the scenario file with their requirement lists; `bless` writes `refapp/golden/<case>.jsonl`; trace version 1 needs no row in `CHANGES.md` (released traces only).
+- Tests of the invariants each case states in WP-1: every command executed once and in order, the packet counts of §2.4, gaps only where a fault was injected, event order of §3.3.2.
+- The independent check of D5, and its record.
+- The packet projection of `a1-nominal` as extracted by a harness function or test, so that A2 can compare it (APP-003); no new command line.
+- **Done when:** `compare` reproduces every `a1-*` trace in CI.
+
+### WP-6 Strict decoding of golden traces (S) — APP-086
+- `check-golden` (or a harness test run by the `refapp` check) decodes every `unit_sent` and every packet of every golden trace with the strict codecs; the harness gets the `spp` feature of the facade, which `cargo xtask refapp-deps` allows (APP-100).
+- **Done when:** a planted malformed packet in a copy of a trace fails the check (checked once, then reverted).
+
+### WP-7 Exit (S) — VER-020
+- `trace --scope a1 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec` (checklist "Milestone exit").
+- The results column of §4; the A1 status line; roadmap §3 A1 row, `refapp/README.md` and root `README.md` status; the entry gate of ACFS P1 ([acfs-flight-side.md](acfs-flight-side.md): "A1 exited (not yet)") updated by the pull request that exits A1.
+- The `api-feedback` issues listed in §6; process metrics for the milestone reviewed (VER-063).
+- A track-A milestone cuts no release.
+
+## 4. Exit criteria
+
+A1 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-003 and APP-004 belong to A2 and A3, which compare two link levels. The results column is filled at WP-7.
+
+| Area | Criteria | Results / evidence |
+|---|---|---|
+| Flight applications | APP-010, APP-015, APP-023 | |
+| Commands and dump | APP-012, APP-013, APP-016, APP-017, APP-024 | |
+| Packet identity | APP-021, APP-022 | |
+| Time | APP-060 | |
+| Ground node | APP-011, APP-018, APP-019 | |
+| Link model at packet level | APP-072, APP-073, APP-074, APP-075 | |
+| Golden traces | APP-082, APP-083, APP-086, APP-090 | |
+| Reproduction in CI | The check `refapp` runs `compare` for every `a1-*` case (APP-106); `cargo xtask trace --scope a1 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
+| Docs | A0 recorded as exited (D1); roadmap §3, the READMEs, and the ACFS entry gate updated; the new requirements of WP-1 listed here | |
+
+APP-075 and the fault case leave the table if D4 is decided without `a1-downlink-faults`; the IDs of WP-1 join it.
+
+## 5. Risks
+
+| Risk | Mitigation |
+|---|---|
+| A golden trace freezes a defect of the first implementation, and every later level then reproduces it | D5: strict decoding of every unit in CI, a hand check of the first packet of each APID against the Blue Books, an independent regeneration of the flight packets, and invariants tested per case |
+| The A1 timeline is "fixed in A1 and only extended" (APP-002), so a mistake here binds A2 to A6 | WP-1 re-reads the readings the timeline depends on before code is written; the cases beyond the nominal one are added now, while changing a case is still free |
+| API pain points of M1 found now are costly after the v1.0 freeze | Track A starts them early by design; each one becomes an `api-feedback` issue as found (APP-101) and is listed in §6 |
+| D3 is decided after A1 and changes the plans of A2 to A4 and the ACFS phases | A1 has no frame loop and is the same under either answer; the amendments of D3 are one docs pull request |
+| The ops-script and fault-script format chosen in WP-1 is hard to extend for A3 (FOP-1 directives) and A5 (the C++ node reads it) | Entries name a kind and parameters, so a kind is added without changing the others; `fop1_directive` is reserved in the schema from A1 and ignored below A3 (APP-019) |
+
+## 6. API feedback found
+
+None yet. Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101).
