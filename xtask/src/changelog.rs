@@ -150,15 +150,25 @@ fn is_train_merge(subject: &str) -> bool {
             .is_some_and(|(_, branch)| branch.starts_with("train/"))
 }
 
-/// What a merge into a train branch that is no `Merge pull request` merge is: `Some(Some(b))` for
-/// `Merge branch '<b>' into train/...` (a pull request's branch merged by hand), `Some(None)` for a
-/// merge of `main` into the train (a refresh, ignored), `None` for anything else.
-fn train_branch_merge(subject: &str) -> Option<Option<&str>> {
+/// What a merge into a train branch is, when it is no `Merge pull request` merge.
+enum TrainMerge<'a> {
+    /// `Merge branch '<b>' into train/...`: a pull request's branch merged by hand.
+    Branch(&'a str),
+    /// A merge of `main` into the train: a refresh, ignored.
+    Refresh,
+}
+
+/// Reads `Merge branch '<b>' into train/...` (also `Merge remote-tracking branch`).
+fn train_branch_merge(subject: &str) -> Option<TrainMerge<'_>> {
     let rest = subject
         .strip_prefix("Merge branch '")
         .or_else(|| subject.strip_prefix("Merge remote-tracking branch '"))?;
     let (branch, _) = rest.split_once("' into train/")?;
-    Some((branch != "main" && branch != "origin/main").then_some(branch))
+    Some(if branch == "main" || branch == "origin/main" {
+        TrainMerge::Refresh
+    } else {
+        TrainMerge::Branch(branch)
+    })
 }
 
 /// Turns the `%H%x1f%s%x1f%b%x1e` log of `main` into the `%s%x1f%b%x1e` log that `parse_merges`
@@ -189,24 +199,19 @@ fn expand_trains(
             .filter(|r| !r.is_empty())
         {
             let member_subject = member.split('\x1f').next().unwrap_or_default();
-            match train_branch_merge(member_subject) {
-                Some(None) => {}
-                Some(Some(branch)) => match lookup(branch) {
-                    Some((number, title)) => {
-                        let _ = write!(
-                            out,
-                            "Merge pull request #{number} from gh/{branch}\x1f{title}\x1e"
-                        );
-                    }
-                    None => {
-                        out.push_str(member);
-                        out.push('\x1e');
-                    }
-                },
-                None => {
-                    out.push_str(member);
-                    out.push('\x1e');
-                }
+            let resolved = match train_branch_merge(member_subject) {
+                Some(TrainMerge::Refresh) => continue,
+                Some(TrainMerge::Branch(branch)) => lookup(branch).map(|r| (branch, r)),
+                None => None,
+            };
+            if let Some((branch, (number, title))) = resolved {
+                let _ = write!(
+                    out,
+                    "Merge pull request #{number} from gh/{branch}\x1f{title}\x1e"
+                );
+            } else {
+                out.push_str(member);
+                out.push('\x1e');
             }
         }
     }
