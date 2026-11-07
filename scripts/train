@@ -26,7 +26,9 @@
 # --rebuild: the constituents are the `- #<n>` lines of the Summary of the train PR, in order,
 # without the PRs named by --without; the old train PR is closed with a comment naming the new
 # one (a failed train is dropped, never force-pushed over).
-# --dry-run: builds and merges in the worktree, pushes and opens nothing, and says so.
+# --dry-run: builds and merges in the worktree, pushes and opens nothing, says so, and removes
+# the branch and the worktree again (also when the build fails), so that a real run with the
+# same PRs follows it.
 # A failure after the push (`gh pr create`) deletes the pushed branch and the worktree.
 # Exit status: 0 on success, 1 on a conflict or a PR that cannot ride, 2 on a usage error or
 # when git or gh fails.
@@ -165,9 +167,10 @@ for i in "${!prs[@]}"; do
 done
 
 if [ "$dry" -eq 1 ]; then
-    short="$(git -C "$wt" rev-parse --short HEAD)"
+    short="$(git -C "$wt" rev-parse --short HEAD)" || { cleanup; die2 "cannot read the build"; }
+    cleanup
     echo "dry run: $tbranch built at $short with $(joined "${prs[@]}");" \
-        "nothing pushed, no PR opened; worktree $wt"
+        "nothing pushed, no PR opened; branch and worktree removed again"
     exit 0
 fi
 

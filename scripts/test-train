@@ -6,8 +6,9 @@
 # Cases: a train of two PRs merges both in order with `Merge pull request #N from owner/branch`
 # merge commits whose body is the PR title, pushes `train/<date>-1`, and opens a PR titled
 # `chore(train): ...` whose body lists both; a conflict between two PRs names the later one and
-# pushes nothing; a closed PR, a draft, and a train PR cannot ride; --dry-run pushes nothing;
-# a second train of the day is `-2`; --rebuild --without drops a PR, opens the new train, and
+# pushes nothing; a closed PR, a draft, and a train PR cannot ride; --dry-run pushes nothing
+# and leaves no branch or worktree, so that a real run with the same PRs follows it;
+# a further train of the day takes the next number; --rebuild --without drops a PR, opens the new train, and
 # closes the old one.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
@@ -202,8 +203,6 @@ check "a stacked PR without its base PR is refused" $?
 out="$(run --dry-run 11 21)"
 contains "$out" "dry run"
 check "a stacked PR after its base PR rides the train" $?
-git -C "$repo" worktree remove --force "$repo/.claude/worktrees/train/$today-2"
-git -C "$repo" branch -D "train/$today-2" >/dev/null
 
 # The train merges the SHA that was checked: a push after the check is not merged.
 pr 11 a "feat(m1/wp-1): add a"
@@ -223,13 +222,18 @@ out="$(run --dry-run 11 12)"
 status=$?
 { [ "$status" -eq 0 ] && contains "$out" "dry run" && ! remote_has "train/$today-2"; }
 check "--dry-run pushes nothing" $?
-git -C "$repo" worktree remove --force "$repo/.claude/worktrees/train/$today-2"
-git -C "$repo" branch -D "train/$today-2" >/dev/null
+t [ ! -d "$repo/.claude/worktrees/train/$today-2" ] &&
+    t [ -z "$(git -C "$repo" branch --list "train/$today-2")" ]
+check "--dry-run leaves no branch or worktree" $?
 
+out="$(run 11 12)"
+{ [ $? -eq 0 ] && remote_has "train/$today-2" && contains "$out" "train $today-2"; }
+check "a real run after a dry run with the same PRs succeeds" $?
 out="$(run 12)"
-remote_has "train/$today-2"
-check "a second train of the day is -2" $?
-git -C "$work/origin.git" branch -D "train/$today-1" "train/$today-2" >/dev/null
+remote_has "train/$today-3"
+check "a further train of the day takes the next number" $?
+git -C "$repo" branch -D "train/$today-3" >/dev/null 2>&1
+git -C "$work/origin.git" branch -D "train/$today-1" "train/$today-2" "train/$today-3" >/dev/null
 echo "[{\"headRefName\":\"train/$today-1\"},{\"headRefName\":\"train/$today-2\"}]" \
     >"$STUB/all-prs.json"
 out="$(run 12)"
