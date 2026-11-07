@@ -249,6 +249,18 @@ pub enum OpsEntry {
     },
 }
 
+impl OpsEntry {
+    /// The release instant, µs (§6.5).
+    #[must_use]
+    pub const fn at_us(&self) -> u64 {
+        match self {
+            OpsEntry::Command { at_us, .. }
+            | OpsEntry::TableUpload { at_us, .. }
+            | OpsEntry::Fop1Directive { at_us, .. } => *at_us,
+        }
+    }
+}
+
 /// Execution mode of a command (§2.3, §3.3.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]

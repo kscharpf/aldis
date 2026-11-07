@@ -2,13 +2,14 @@
 //!
 //! The harness owns simulated time and the link (APP-070). It advances to the earliest of the
 //! slots, link arrivals, and node deadlines, and processes each instant in the order of §6.2
-//! (APP-073). Ops-script entries arrive in A1 and faults in A2; until then the inputs and the
-//! fault script are empty.
+//! (APP-073). It wakes the ground node at the release instants of the ops script (APP-073) and
+//! applies the fault script to the units by (direction, index) (APP-075). `flip` needs frames
+//! and is refused until A2.
 
 use refapp_scenario::{Apid, Instant, Node, Output, StepInput};
 
-use crate::scenario::{Case, Level, Link, Scenario};
-use crate::trace::{Dir, Header, NodeId, Record};
+use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, OpsEntry, Scenario};
+use crate::trace::{Dir, FaultKind, Header, NodeId, Record};
 
 /// One output of a node step, in output order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +66,17 @@ struct Side<'n> {
     /// Slot period of that direction (A2 on).
     slot_us: u64,
     next_index: u64,
+    /// Release instants of the ops script this node receives (ground only).
+    ops_us: Vec<u64>,
+    /// Entries of `ops_us` already passed to the node.
+    ops_done: usize,
+}
+
+impl Side<'_> {
+    /// Release instant of the first ops entry not yet passed.
+    fn next_op(&self) -> Option<u64> {
+        self.ops_us.get(self.ops_done).copied()
+    }
 }
 
 /// State shared by both nodes' steps.
@@ -73,6 +85,16 @@ struct World<'a> {
     link: &'a Link,
     in_flight: Vec<Arrival>,
     records: Vec<Record>,
+    faults: &'a [FaultEntry],
+    /// Whether each fault entry has met its unit.
+    fault_hit: Vec<bool>,
+}
+
+const fn dir_of(d: Direction) -> Dir {
+    match d {
+        Direction::Down => Dir::Down,
+        Direction::Up => Dir::Up,
+    }
 }
 
 /// Next multiple of `period` strictly after `t`.
@@ -123,6 +145,8 @@ pub fn records(
         tx_dir: Dir::Up,
         slot_us: link.uplink_slot_us,
         next_index: 0,
+        ops_us: case.ops.iter().map(OpsEntry::at_us).collect(),
+        ops_done: 0,
     };
     let mut flight = Side {
         id: NodeId::Flight,
@@ -131,13 +155,25 @@ pub fn records(
         tx_dir: Dir::Down,
         slot_us: link.frame_slot_us,
         next_index: 0,
+        ops_us: Vec::new(),
+        ops_done: 0,
     };
     let mut world = World {
         level: case.level,
         link,
         in_flight: Vec::new(),
         records: Vec::new(),
+        faults: &case.faults,
+        fault_hit: vec![false; case.faults.len()],
     };
+    // The loader checks this too; a `Case` built in code gets the same rule (APP-126).
+    if let Some(i) = ground.ops_us.windows(2).position(|w| w[1] < w[0]) {
+        return Err(format!(
+            "case `{}`: ops[{}] is released before ops[{i}]",
+            case.id,
+            i + 1
+        ));
+    }
     let mut t = 0;
     while t < case.end_us {
         let (to_ground, to_flight) = deliver(&mut world, t);
@@ -149,6 +185,7 @@ pub fn records(
             world.in_flight.iter().map(|a| a.at).min(),
             ground.deadline,
             flight.deadline,
+            ground.next_op(),
         ]
         .into_iter()
         .flatten()
@@ -162,6 +199,13 @@ pub fn records(
             Some(n) => t = n,
             None => break,
         }
+    }
+    // A fault whose unit was never sent is a mistake of the script (APP-075).
+    if let Some(i) = world.fault_hit.iter().position(|hit| !hit) {
+        return Err(format!(
+            "case `{}`: faults[{i}] addresses a unit that is never sent",
+            case.id
+        ));
     }
     Ok(world.records)
 }
@@ -199,7 +243,20 @@ fn step(
         Level::Packets => true,
         Level::Frames => t.checked_rem(side.slot_us) == Some(0),
     };
-    let due = t == 0 || !delivered.is_empty() || slot || side.deadline.is_some_and(|d| d <= t);
+    let ops_from = side.ops_done;
+    // bound: each pass takes one entry of the script, and `ops_done` stops at its length.
+    while side.next_op().is_some_and(|at| at <= t) {
+        side.ops_done += 1;
+    }
+    let ops = (ops_from..side.ops_done)
+        .map(u16::try_from)
+        .collect::<Result<Vec<u16>, _>>()
+        .map_err(|_| "ops script has more than 65 536 entries".to_owned())?;
+    let due = t == 0
+        || !delivered.is_empty()
+        || !ops.is_empty()
+        || slot
+        || side.deadline.is_some_and(|d| d <= t);
     if !due {
         return Ok(());
     }
@@ -207,7 +264,7 @@ fn step(
     let input = StepInput {
         now: Instant::from_micros(t),
         delivered: &units,
-        ops: &[],
+        ops: &ops,
         tx_slot: slot,
     };
     let mut out = Recorder::default();
@@ -236,14 +293,7 @@ fn step(
             Out::Unit(octets) => {
                 let index = side.next_index;
                 side.next_index += 1;
-                world.in_flight.push(Arrival {
-                    at: t.saturating_add(world.link.one_way_delay_us),
-                    sent_at: t,
-                    dir: side.tx_dir,
-                    index,
-                    copy: 0,
-                    octets: octets.clone(),
-                });
+                send(world, side.tx_dir, index, t, &octets)?;
                 Record::UnitSent {
                     t_us: t,
                     dir: side.tx_dir,
@@ -271,6 +321,71 @@ fn step(
             },
         };
         world.records.push(record);
+    }
+    Ok(())
+}
+
+/// Sends a unit into the link: records the faults scripted for it (before its `unit_sent`,
+/// §7.3) and queues the arrivals they leave (§6.3).
+fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> Result<(), String> {
+    let mut octets = octets.to_vec();
+    let mut dropped = false;
+    let mut copies = 1u8;
+    let mut extra_delay = 0u64;
+    for (i, f) in world.faults.iter().enumerate() {
+        if dir_of(f.dir) != dir || f.index != index {
+            continue;
+        }
+        if let Some(hit) = world.fault_hit.get_mut(i) {
+            *hit = true;
+        }
+        let (fault, args) = match f.fault {
+            Fault::Drop {} => {
+                dropped = true;
+                (FaultKind::Drop, vec![])
+            }
+            Fault::Duplicate {} => {
+                copies = 2;
+                (FaultKind::Duplicate, vec![])
+            }
+            Fault::Delay { delay_us } => {
+                extra_delay = extra_delay.saturating_add(delay_us);
+                (FaultKind::Delay, vec![delay_us])
+            }
+            Fault::Truncate { octets: n } => {
+                let keep = usize::try_from(n)
+                    .map_err(|_| format!("faults[{i}]: truncate length {n} does not fit"))?;
+                octets.truncate(keep);
+                (FaultKind::Truncate, vec![u64::from(n)])
+            }
+            Fault::Flip { .. } => {
+                return Err(format!(
+                    "faults[{i}]: `flip` is not applied before the frame levels of A2"
+                ));
+            }
+        };
+        world.records.push(Record::Fault {
+            t_us: t,
+            dir,
+            index,
+            fault,
+            args,
+        });
+    }
+    if !dropped {
+        let at = t
+            .saturating_add(world.link.one_way_delay_us)
+            .saturating_add(extra_delay);
+        for copy in 0..copies {
+            world.in_flight.push(Arrival {
+                at,
+                sent_at: t,
+                dir,
+                index,
+                copy,
+                octets: octets.clone(),
+            });
+        }
     }
     Ok(())
 }
