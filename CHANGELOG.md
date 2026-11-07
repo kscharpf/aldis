@@ -6,7 +6,51 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
 
-<!-- changelog-base: 945701a978603ce01530fe034f7676d48fba5745 -->
+<!-- changelog-base: 6602df17317a744b425707b0404272e63f4fc34d -->
+
+## [0.6.0-m5] — 2026-11-06
+
+### Added
+- Compile the header as C99, C11, C++11, C++17 and run CERT C checks (#270)
+- Trace the open v1 requirements (#272)
+- Read OI-79 against the Blue Books and pin each case (#273)
+- aldis.hpp, the C++20 wrapper of the engine handles (#277)
+- add the aldis-sync crate (ASM attach, randomizer, ASM search engine) (#279)
+- Run the C ABI under ASan/UBSan and Miri (#276)
+- add the aldis-sync C ABI and its aldis.hpp wrapper (#280)
+- Gates and hazards for aldis-sync and its C handle (#281)
+- Exit: trace --scope m5 --strict gates, GEN-071 traced, exit criteria results (#283)
+
+### Fixed
+- Leave withdrawn requirements out of the trace (#269)
+
+## [0.5.0-m4] — 2026-11-05
+
+### Added
+- Implement the PacketGenerator and PacketExtractor (#227)
+- Implement the ChannelMux and the Access and Bitstream generators (#228)
+- Implement the FrameReceiver (#229)
+- Implement the MapSegmenter, MapReassembler, and CLTU packer (#234)
+- m4: Add aldis_aos_validate to the C ABI (#236)
+- Add the C ABI handles of the generation engines (#239)
+- xtask: Run features in check --full and shrink coverage waivers to the measured counts (#243)
+- m4: Build the link engines in place and restore the [link] sizes (#240) (#245)
+- C ABI handles for PacketExtractor and FrameReceiver (#246)
+- C ABI handle for ChannelMux (#247)
+- Kani proof harnesses for the FARM-1 and FOP-1 state tables (#249)
+- C ABI handles for MapSegmenter, MapReassembler, and CltuPacker (#260)
+- Engine fuzz targets, stack and QEMU evidence, link hazard analysis (#257)
+- M4 exit: LNK-001 record, strict trace, RS-015 citations, ABI 0.11 (#262)
+
+### Changed
+- **Breaking:** m4: Decode frames of unconfigured channels; FrameReceiver takes Plain (RS-023) (#233)
+
+### Fixed
+- scripts: Time out reverify waits instead of waiting forever (#213)
+- cop1: Re-arm timer T1 when it expires in S3 (#219)
+- Replace wire-input fallbacks and clamped ranges with explicit errors (#220)
+- fuzz: Decode targets accept frames of unconfigured channels (#250)
+- xtask: Kill a timed-out step's group with kill -s KILL -- -pgid (#252)
 
 ## [0.4.0-m3] — 2026-10-31
 
