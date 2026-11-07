@@ -7,8 +7,8 @@
 //! is made, so a script that cannot be encoded is an error there and a step cannot fail
 //! (RS-020).
 
-use aldis::core::ids::{Apid, SeqCount};
 use aldis::core::Error;
+use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
