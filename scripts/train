@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# Build a merge train: one branch off origin/main into which the heads of several reviewed pull
+# requests are merged, opened as one pull request and verified once (docs/process/coordinator.md,
+# "Merge trains").
+#
+# Usage: scripts/train [--dry-run] <pr>...                   build a train from the PRs, in order
+#        scripts/train [--dry-run] --rebuild <train-pr> --without <pr>...
+#                                                            build it again without those PRs
+# Readiness: every PR must be `READY FOR TRAIN` by `scripts/pr-status --train` (open, not a
+# draft, reviewed, the review answered by a reply that names the head, no force-push after the
+# reply, no label `needs-maintainer`);
+# the script refuses any other, naming the verdict, and merges the exact head SHA it checked,
+# not the branch tip: a push between the check and the merge refuses the PR.
+# A stacked PR (its base branch is not main) is refused unless the PR of its base branch is
+# earlier in the same train: it rides the train after its base (roadmap §6 rule 10).
+# Build: fetch; a worktree `.claude/worktrees/train/<date>-<n>` on the new branch
+# `train/<YYYY-MM-DD>-<n>` (n: one more than the train PRs of today in any state, or the live
+# train branches of today if more) off
+# origin/main; per PR in the order given, a merge commit `Merge pull request #<pr> from
+# <owner>/<branch>` whose body is the PR title (the form GitHub writes, so that `cargo xtask
+# changelog` reads it); push; a PR titled `chore(train): <date>-<n>, #<pr> ...` whose body
+# (docs/process/pr-body.md) lists the constituent PRs with titles and links.
+# A conflict stops the build: the merge is undone, nothing is pushed, the script names the PR
+# that conflicts and exits 1. That PR is the later one in the agreed order: leave it out and
+# return it to its owner.
+# --rebuild: the constituents are the `- #<n>` lines of the Summary of the train PR, in order,
+# without the PRs named by --without; the old train PR is closed with a comment naming the new
+# one (a failed train is dropped, never force-pushed over).
+# --dry-run: builds and merges in the worktree, pushes and opens nothing, and says so.
+# A failure after the push (`gh pr create`) deletes the pushed branch and the worktree.
+# Exit status: 0 on success, 1 on a conflict or a PR that cannot ride, 2 on a usage error or
+# when git or gh fails.
+set -euo pipefail
+
+marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
+
+usage() {
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+    exit 2
+}
+
+joined() { # joined <n>...: "#1, #2"
+    local out
+    out="$(printf ', #%s' "$@")"
+    printf '%s' "${out#, }"
+}
+
+dry=0 rebuild="" prs=() without=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --dry-run) dry=1 ;;
+    --rebuild)
+        [ $# -ge 2 ] || usage
+        rebuild="$2"
+        shift
+        ;;
+    --without)
+        [ $# -ge 2 ] || usage
+        without+=("$2")
+        shift
+        ;;
+    -h | --help) usage ;;
+    -*) usage ;;
+    *) prs+=("$1") ;;
+    esac
+    shift
+done
+for n in ${prs[@]+"${prs[@]}"} ${without[@]+"${without[@]}"} ${rebuild:+"$rebuild"}; do
+    [[ $n =~ ^[0-9]+$ ]] || { echo "not a PR number: $n" >&2; exit 2; }
+done
+if [ -n "$rebuild" ]; then
+    { [ ${#prs[@]} -eq 0 ] && [ ${#without[@]} -gt 0 ]; } || usage
+elif [ ${#prs[@]} -eq 0 ] || [ ${#without[@]} -gt 0 ]; then
+    usage
+fi
+
+main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+g() { git -C "$main_checkout" "$@"; }
+
+g fetch --quiet origin
+
+if [ -n "$rebuild" ]; then
+    body="$(gh pr view "$rebuild" --json body --jq .body)" ||
+        { echo "#$rebuild: gh could not read the train PR" >&2; exit 2; }
+    while IFS= read -r n; do
+        skip=0
+        for w in ${without[@]+"${without[@]}"}; do
+            [ "$w" != "$n" ] || skip=1
+        done
+        [ "$skip" -eq 1 ] || prs+=("$n")
+    done < <(printf '%s\n' "$body" | sed -n 's/^- #\([0-9][0-9]*\) .*/\1/p')
+    [ ${#prs[@]} -gt 0 ] || { echo "#$rebuild lists no constituent PR left" >&2; exit 1; }
+fi
+
+here="$(cd "$(dirname "$0")" && pwd)"
+die2() { echo "$*" >&2; exit 2; }
+head_of() { # head_of <pr>: the head commit of a PR
+    gh pr view "$1" --json headRefOid --jq .headRefOid
+}
+
+# Per PR: number, head SHA, head ref name, owner, title; refuse one that is not ready.
+heads=() branches=() owners=() titles=()
+for n in "${prs[@]}"; do
+    sha="$(head_of "$n")" || die2 "#$n: gh could not read the pull request"
+    info="$(gh pr view "$n" --json headRefName,baseRefName,headRepositoryOwner,title \
+        --jq '[.headRefName, .baseRefName, .headRepositoryOwner.login, .title] | @tsv')" ||
+        die2 "#$n: gh could not read the pull request"
+    IFS=$'\t' read -r branch base owner title <<<"$info"
+    case "$branch" in train/*) echo "#$n is a train PR, not a constituent" >&2; exit 1 ;; esac
+    # A stacked PR (base branch other than main) rides after the PR it is stacked on.
+    if [ "$base" != main ]; then
+        below=0
+        for b in ${branches[@]+"${branches[@]}"}; do
+            [ "$b" != "$base" ] || below=1
+        done
+        [ "$below" -eq 1 ] || {
+            echo "#$n is stacked on $base, whose PR is not earlier in this train: put it" \
+                "after its base PR, or wait until the base has merged" >&2
+            exit 1
+        }
+    fi
+    verdict="$("$here/pr-status" --train "$n" 2>/dev/null | grep -E "^#$n: (READY|NOT READY)" |
+        tail -n 1)" || verdict=""
+    if [ "$verdict" != "#$n: READY FOR TRAIN" ]; then
+        echo "#$n cannot ride a train: ${verdict:-no verdict from scripts/pr-status --train}" >&2
+        exit 1
+    fi
+    [ "$(head_of "$n")" = "$sha" ] ||
+        { echo "#$n was pushed during the check: run again" >&2; exit 1; }
+    g fetch --quiet origin "$branch" || die2 "#$n: cannot fetch $branch"
+    [ "$(g rev-parse FETCH_HEAD)" = "$sha" ] ||
+        { echo "#$n: $branch is not at the checked head ${sha:0:7}: run again" >&2; exit 1; }
+    heads+=("$sha") branches+=("$branch") owners+=("$owner") titles+=("$title")
+done
+
+date="$(date -u +%Y-%m-%d)"
+# The next number: train PRs of the date in any state (a merged train's branch is deleted),
+# or the live train branches of the date, whichever is more.
+prs_today="$(gh pr list --state all --limit 200 --json headRefName \
+    --jq "[.[] | select(.headRefName | startswith(\"train/$date-\"))] | length")" ||
+    die2 "gh could not list the pull requests"
+live="$(g ls-remote --heads origin "refs/heads/train/$date-*" | wc -l | tr -d ' ')"
+taken=$((prs_today > live ? prs_today : live))
+name="$date-$((taken + 1))"
+tbranch="train/$name"
+wt="$main_checkout/.claude/worktrees/train/$name"
+
+g worktree add --quiet -b "$tbranch" "$wt" origin/main || die2 "cannot add the worktree"
+cleanup() {
+    g worktree remove --force "$wt" 2>/dev/null || true
+    g branch -D "$tbranch" >/dev/null 2>&1 || true
+}
+for i in "${!prs[@]}"; do
+    n="${prs[i]}"
+    if ! git -C "$wt" merge --no-ff --quiet \
+        -m "Merge pull request #$n from ${owners[i]}/${branches[i]}" -m "${titles[i]}" \
+        "${heads[i]}" >/dev/null 2>&1; then
+        git -C "$wt" merge --abort 2>/dev/null || true
+        cleanup
+        echo "#$n conflicts with origin/main or an earlier PR of the train" \
+            "($(printf '#%s ' "${prs[@]:0:i}")): leave it out and return it to its owner" >&2
+        exit 1
+    fi
+done
+
+if [ "$dry" -eq 1 ]; then
+    short="$(git -C "$wt" rev-parse --short HEAD)"
+    echo "dry run: $tbranch built at $short with $(joined "${prs[@]}");" \
+        "nothing pushed, no PR opened; worktree $wt"
+    exit 0
+fi
+
+git -C "$wt" push --quiet -u origin "$tbranch" || { cleanup; die2 "cannot push $tbranch"; }
+
+repo="$(gh repo view --json url --jq .url)" || {
+    g push --quiet origin --delete "$tbranch" || true
+    cleanup
+    die2 "gh could not read the repository; $tbranch deleted again"
+}
+list=""
+for i in "${!prs[@]}"; do
+    list+="- #${prs[i]} [${titles[i]}]($repo/pull/${prs[i]})"$'\n'
+done
+body="## Summary
+
+Merge train $name: one verify run for these reviewed pull requests, merged in this order. Each
+keeps its own review and reply ([coordinator.md](docs/process/coordinator.md), Merge trains).
+
+${list}
+## Evidence
+
+The verify record of this head, \`cargo xtask verify check <head>\`, is the evidence for every
+constituent. Reviews: each constituent pull request.
+
+## Merge Danger
+
+Merge with a merge commit, never squash or rebase: \`cargo xtask changelog\` reads the
+constituents from the merges between the first and the second parent of the merge commit.
+The constituents become merged when this one does; a
+failure drops the pull request that caused it and rebuilds the train
+(\`scripts/train --rebuild <this PR> --without <PR>\`).
+
+$marker"
+title="chore(train): $name, $(joined "${prs[@]}")"
+url="$(gh pr create --base main --head "$tbranch" --title "$title" --body "$body")" || {
+    g push --quiet origin --delete "$tbranch" || true
+    cleanup
+    die2 "gh could not open the train PR; $tbranch deleted again"
+}
+echo "train $name: $url"
+if [ -n "$rebuild" ]; then
+    gh pr close "$rebuild" --comment "Replaced by $url, rebuilt without $(joined "${without[@]}").
+
+$marker" >/dev/null
+    echo "closed #$rebuild"
+fi
+git -C "$wt" status --short >/dev/null
+g worktree remove --force "$wt"

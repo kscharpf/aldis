@@ -254,18 +254,22 @@ status_is() { [ "$rc" -eq "$1" ]; }
 publishes_are() { [ "$(cat "$stub/publishes" 2>/dev/null || echo 0)" -eq "$1" ]; }
 lock_gone() { [ ! -e "$repo/.git/reverify/$1.lock" ] && [ ! -L "$repo/.git/reverify/$1.lock" ]; }
 
+# The cases run a PR that merges alone (branches pr-N), so they pass --alone; the cases of the
+# merge-train rules set `rv=("$script")`.
+rv=("$script" --alone)
 # Run scripts/reverify in the scratch repo with the stubs; sets $out and $rc.
 export STUB="$stub" STUB_MOVE="$work/move-main"
 run() {
     # A hang is a failure: perl's alarm ends the run after a minute.
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "$script" "$@" 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" \
+        perl -e 'alarm 60; exec @ARGV' "${rv[@]}" "$@" 2>&1)"
     rc=$?
 }
 # Start one in the background; its output goes to $work/bg.<tag>.
 bg() { # bg <tag> <args...>
     local tag="$1"
     shift
-    (cd "$repo" && PATH="$work/bin:$PATH" exec "$script" "$@") >"$work/bg.$tag" 2>&1 &
+    (cd "$repo" && PATH="$work/bin:$PATH" exec "${rv[@]}" "$@") >"$work/bg.$tag" 2>&1 &
     echo $! >"$work/pid.$tag"
 }
 pid_of() { cat "$work/pid.$1"; } # pid_of <tag>: the pid bg started
@@ -766,7 +770,8 @@ expect "--timeout x is a usage error" status_is 2
 run --timeout
 expect "--timeout without a value is a usage error" status_is 2
 for bad in 0 x '$(touch /nonexistent-x)'; do
-    out="$(cd "$repo" && REVERIFY_SECONDS_PER_MIN="$bad" PATH="$work/bin:$PATH" "$script" 7 2>&1)"
+    out="$(cd "$repo" && REVERIFY_SECONDS_PER_MIN="$bad" PATH="$work/bin:$PATH" \
+        "$script" --alone 7 2>&1)"
     rc=$?
     expect "REVERIFY_SECONDS_PER_MIN='$bad' is a usage error" status_is 2
 done
@@ -899,6 +904,44 @@ expect "an edit against an append aborts" said "merge conflict with origin/main"
 expect "it pushes nothing, too" test "$(oi_head oi-f)" = "$head_f"
 expect "it does not announce a resolution either" \
     bash -c '! printf "%s\n" "$0" | grep -Fq "kept both"' "$out"
+
+# Merge trains: without --alone only a PR from a `train/*` branch is verified, and --all-behind
+# covers only those.
+rv=("$script")
+git -C "$repo" checkout -q -b train/2026-11-07-1 main
+echo t >"$repo/ft.txt"
+git -C "$repo" add ft.txt
+git -C "$repo" commit -q -m train
+git -C "$repo" push -q -u origin train/2026-11-07-1
+git -C "$repo" checkout -q main
+echo train/2026-11-07-1 >"$stub/pr-50"
+git -C "$work/other" checkout -q -B main origin/main
+move_main
+reset ok
+run 8
+expect "a PR that is not a train PR is refused" test "$rc" -eq 2
+expect "the refusal names scripts/train and --alone" said "scripts/train"
+expect "the refusal names --alone" said "--alone"
+expect "a refused PR starts nothing" test "$(cat "$stub/publishes" 2>/dev/null || echo 0)" -eq 0
+run --status 8
+expect "--status needs no --alone" test "$rc" -ne 2
+rv=("$script" --alone)
+run --status 8
+expect "--alone is accepted by --status" test "$rc" -ne 2
+rv=("$script")
+run 50
+expect "a train PR is verified without --alone" test "$rc" -eq 0
+printf '%s\n' "7 pr-7" "50 train/2026-11-07-1" >"$stub/open-prs"
+move_main
+reset ok
+run --all-behind
+expect "--all-behind covers the train PR" said "behind origin/main: 50"
+rv=("$script" --alone)
+move_main
+reset ok
+run --all-behind
+expect "--alone --all-behind covers every PR" said "behind origin/main: 7 50"
+rv=("$script")
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

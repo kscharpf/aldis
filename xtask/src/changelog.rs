@@ -4,9 +4,17 @@
 //! A pull request does not touch `CHANGELOG.md`: its title, a conventional commit
 //! (`type(scope)!: description`), is the entry. The merge commits of `main` carry the titles
 //! (`Merge pull request #N from ...`, the title as the body), so the generator reads `git log`
-//! and needs no network. It lists the merges after a base: the commit named by the marker
-//! `<!-- changelog-base: <sha> -->` in the `## [Unreleased]` section of `CHANGELOG.md`, else the
-//! last `v*` tag. The text of the Unreleased section is kept in the release as it stands.
+//! and needs no network, except for a hand-built merge train (below). It lists the merges after
+//! a base: the commit named by the marker `<!-- changelog-base: <sha> -->` in the
+//! `## [Unreleased]` section of `CHANGELOG.md`, else the last `v*` tag. A merge train (a pull
+//! request from a `train/` branch) gets no entry of its own: the pull requests it merged do, read
+//! from the merges between the first and the second parent of its merge commit (`Merge pull
+//! request #N from ...`, as `scripts/train` writes them). For a hand-built train, `Merge branch
+//! '<b>' into train/...` is resolved to its pull request by the second parent of the merge, the
+//! head of the pull request: `gh pr list --state merged --search <sha>` keeps the result whose
+//! head is that commit and not a `train/*` branch; a failure is a warning naming the merge. A
+//! merge of `main` into the train is ignored. The text of the Unreleased section is kept in the
+//! release as it stands.
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -127,6 +135,144 @@ fn parse_merges(log: &str) -> Merges {
     }
     out.prs.reverse();
     out
+}
+
+/// Whether the subject is that of a train's merge commit: `Merge pull request #N from
+/// <owner>/train/<name>` (or `from train/<name>`), not any branch with `train` inside its name.
+fn is_train_merge(subject: &str) -> bool {
+    let Some((_, from)) = subject
+        .strip_prefix("Merge pull request #")
+        .and_then(|r| r.split_once(" from "))
+    else {
+        return false;
+    };
+    let from = from.trim();
+    from.starts_with("train/")
+        || from
+            .split_once('/')
+            .is_some_and(|(_, branch)| branch.starts_with("train/"))
+}
+
+/// What a merge into a train branch is, when it is no `Merge pull request` merge.
+enum TrainMerge<'a> {
+    /// `Merge branch '<b>' into train/...`: a pull request's branch merged by hand.
+    Branch(&'a str),
+    /// A merge of `main` into the train: a refresh, ignored.
+    Refresh,
+}
+
+/// Reads `Merge branch '<b>' into train/...` (also `Merge remote-tracking branch`).
+fn train_branch_merge(subject: &str) -> Option<TrainMerge<'_>> {
+    let rest = subject
+        .strip_prefix("Merge branch '")
+        .or_else(|| subject.strip_prefix("Merge remote-tracking branch '"))?;
+    let (branch, _) = rest.split_once("' into train/")?;
+    Some(if branch == "main" || branch == "origin/main" {
+        TrainMerge::Refresh
+    } else {
+        TrainMerge::Branch(branch)
+    })
+}
+
+/// Turns the `%H%x1f%s%x1f%b%x1e` log of `main` into the `%s%x1f%b%x1e` log that `parse_merges`
+/// reads. A merge train (`docs/process/coordinator.md`) is a pull request from a `train/`
+/// branch: its own merge commit is dropped and the merge commits of its constituents, which `sub`
+/// reads (as `%P%x1f%s%x1f%b%x1e`) for the hash of the train's merge commit, take its place. A
+/// constituent merged by hand (`Merge branch '<b>' into train/...`) is resolved by `lookup`, given
+/// the merge's second parent (the head of the pull request) and the branch, to the number and
+/// title of the merged pull request; one that `lookup` cannot resolve stays and is reported as
+/// skipped, naming the train; a merge of `main` into the train is dropped.
+fn expand_trains(
+    log: &str,
+    mut sub: impl FnMut(&str) -> Result<String, String>,
+    mut lookup: impl FnMut(&str, &str) -> Option<(u64, String)>,
+) -> Result<String, String> {
+    let mut out = String::new();
+    for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
+        let (hash, rest) = record.split_once('\x1f').unwrap_or(("", record));
+        let subject = rest.split('\x1f').next().unwrap_or_default();
+        if !is_train_merge(subject) {
+            out.push_str(rest);
+            out.push('\x1e');
+            continue;
+        }
+        let members = sub(hash)?;
+        for member in members
+            .split('\x1e')
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+        {
+            let (parents, member) = member.split_once('\x1f').unwrap_or(("", member));
+            let member_subject = member.split('\x1f').next().unwrap_or_default();
+            let resolved = match train_branch_merge(member_subject) {
+                Some(TrainMerge::Refresh) => continue,
+                Some(TrainMerge::Branch(branch)) => parents
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|sha| lookup(sha, branch))
+                    .map(|r| (branch, r)),
+                None => None,
+            };
+            if let Some((branch, (number, title))) = resolved {
+                let _ = write!(
+                    out,
+                    "Merge pull request #{number} from gh/{branch}\x1f{title}\x1e"
+                );
+            } else {
+                out.push_str(member);
+                out.push('\x1e');
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The constituent among `gh pr list --state merged --search <sha>` results, one pull request per
+/// line as `number<TAB>title<TAB>headRefOid<TAB>headRefName`: the one whose head is exactly `sha`
+/// and whose head branch is no `train/*` (the search also finds the train pull request that
+/// merged the commit, and a commit already on `main` belongs to the train in
+/// `commits/<sha>/pulls`).
+fn constituent_of(sha: &str, results: &str) -> Option<(u64, String)> {
+    results.lines().find_map(|line| {
+        let mut f = line.split('\t');
+        let (number, title, head, branch) = (f.next()?, f.next()?, f.next()?, f.next()?);
+        (head == sha && !branch.starts_with("train/"))
+            .then(|| Some((number.parse().ok()?, title.to_owned())))
+            .flatten()
+    })
+}
+
+/// The number and title of the merged pull request whose head commit is `sha` (the second parent
+/// of the merge of `branch` into a train), from `gh pr list --state merged --search <sha>`. A
+/// `gh` failure, or no match, prints a warning naming the merge and gives `None`.
+fn merged_pull_request(sha: &str, branch: &str) -> Option<(u64, String)> {
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "merged",
+            "--search",
+            sha,
+            "--json",
+            "number,title,headRefOid,headRefName",
+            "--jq",
+            r".[] | [.number, .title, .headRefOid, .headRefName] | @tsv",
+        ])
+        .output();
+    let found = match out {
+        Ok(o) if o.status.success() => constituent_of(sha, &String::from_utf8_lossy(&o.stdout)),
+        _ => {
+            println!("warning: gh could not look up the merge of '{branch}' ({sha}) into a train");
+            return None;
+        }
+    };
+    if found.is_none() {
+        println!(
+            "warning: no merged pull request has the head {sha} (merge of '{branch}' into a train)"
+        );
+    }
+    found
 }
 
 /// The generated entries, by section, and the titles that do not follow the form.
@@ -304,9 +450,22 @@ fn merges_since_base() -> Result<(Merges, String, String), String> {
         "log",
         "--first-parent",
         "--merges",
-        "--format=%s%x1f%b%x1e",
+        "--format=%H%x1f%s%x1f%b%x1e",
         &format!("{base}..HEAD"),
     ])?;
+    let log = expand_trains(
+        &log,
+        |hash| {
+            git(&[
+                "log",
+                "--first-parent",
+                "--merges",
+                "--format=%P%x1f%s%x1f%b%x1e",
+                &format!("{hash}^1..{hash}^2"),
+            ])
+        },
+        merged_pull_request,
+    )?;
     Ok((parse_merges(&log), base, head))
 }
 
@@ -385,8 +544,8 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Merge, generate, insert_release, marker, parse_merges, parse_title, render,
-        untagged_releases,
+        Merge, constituent_of, expand_trains, generate, insert_release, is_train_merge, marker,
+        parse_merges, parse_title, render, untagged_releases,
     };
 
     fn merge(number: u64, title: &str) -> Merge {
@@ -467,6 +626,102 @@ mod tests {
                 "#1 has no title in its merge commit"
             ]
         );
+    }
+
+    #[test]
+    fn a_train_is_replaced_by_its_pull_requests() {
+        let log = "h3\x1fMerge pull request #9 from a/train/2026-11-07-1\x1fchore(train): x\x1e\
+                   h2\x1fMerge pull request #2 from a/c\x1ffeat: solo\x1e";
+        let out = expand_trains(
+            log,
+            |h| {
+                assert_eq!(h, "h3");
+                Ok("p1 p2\x1fMerge pull request #5 from a/e\x1ffix: b\x1e\
+                    p3 p4\x1fMerge pull request #4 from a/f\x1ffeat: a\x1e"
+                    .to_owned())
+            },
+            |_, _| None,
+        )
+        .unwrap();
+        let m = parse_merges(&out);
+        assert_eq!(
+            m.prs,
+            [
+                merge(2, "feat: solo"),
+                merge(4, "feat: a"),
+                merge(5, "fix: b")
+            ]
+        );
+        assert_eq!(m.total, 3);
+        assert!(expand_trains(log, |_| Err("no".to_owned()), |_, _| None).is_err());
+    }
+
+    #[test]
+    fn a_hand_built_train_resolves_its_branch_merges() {
+        // The shape of #329: `Merge branch '<b>' into train/...`, no body, and a refresh of a
+        // constituent from main inside the train, which is ignored without a warning.
+        let log = "h9\x1fMerge pull request #329 from kscharpf/train/2026-11-07-1\x1fchore: t\x1e";
+        let out = expand_trains(
+            log,
+            |_| {
+                Ok("a1 b1\x1fMerge branch 'm5/time' into train/2026-11-07-1\x1f\x1e\
+                    a2 b2\x1fMerge branch 'main' into train/2026-11-07-1\x1f\x1e\
+                    a3 b3\x1fMerge remote-tracking branch 'origin/main' into train/2026-11-07-1\x1f\x1e\
+                    a4 b4\x1fMerge branch 'a1/lost' into train/2026-11-07-1\x1f\x1e\
+                    a5 b5\x1fMerge branch 'a1/wp-5' into train/2026-11-07-1\x1f\x1e"
+                    .to_owned())
+            },
+            |sha, _| match sha {
+                "b1" => Some((322, "refactor(m5): time".to_owned())),
+                "b5" => Some((323, "feat(a1/wp-5): golden".to_owned())),
+                _ => None,
+            },
+        )
+        .unwrap();
+        let m = parse_merges(&out);
+        assert_eq!(
+            m.prs,
+            [
+                merge(323, "feat(a1/wp-5): golden"),
+                merge(322, "refactor(m5): time")
+            ]
+        );
+        assert_eq!(
+            m.skipped,
+            ["not a pull request: Merge branch 'a1/lost' into train/2026-11-07-1"]
+        );
+    }
+
+    #[test]
+    fn the_constituent_is_chosen_and_not_the_train() {
+        // The real shape of `gh pr list --state merged --search <sha>`: the constituent and the
+        // train that merged it, the train first.
+        let sha = "8e9f3414";
+        let results = "329\tchore(train): 2026-11-07-1\t44ab7a1b\ttrain/2026-11-07-1\n\
+                       322\trefactor(m5): time\t8e9f3414\tm5/time-cuc-instant\n";
+        assert_eq!(
+            constituent_of(sha, results),
+            Some((322, "refactor(m5): time".to_owned()))
+        );
+        // A train whose head happens to be the commit, or no result with that head: none.
+        assert_eq!(constituent_of("44ab7a1b", results), None);
+        assert_eq!(constituent_of("deadbeef", results), None);
+        assert_eq!(constituent_of(sha, ""), None);
+    }
+
+    #[test]
+    fn only_a_train_branch_is_a_train() {
+        assert!(is_train_merge(
+            "Merge pull request #9 from kscharpf/train/2026-11-07-1"
+        ));
+        assert!(is_train_merge("Merge pull request #9 from train/x"));
+        assert!(!is_train_merge(
+            "Merge pull request #9 from kscharpf/a1/train/x"
+        ));
+        assert!(!is_train_merge(
+            "Merge pull request #9 from kscharpf/train-a"
+        ));
+        assert!(!is_train_merge("Merge branch 'x' into train/y"));
     }
 
     #[test]
