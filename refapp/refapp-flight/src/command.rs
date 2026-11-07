@@ -202,6 +202,7 @@ fn time_tag(t_field: &[u8]) -> Option<Timing> {
     let Some(after_t0) = seconds.checked_sub(u64::from(time::T0_COARSE_S)) else {
         return Some(Timing::BeforeRun);
     };
+    // The seconds-to-microseconds arithmetic is glue that the library lacks: #312.
     // The fraction is truncated to whole µs; every execution time of the scenario is a multiple
     // of 125 000 µs, which two fractional octets hold exactly (APP-061).
     let micros = after_t0
