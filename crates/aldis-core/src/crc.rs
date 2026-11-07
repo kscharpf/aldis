@@ -12,7 +12,7 @@ use crate::error::{Error, ErrorKind, Result, u8_to_u16};
 
 const POLY: u16 = 0x1021;
 
-/// A CRC-16 value: the CRC register, a FECF, or a syndrome (CMN-001, CMN-003). Every `u16` is
+/// A CRC-16 value: the CRC register, a FECF, or a syndrome (CMN-001). Every `u16` is
 /// one, so the type only keeps a CRC from being taken for a length or a count at compile time
 /// (RS-020, API-004).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

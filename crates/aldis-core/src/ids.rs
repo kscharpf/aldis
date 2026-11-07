@@ -34,6 +34,11 @@ macro_rules! width_id {
             /// The identifier for a constant `N`, checked at compile time: a value that needs
             /// more than `BITS` bits fails the build, so there is no error path and no panic at
             /// run time (RS-010, RS-020).
+            ///
+            /// ```compile_fail
+            /// use aldis_core::ids::VcId;
+            /// let _ = VcId::<3>::from_const::<8>();
+            /// ```
             #[must_use]
             pub const fn from_const<const N: $repr>() -> Self {
                 const { assert!(N <= Self::MAX, "identifier constant out of range") };
@@ -160,6 +165,11 @@ impl SeqCount {
 
     /// The sequence count for a constant `N`, checked at compile time: a value above [`SeqCount::MAX`]
     /// fails the build, so there is no error path and no panic at run time (RS-010, RS-020).
+    ///
+    /// ```compile_fail
+    /// use aldis_core::ids::SeqCount;
+    /// let _ = SeqCount::from_const::<16384>();
+    /// ```
     #[must_use]
     pub const fn from_const<const N: u16>() -> SeqCount {
         const { assert!(N <= SeqCount::MAX, "sequence count constant out of range") };
@@ -287,6 +297,11 @@ impl PacketVersion {
 
     /// The packet version for a constant `N`, checked at compile time: a value above [`PacketVersion::MAX`]
     /// fails the build, so there is no error path and no panic at run time (RS-010, RS-020).
+    ///
+    /// ```compile_fail
+    /// use aldis_core::ids::PacketVersion;
+    /// let _ = PacketVersion::from_const::<8>();
+    /// ```
     #[must_use]
     pub const fn from_const<const N: u8>() -> PacketVersion {
         const { assert!(N <= PacketVersion::MAX, "version constant out of range") };

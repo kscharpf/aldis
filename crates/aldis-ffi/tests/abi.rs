@@ -738,7 +738,6 @@ fn reassembly_takes_the_buffer_on_every_push() {
         assert_eq!((r.status, r.sdu_len), (ALDIS_SPP_REASSEMBLY_COMPLETE, 3));
         assert_eq!(&buf[..3], &[0xA1, 0xA2, 0xA3]);
         assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
-        assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
     }
 }
 
