@@ -127,7 +127,8 @@ for i in "${!prs[@]}"; do
 done
 
 if [ "$dry" -eq 1 ]; then
-    echo "dry run: $tbranch built at $(git -C "$wt" rev-parse --short HEAD) with $(joined "${prs[@]}");" \
+    short="$(git -C "$wt" rev-parse --short HEAD)"
+    echo "dry run: $tbranch built at $short with $(joined "${prs[@]}");" \
         "nothing pushed, no PR opened; worktree $wt"
     exit 0
 fi

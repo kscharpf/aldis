@@ -81,7 +81,8 @@ pr() { # pr <head> <reviews json array> <comments json array> [branch] [verify s
         --arg branch "${4:-feature}" --arg verify "${5-SUCCESS}" '{
         state: "OPEN", isDraft: false, headRefOid: $head, headRefName: $branch,
         baseRefName: "main", reviewDecision: "",
-        statusCheckRollup: (if $verify == "" then [] else [{context: "aldis/verify", state: $verify}] end),
+        statusCheckRollup: (if $verify == "" then []
+                            else [{context: "aldis/verify", state: $verify}] end),
         reviews: $reviews, comments: $comments}' >"$STUB/pr.json"
 }
 
