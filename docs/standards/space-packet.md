@@ -26,7 +26,7 @@ Total packet length is 7 to 65 542 octets (§4.1.2.2).
 | SPP-010 | An idle-packet builder SHALL produce an Idle Packet of any requested total length ≥ 7, with APID 2047, Secondary Header Flag 0, Sequence Flags `11`, and a caller-supplied idle pattern (default `0x00`). | §4.1.3.3.4.4, §4.1.4.3.4 | V |
 | SPP-011 | A sequence counter helper SHALL generate per-APID counts modulo 16384. A sequence tracker SHALL classify received counts per APID as in-sequence, gap (with count of missing packets), repeat, or reset (CMN-030 semantics). Capacity (number of APIDs tracked) is compile-time. | §4.1.3.4.3.3–4, §4.3.2.2 | T/V |
 | SPP-012 | The Octet String service SHALL be provided as an encoder that builds the primary header from (APID, packet type, secondary-header indicator, octet string), using a sequence counter. It SHALL always set Sequence Flags = `11`. | §3.4, §4.1.3.4.2.3, §4.2.2 | T |
-| SPP-013 | A segmentation helper SHALL split an SDU across consecutive packets of one APID with flags `01`/`00`/`10`, and a reassembly helper SHALL rejoin them, detecting sequence gaps. Both are utilities: the protocol does not mandate segmentation. | §4.1.3.4.2 note | T |
+| SPP-013 | A segmentation helper SHALL split an SDU across consecutive packets of one APID with flags `01`/`00`/`10`, and a reassembly helper SHALL rejoin them, detecting sequence gaps. When the reassembler discards a partial SDU it SHALL report why and how many octets the partial SDU held. Both are utilities: the protocol does not mandate segmentation. | §4.1.3.4.2 note | T |
 
 ## 3. Anomaly flags (lenient mode)
 
@@ -85,7 +85,7 @@ These rules fill in what the requirements leave to the implementation. 133.0 is 
 | SDU would exceed the buffer | `Overflow` | dropped, with the partial SDU |
 
 The outcome of each packet has two parts:
-- **Discarded:** why a partial SDU was thrown away, if one was: `Gap`, `Restarted`, `Interrupted`, or `Overflow`.
+- **Discarded:** the partial SDU thrown away, if one was: why (`Gap`, `Restarted`, `Interrupted`, or `Overflow`) and `octets`, the octets of user data it held before this packet (the current packet's own user data is not counted; an `Overflow` counts the stored octets, not the octets that did not fit).
 - **Status of the current packet:** in progress, complete (the SDU length; the SDU stays readable until the next packet), or dropped with its reason. The reason is `Orphan` for a `00` or `10` with nothing in progress, which includes one whose SDU a gap has just discarded, or `Overflow`.
 
 Both helpers borrow a buffer: the segmenter its SDU, the reassembler its reassembly buffer. A caller that cannot keep the borrow from one call to the next, such as the C ABI, suspends a helper into a state without the buffer (`SegmenterState`, `ReassemblerState`) and resumes it with the same buffer on every call; nothing keeps a reference between calls (API-060; [M2 plan](../milestones/m2-frame-codecs.md) D5). Resuming a segmenter with an SDU of another length is `LengthMismatch` (`sdu`); resuming a reassembler with a buffer shorter than the SDU in progress is `BufferTooSmall`, with `needed`.

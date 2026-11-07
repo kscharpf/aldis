@@ -62,6 +62,10 @@ reason = "relation: days since the epoch, whose range is set by the format's 16-
 item = "aldis_spp::segment::Status::Complete.0"
 reason = "output: the length in octets of the SDU the Reassembler has completed (SPP-013)"
 
+[[exemption]]
+item = "aldis_spp::segment::Discarded.octets"
+reason = "output: the octets of the partial SDU the Reassembler discarded; any usize up to the buffer is meaningful (SPP-013)"
+
 # aldis-tm
 
 [[exemption]]

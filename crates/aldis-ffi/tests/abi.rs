@@ -738,6 +738,55 @@ fn reassembly_takes_the_buffer_on_every_push() {
         assert_eq!((r.status, r.sdu_len), (ALDIS_SPP_REASSEMBLY_COMPLETE, 3));
         assert_eq!(&buf[..3], &[0xA1, 0xA2, 0xA3]);
         assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
+        assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
+    }
+}
+
+#[test]
+fn reassembly_reports_the_octets_discarded() {
+    // req: SPP-013
+    let first = [0x00_u8, 0x07, 0x40, 0x00, 0x00, 0x01, 0xA1, 0xA2];
+    let layout = aldis_spp_secondary_layout_t {
+        kind: ALDIS_SPP_SECONDARY_ABSENT,
+        ..aldis_spp_secondary_layout_t::default()
+    };
+    let mut storage = aldis_spp_reassembler_t {
+        words: [0; ALDIS_SPP_REASSEMBLER_WORDS],
+    };
+    let h = &raw mut storage;
+    let mut buf = [0_u8; 8];
+    let mut r = aldis_spp_reassembly_t::default();
+    // SAFETY: every pointer is to a live local.
+    unsafe {
+        assert_eq!(aldis_spp_reassembler_init(h, 7, null_mut()), ALDIS_OK);
+        // A first segment of 2 octets, then an unsegmented packet: the 2 octets are discarded.
+        let whole = [0x00_u8, 0x07, 0xC0, 0x01, 0x00, 0x00, 0xA9];
+        for (packet, len) in [(&first[..], 8), (&whole[..], 7)] {
+            assert_eq!(
+                aldis_spp_reassembler_push(
+                    h,
+                    packet.as_ptr(),
+                    len,
+                    ALDIS_MODE_STRICT,
+                    &raw const layout,
+                    buf.as_mut_ptr(),
+                    8,
+                    &raw mut r,
+                    null_mut()
+                ),
+                ALDIS_OK
+            );
+        }
+        assert_eq!(
+            (r.discarded, r.discarded_octets, r.status, r.sdu_len),
+            (
+                ALDIS_SPP_DISCARD_INTERRUPTED,
+                2,
+                ALDIS_SPP_REASSEMBLY_COMPLETE,
+                1
+            )
+        );
+        assert_eq!(aldis_spp_reassembler_reset(h, null_mut()), ALDIS_OK);
     }
 }
 

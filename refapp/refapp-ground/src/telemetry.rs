@@ -64,9 +64,6 @@ pub(crate) struct Telemetry {
     dump: ReassemblerState,
     /// The buffer of the reassembler: the largest dump SDU.
     dump_buf: Vec<u8>,
-    /// Octets of the partial SDU the reassembler holds. The reassembler reports why it threw a
-    /// partial SDU away, not how much (api-feedback #302), so the node counts.
-    dump_held: usize,
     /// The time stamp of the last packet that carried one.
     last_time: Option<TimeStamp>,
 }
@@ -77,13 +74,11 @@ impl Telemetry {
     /// # Errors
     /// `InvalidField` if the dump APID of the scenario is not an APID (cannot happen).
     pub(crate) fn new() -> Result<Telemetry, Error> {
-        // A constant APID still needs an error path (api-feedback #304).
-        let dump = Apid::new(apid::DUMP).ok_or(Error::new(ErrorKind::InvalidField))?;
+        let dump = Apid::from_const::<{ apid::DUMP }>();
         Ok(Telemetry {
             tracker: SequenceTracker::new(),
             dump: ReassemblerState::new(dump),
             dump_buf: vec![0; SDU_HEADER_LEN.saturating_add(MAX_DUMP_LENGTH)],
-            dump_held: 0,
             last_time: None,
         })
     }
@@ -135,7 +130,6 @@ impl Telemetry {
 
     /// Pushes a dump packet into the reassembler and reports a discarded or complete SDU.
     fn reassemble(&mut self, header: &SpacePacketHeader, user_data: &[u8], out: &mut dyn Output) {
-        let held_before = self.dump_held;
         let mut reassembler = match self.dump.resume(&mut self.dump_buf) {
             Ok(r) => r,
             Err(e) => return reject(out, e.kind()),
@@ -149,15 +143,10 @@ impl Telemetry {
             Status::InProgress | Status::Dropped(_) => None,
         };
         self.dump = reassembler.suspend();
-        self.dump_held = match (outcome.status, header.sequence_flags()) {
-            (Status::InProgress, SequenceFlags::First) => user_data.len(),
-            (Status::InProgress, _) => held_before.saturating_add(user_data.len()),
-            (Status::Complete(_) | Status::Dropped(_), _) => 0,
-        };
         // Only a discarded partial SDU is an event, with the octets it held; a packet dropped
         // with nothing held (an orphan, an oversized first segment) raises none (APP-130).
-        if outcome.discarded.is_some() {
-            let Ok(lost) = u64::try_from(held_before) else {
+        if let Some(discarded) = outcome.discarded {
+            let Ok(lost) = u64::try_from(discarded.octets) else {
                 return reject(out, ErrorKind::OutOfRange);
             };
             out.app_event(DUMP_DISCARDED, &[u64::from(header.apid().get()), lost]);
@@ -217,11 +206,7 @@ fn layout(apid: Apid) -> Result<SecondaryHeaderLayout, Error> {
 /// APID that is not telemetry, `InvalidField` for another Packet Type, Sequence Flags that the
 /// APID does not use, or a time stamp that is not the CUC code of §5.
 fn decode(unit: &[u8]) -> Result<Accepted<'_>, Error> {
-    let packet = SpacePacket::decode(unit)?;
-    // The strict decoder ignores octets after the packet (api-feedback #303).
-    if packet.len() != unit.len() {
-        return Err(Error::new(ErrorKind::LengthMismatch));
-    }
+    let packet = SpacePacket::decode_exact(unit)?;
     let layout = layout(packet.apid())?;
     if packet.packet_type() != PacketType::Telemetry {
         return Err(Error::new(ErrorKind::InvalidField));

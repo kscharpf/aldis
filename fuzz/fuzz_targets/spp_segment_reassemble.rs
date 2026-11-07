@@ -73,7 +73,7 @@ fn run(input: &mut Unstructured<'_>) -> Result<()> {
             }
         }
         if let Some(d) = outcome.discarded {
-            assert!(!matches!(d, Discard::Orphan));
+            assert!(!matches!(d.reason, Discard::Orphan));
         }
     }
     Ok(())

@@ -2,12 +2,13 @@
 //! API-011, API-013, API-014, GEN-013, GEN-043).
 
 use aldis_core::ids::{Apid, SeqCount};
-use aldis_core::{AnomalySet, DecodeMode, Error, Lenient, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorDetail, ErrorKind, Lenient, Result};
 
 use crate::anomaly::SppAnomaly;
 use crate::field;
 use crate::header::{PRIMARY_HEADER_LEN, PacketType, SequenceFlags, SpacePacketHeader, invalid};
 use crate::secondary::{SecondaryHeaderLayout, SplitPacket};
+use crate::segment::as_u64;
 
 /// A decoded Space Packet borrowing its data field from the input (133.0 §4.1; SPP-001…SPP-004,
 /// API-010, GEN-013).
@@ -33,6 +34,28 @@ impl<'a> SpacePacket<'a> {
     ///   Flag set (SPP-004).
     pub fn decode(bytes: &'a [u8]) -> Result<SpacePacket<'a>> {
         SpacePacket::decode_in(bytes, DecodeMode::Strict).map(|(packet, _)| packet)
+    }
+
+    /// Decodes `bytes` as exactly one packet, in strict mode, for a caller whose data unit is
+    /// one packet (a link unit): as [`decode`](Self::decode), but octets after the packet are
+    /// an error (133.0 §4.1.3.5; SPP-002, API-019).
+    ///
+    /// # Errors
+    /// - `LengthMismatch` (`packet_len`, expected = the packet length, found = `bytes.len()`)
+    ///   if `bytes` holds octets after the packet.
+    /// - Those of [`decode`](Self::decode), which are reported first.
+    pub fn decode_exact(bytes: &'a [u8]) -> Result<SpacePacket<'a>> {
+        let packet = SpacePacket::decode(bytes)?;
+        if bytes.len() == packet.len() {
+            Ok(packet)
+        } else {
+            Err(Error::new(ErrorKind::LengthMismatch)
+                .with_field(field::PACKET_LEN)
+                .with_detail(ErrorDetail::Expected {
+                    expected: as_u64(packet.len()),
+                    found: as_u64(bytes.len()),
+                }))
+        }
     }
 
     /// Decodes one packet as [`decode`](Self::decode) does, in lenient mode: an Idle Packet with
@@ -182,6 +205,31 @@ mod tests {
     use crate::secondary::SecondaryHeaderLayout;
     use aldis_core::{ErrorDetail, ErrorKind};
     use core::num::NonZeroUsize;
+
+    #[test]
+    fn decode_exact_rejects_trailing_octets() {
+        // req: SPP-002, API-011, API-019
+        let bytes = [0x18, 0x23, 0x40, 0x07, 0x00, 0x01, 0xA0, 0xB0, 0xFF];
+        let one = &bytes[..8];
+        assert_eq!(SpacePacket::decode_exact(one), SpacePacket::decode(one));
+        assert!(SpacePacket::decode(&bytes).is_ok());
+        let e = SpacePacket::decode_exact(&bytes).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field(), e.detail()),
+            (
+                ErrorKind::LengthMismatch,
+                Some(field::PACKET_LEN),
+                ErrorDetail::Expected {
+                    expected: 8,
+                    found: 9
+                }
+            )
+        );
+        assert_eq!(
+            SpacePacket::decode_exact(&bytes[..7]).unwrap_err().kind(),
+            ErrorKind::Incomplete
+        );
+    }
 
     #[test]
     fn view_accessors() {

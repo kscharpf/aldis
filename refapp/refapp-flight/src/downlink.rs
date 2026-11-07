@@ -30,14 +30,14 @@ pub enum Stream {
 }
 
 impl Stream {
-    /// The raw APID of the stream (§3.1).
+    /// The APID of the stream (§3.1).
     #[must_use]
-    pub const fn apid_value(self) -> u16 {
+    pub const fn apid(self) -> Apid {
         match self {
-            Stream::Housekeeping => apid::HOUSEKEEPING,
-            Stream::Events => apid::EVENTS,
-            Stream::Payload => apid::PAYLOAD,
-            Stream::Dump => apid::DUMP,
+            Stream::Housekeeping => Apid::from_const::<{ apid::HOUSEKEEPING }>(),
+            Stream::Events => Apid::from_const::<{ apid::EVENTS }>(),
+            Stream::Payload => Apid::from_const::<{ apid::PAYLOAD }>(),
+            Stream::Dump => Apid::from_const::<{ apid::DUMP }>(),
         }
     }
 
@@ -138,8 +138,7 @@ impl Downlink {
         user_data: &[u8],
         out: &mut dyn Output,
     ) -> Result<()> {
-        // `Apid::new` of a known-good constant still has an error path: #304.
-        let apid = Apid::new(stream.apid_value()).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        let apid = stream.apid();
         let count = self.counter(stream).peek();
         let fields = PacketFields {
             packet_type: PacketType::Telemetry,
@@ -172,9 +171,9 @@ impl Downlink {
     /// octets per packet (SPP-013, APP-016).
     ///
     /// # Errors
-    /// The segmenter's error, or `InvalidConfig` for the APID (#304).
+    /// The segmenter's error.
     pub fn segmenter(sdu: &[u8], max_user_len: usize) -> Result<SegmenterState> {
-        let apid = Apid::new(apid::DUMP).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        let apid = Stream::Dump.apid();
         Ok(Segmenter::new(
             &SppConfig::DEFAULT,
             PacketType::Telemetry,
@@ -200,7 +199,7 @@ impl Downlink {
         now: Instant,
         out: &mut dyn Output,
     ) -> Result<SegmenterState> {
-        let apid = Apid::new(apid::DUMP).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        let apid = Stream::Dump.apid();
         let mut stamp_buffer = [0_u8; 8];
         let stamp = time_stamp(Stream::Dump, now, &mut stamp_buffer)?;
         let mut segmenter = progress.resume(sdu)?;

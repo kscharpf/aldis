@@ -490,8 +490,8 @@ fn reassemble_case(case: &Case, o: &mut Out, s: &mut Scratch) -> Run {
         results.obj(|x| match pushed {
             Err(e) => x.text("error", e.kind().name()),
             Ok(Outcome { discarded, status }) => {
-                consistent &= discarded.is_none_or(|d| discard_name(d).is_some());
-                x.opt_text("discarded", discarded.and_then(discard_name));
+                consistent &= discarded.is_none_or(|d| discard_name(d.reason).is_some());
+                x.opt_text("discarded", discarded.and_then(|d| discard_name(d.reason)));
                 match status {
                     Status::InProgress => x.text("status", "InProgress"),
                     Status::Complete(n) => {
