@@ -26,7 +26,7 @@ impl<'a> Delivered<'a> {
     }
 
     /// The units in delivery order.
-    pub fn iter(&self) -> impl Iterator<Item = LinkUnit<'a>> + '_ {
+    pub fn iter(self) -> impl Iterator<Item = LinkUnit<'a>> + 'a {
         self.0.iter().copied()
     }
 
@@ -40,6 +40,15 @@ impl<'a> Delivered<'a> {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+impl<'a> IntoIterator for Delivered<'a> {
+    type Item = LinkUnit<'a>;
+    type IntoIter = core::iter::Copied<core::slice::Iter<'a, LinkUnit<'a>>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().copied()
     }
 }
 

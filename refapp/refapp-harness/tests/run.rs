@@ -82,7 +82,7 @@ fn packet_level_delay_and_tie_order() {
                 out.packet_out(apid(16), &[0xF0]);
                 out.unit(&[0xF0]);
             }
-            for d in delivered.iter() {
+            for d in delivered {
                 out.packet_in(apid(128), d);
             }
             None
@@ -93,7 +93,7 @@ fn packet_level_delay_and_tie_order() {
             if t == 0 {
                 out.unit(&[0x0A]);
             }
-            for d in delivered.iter() {
+            for d in delivered {
                 out.packet_in(apid(16), d);
                 out.app_event(1, &[16, 0]);
             }
@@ -360,7 +360,7 @@ fn scripted_faults_reproduce_a_hand_written_trace() {
             if t == 0 {
                 out.unit(&[0x0A]);
             }
-            for u in d.iter() {
+            for u in d {
                 out.packet_in(apid(16), u);
             }
             None
@@ -454,7 +454,7 @@ fn a_delay_reorders_units() {
     );
     let mut ground = Scripted(
         |_t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-            for u in d.iter() {
+            for u in d {
                 out.packet_in(apid(16), u);
             }
             None
@@ -510,7 +510,7 @@ fn extra_wake_ups_do_not_change_the_trace() {
         );
         let mut ground = Scripted(
             |t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-                for u in d.iter() {
+                for u in d {
                     out.packet_in(apid(16), u);
                     out.unit(u);
                 }

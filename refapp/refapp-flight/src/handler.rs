@@ -22,7 +22,7 @@ impl FlightNode {
         units: Delivered<'_>,
         out: &mut dyn Output,
     ) {
-        for unit in units.iter() {
+        for unit in units {
             self.handle_unit(now, unit, out);
         }
     }
