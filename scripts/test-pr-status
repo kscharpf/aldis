@@ -8,7 +8,9 @@
 # marker, a reply with text after the marker, a reply older than the review, and a review
 # without findings left unanswered are each NOT READY, and the newest review decides; a later
 # review, or an agent review ending in the marker, is not a reply; a head behind origin/main is
-# NOT READY.
+# NOT READY. A PR that is not a train PR is READY FOR TRAIN with no verify record and a head
+# behind origin/main, and NOT READY for the review reasons; --alone and a `train/*` head ask for
+# the full READY.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -74,18 +76,19 @@ comment() { # comment <time> <body>
     jq -nc --arg t "$1" --arg b "$2" '{author: {login: "me"}, createdAt: $t, body: $b}'
 }
 
-pr() { # pr <head> <reviews json array> <comments json array>
-    jq -nc --arg head "$1" --argjson reviews "$2" --argjson comments "$3" '{
-        state: "OPEN", isDraft: false, headRefOid: $head, headRefName: "feature",
+pr() { # pr <head> <reviews json array> <comments json array> [branch] [verify state]
+    jq -nc --arg head "$1" --argjson reviews "$2" --argjson comments "$3" \
+        --arg branch "${4:-feature}" --arg verify "${5-SUCCESS}" '{
+        state: "OPEN", isDraft: false, headRefOid: $head, headRefName: $branch,
         baseRefName: "main", reviewDecision: "",
-        statusCheckRollup: [{context: "aldis/verify", state: "SUCCESS"}],
+        statusCheckRollup: (if $verify == "" then [] else [{context: "aldis/verify", state: $verify}] end),
         reviews: $reviews, comments: $comments}' >"$STUB/pr.json"
 }
 
 failures=0
 expect() { # expect <verdict prefix> <case> [text the output must contain]
     local out
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" ${ALONE:+--alone} 7 2>&1)"
     if grep -Fq "#7: $1" <<<"$out" &&
         { [ -z "${3:-}" ] || grep -Fq -- "$3" <<<"$out"; }; then
         echo "ok: $2"
@@ -100,6 +103,7 @@ reply="$(comment 2026-01-03T00:00:00Z "Fixed in abc123, point by point.
 
 $marker")"
 
+export ALONE=1
 pr "$current" "[]" "[]"
 expect "READY" "no review"
 pr "$current" "[$review]" "[$reply]"
@@ -140,6 +144,23 @@ $marker")]"
 expect "READY" "an agent review answered by a later comment"
 pr "$old" "[]" "[]"
 expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
+
+unset ALONE
+# A constituent of a train: no record, no up-to-date head.
+pr "$old" "[]" "[]" feature ""
+expect "READY FOR TRAIN" "a PR with no verify record and a head behind origin/main"
+pr "$old" "[$review]" "[$reply]" feature FAILURE
+expect "READY FOR TRAIN" "a reviewed and answered PR, a failing verify state is ignored"
+pr "$current" "[$review]" "[]" feature ""
+expect "NOT READY" "a constituent with an unanswered review" "review unanswered"
+pr "$old" "[]" "[]" "train/2026-11-07-1" ""
+expect "NOT READY" "a train PR needs its record and an up-to-date head" "behind origin/main by 1"
+pr "$current" "[]" "[]" "train/2026-11-07-1" ""
+expect "NOT READY" "a train PR without the verify context" "aldis/verify missing"
+pr "$current" "[]" "[]" "train/2026-11-07-1"
+expect "READY" "a train PR with a record"
+pr "$current" "[]" "[]" feature ""
+ALONE=1 expect "NOT READY" "--alone asks for the record" "aldis/verify missing"
 
 [ "$failures" -eq 0 ] || exit 1
 echo "all cases hold"

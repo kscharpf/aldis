@@ -6,7 +6,8 @@
 //! (`Merge pull request #N from ...`, the title as the body), so the generator reads `git log`
 //! and needs no network. It lists the merges after a base: the commit named by the marker
 //! `<!-- changelog-base: <sha> -->` in the `## [Unreleased]` section of `CHANGELOG.md`, else the
-//! last `v*` tag. The text of the Unreleased section is kept in the release as it stands.
+//! last `v*` tag. A merge train (a pull request from a `train/` branch) gets no entry of its
+//! own: the pull requests it merged do, read from the second parent of its merge commit. The text of the Unreleased section is kept in the release as it stands.
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -127,6 +128,28 @@ fn parse_merges(log: &str) -> Merges {
     }
     out.prs.reverse();
     out
+}
+
+/// Turns the `%H%x1f%s%x1f%b%x1e` log of `main` into the `%s%x1f%b%x1e` log that `parse_merges`
+/// reads. A merge train (`docs/process/coordinator.md`) is a pull request from a `train/`
+/// branch: its own merge commit is dropped and the merge commits of its constituent pull
+/// requests, which `sub` reads for the hash of the train's merge commit, take its place.
+fn expand_trains(
+    log: &str,
+    mut sub: impl FnMut(&str) -> Result<String, String>,
+) -> Result<String, String> {
+    let mut out = String::new();
+    for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
+        let (hash, rest) = record.split_once('\x1f').unwrap_or(("", record));
+        let subject = rest.split('\x1f').next().unwrap_or_default();
+        if subject.starts_with("Merge pull request #") && subject.contains("/train/") {
+            out.push_str(&sub(hash)?);
+        } else {
+            out.push_str(rest);
+            out.push('\x1e');
+        }
+    }
+    Ok(out)
 }
 
 /// The generated entries, by section, and the titles that do not follow the form.
@@ -304,9 +327,18 @@ fn merges_since_base() -> Result<(Merges, String, String), String> {
         "log",
         "--first-parent",
         "--merges",
-        "--format=%s%x1f%b%x1e",
+        "--format=%H%x1f%s%x1f%b%x1e",
         &format!("{base}..HEAD"),
     ])?;
+    let log = expand_trains(&log, |hash| {
+        git(&[
+            "log",
+            "--first-parent",
+            "--merges",
+            "--format=%s%x1f%b%x1e",
+            &format!("{hash}^1..{hash}^2"),
+        ])
+    })?;
     Ok((parse_merges(&log), base, head))
 }
 
@@ -467,6 +499,26 @@ mod tests {
                 "#1 has no title in its merge commit"
             ]
         );
+    }
+
+    #[test]
+    fn a_train_is_replaced_by_its_pull_requests() {
+        let log = "h3\x1fMerge pull request #9 from a/train/2026-11-07-1\x1fchore(train): x\x1e\
+                   h2\x1fMerge pull request #2 from a/c\x1ffeat: solo\x1e";
+        let out = expand_trains(log, |h| {
+            assert_eq!(h, "h3");
+            Ok("Merge pull request #5 from a/e\x1ffix: b\x1e\
+                Merge pull request #4 from a/f\x1ffeat: a\x1e"
+                .to_owned())
+        })
+        .unwrap();
+        let m = parse_merges(&out);
+        assert_eq!(
+            m.prs,
+            [merge(2, "feat: solo"), merge(4, "feat: a"), merge(5, "fix: b")]
+        );
+        assert_eq!(m.total, 3);
+        assert!(expand_trains(log, |_| Err("no".to_owned())).is_err());
     }
 
     #[test]

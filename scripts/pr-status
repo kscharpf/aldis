@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Is a pull request ready to merge? Read-only: it posts nothing.
 #
-# Usage: scripts/pr-status <pr-number>...
+# Usage: scripts/pr-status [--alone] <pr-number>...
+#
+# A constituent of a merge train (docs/process/coordinator.md) needs no verify record of its own:
+# the train PR is verified once. So a PR from any branch but `train/*` gets the verdict
+# `READY FOR TRAIN` when it is open, not a draft, with no changes requested, no review
+# outstanding, and the review answered; behind origin/<base> and the contexts do not count. The
+# full verdict `READY` applies to a train PR (a head branch `train/*`) and, with --alone, to a PR
+# that merges alone. A verdict that is not ready is `NOT READY: <reasons>` in every mode.
 #
 # Per PR: state, head, commits behind origin/<base>, the required status contexts of branch
 # protection with their state on the head, the other checks (not required), the newest
@@ -19,6 +26,12 @@
 set -euo pipefail
 
 marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+
+alone=0
+if [ "${1:-}" = --alone ]; then
+    alone=1
+    shift
+fi
 
 if [ $# -eq 0 ]; then
     awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
@@ -127,9 +140,13 @@ status_one() {
         else .comments[]
           | "  \(.author.login) \(.createdAt): \(.body[0:300] | gsub("\n"; " "))" end'
 
+    # A constituent of a train needs neither an up-to-date head nor a verify record.
+    local full=1
+    if [ "$alone" -eq 0 ] && [[ $branch != train/* ]]; then full=0; fi
+
     [ "$state" = OPEN ] || reasons="$reasons; PR is $state"
     [ "$draft" != true ] || reasons="$reasons; draft"
-    if [ "$state" != OPEN ]; then
+    if [ "$state" != OPEN ] || [ "$full" -eq 0 ]; then
         :
     elif [ "$behind" = "?" ]; then
         reasons="$reasons; head not fetched, cannot tell whether it contains origin/$base"
@@ -140,7 +157,9 @@ status_one() {
         reasons="$reasons; review unanswered ($unanswered): no later reply ends in the marker"
     [ "$decision" != CHANGES_REQUESTED ] || reasons="$reasons; changes requested"
     [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
-    if [ "$required" = "?" ]; then
+    if [ "$full" -eq 0 ]; then
+        :
+    elif [ "$required" = "?" ]; then
         reasons="$reasons; required contexts unreadable"
     elif [ -n "$required" ]; then
         while IFS= read -r ctx; do
@@ -156,7 +175,9 @@ status_one() {
             fi
         done <<<"$required"
     fi
-    if [ -z "$reasons" ]; then
+    if [ -z "$reasons" ] && [ "$full" -eq 0 ]; then
+        echo "#$n: READY FOR TRAIN"
+    elif [ -z "$reasons" ]; then
         echo "#$n: READY"
     else
         echo "#$n: NOT READY:${reasons#;}"
