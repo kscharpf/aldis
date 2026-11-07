@@ -179,6 +179,11 @@ impl CdsFormat {
             .wrapping_add(self.subms.octets())
     }
 
+    /// P-field length in octets: octet 1 and the undefined tail (301.0 §3.3.2, TIME-003).
+    pub(crate) const fn pfield_len(&self) -> usize {
+        self.tail.len().wrapping_add(1)
+    }
+
     /// The P-field for this format (301.0 §3.3.2, TIME-020).
     #[must_use]
     pub fn pfield(&self) -> PField {
