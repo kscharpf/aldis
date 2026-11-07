@@ -306,6 +306,28 @@ fn rejection_reason_3_malformed_arguments_at_execution() {
 }
 
 #[test]
+fn a_command_without_a_valid_execution_instant_is_rejected_with_reason_3_at_delivery() {
+    // req: APP-013, APP-024
+    let mut run = Run::default();
+    // Execution mode 2, and a non-zero T-field in an immediate command, with a valid function.
+    let bad_mode = tc(apid::COMMANDS, 1, &[1, 2, 0, 0, 0, 0, 0, 0]);
+    let immediate_with_time = tc(apid::COMMANDS, 2, &[1, 0, 0, 0, 0, 0, 0, 1]);
+    run.step(1_000_000, &[bad_mode, immediate_with_time]);
+    assert_eq!(
+        log(&run.rec)
+            .into_iter()
+            .filter(|(_, l)| matches!(l, Logged::Event(..)))
+            .collect::<Vec<_>>(),
+        [
+            (1_000_000, rejected(1, 1, 3)),
+            (1_000_000, rejected(1, 2, 3))
+        ]
+    );
+    assert_eq!(run.node.status().queue_occupancy, 0);
+    assert_eq!(run.node.status().commands_rejected, 2);
+}
+
+#[test]
 fn a_packet_too_short_to_be_a_command_is_malformed() {
     // req: APP-024
     let mut run = Run::default();
