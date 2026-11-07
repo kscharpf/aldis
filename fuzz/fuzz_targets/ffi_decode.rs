@@ -309,7 +309,7 @@ fn core(data: &[u8]) {
     let mut crc = 0_u16;
     // SAFETY: `data` and `crc` are live; NULL detail is allowed.
     let status = unsafe { aldis_crc16(data.as_ptr(), data.len(), &raw mut crc, null_mut()) };
-    assert_eq!((status, crc), (ALDIS_OK, crc16(data)));
+    assert_eq!((status, crc), (ALDIS_OK, crc16(data).get()));
 
     let octets = <[u8; OCF_LEN]>::try_from(data).ok();
     let mut report = u32::MAX;

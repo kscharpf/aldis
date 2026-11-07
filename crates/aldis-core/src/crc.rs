@@ -211,8 +211,8 @@ pub fn write_fecf(frame: &mut [u8]) -> Result<()> {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Crc16, PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome, verify_fecf,
-        write_fecf,
+        Crc16, PRESET, crc16, crc16_bitwise, crc16_update, crc16_update_bitwise, syndrome,
+        verify_fecf, write_fecf,
     };
     use crate::error::ErrorKind;
 

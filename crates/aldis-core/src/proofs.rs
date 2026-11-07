@@ -4,7 +4,9 @@
 //! coverage run. Each harness states its bound and why the unwinding depth suffices.
 
 use crate::counter::{Continuity, ModCounter};
-use crate::crc::{Crc16, PRESET, crc16, crc16_bitwise, crc16_update, syndrome, verify_fecf, write_fecf};
+use crate::crc::{
+    Crc16, PRESET, crc16, crc16_bitwise, crc16_update, syndrome, verify_fecf, write_fecf,
+};
 use crate::error::ErrorKind;
 use crate::{ErrorDetail, bits};
 
