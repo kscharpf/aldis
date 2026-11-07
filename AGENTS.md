@@ -56,7 +56,7 @@ While you work, run `cargo xtask check --quick` after each edit (format and clip
 
 **Implementation agents commit and stop**, unless the brief grants the gate ([agent brief](docs/process/agent-brief.md)). The coordinator runs the merge gate (`cargo xtask verify --publish`, VER-058) per [docs/06-verification.md](docs/06-verification.md) §7, brings open PRs up to date with `scripts/reverify <pr>...` (a head that needs no container is verified at once, others on the hosted run), and clears finished worktrees and `worktree-agent-*` branches with `scripts/prune-agent-branches` (dry run; `--apply` acts).
 
-Dispatching an agent: [docs/process/agent-brief.md](docs/process/agent-brief.md). Whether a pull request can merge: `scripts/pr-status <n>`. After it merges: `scripts/cleanup-merged <branch>`.
+Dispatching an agent: [docs/process/agent-brief.md](docs/process/agent-brief.md); the coordinator's standing rules: [docs/process/coordinator.md](docs/process/coordinator.md). **The agent definitions in `.claude/agents/` and the process docs change only by a pull request:** an agent that finds a lesson proposes it as a pull request, or in its report under "For the maintainer"; it does not edit its own instructions in place. Whether a pull request can merge: `scripts/pr-status <n>`. After it merges: `scripts/cleanup-merged <branch>`.
 
 A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` means a panic path is reachable in `aldis-core`. Remove it; do not work around the check. In the crates the coverage gate measures (Layers 0–2 and the reported `aldis-ffi`, VER-024), mark new test modules `#[cfg_attr(coverage_nightly, coverage(off))]`; `xtask/` is not measured and needs no mark.
 
