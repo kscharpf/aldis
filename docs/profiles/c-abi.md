@@ -8,7 +8,7 @@ This profile defines the C interface. The Rust reference implementation exposes 
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| CABI-001 | `aldis-ffi` SHALL build a static library (`libaldis_ffi.a`) for every target, and a shared library (`libaldis_ffi.so` / `.dylib` / `.dll`) for hosted targets. | — | A |
+| CABI-001 | `aldis-ffi` SHALL build a static library (`libaldis_ffi.a`) for every target. A shared library is deferred until bindings for other languages need it. | — | A |
 | CABI-002 | The public header `include/aldis/aldis.h` SHALL be generated from the Rust sources (cbindgen). It SHALL be committed, and CI SHALL fail if the regenerated header differs. | — | A |
 | CABI-003 | The header SHALL be valid C99 and C++11 (VER-050). It SHALL wrap declarations in `extern "C"` under `__cplusplus`, and SHALL include only `<stdint.h>`, `<stddef.h>`, and `<stdbool.h>`. | — | A |
 | CABI-004 | The library SHALL NOT require a C runtime heap, threads, or the Rust standard library on `no_std` targets. It SHALL require the integrator to provide nothing beyond `memcpy`/`memset` equivalents. | GEN-010 | A |

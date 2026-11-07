@@ -6,8 +6,8 @@
 //! committed ones differ, when `cbindgen` is not the pinned version, or when the header
 //! includes anything but `<stdint.h>`, `<stddef.h>`, and `<stdbool.h>` or lacks its
 //! `extern "C"` block. `--write` regenerates them. `cargo xtask header c-smoke <cc> <c++>`
-//! builds the static and shared libraries and compiles, links, and runs a C program with them,
-//! as C99, C11, and C23 against the static library and as C++11 and C++17 against the shared one,
+//! builds the static library and compiles, links, and runs a C program with it,
+//! as C99, C11, C23, C++11, and C++17,
 //! with `-Wall -Wextra -Wpedantic -Werror` (CABI-001, CABI-003, VER-050).
 //! `cargo xtask header cpp-engines <c++>` compiles the C++20 wrapper `include/aldis/aldis.hpp` of the
 //! engine handles with the tests of `crates/aldis-ffi/tests/cpp/`, which run the engine-scenario
@@ -16,7 +16,7 @@
 //! of `crates/aldis-ffi/tests/c/` and the README example (VER-051).
 
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::repo;
@@ -439,15 +439,10 @@ pub fn sanitizers(cc: &str) -> Result<usize, String> {
     Ok(0)
 }
 
-/// `xtask header c-smoke <cc> <c++>`: the host libraries (CABI-001) and the header as C99, C11,
-/// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The
-/// C23 build takes the branch of each enumeration that declares its underlying type (c-abi.md
-/// §12.3, spike 1); a compiler that does not define `__STDC_VERSION__` as C23 yet compiles the
-/// C99 branch.
-pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
-    let root = repo::root();
-    // The static library's native dependencies, printed while it is built (CABI-001). Without
-    // colour, so that no escape sequence of `CARGO_TERM_COLOR=always` ends up in a library name.
+/// Builds the static library `libaldis_ffi.a` of the host (CABI-001) and returns its directory and
+/// the note that lists its native dependencies, printed while it is built. Without colour, so that
+/// no escape sequence of `CARGO_TERM_COLOR=always` ends up in a library name.
+fn build_static_library(root: &Path) -> Result<(PathBuf, String), String> {
     let note = run_cmd(
         Command::new("cargo")
             .args(["--color", "never"])
@@ -459,24 +454,23 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
                 "--print",
                 "native-static-libs",
             ])
-            .current_dir(&root),
-    )?;
-    run_cmd(
-        Command::new("cargo")
-            .args(["build", "-p", "aldis-ffi", "--release", "--lib"])
-            .current_dir(&root),
+            .current_dir(root),
     )?;
     let lib_dir = root.join("target/release");
-    let shared = if cfg!(target_os = "macos") {
-        "libaldis_ffi.dylib"
-    } else {
-        "libaldis_ffi.so"
-    };
-    for lib in ["libaldis_ffi.a", shared] {
-        if !lib_dir.join(lib).is_file() {
-            return Err(format!("target/release/{lib} was not built (CABI-001)"));
-        }
+    if !lib_dir.join("libaldis_ffi.a").is_file() {
+        return Err("target/release/libaldis_ffi.a was not built (CABI-001)".into());
     }
+    Ok((lib_dir, note))
+}
+
+/// `xtask header c-smoke <cc> <c++>`: the host static library (CABI-001) and the header as C99, C11,
+/// C23, C++11, and C++17 (CABI-003, VER-050), through a C program that calls the library. The
+/// C23 build takes the branch of each enumeration that declares its underlying type (c-abi.md
+/// §12.3, spike 1); a compiler that does not define `__STDC_VERSION__` as C23 yet compiles the
+/// C99 branch.
+pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
+    let root = repo::root();
+    let (lib_dir, note) = build_static_library(&root)?;
     let out_dir = root.join("target/header");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let include = root.join("include");
@@ -519,7 +513,7 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
             .arg(&example),
     )
     .map_err(|e| format!("{README}: the example does not compile against the header:\n{e}"))?;
-    // C++11 and C++17 against the shared library.
+    // C++11 and C++17 against the static library.
     for std in CXX_STANDARDS {
         let exe = out_dir.join(format!("smoke-{std}"));
         run_cmd(
@@ -531,8 +525,8 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
                 .arg(&include)
                 .arg(&smoke)
                 .args(["-x", "none"])
-                .arg(lib_dir.join(shared))
-                .arg(format!("-Wl,-rpath,{}", lib_dir.display()))
+                .arg(lib_dir.join("libaldis_ffi.a"))
+                .args(native_static_libs(&note))
                 .arg("-o")
                 .arg(&exe),
         )?;
@@ -542,7 +536,7 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
         print!("{}", run_cmd(&mut Command::new(exe))?);
     }
     println!(
-        "c-smoke: {cc} ({}, static) and {cxx} ({}, shared) passed",
+        "c-smoke: {cc} ({}) and {cxx} ({}) passed against the static library",
         C_STANDARDS.join(", "),
         CXX_STANDARDS.join(", ")
     );
@@ -552,26 +546,13 @@ pub fn c_smoke(cc: &str, cxx: &str) -> Result<usize, String> {
 /// The C++ tests of `aldis.hpp` (CABI-072): the engine scenarios and the capacity check.
 const CPP_TESTS: &str = "crates/aldis-ffi/tests/cpp";
 
-/// `xtask header cpp-engines <c++>`: compiles `engines.cpp` against `aldis.hpp` and the shared
+/// `xtask header cpp-engines <c++>`: compiles `engines.cpp` against `aldis.hpp` and the static
 /// library as C++20 without exceptions, with `-Wall -Wextra -Wpedantic -Werror`, and runs it over
 /// the engine-scenario vectors (CABI-072, CABI-030, CABI-031). `capacity_mismatch.cpp` must fail
 /// to compile with the `static_assert` of the capacity, and compile once the capacity is right.
 pub fn cpp_engines(cxx: &str) -> Result<usize, String> {
     let root = repo::root();
-    run_cmd(
-        Command::new("cargo")
-            .args(["build", "-p", "aldis-ffi", "--release", "--lib"])
-            .current_dir(&root),
-    )?;
-    let lib_dir = root.join("target/release");
-    let shared = if cfg!(target_os = "macos") {
-        "libaldis_ffi.dylib"
-    } else {
-        "libaldis_ffi.so"
-    };
-    if !lib_dir.join(shared).is_file() {
-        return Err(format!("target/release/{shared} was not built (CABI-001)"));
-    }
+    let (lib_dir, note) = build_static_library(&root)?;
     let out_dir = root.join("target/header");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let tests = root.join(CPP_TESTS);
@@ -592,8 +573,8 @@ pub fn cpp_engines(cxx: &str) -> Result<usize, String> {
             .arg("-I")
             .arg(&tests)
             .arg(tests.join("engines.cpp"))
-            .arg(lib_dir.join(shared))
-            .arg(format!("-Wl,-rpath,{}", lib_dir.display()))
+            .arg(lib_dir.join("libaldis_ffi.a"))
+            .args(native_static_libs(&note))
             .arg("-o")
             .arg(&exe),
     )?;
