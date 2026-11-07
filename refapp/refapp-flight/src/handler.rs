@@ -16,7 +16,12 @@ use crate::table::Activation;
 impl FlightNode {
     /// Step 1 of §2.1: handles the delivered link units in delivery order. An immediate command
     /// executes here.
-    pub(crate) fn handle_delivered(&mut self, now: Instant, units: Delivered<'_>, out: &mut dyn Output) {
+    pub(crate) fn handle_delivered(
+        &mut self,
+        now: Instant,
+        units: Delivered<'_>,
+        out: &mut dyn Output,
+    ) {
         for unit in units.iter() {
             self.handle_unit(now, unit, out);
         }
@@ -56,11 +61,11 @@ impl FlightNode {
         match command.timing {
             Timing::Immediate => self.execute(now, command, out),
             Timing::BeforeRun => self.reject(now, &command, Reject::TimeTagPast, out),
-            Timing::At(at_us) if at_us < now.as_micros() => {
+            Timing::At(at) if at < now => {
                 self.reject(now, &command, Reject::TimeTagPast, out);
             }
-            Timing::At(at_us) => {
-                if let Err(reason) = self.queue.push(at_us, command) {
+            Timing::At(at) => {
+                if let Err(reason) = self.queue.push(at, command) {
                     self.reject(now, &command, reason, out);
                 }
             }
@@ -85,7 +90,7 @@ impl FlightNode {
     /// brings the queue occupancy of the housekeeping status up to date (APP-012).
     pub(crate) fn execute_due(&mut self, now: Instant, out: &mut dyn Output) {
         // bound: each pass removes one command from a queue of at most 8.
-        while let Some(command) = self.queue.pop_due(now.as_micros()) {
+        while let Some(command) = self.queue.pop_due(now) {
             self.execute(now, command, out);
         }
         self.status.queue_occupancy = self.queue.occupancy();
@@ -113,7 +118,7 @@ impl FlightNode {
         );
         match call {
             Call::Noop => {}
-            Call::DumpMemory(region) => match Dump::start(region, now.as_micros()) {
+            Call::DumpMemory(region) => match Dump::start(region, now) {
                 Ok(dump) => self.dump = Some(dump),
                 Err(e) => self.build_failed(e.kind(), out),
             },
@@ -169,7 +174,7 @@ impl FlightNode {
         // bound: each pass sends one of the at most 9 packets of the dump and moves its next slot
         // on; the pass ends the loop on the last packet, on an error, and at a slot after `now`.
         loop {
-            if dump.due_us() > now.as_micros() {
+            if dump.due() > now {
                 self.dump = Some(dump);
                 return;
             }
@@ -195,8 +200,8 @@ impl FlightNode {
     }
 
     /// The instant of the next queued command or dump packet, µs.
-    pub(crate) fn next_command_deadline(&self) -> [Option<u64>; 2] {
-        [self.queue.next_due(), self.dump.as_ref().map(Dump::due_us)]
+    pub(crate) fn next_command_deadline(&self) -> [Option<Instant>; 2] {
+        [self.queue.next_due(), self.dump.as_ref().map(Dump::due)]
     }
 
     /// A packet could not be built: counted, and raised as `packet_rejected` with the error code

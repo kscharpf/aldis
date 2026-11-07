@@ -104,10 +104,10 @@ impl FlightNode {
         // bound: each pass takes one slot; `Periodic::at` is `None` from slot index 30 on.
         while let Some(at) = Periodic::HOUSEKEEPING
             .at(self.hk_slot)
-            .filter(|at| *at <= now.as_micros())
+            .filter(|at| *at <= now)
         {
             let data = housekeeping(&self.status, self.hk_slot);
-            self.send(Stream::Housekeeping, Instant::from_micros(at), &data, out);
+            self.send(Stream::Housekeeping, at, &data, out);
             self.hk_slot = self.hk_slot.saturating_add(1);
         }
     }
@@ -119,11 +119,11 @@ impl FlightNode {
         // bound: each pass takes one slot; `Periodic::at` is `None` from slot index 15 on.
         while let Some(at) = Periodic::PAYLOAD
             .at(self.payload_slot)
-            .filter(|at| *at <= now.as_micros())
+            .filter(|at| *at <= now)
         {
             if self.status.payload_mode == PayloadMode::On {
                 let data = payload(self.payload_number);
-                self.send(Stream::Payload, Instant::from_micros(at), &data, out);
+                self.send(Stream::Payload, at, &data, out);
                 self.payload_number = self.payload_number.saturating_add(1);
             }
             self.payload_slot = self.payload_slot.saturating_add(1);
@@ -142,7 +142,6 @@ impl FlightNode {
         .into_iter()
         .flatten()
         .min()
-        .map(Instant::from_micros)
     }
 }
 

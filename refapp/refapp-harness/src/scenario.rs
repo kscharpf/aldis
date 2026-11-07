@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use refapp_scenario::{Crc16, TableId, TableLength};
+use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -267,7 +267,9 @@ impl OpsEntry {
             } => node::OpsEntry::Command {
                 execution: match execution {
                     Execution::Immediate {} => node::Execution::Immediate,
-                    Execution::TimeTagged { exec_us } => node::Execution::TimeTagged { exec_us },
+                    Execution::TimeTagged { exec_us } => node::Execution::TimeTagged {
+                        after_t0: Duration::from_micros(exec_us),
+                    },
                 },
                 call: match call {
                     Call::Noop {} => node::Call::Noop,

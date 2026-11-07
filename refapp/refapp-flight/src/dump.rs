@@ -3,10 +3,13 @@
 use aldis::core::Error;
 use aldis::spp::SegmenterState;
 use refapp_scenario::generated::link;
-use refapp_scenario::{Instant, Output};
+use refapp_scenario::{Duration, Instant, Output};
 
 use crate::command::DumpRegion;
 use crate::downlink::Downlink;
+
+/// The spacing of the dump's packets: one frame slot (APP-016, APP-061).
+const FRAME_SLOT: Duration = Duration::from_micros(link::FRAME_SLOT_US);
 
 /// Octets before the memory in the dump SDU: address (u32) and length (u16) (§3.3.4).
 const SDU_HEADER_LEN: usize = 6;
@@ -42,16 +45,16 @@ pub struct Dump {
     sdu: [u8; SDU_MAX_LEN],
     sdu_len: usize,
     progress: SegmenterState,
-    /// Slot instant of the next packet, µs.
-    next_us: u64,
+    /// Slot instant of the next packet.
+    next: Instant,
 }
 
 impl Dump {
-    /// A dump of `region` whose first packet is due at `first_us` (APP-016).
+    /// A dump of `region` whose first packet is due at `first` (APP-016).
     ///
     /// # Errors
     /// The segmenter's or the packet APID's error, which the scenario's values rule out.
-    pub fn start(region: DumpRegion, first_us: u64) -> Result<Dump, Error> {
+    pub fn start(region: DumpRegion, first: Instant) -> Result<Dump, Error> {
         let mut sdu = [0_u8; SDU_MAX_LEN];
         let [a3, a2, a1, a0] = region.address().to_be_bytes();
         let [l1, l0] = region.length().to_be_bytes();
@@ -70,7 +73,7 @@ impl Dump {
             sdu,
             sdu_len,
             progress,
-            next_us: first_us,
+            next: first,
         })
     }
 
@@ -80,10 +83,10 @@ impl Dump {
         self.region
     }
 
-    /// The slot instant of the next packet, µs.
+    /// The slot instant of the next packet.
     #[must_use]
-    pub const fn due_us(&self) -> u64 {
-        self.next_us
+    pub const fn due(&self) -> Instant {
+        self.next
     }
 
     /// Sends the next packet, stamped with its slot instant, and moves the next slot one frame
@@ -97,13 +100,13 @@ impl Dump {
         downlink: &mut Downlink,
         out: &mut dyn Output,
     ) -> Result<Segment, Error> {
-        let at = Instant::from_micros(self.next_us);
+        let at = self.next;
         let sdu = self
             .sdu
             .get(..self.sdu_len)
             .ok_or(Error::buffer_too_small(self.sdu_len))?;
         self.progress = downlink.send_segment(self.progress, sdu, at, out)?;
-        self.next_us = self.next_us.saturating_add(link::FRAME_SLOT_US);
+        self.next = self.next.saturating_add(FRAME_SLOT);
         Ok(Segment {
             at,
             last: self.progress.is_done(),

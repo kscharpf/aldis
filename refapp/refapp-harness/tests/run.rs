@@ -167,10 +167,12 @@ fn packet_level_delay_and_tie_order() {
 fn deadlines_wake_nodes() {
     // req: APP-073
     let scenario = Scenario::load().unwrap();
-    let mut flight = Scripted(|t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        out.packet_out(apid(16), &[u8::try_from(t / 250_000).unwrap()]);
-        (t < 500_000).then_some(t + 250_000)
-    });
+    let mut flight = Scripted(
+        |t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            out.packet_out(apid(16), &[u8::try_from(t / 250_000).unwrap()]);
+            (t < 500_000).then_some(t + 250_000)
+        },
+    );
     let mut ground = Scripted(|_t: u64, _d: Delivered<'_>, _tx: bool, _out: &mut dyn Output| None);
     let records = sim::records(
         &scenario,
@@ -189,18 +191,22 @@ fn frame_level_slots() {
     let scenario = Scenario::load().unwrap();
     let frame = scenario.link.frame_slot_us;
     let uplink = scenario.link.uplink_slot_us;
-    let mut flight = Scripted(|_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
-        if tx {
-            out.unit(&[0xAA]);
-        }
-        None
-    });
-    let mut ground = Scripted(|t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
-        if tx && t == 0 {
-            out.unit(&[0xBB]);
-        }
-        None
-    });
+    let mut flight = Scripted(
+        |_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
+            if tx {
+                out.unit(&[0xAA]);
+            }
+            None
+        },
+    );
+    let mut ground = Scripted(
+        |t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
+            if tx && t == 0 {
+                out.unit(&[0xBB]);
+            }
+            None
+        },
+    );
     let end = 4 * frame;
     let records = sim::records(
         &scenario,
@@ -241,17 +247,21 @@ fn step_contract_violations_fail_the_run() {
     let mut ground = Scripted(|_t: u64, _d: Delivered<'_>, _tx: bool, _o: &mut dyn Output| None);
     assert!(sim::records(&scenario, &case(Level::Frames, 1), &mut silent, &mut ground).is_err());
     // A ground node that sends two units in one uplink slot.
-    let mut flight = Scripted(|_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
-        if tx {
+    let mut flight = Scripted(
+        |_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
+            if tx {
+                out.unit(&[1]);
+            }
+            None
+        },
+    );
+    let mut chatty = Scripted(
+        |_t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
             out.unit(&[1]);
-        }
-        None
-    });
-    let mut chatty = Scripted(|_t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        out.unit(&[1]);
-        out.unit(&[2]);
-        None
-    });
+            out.unit(&[2]);
+            None
+        },
+    );
     assert!(sim::records(&scenario, &case(Level::Frames, 1), &mut flight, &mut chatty).is_err());
     // A deadline that is not after now.
     let mut stuck = Scripted(|t: u64, _d: Delivered<'_>, _tx: bool, _o: &mut dyn Output| Some(t));
@@ -300,17 +310,21 @@ fn ops_entries_wake_the_ground_node_when_due() {
     // Two entries at one instant, one later; the ground node asks for no deadline.
     c.ops = vec![noop_at(1_005_000), noop_at(1_005_000), noop_at(2_500_000)];
     let seen = std::cell::RefCell::new(Vec::new());
-    let mut ground = Ops(|t: u64, ops: &[u16], _d: Delivered<'_>, out: &mut dyn Output| {
-        if !ops.is_empty() {
-            seen.borrow_mut().push((t, ops.to_vec()));
-            out.packet_out(apid(128), &[0]);
-        }
-        None
-    });
-    let mut flight = Ops(|_t: u64, ops: &[u16], _d: Delivered<'_>, _o: &mut dyn Output| {
-        assert!(ops.is_empty(), "only the ground node has an ops script");
-        None
-    });
+    let mut ground = Ops(
+        |t: u64, ops: &[u16], _d: Delivered<'_>, out: &mut dyn Output| {
+            if !ops.is_empty() {
+                seen.borrow_mut().push((t, ops.to_vec()));
+                out.packet_out(apid(128), &[0]);
+            }
+            None
+        },
+    );
+    let mut flight = Ops(
+        |_t: u64, ops: &[u16], _d: Delivered<'_>, _o: &mut dyn Output| {
+            assert!(ops.is_empty(), "only the ground node has an ops script");
+            None
+        },
+    );
     let records = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
     assert_eq!(
         *seen.borrow(),
@@ -333,21 +347,25 @@ fn scripted_faults_reproduce_a_hand_written_trace() {
         fault(Direction::Down, 3, Fault::Truncate { octets: 1 }),
     ];
     // The flight node sends [i, 0xAA] at i seconds, i = 0 to 4.
-    let mut flight = Scripted(|t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        if t.is_multiple_of(1_000_000) {
-            out.unit(&[u8::try_from(t / 1_000_000).unwrap(), 0xAA]);
-        }
-        (t < 4_000_000).then(|| (t / 1_000_000 + 1) * 1_000_000)
-    });
-    let mut ground = Scripted(|t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        if t == 0 {
-            out.unit(&[0x0A]);
-        }
-        for u in d.iter() {
-            out.packet_in(apid(16), u);
-        }
-        None
-    });
+    let mut flight = Scripted(
+        |t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            if t.is_multiple_of(1_000_000) {
+                out.unit(&[u8::try_from(t / 1_000_000).unwrap(), 0xAA]);
+            }
+            (t < 4_000_000).then(|| (t / 1_000_000 + 1) * 1_000_000)
+        },
+    );
+    let mut ground = Scripted(
+        |t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            if t == 0 {
+                out.unit(&[0x0A]);
+            }
+            for u in d.iter() {
+                out.packet_in(apid(16), u);
+            }
+            None
+        },
+    );
     let records = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
     let delay = scenario.link.one_way_delay_us;
     let sent = |t_us: u64, dir: Dir, index: u64, octets: &[u8]| Record::UnitSent {
@@ -426,18 +444,22 @@ fn a_delay_reorders_units() {
             delay_us: 1_000_000,
         },
     )];
-    let mut flight = Scripted(|t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        if t <= 100_000 {
-            out.unit(&[u8::try_from(t / 100_000).unwrap()]);
-        }
-        (t < 100_000).then_some(t + 100_000)
-    });
-    let mut ground = Scripted(|_t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        for u in d.iter() {
-            out.packet_in(apid(16), u);
-        }
-        None
-    });
+    let mut flight = Scripted(
+        |t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            if t <= 100_000 {
+                out.unit(&[u8::try_from(t / 100_000).unwrap()]);
+            }
+            (t < 100_000).then_some(t + 100_000)
+        },
+    );
+    let mut ground = Scripted(
+        |_t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            for u in d.iter() {
+                out.packet_in(apid(16), u);
+            }
+            None
+        },
+    );
     let records = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
     let arrivals: Vec<u8> = records
         .iter()
@@ -460,10 +482,12 @@ fn faults_that_cannot_apply_fail_the_run() {
     c.faults = vec![fault(Direction::Down, 3, Fault::Drop {})];
     assert!(sim::records(&scenario, &c, &mut silent, &mut ground).is_err());
     // `flip` before the frame levels.
-    let mut sender = Scripted(|_t: u64, _d: Delivered<'_>, _tx: bool, o: &mut dyn Output| {
-        o.unit(&[1]);
-        None
-    });
+    let mut sender = Scripted(
+        |_t: u64, _d: Delivered<'_>, _tx: bool, o: &mut dyn Output| {
+            o.unit(&[1]);
+            None
+        },
+    );
     c.faults = vec![fault(Direction::Down, 0, Fault::Flip { octet: 0, bit: 0 })];
     assert!(sim::records(&scenario, &c, &mut sender, &mut ground).is_err());
 }
@@ -476,19 +500,23 @@ fn extra_wake_ups_do_not_change_the_trace() {
     let run = |wake_every: Option<u64>| {
         // The flight node sends at t = 0; the ground node echoes what it receives. Both only
         // act on what is due, and may ask for extra wake-ups.
-        let mut flight = Scripted(|t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-            if t == 0 {
-                out.unit(&[7]);
-            }
-            wake_every.map(|p| (t / p + 1) * p)
-        });
-        let mut ground = Scripted(|t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-            for u in d.iter() {
-                out.packet_in(apid(16), u);
-                out.unit(u);
-            }
-            wake_every.map(|p| (t / p + 1) * p)
-        });
+        let mut flight = Scripted(
+            |t: u64, _d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+                if t == 0 {
+                    out.unit(&[7]);
+                }
+                wake_every.map(|p| (t / p + 1) * p)
+            },
+        );
+        let mut ground = Scripted(
+            |t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+                for u in d.iter() {
+                    out.packet_in(apid(16), u);
+                    out.unit(u);
+                }
+                wake_every.map(|p| (t / p + 1) * p)
+            },
+        );
         sim::records(&scenario, &c, &mut flight, &mut ground).unwrap()
     };
     let quiet = run(None);
