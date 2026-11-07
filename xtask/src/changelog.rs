@@ -4,15 +4,16 @@
 //! A pull request does not touch `CHANGELOG.md`: its title, a conventional commit
 //! (`type(scope)!: description`), is the entry. The merge commits of `main` carry the titles
 //! (`Merge pull request #N from ...`, the title as the body), so the generator reads `git log`
-//! and needs no network, except for a hand-built merge train (below). It lists the merges after a base: the commit named by the marker
-//! `<!-- changelog-base: <sha> -->` in the `## [Unreleased]` section of `CHANGELOG.md`, else the
-//! last `v*` tag. A merge train (a pull request from a `train/` branch) gets no entry of its
-//! own: the pull requests it merged do, read from the merges between the first and the second
-//! parent of its merge commit (`Merge pull request #N from ...`, as `scripts/train` writes them;
-//! for a hand-built train, `Merge branch '<b>' into train/...`, resolved to its pull request by
-//! the second parent of the merge, the head of the pull request, with `gh api
-//! repos/{owner}/{repo}/commits/<sha>/pulls`, a failure being a warning naming the merge; a merge
-//! of `main` into the train is ignored). The text of the Unreleased section is kept in the
+//! and needs no network, except for a hand-built merge train (below). It lists the merges after
+//! a base: the commit named by the marker `<!-- changelog-base: <sha> -->` in the
+//! `## [Unreleased]` section of `CHANGELOG.md`, else the last `v*` tag. A merge train (a pull
+//! request from a `train/` branch) gets no entry of its own: the pull requests it merged do, read
+//! from the merges between the first and the second parent of its merge commit (`Merge pull
+//! request #N from ...`, as `scripts/train` writes them). For a hand-built train, `Merge branch
+//! '<b>' into train/...` is resolved to its pull request by the second parent of the merge, the
+//! head of the pull request: `gh pr list --state merged --search <sha>` keeps the result whose
+//! head is that commit and not a `train/*` branch; a failure is a warning naming the merge. A
+//! merge of `main` into the train is ignored. The text of the Unreleased section is kept in the
 //! release as it stands.
 
 use std::fmt::Write as _;
@@ -226,24 +227,41 @@ fn expand_trains(
     Ok(out)
 }
 
+/// The constituent among `gh pr list --state merged --search <sha>` results, one pull request per
+/// line as `number<TAB>title<TAB>headRefOid<TAB>headRefName`: the one whose head is exactly `sha`
+/// and whose head branch is no `train/*` (the search also finds the train pull request that
+/// merged the commit, and a commit already on `main` belongs to the train in
+/// `commits/<sha>/pulls`).
+fn constituent_of(sha: &str, results: &str) -> Option<(u64, String)> {
+    results.lines().find_map(|line| {
+        let mut f = line.split('\t');
+        let (number, title, head, branch) = (f.next()?, f.next()?, f.next()?, f.next()?);
+        (head == sha && !branch.starts_with("train/"))
+            .then(|| Some((number.parse().ok()?, title.to_owned())))
+            .flatten()
+    })
+}
+
 /// The number and title of the merged pull request whose head commit is `sha` (the second parent
-/// of the merge of `branch` into a train), from `gh api repos/{owner}/{repo}/commits/<sha>/pulls`.
-/// A `gh` failure, or no merged pull request, prints a warning naming the merge and gives `None`.
+/// of the merge of `branch` into a train), from `gh pr list --state merged --search <sha>`. A
+/// `gh` failure, or no match, prints a warning naming the merge and gives `None`.
 fn merged_pull_request(sha: &str, branch: &str) -> Option<(u64, String)> {
     let out = Command::new("gh")
         .args([
-            "api",
-            &format!("repos/{{owner}}/{{repo}}/commits/{sha}/pulls"),
+            "pr",
+            "list",
+            "--state",
+            "merged",
+            "--search",
+            sha,
+            "--json",
+            "number,title,headRefOid,headRefName",
             "--jq",
-            r#".[] | select(.merged_at != null) | "\(.number)\t\(.title)""#,
+            r#".[] | [.number, .title, .headRefOid, .headRefName] | @tsv"#,
         ])
         .output();
     let found = match out {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
-            .lines()
-            .next()
-            .and_then(|l| l.split_once('\t'))
-            .and_then(|(n, t)| Some((n.parse().ok()?, t.to_owned()))),
+        Ok(o) if o.status.success() => constituent_of(sha, &String::from_utf8_lossy(&o.stdout)),
         _ => {
             println!("warning: gh could not look up the merge of '{branch}' ({sha}) into a train");
             return None;
@@ -526,8 +544,8 @@ pub fn release(version: &str, date: &str) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Merge, expand_trains, generate, insert_release, is_train_merge, marker, parse_merges,
-        parse_title, render, untagged_releases,
+        Merge, constituent_of, expand_trains, generate, insert_release, is_train_merge, marker,
+        parse_merges, parse_title, render, untagged_releases,
     };
 
     fn merge(number: u64, title: &str) -> Merge {
@@ -672,6 +690,23 @@ mod tests {
             m.skipped,
             ["not a pull request: Merge branch 'a1/lost' into train/2026-11-07-1"]
         );
+    }
+
+    #[test]
+    fn the_constituent_is_chosen_and_not_the_train() {
+        // The real shape of `gh pr list --state merged --search <sha>`: the constituent and the
+        // train that merged it, the train first.
+        let sha = "8e9f3414";
+        let results = "329\tchore(train): 2026-11-07-1\t44ab7a1b\ttrain/2026-11-07-1\n\
+                       322\trefactor(m5): time\t8e9f3414\tm5/time-cuc-instant\n";
+        assert_eq!(
+            constituent_of(sha, results),
+            Some((322, "refactor(m5): time".to_owned()))
+        );
+        // A train whose head happens to be the commit, or no result with that head: none.
+        assert_eq!(constituent_of("44ab7a1b", results), None);
+        assert_eq!(constituent_of("deadbeef", results), None);
+        assert_eq!(constituent_of(sha, ""), None);
     }
 
     #[test]

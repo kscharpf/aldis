@@ -7,7 +7,8 @@
 #        scripts/train [--dry-run] --rebuild <train-pr> --without <pr>...
 #                                                            build it again without those PRs
 # Readiness: every PR must be `READY FOR TRAIN` by `scripts/pr-status --train` (open, not a
-# draft, reviewed, the review answered, no commit after the reply, no label `needs-maintainer`);
+# draft, reviewed, the review answered by a reply that names the head, no force-push after the
+# reply, no label `needs-maintainer`);
 # the script refuses any other, naming the verdict, and merges the exact head SHA it checked,
 # not the branch tip: a push between the check and the merge refuses the PR.
 # A stacked PR (its base branch is not main) is refused unless the PR of its base branch is
