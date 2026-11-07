@@ -26,7 +26,7 @@ Run from this directory:
 ```sh
 cargo run -p refapp-harness -- run <case>          # writes target/runs/<case>.jsonl and <case>.manifest.json
 cargo run -p refapp-harness -- compare [<case>]    # byte comparison with golden/<case>.jsonl (default: every case)
-cargo run -p refapp-harness -- check-golden        # every golden trace is in canonical form
+cargo run -p refapp-harness -- check-golden        # every golden trace is canonical and decodes with the strict codecs
 cargo run -p refapp-harness -- gen-scenario        # regenerate the schema and Rust constants after editing scenario.json
 cargo run -p refapp-harness -- gen-scenario --check
 ```

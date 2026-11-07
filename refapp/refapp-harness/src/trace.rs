@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use aldis::spp::SpacePacket;
 use serde_json::{Map, Value, json};
 
 /// Which node a record belongs to (§7.3).
@@ -477,6 +478,57 @@ pub fn check_canonical(text: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Decodes the octets of every `unit_sent`, `packet_out`, and `packet_in` record of `text`, a
+/// canonical trace, with the strict Space Packet codec (APP-086, API-030).
+///
+/// In A1 a link unit is one Space Packet, so each must decode in strict mode and fill its octets
+/// exactly. Returns the number of records decoded.
+///
+/// # Errors
+/// If `text` is not canonical (APP-080), or the first record whose octets are not a strict
+/// Space Packet, with its 1-based line number.
+pub fn decode_strict(text: &str) -> Result<usize, String> {
+    check_canonical(text)?;
+    let mut decoded = 0;
+    for (i, l) in text.split_terminator('\n').enumerate() {
+        let at = |e: String| format!("line {}: {e}", i + 1);
+        let v: Value = serde_json::from_str(l).map_err(|e| at(e.to_string()))?;
+        let kind = v["kind"].as_str().unwrap_or_default();
+        if !matches!(kind, "unit_sent" | "packet_out" | "packet_in") {
+            continue;
+        }
+        let hex = v["hex"]
+            .as_str()
+            .ok_or_else(|| at(format!("{kind} record without hex")))?;
+        let octets = unhex(hex).map_err(at)?;
+        let packet = SpacePacket::decode(&octets)
+            .map_err(|e| at(format!("{kind} is not a strict Space Packet: {e:?}")))?;
+        if packet.len() != octets.len() {
+            return Err(at(format!(
+                "{kind} has {} octet(s) after its packet of {}",
+                octets.len() - packet.len(),
+                packet.len()
+            )));
+        }
+        decoded += 1;
+    }
+    Ok(decoded)
+}
+
+fn unhex(s: &str) -> Result<Vec<u8>, String> {
+    let (pairs, rest) = s.as_bytes().as_chunks::<2>();
+    if !rest.is_empty() {
+        return Err("odd number of hex digits".to_owned());
+    }
+    pairs
+        .iter()
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
+            u8::from_str_radix(text, 16).map_err(|e| e.to_string())
+        })
+        .collect()
 }
 
 /// Whether a projected packet was generated or delivered (§7.3).
