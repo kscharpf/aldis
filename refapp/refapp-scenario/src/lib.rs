@@ -13,6 +13,7 @@ pub mod node;
 pub mod table;
 
 pub use aldis::core::ids::Apid;
+pub use aldis::core::time::Duration;
 pub use aldis::core::time::Instant;
-pub use node::{Node, Output, StepInput};
+pub use node::{Delivered, LinkUnit, Node, Output, StepInput};
 pub use table::{Crc16, TableId, TableLength};

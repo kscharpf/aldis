@@ -12,7 +12,7 @@ use aldis::core::{Error, ErrorKind};
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
-use refapp_scenario::{Crc16, TableId, TableLength};
+use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 
 /// Microseconds in a second.
 const US_PER_S: u64 = 1_000_000;
@@ -42,10 +42,10 @@ const T_FIELD_LEN: usize = 6;
 pub enum Execution {
     /// Executes when delivered; the execution-time field is zero.
     Immediate,
-    /// Executes at the on-board time T0 + `exec_us`.
+    /// Executes at the on-board time T0 + `after_t0`.
     TimeTagged {
-        /// Execution instant, µs after T0.
-        exec_us: u64,
+        /// Execution instant, as the span after T0.
+        after_t0: Duration,
     },
 }
 
@@ -190,7 +190,7 @@ fn command_data(execution: Execution, call: Call, extra: u8) -> Result<Vec<u8>, 
     };
     let (mode, time_field) = match execution {
         Execution::Immediate => (MODE_IMMEDIATE, [0; T_FIELD_LEN]),
-        Execution::TimeTagged { exec_us } => (MODE_TIME_TAGGED, on_board_time(exec_us)?),
+        Execution::TimeTagged { after_t0 } => (MODE_TIME_TAGGED, on_board_time(after_t0)?),
     };
     let mut data = vec![function, mode];
     data.extend_from_slice(&time_field);
@@ -210,16 +210,17 @@ fn table_data(table_id: TableId, length: TableLength) -> Vec<u8> {
     data
 }
 
-/// The CUC T-field of the on-board time T0 + `offset_us` (§5, APP-060, TIME-011).
+/// The CUC T-field of the on-board time T0 + `offset` (§5, APP-060, TIME-011).
 ///
 /// # Errors
 /// `OutOfRange` if the time does not fit 4 coarse octets.
-fn on_board_time(offset_us: u64) -> Result<[u8; T_FIELD_LEN], Error> {
+fn on_board_time(offset: Duration) -> Result<[u8; T_FIELD_LEN], Error> {
     let format = CucFormat::new(
         CucEpoch::Tai1958,
         time::CUC_COARSE_OCTETS,
         time::CUC_FINE_OCTETS,
     )?;
+    let offset_us = offset.as_micros();
     let whole = offset_us / US_PER_S;
     let seconds = u64::from(time::T0_COARSE_S).saturating_add(whole);
     let micros =
@@ -252,7 +253,7 @@ fn build(apid: u16, count: SeqCount, data: &[u8]) -> Result<Built, Error> {
 mod tests {
     use super::{Call, Execution, OpsEntry, Script};
     use refapp_scenario::generated::apid;
-    use refapp_scenario::{Crc16, TableId, TableLength};
+    use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 
     fn octets(entry: OpsEntry) -> Vec<u8> {
         let script = Script::new(&[entry]).unwrap();
@@ -264,7 +265,9 @@ mod tests {
         // req: APP-024
         // Execution 6.0 s after T0 = 2 100 000 006 s = 0x7D2B7506, fraction 0.
         let p = octets(OpsEntry::Command {
-            execution: Execution::TimeTagged { exec_us: 6_000_000 },
+            execution: Execution::TimeTagged {
+                after_t0: Duration::from_secs(6),
+            },
             call: Call::Noop,
             extra_octets: 0,
         });
@@ -373,7 +376,7 @@ mod tests {
         // req: APP-126
         let too_late = OpsEntry::Command {
             execution: Execution::TimeTagged {
-                exec_us: u64::MAX / 2,
+                after_t0: Duration::from_micros(u64::MAX / 2),
             },
             call: Call::Noop,
             extra_octets: 0,

@@ -8,7 +8,9 @@
 use crate::{Call, Execution, GroundNode, OpsEntry, telemetry};
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode};
-use refapp_scenario::{Instant, Node, Output, StepInput, TableId, TableLength};
+use refapp_scenario::{
+    Delivered, Duration, Instant, Node, Output, StepInput, TableId, TableLength,
+};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +103,7 @@ fn deliver(node: &mut GroundNode, units: &[Vec<u8>]) -> Vec<Rec> {
         let delivered: [&[u8]; 1] = [unit];
         let input = StepInput {
             now,
-            delivered: &delivered,
+            delivered: Delivered::new(&delivered),
             ops: &[],
             tx_slot: true,
         };
@@ -529,7 +531,7 @@ fn several_units_in_one_step_are_handled_in_delivery_order() {
     let delivered: [&[u8]; 2] = [&a, &b];
     let input = StepInput {
         now: Instant::from_micros(1),
-        delivered: &delivered,
+        delivered: Delivered::new(&delivered),
         ops: &[],
         tx_slot: true,
     };
@@ -547,7 +549,9 @@ fn several_units_in_one_step_are_handled_in_delivery_order() {
 
 const fn noop() -> OpsEntry {
     OpsEntry::Command {
-        execution: Execution::TimeTagged { exec_us: 6_000_000 },
+        execution: Execution::TimeTagged {
+            after_t0: Duration::from_secs(6),
+        },
         call: Call::Noop,
         extra_octets: 0,
     }
@@ -570,7 +574,7 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
     let delivered: [&[u8]; 1] = [&unit];
     let input = StepInput {
         now: Instant::from_micros(1_000_000),
-        delivered: &delivered,
+        delivered: Delivered::new(&delivered),
         ops: &[0, 1, 2],
         tx_slot: true,
     };
@@ -596,7 +600,7 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
     // A later entry takes the next command count; a stale or unknown index sends nothing.
     let input = StepInput {
         now: Instant::from_micros(3_000_000),
-        delivered: &[],
+        delivered: Delivered::new(&[]),
         ops: &[3, 9],
         tx_slot: true,
     };
@@ -614,7 +618,7 @@ fn stepping_with_nothing_due_changes_nothing() {
     let mut n = node();
     let input = StepInput {
         now: Instant::from_micros(5),
-        delivered: &[],
+        delivered: Delivered::new(&[]),
         ops: &[],
         tx_slot: true,
     };
@@ -631,7 +635,7 @@ fn a_script_that_cannot_be_built_is_an_error_naming_the_entry() {
         OpsEntry::Command {
             execution: Execution::TimeTagged {
                 // 2 200 000 000 s after T0 does not fit four coarse octets.
-                exec_us: 2_200_000_000_000_000,
+                after_t0: Duration::from_secs(2_200_000_000),
             },
             call: Call::Noop,
             extra_octets: 0,

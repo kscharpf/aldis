@@ -12,7 +12,7 @@ use aldis::spp::{
     PacketFields, PacketType, SequenceFlags, SpacePacket, SpacePacketWriter, SppConfig,
 };
 use refapp_scenario::generated::{apid, time};
-use refapp_scenario::{Instant, Node, StepInput};
+use refapp_scenario::{Delivered, Instant, Node, StepInput};
 
 use crate::dump::memory_octet;
 use crate::tests::{At, Out, Rec, packets};
@@ -132,7 +132,7 @@ impl Run {
         let refs: Vec<&[u8]> = delivered.iter().map(Vec::as_slice).collect();
         let input = StepInput {
             now: Instant::from_micros(now),
-            delivered: &refs,
+            delivered: Delivered::new(&refs),
             ops: &[],
             tx_slot: true,
         };
