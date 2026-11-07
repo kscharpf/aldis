@@ -1234,7 +1234,7 @@ mod tests {
         assert!(rows[..at].iter().all(|r| r.1 == "pass"));
         for row in &rows[at + 1..] {
             assert_eq!(row.1, "not-run", "{}", row.0);
-            let why = if matches!(row.0.as_str(), "kani" | "ffi-miri") {
+            let why = if matches!(row.0.as_str(), "kani" | "ffi-miri-lib") {
                 checks::NIGHTLY_ONLY.to_owned()
             } else {
                 stop_reason("header")
@@ -1312,21 +1312,21 @@ mod tests {
         let all = checks::all();
         let rec = |result: &str| {
             json!({"checks": [{"name": "fmt", "result": "pass"},
-            {"name": "kani", "result": result}, {"name": "ffi-miri", "result": result},
+            {"name": "kani", "result": result}, {"name": "ffi-miri-lib", "result": result},
             {"name": "cpp-leon3", "result": "fail"}]})
         };
         assert_eq!(nightly_problems(&rec("pass"), &all), Vec::<String>::new());
         assert_eq!(
             nightly_problems(&rec("fail"), &all),
-            ["ffi-miri: fail", "kani: fail"]
+            ["ffi-miri-lib: fail", "kani: fail"]
         );
         assert_eq!(
             nightly_problems(&rec("not-run"), &all),
-            ["ffi-miri: not-run", "kani: not-run"]
+            ["ffi-miri-lib: not-run", "kani: not-run"]
         );
         assert_eq!(
             nightly_problems(&json!({"checks": []}), &all),
-            ["ffi-miri: missing", "kani: missing"]
+            ["ffi-miri-lib: missing", "kani: missing"]
         );
     }
 
@@ -1511,7 +1511,7 @@ mod tests {
             for (name, result, reason) in &rows {
                 let want = match name.as_str() {
                     "rust-sparc-leon3" => ("not-run", Some(NO_CONTAINER_REASON)),
-                    "kani" | "ffi-miri" => ("not-run", Some(checks::NIGHTLY_ONLY)),
+                    "kani" | "ffi-miri-lib" => ("not-run", Some(checks::NIGHTLY_ONLY)),
                     _ => ("skipped", None),
                 };
                 assert_eq!(result, want.0, "{name}");
