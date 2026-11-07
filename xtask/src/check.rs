@@ -695,7 +695,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "ffi-miri",
-        "not mirrored: runs the aldis-ffi tests under Miri on the tooling nightly; `MIRIFLAGS=-Zmiri-disable-isolation cargo +<tooling-nightly> miri test -p aldis-ffi --test <name>` runs it by hand, for the integration tests but `vectors`, which runs weekly; the unit tests and the largest-frame test of `sync` (ignored under Miri) are the nightly-only `ffi-miri-lib`",
+        "not mirrored: runs the aldis-ffi tests under Miri on the tooling nightly; `MIRIFLAGS=-Zmiri-disable-isolation cargo +<tooling-nightly> miri test -p aldis-ffi --test <name>` runs it by hand, for the integration tests but `vectors`, which runs weekly; the tests it skips (`cfg_attr(miri, ignore)`: run them with `-- --ignored`) and the unit tests are the nightly-only `ffi-miri-lib`",
     ),
     (
         "spec",

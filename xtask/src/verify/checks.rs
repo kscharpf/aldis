@@ -569,8 +569,8 @@ fn ffi_miri_check() -> Check {
     )
 }
 
-/// The check `ffi-miri-lib`: the unit tests of `aldis-ffi` and the one `sync` test that the gating
-/// check skips (about 5 minutes under Miri) under Miri, nightly-only and
+/// The check `ffi-miri-lib`: the unit tests of `aldis-ffi` and the integration tests that the gating
+/// check skips (today one, about 5 minutes under Miri) under Miri, nightly-only and
 /// non-gating like `kani` (maintainer decision 2026-11-07: Miri over all of `aldis-ffi` in the
 /// gate took too long). Same inputs as `ffi-miri`.
 fn ffi_miri_lib_check() -> Check {
@@ -702,9 +702,9 @@ pub(crate) const TEST: &str = "cargo test --locked --workspace --all-features\n"
 
 const FFI_MIRI_SCRIPT: &str = r#"
 # Every integration test of aldis-ffi but `vectors` under Miri on the tooling nightly, Stacked
-# Borrows (VER-026, GEN-071; m5 plan D4): the unit tests and the one `sync` test marked
-# `cfg_attr(miri, ignore)` are the nightly check `ffi-miri-lib`, and `vectors`, which takes about
-# two hours, runs weekly (.github/workflows/miri-weekly.yml).
+# Borrows (VER-026, GEN-071; m5 plan D4): the unit tests and every test marked
+# `cfg_attr(miri, ignore)` (today one in `sync`) are the nightly check `ffi-miri-lib`, and
+# `vectors`, which takes about two hours, runs weekly (.github/workflows/miri-weekly.yml).
 # Isolation is off: the tests read test-vectors/.
 nightly="$(cat tooling-nightly)"
 tests=()
@@ -717,15 +717,21 @@ MIRIFLAGS="-Zmiri-disable-isolation" \
 "#;
 
 const FFI_MIRI_LIB_SCRIPT: &str = r#"
-# The unit tests of aldis-ffi, and the tests of `sync` that the gate skips under Miri
-# (`cfg_attr(miri, ignore)`: the largest-frame test, about 5 minutes), under Miri on the tooling
-# nightly, Stacked Borrows (VER-026, GEN-071). Nightly-only: the gate runs the other integration
-# tests (`ffi-miri`).
+# The unit tests of aldis-ffi, and the integration tests that the gate skips under Miri
+# (`cfg_attr(miri, ignore)`; today the largest-frame test of `sync`, about 5 minutes), under Miri
+# on the tooling nightly, Stacked Borrows (VER-026, GEN-071). The ignored run takes the test list
+# of the gating script, so it covers whatever that skips. Nightly-only: the gate runs the other
+# integration tests (`ffi-miri`).
 nightly="$(cat tooling-nightly)"
+tests=()
+for f in crates/aldis-ffi/tests/*.rs; do
+  name="$(basename "$f" .rs)"
+  [ "$name" = vectors ] || tests+=(--test "$name")
+done
 MIRIFLAGS="-Zmiri-disable-isolation" \
   cargo +"$nightly" miri test --locked -p aldis-ffi --lib
 MIRIFLAGS="-Zmiri-disable-isolation" \
-  cargo +"$nightly" miri test --locked -p aldis-ffi --test sync -- --ignored
+  cargo +"$nightly" miri test --locked -p aldis-ffi "${tests[@]}" -- --ignored
 "#;
 
 const C_SANITIZERS_SCRIPT: &str = "\
