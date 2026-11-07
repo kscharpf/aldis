@@ -72,7 +72,7 @@ Only what the document lacks; nothing in it is restated.
 - How an ops-script entry and a fault-script entry are written in the language-neutral scenario file and its schema (APP-107): an entry names its release instant and kind (`command`, `table_upload`; `fop1_directive` from A3) and the parameters of §3.3.5 and §3.3.6, not the octets, so that the ground node builds the packets and the A5 C++ node can read the same file.
 - The two derived values of §2.4 (CRC-16 of the table `0x0C4F` and of the 600 dumped octets `0x80A8`) checked by a hand derivation against CMN-001 and the simulated memory of §3.3.4, and the result written into §2.4 in place of "to be cross-checked".
 - The A1 readings the nodes rely on, checked clause by clause against the Blue Books before code: the sequence classification of a gap, a repeat, and a reset (SPP-011; 133.0 §4.1.3.4.3.3–4); segmentation of the dump (SPP-013; 133.0 §4.1.3.4.2.2); the implicit and explicit P-field (SPP-008; 301.0 §3.2.2); the conversion of an `Instant` to a CUC value (TIME-011). A reading the Blue Book does not settle becomes an OI for the maintainer (decision rights §2.1); the scenario already avoids the known ones (APP-061).
-- New requirements take the next free ID of area APP (the decades per section are full, so `APP-126` on) and go in the exit table (§4).
+- New requirements take the next free ID of area APP (the decades per section are full, so the next free number after the last row of the area) and go in the exit table (§4).
 - The A0 close-out of D1, if accepted.
 - Checklist: "A spec-readings pull request before a codec", for the readings.
 - **Done when:** `cargo xtask spec-lint` passes and the maintainer has accepted D1 to D5.
