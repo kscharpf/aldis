@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use aldis_core::bits::{get, set};
 use aldis_core::container::{ByteQueue, FixedQueue};
 use aldis_core::counter::Continuity;
-use aldis_core::crc::{syndrome, verify_fecf, write_fecf};
+use aldis_core::crc::{Crc16, syndrome, verify_fecf, write_fecf};
 use aldis_core::error::ErrorKind;
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::{FsrReport, Ocf, ProjectSpecificReport, Type1Report};
@@ -127,11 +127,11 @@ proptest! {
         let mut frame = data;
         frame.extend_from_slice(&[0, 0]);
         write_fecf(&mut frame).unwrap();
-        prop_assert_eq!(syndrome(&frame), 0);
+        prop_assert_eq!(syndrome(&frame), Crc16::ZERO);
         prop_assert!(verify_fecf(&frame).is_ok());
         let bit = usize::from(flip) % (frame.len() * 8);
         frame[bit / 8] ^= 0x80 >> (bit % 8);
-        prop_assert_eq!(verify_fecf(&frame).is_ok(), syndrome(&frame) == 0);
+        prop_assert_eq!(verify_fecf(&frame).is_ok(), syndrome(&frame) == Crc16::ZERO);
     }
 
     #[cfg(feature = "crc-table")]

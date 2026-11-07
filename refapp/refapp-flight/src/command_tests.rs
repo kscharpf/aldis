@@ -6,7 +6,7 @@ extern crate std;
 use std::vec::Vec;
 
 use aldis::core::ErrorKind;
-use aldis::core::crc::crc16;
+use aldis::core::crc::{Crc16, crc16};
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{
     PacketFields, PacketType, SequenceFlags, SpacePacket, SpacePacketWriter, SppConfig,
@@ -626,7 +626,7 @@ fn the_nominal_dump_is_five_packets_one_every_125_ms() {
             .all(|(i, o)| *o == memory_octet(0x0001_0000 + u32::try_from(i).unwrap()))
     );
     // The CRC-16 of the 600 dumped octets, hand-derived in §2.4.
-    assert_eq!(crc16(&sdu[6..]), 0x80A8);
+    assert_eq!(crc16(&sdu[6..]), Crc16::from_wire(0x80A8));
     // CMD_EXECUTED at 12.0 s, before the first packet; DUMP_COMPLETED at 12.5 s, after the last.
     let events = log(&run.rec);
     assert_eq!(

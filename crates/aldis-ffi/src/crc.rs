@@ -38,7 +38,7 @@ pub unsafe extern "C" fn aldis_crc16(
     unsafe {
         abi::call(err, || {
             let data = abi::bytes(data, len)?;
-            abi::out(crc)?.write(crc16(data));
+            abi::out(crc)?.write(crc16(data).get());
             Ok(())
         })
     }

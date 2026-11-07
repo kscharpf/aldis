@@ -3,7 +3,7 @@
 
 use core::ops::Range;
 
-use aldis_core::crc::{crc16, crc16_update};
+use aldis_core::crc::{Crc16, crc16, crc16_update};
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, OCF_LEN};
 use aldis_core::ocf::Ocf;
@@ -411,7 +411,7 @@ fn check_fecf(bytes: &[u8], received: &Received) -> Result<()> {
     let fecf = bytes
         .get(end..)
         .and_then(|f| <[u8; FECF_LEN]>::try_from(f).ok())
-        .map(u16::from_be_bytes);
+        .map(Crc16::from_be_bytes);
     if fecf == Some(crc) {
         Ok(())
     } else {

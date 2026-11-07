@@ -784,7 +784,7 @@ mod tests {
             .finalize()
             .unwrap()
             .into_octets();
-        assert_eq!(syndrome(octets), 0);
+        assert_eq!(syndrome(octets).get(), 0);
         let f = TcFrame::decode(octets, &t).unwrap();
         assert_eq!(
             (f.security_header(), f.data_field(), f.security_trailer()),

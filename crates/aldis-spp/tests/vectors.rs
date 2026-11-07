@@ -266,7 +266,7 @@ fn reassemble_case(case: &CodecCase) -> Value {
             match ra.push(&p.header(), p.data_field()) {
                 Err(e) => json!({ "error": e.kind().name() }),
                 Ok(o) => {
-                    let discarded = o.discarded.map(discard_name);
+                    let discarded = o.discarded.map(|d| discard_name(d.reason));
                     match o.status {
                         Status::InProgress => json!({ "discarded": discarded, "status": "InProgress" }),
                         Status::Complete(n) => {

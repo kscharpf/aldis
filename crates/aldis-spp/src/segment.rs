@@ -195,7 +195,7 @@ impl SegmenterState {
     clippy::as_conversions,
     reason = "supported targets are 32- or 64-bit, so usize fits in u64"
 )]
-const fn as_u64(n: usize) -> u64 {
+pub(crate) const fn as_u64(n: usize) -> u64 {
     n as u64
 }
 
@@ -215,6 +215,17 @@ pub enum Discard {
     Overflow,
 }
 
+/// A partial SDU the reassembler threw away: why, and how many octets it held (133.0 §4.1.3.4.2;
+/// SPP-013, OI-30).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Discarded {
+    /// Why: `Gap`, `Restarted`, `Interrupted`, or `Overflow`.
+    pub reason: Discard,
+    /// The octets of user data the partial SDU held before the push; the user data of the packet
+    /// just pushed is not counted.
+    pub octets: usize,
+}
+
 /// What happened to the packet just pushed (133.0 §4.1.3.4.2, SPP-013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {
@@ -231,9 +242,9 @@ pub enum Status {
 /// `docs/standards/space-packet.md` §5.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Outcome {
-    /// Why a partial SDU was thrown away, if one was: `Gap`, `Restarted`, `Interrupted`, or
-    /// `Overflow` (133.0 §4.1.3.4.2, SPP-013).
-    pub discarded: Option<Discard>,
+    /// The partial SDU thrown away, if one was: why (`Gap`, `Restarted`, `Interrupted`, or
+    /// `Overflow`) and how many octets it held (133.0 §4.1.3.4.2, SPP-013).
+    pub discarded: Option<Discarded>,
     /// What happened to the packet itself (133.0 §4.1.3.4.2, SPP-013).
     pub status: Status,
 }
@@ -290,12 +301,18 @@ impl<'b> Reassembler<'b> {
         let mut discarded = None;
         if self.assembling && !in_sequence {
             self.assembling = false;
-            discarded = Some(Discard::Gap);
+            discarded = Some(Discarded {
+                reason: Discard::Gap,
+                octets: self.filled,
+            });
         }
         let status = match header.sequence_flags() {
             SequenceFlags::First => {
                 if self.assembling {
-                    discarded = Some(Discard::Restarted);
+                    discarded = Some(Discarded {
+                        reason: Discard::Restarted,
+                        octets: self.filled,
+                    });
                 }
                 self.filled = 0;
                 self.assembling = self.append(user_data);
@@ -307,7 +324,10 @@ impl<'b> Reassembler<'b> {
             }
             SequenceFlags::Unsegmented => {
                 if self.assembling {
-                    discarded = Some(Discard::Interrupted);
+                    discarded = Some(Discarded {
+                        reason: Discard::Interrupted,
+                        octets: self.filled,
+                    });
                 }
                 self.assembling = false;
                 self.filled = 0;
@@ -324,7 +344,10 @@ impl<'b> Reassembler<'b> {
             flags @ (SequenceFlags::Continuation | SequenceFlags::Last) => {
                 if !self.append(user_data) {
                     self.assembling = false;
-                    discarded = Some(Discard::Overflow);
+                    discarded = Some(Discarded {
+                        reason: Discard::Overflow,
+                        octets: self.filled,
+                    });
                     Status::Dropped(Discard::Overflow)
                 } else if flags == SequenceFlags::Last {
                     self.assembling = false;
@@ -471,7 +494,7 @@ mod tests {
     extern crate std;
     use std::vec;
 
-    use super::{Discard, Outcome, Reassembler, ReassemblerState, Segmenter, Status};
+    use super::{Discard, Discarded, Outcome, Reassembler, ReassemblerState, Segmenter, Status};
     use crate::config::SppConfig;
     use crate::header::{PacketFields, PacketType, SequenceFlags, SpacePacketHeader};
     use crate::sequence::SequenceCounter;
@@ -494,7 +517,11 @@ mod tests {
         SpacePacketHeader::new(fields, false, 1)
     }
 
-    const fn outcome(discarded: Option<Discard>, status: Status) -> Outcome {
+    const fn outcome(discarded: Option<(Discard, usize)>, status: Status) -> Outcome {
+        let discarded = match discarded {
+            Some((reason, octets)) => Some(Discarded { reason, octets }),
+            None => None,
+        };
         Outcome { discarded, status }
     }
 
@@ -559,6 +586,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one table of twelve pushes with the outcome each must give"
+    )]
     fn reassembler_rules() {
         // req: SPP-013, OI-30
         let mut buf = [0_u8; 4];
@@ -597,27 +628,30 @@ mod tests {
                 L,
                 7,
                 &[7],
-                outcome(Some(Discard::Gap), Status::Dropped(Discard::Orphan)),
+                outcome(Some((Discard::Gap, 1)), Status::Dropped(Discard::Orphan)),
             ),
             (F, 8, &[8], outcome(None, Status::InProgress)),
             (
                 F,
                 9,
                 &[9, 9],
-                outcome(Some(Discard::Restarted), Status::InProgress),
+                outcome(Some((Discard::Restarted, 1)), Status::InProgress),
             ),
             (
                 C,
                 10,
                 &[1, 2, 3],
-                outcome(Some(Discard::Overflow), Status::Dropped(Discard::Overflow)),
+                outcome(
+                    Some((Discard::Overflow, 2)),
+                    Status::Dropped(Discard::Overflow),
+                ),
             ),
             (F, 11, &[1], outcome(None, Status::InProgress)),
             (
                 U,
                 12,
                 &[6, 6],
-                outcome(Some(Discard::Interrupted), Status::Complete(2)),
+                outcome(Some((Discard::Interrupted, 1)), Status::Complete(2)),
             ),
             (
                 U,

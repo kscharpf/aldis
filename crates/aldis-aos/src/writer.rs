@@ -893,7 +893,7 @@ mod tests {
             .unwrap()
             .finalize()
             .into_octets();
-        assert_eq!(syndrome(octets), 0);
+        assert_eq!(syndrome(octets).get(), 0);
         let f = AosFrame::decode(octets, &phy, &t).unwrap();
         assert_eq!(
             f.header().fhec().map(u16::to_be_bytes),
@@ -943,7 +943,7 @@ mod tests {
         assert_eq!((done.len(), done.octets().len()), (40, 40));
         assert!(!done.is_empty());
         assert_eq!(out[40..], [0xEE; 8], "nothing written past the frame");
-        assert_eq!(syndrome(&out[..40]), 0);
+        assert_eq!(syndrome(&out[..40]).get(), 0);
         // SCID 0x0AB: LSBs 1010 1011, MSBs 00; VCID 0; replay 1, use 1, cycle 9.
         assert_eq!(out[..6], [0x6A, 0xC0, 0x12, 0x34, 0x56, 0xC9]);
         assert_eq!(out[14..16], [0x00, 0x03], "the M_PDU Header");
@@ -1439,7 +1439,7 @@ mod tests {
         assert_eq!(fib_frame[40..], [0xEE; 4], "nothing written past the frame");
         assert_eq!(fib, two_phase);
         assert_eq!(gal.next_octet(), fib.next_octet());
-        assert_eq!(syndrome(&two_frame), 0);
+        assert_eq!(syndrome(&two_frame).get(), 0);
         let frame = AosFrame::decode(&two_frame, &phy, &table).unwrap();
         assert_eq!(frame.insert_zone(), &iz);
     }

@@ -7951,6 +7951,10 @@ typedef struct {
    */
   uint32_t discarded;
   /**
+   * For a `discarded` that is not `_NONE`: the octets of user data the partial SDU held.
+   */
+  size_t discarded_octets;
+  /**
    * `ALDIS_SPP_REASSEMBLY_*`.
    */
   uint32_t status;

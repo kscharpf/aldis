@@ -145,10 +145,16 @@ impl Script {
                     call,
                     extra_octets,
                 } => command_data(execution, call, extra_octets)
-                    .and_then(|data| build(apid::COMMANDS, commands.advance(), &data))
+                    .and_then(|data| {
+                        build(
+                            Apid::from_const::<{ apid::COMMANDS }>(),
+                            commands.advance(),
+                            &data,
+                        )
+                    })
                     .map(Some),
                 OpsEntry::TableUpload { table_id, length } => build(
-                    apid::TABLE_UPLOAD,
+                    Apid::from_const::<{ apid::TABLE_UPLOAD }>(),
                     tables.advance(),
                     &table_data(table_id, length),
                 )
@@ -233,9 +239,7 @@ fn on_board_time(offset: Duration) -> Result<[u8; T_FIELD_LEN], Error> {
 
 /// Encodes a telecommand packet of `apid` with `count` and the user data `data`, no secondary
 /// header, Sequence Flags `11` (§3.1).
-fn build(apid: u16, count: SeqCount, data: &[u8]) -> Result<Built, Error> {
-    // A constant APID still needs an error path (api-feedback #304).
-    let apid = Apid::new(apid).ok_or(Error::new(ErrorKind::InvalidField))?;
+fn build(apid: Apid, count: SeqCount, data: &[u8]) -> Result<Built, Error> {
     let fields = PacketFields {
         packet_type: PacketType::Telecommand,
         apid,

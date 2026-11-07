@@ -12,7 +12,7 @@
 //! | [`idle`] | `IdlePacket` builder | 133.0 §4.1.3.3.4.4, §4.1.4.3.4 | SPP-010 |
 //! | [`sequence`] | `SequenceCounter`, `SequenceTracker` | 133.0 §4.1.3.4.3, §4.3.2.2 | SPP-011, GEN-011, GEN-024 |
 //! | [`octet`] | `OctetStringEncoder` (Octet String service) | 133.0 §3.4, §4.2.2 | SPP-012 |
-//! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, and `Discard`; their buffer-free `SegmenterState` and `ReassemblerState` | 133.0 §4.1.3.4.2 note | SPP-013, API-060 |
+//! | [`segment`] | `Segmenter`, `Reassembler` with its `Outcome`, `Status`, `Discard`, and `Discarded`; their buffer-free `SegmenterState` and `ReassemblerState` | 133.0 §4.1.3.4.2 note | SPP-013, API-060 |
 //! | [`anomaly`] | `SppAnomaly` lenient-mode flags | 133.0 §4.1.3.3.3.4 | API-032, GEN-043 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 133.0 §4.1, §5.2 | API-082, GEN-041 |
 //!
@@ -68,7 +68,7 @@ pub use octet::OctetStringEncoder;
 pub use secondary::TimeHeaderLayout;
 pub use secondary::{SecondaryHeaderLayout, SplitPacket};
 pub use segment::{
-    Discard, Outcome, Reassembler, ReassemblerState, Segmenter, SegmenterState, Status,
+    Discard, Discarded, Outcome, Reassembler, ReassemblerState, Segmenter, SegmenterState, Status,
 };
 pub use sequence::{SequenceCounter, SequenceTracker, Tracked};
 pub use view::SpacePacket;

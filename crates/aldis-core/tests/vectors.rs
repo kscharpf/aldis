@@ -64,7 +64,7 @@ fn handle(case: &CodecCase) -> Outcome {
             assert_eq!(crc16_bitwise(&data), val);
             #[cfg(feature = "crc-table")]
             assert_eq!(aldis_core::crc::crc16_table(&data), val);
-            ok(&json!({ "value_hex": format!("{val:04X}") }))
+            ok(&json!({ "value_hex": format!("{:04X}", val.get()) }))
         }
         "oid_fill" => {
             let len = param_usize(case, "octets");
