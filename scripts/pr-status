@@ -9,13 +9,16 @@
 # `NOT READY: <reasons>`. A constituent needs no verify record of its own and no merge of
 # origin/<base>, since the train PR is verified once; its review is the only per-PR gate, so
 # `READY FOR TRAIN` needs: open, not a draft, no changes requested, at least one submitted review,
-# a later reply ending in the marker (below), no commit on the head newer than that reply, and no
-# label `needs-maintainer` (a PR that waits on a maintainer decision stays out of trains).
+# a later reply ending in the marker (below) that names the current head (`headRefOid`, a hex
+# prefix of at least 7 characters anywhere in the reply, so a push after the reply is caught), no
+# force-push of the head branch after the reply (`head_ref_force_pushed` in the issue timeline),
+# and no label `needs-maintainer` (a PR that waits on a maintainer decision stays out of trains).
 #
 # Per PR: state, head, commits behind origin/<base>, the required status contexts of branch
 # protection with their state on the head, the other checks (not required), the newest
 # verify.yml run on the head branch, whether a record is published for the head, the latest
-# review in full, the PR comments, and one verdict line: `READY`, or `NOT READY: <reasons>`.
+# review in full, the PR comments, and one verdict line: `READY`, `READY FOR TRAIN` (with --train),
+# or `NOT READY: <reasons>`.
 # READY means: open, not a draft, the head contains the tip of origin/<base> (otherwise `behind
 # origin/<base> by <n>`), no changes requested and no review outstanding, the review to answer
 # has a reply, and every required context is success on the head.
@@ -57,7 +60,7 @@ fi
 
 status_one() {
     local n="$1" info state draft head branch base decision behind checks required ctx s
-    local labels last_commit reply_at reviews_n
+    local labels reply_at reply_body force_at reviews_n
     local run run_id run_status run_conclusion run_sha record reasons="" inline unanswered of
     info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
         --jq '[.state, (.isDraft|tostring), .headRefOid, .headRefName, .baseRefName,
@@ -143,21 +146,28 @@ status_one() {
           then empty
           else "\($r.author.login) \($r.state) \($r.submittedAt)" end'
     unanswered="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter//@MARKER@/$marker}")"
-    # The newest reply that ends with the marker and follows the newest submitted review.
+    # The newest reply that ends with the marker and follows the newest submitted review: its time
+    # and its text.
     # shellcheck disable=SC2016  # $r is a jq variable
-    reply_at_filter='
+    reply_filter_new='
         ([.reviews[] | select(.submittedAt != null)] | max_by(.submittedAt)) as $r
         | if $r == null then empty
           else [.comments[]
                 | select(.createdAt > $r.submittedAt
-                    and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")
-                | .createdAt] | max // empty end'
-    reply_at="$(gh pr view "$n" --json reviews,comments \
-        --jq "${reply_at_filter//@MARKER@/$marker}")"
+                    and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")]
+               | max_by(.createdAt) // empty | @MODE@ end'
+    reply_filter_new="${reply_filter_new//@MARKER@/$marker}"
+    reply_at="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter_new//@MODE@/.createdAt}")"
+    reply_body="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter_new//@MODE@/.body}")"
     reviews_n="$(gh pr view "$n" --json reviews --jq '[.reviews[] | select(.submittedAt != null)]
         | length')"
     labels="$(gh pr view "$n" --json labels --jq '[.labels[].name] | join(",")')"
-    last_commit="$(gh pr view "$n" --json commits --jq '.commits[-1].committedDate // empty')"
+    # The latest force-push of the head branch (server time), unreadable: "?".
+    if [ "$train" -eq 1 ]; then
+        force_at="$(gh api "repos/{owner}/{repo}/issues/$n/timeline" --paginate \
+            --jq '.[] | select(.event == "head_ref_force_pushed") | .created_at' 2>/dev/null |
+            sort | tail -n 1)" || force_at="?"
+    fi
     echo "comments:"
     gh pr view "$n" --json comments --jq 'if (.comments | length) == 0 then "  (none)"
         else .comments[]
@@ -178,10 +188,16 @@ status_one() {
     [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
     if [ "$train" -eq 1 ]; then
         # The review is the only per-PR gate of a constituent: it must exist, be answered, and
-        # still describe the head; and a decision of the maintainer must not be pending.
+        # still describe the head (the reply names it, no force-push after it); and a decision
+        # of the maintainer must not be pending.
         [ "$reviews_n" -gt 0 ] || reasons="$reasons; no review"
-        if [ -n "$reply_at" ] && [ -n "$last_commit" ] && [[ $last_commit > $reply_at ]]; then
-            reasons="$reasons; head commit ($last_commit) is newer than the reply ($reply_at)"
+        if [ -n "$reply_at" ] && ! grep -Fqi -- "${head:0:7}" <<<"$reply_body"; then
+            reasons="$reasons; the reply does not name the head ${head:0:7}"
+        fi
+        if [ "$force_at" = "?" ]; then
+            reasons="$reasons; the timeline of the PR is unreadable"
+        elif [ -n "$force_at" ] && [ -n "$reply_at" ] && [[ $force_at > $reply_at ]]; then
+            reasons="$reasons; head branch force-pushed ($force_at) after the reply ($reply_at)"
         fi
         case ",$labels," in
         *,needs-maintainer,*) reasons="$reasons; label needs-maintainer (waits on a decision)" ;;

@@ -67,6 +67,7 @@ case "$1 $2" in
 "api "*)
     case "$2" in
     */protection) echo '{}' | jq -r "$filter" ;;
+    */timeline) echo '[]' | jq -r "$filter" ;;
     *) echo '[]' ;;
     esac
     ;;
@@ -91,16 +92,18 @@ pr() {
         reviews='[{"author":{"login":"rev"},"state":"COMMENTED","body":"ok",
                    "submittedAt":"2026-01-02T00:00:00Z"}]'
         comments="$(jq -nc --arg m "$marker" '[{author: {login: "me"},
-            createdAt: "2026-01-03T00:00:00Z", body: ("Fixed.\n\n" + $m)}]')"
+            createdAt: "2026-01-03T00:00:00Z",
+            body: ("Fix round, head " + ($sha | .[0:9]) + ".\n\n" + $m)}]' --arg sha "$sha")"
     fi
     jq -nc --arg b "$2" --arg t "$3" --arg s "${4:-OPEN}" --argjson d "${5:-false}" \
-        --arg sha "$sha" --arg labels "${6:-}" --argjson reviews "$reviews" \
-        --argjson comments "$comments" --arg committed "${8:-2026-01-01T00:00:00Z}" '{
+        --arg sha "$sha" --arg base "${BASE:-main}" --arg labels "${6:-}" --argjson reviews "$reviews" \
+        --argjson comments "$comments" '{
         state: $s, isDraft: $d, headRefName: $b, headRepositoryOwner: {login: "o"},
-        headRefOid: $sha, baseRefName: "main", reviewDecision: "", title: $t, body: "",
+        baseRefName: $base,
+        headRefOid: $sha, reviewDecision: "", title: $t, body: "",
         statusCheckRollup: [], reviews: $reviews, comments: $comments,
         labels: ($labels | split(",") | map(select(. != "") | {name: .})),
-        commits: [{committedDate: $committed}]}' >"$STUB/pr-$1.json"
+        }' >"$STUB/pr-$1.json"
 }
 branch train/x ftx 1
 branch e fe 1
@@ -114,7 +117,9 @@ pr 16 a "feat: draft" OPEN true
 pr 17 train/x "chore(train): other"
 pr 18 e "feat: unreviewed" OPEN false "" 0
 pr 19 f "feat: waits" OPEN false "needs-maintainer"
-pr 20 f "feat: pushed after the reply" OPEN false "" 1 2026-01-04T00:00:00Z
+pr 20 f "feat: reply names no current head" OPEN false "" 1
+branch g fg 1
+BASE=a pr 21 g "feat: stacked on a"
 
 failures=0
 run() { (cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
@@ -163,7 +168,7 @@ check "pushes nothing on a conflict" $?
 t [ -z "$(git -C "$repo" branch --list "train/$today-2")" ]
 check "leaves no local train branch" $?
 
-for n in 15 16 17 18 19 20; do
+for n in 15 16 17 18 19; do
     out="$(run 11 "$n")"
     [ $? -eq 1 ] && contains "$out" "#$n"
     check "#$n cannot ride" $?
@@ -175,9 +180,29 @@ check "an unreviewed PR is refused with its reason" $?
 out="$(run 19)"
 contains "$out" "needs-maintainer"
 check "a PR that waits on the maintainer is refused with its reason" $?
+git -C "$repo" checkout -q f
+echo more >"$repo/more"
+git -C "$repo" add more
+git -C "$repo" commit -q -m more
+git -C "$repo" push -q origin f
+git -C "$repo" checkout -q main
+git -C "$repo" fetch -q origin
+pr 20 f "feat: pushed after the reply" OPEN false "" 1
+sed -i.bak 's/head [0-9a-f]\{9\}/head 000000000/' "$STUB/pr-20.json"
 out="$(run 20)"
-contains "$out" "newer than the reply"
-check "a PR pushed after the reply is refused" $?
+contains "$out" "does not name the head"
+check "a PR whose reply does not name the head is refused" $?
+out="$(run 21 11)"
+contains "$out" "#21 is stacked on a"
+check "a stacked PR before its base PR is refused" $?
+out="$(run --dry-run 21)"
+contains "$out" "#21 is stacked on a"
+check "a stacked PR without its base PR is refused" $?
+out="$(run --dry-run 11 21)"
+contains "$out" "dry run"
+check "a stacked PR after its base PR rides the train" $?
+git -C "$repo" worktree remove --force "$repo/.claude/worktrees/train/$today-2"
+git -C "$repo" branch -D "train/$today-2" >/dev/null
 
 # The train merges the SHA that was checked: a push after the check is not merged.
 pr 11 a "feat(m1/wp-1): add a"

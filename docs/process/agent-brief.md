@@ -26,6 +26,10 @@ Name the goal, the base, what done means, and what the agent leaves alone: other
 6. **Boundaries.** Stop at an open pull request, with a published record when the brief gave you the gate (a pull request that rides a train needs none). Merging is the maintainer's. Leave other pull requests alone, and leave the worktree in place: the coordinator removes it after the merge.
 7. **Measurement.** Measure on a throwaway branch: one full run of every check, the branch and its worktree deleted after the results are read. The record notes the run publishes under `refs/notes/verify` stay.
 
+## The reply to a review
+
+The reply to a review (a pull request comment, point by point, ending in the marker of [AGENTS.md](../../AGENTS.md)) names the commit it answers, a hex prefix of the head of at least 7 characters: "Fix round, head 81db08a2". A pull request that rides a merge train is ready only while its latest reply names its current head ([coordinator.md](coordinator.md#merge-trains)); push again after the reply and the reply is posted again.
+
 ## The report
 
 The pull request body follows [pr-body.md](pr-body.md). End the report with: the pull request URL; **Decisions met**, one line for each accepted plan decision or convention the work package implements, marked met or not met with the `path:line` that meets it (in M3, #174 hand-typed an enum that an accepted convention ruled out); the evidence (command output, timings against the stated baseline, and the `verify check` result when you had the gate); **Judgement calls** (decisions the agent made under [decision-rights.md](decision-rights.md), each with its reason); **For the maintainer** (what only the maintainer can decide, as one question with a recommended option).

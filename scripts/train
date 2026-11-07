@@ -10,6 +10,8 @@
 # draft, reviewed, the review answered, no commit after the reply, no label `needs-maintainer`);
 # the script refuses any other, naming the verdict, and merges the exact head SHA it checked,
 # not the branch tip: a push between the check and the merge refuses the PR.
+# A stacked PR (its base branch is not main) is refused unless the PR of its base branch is
+# earlier in the same train: it rides the train after its base (roadmap §6 rule 10).
 # Build: fetch; a worktree `.claude/worktrees/train/<date>-<n>` on the new branch
 # `train/<YYYY-MM-DD>-<n>` (n: one more than the train PRs of today in any state, or the live
 # train branches of today if more) off
@@ -100,11 +102,23 @@ head_of() { # head_of <pr>: the head commit of a PR
 heads=() branches=() owners=() titles=()
 for n in "${prs[@]}"; do
     sha="$(head_of "$n")" || die2 "#$n: gh could not read the pull request"
-    info="$(gh pr view "$n" --json headRefName,headRepositoryOwner,title \
-        --jq '[.headRefName, .headRepositoryOwner.login, .title] | @tsv')" ||
+    info="$(gh pr view "$n" --json headRefName,baseRefName,headRepositoryOwner,title \
+        --jq '[.headRefName, .baseRefName, .headRepositoryOwner.login, .title] | @tsv')" ||
         die2 "#$n: gh could not read the pull request"
-    IFS=$'\t' read -r branch owner title <<<"$info"
+    IFS=$'\t' read -r branch base owner title <<<"$info"
     case "$branch" in train/*) echo "#$n is a train PR, not a constituent" >&2; exit 1 ;; esac
+    # A stacked PR (base branch other than main) rides after the PR it is stacked on.
+    if [ "$base" != main ]; then
+        below=0
+        for b in ${branches[@]+"${branches[@]}"}; do
+            [ "$b" != "$base" ] || below=1
+        done
+        [ "$below" -eq 1 ] || {
+            echo "#$n is stacked on $base, whose PR is not earlier in this train: put it" \
+                "after its base PR, or wait until the base has merged" >&2
+            exit 1
+        }
+    fi
     verdict="$("$here/pr-status" --train "$n" 2>/dev/null | grep -E "^#$n: (READY|NOT READY)" |
         tail -n 1)" || verdict=""
     if [ "$verdict" != "#$n: READY FOR TRAIN" ]; then

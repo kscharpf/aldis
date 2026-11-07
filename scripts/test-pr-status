@@ -9,8 +9,9 @@
 # without findings left unanswered are each NOT READY, and the newest review decides; a later
 # review, or an agent review ending in the marker, is not a reply; a head behind origin/main is
 # NOT READY. With --train (a constituent of a merge train): no verify record and a head behind
-# origin/main do not matter, but a PR with no review, an unanswered review, a head commit newer
-# than the reply, or the label `needs-maintainer` is NOT READY; the flag may stand anywhere.
+# origin/main do not matter, but a PR with no review, an unanswered review, a reply that does not
+# name the current head, a force-push of the head branch after the reply, or the label
+# `needs-maintainer` is NOT READY; the flag may stand anywhere.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -57,6 +58,7 @@ run) exit 0 ;;
 api)
     case "$2" in
     */protection) file=protection.json ;;
+    */timeline) file=timeline.json ;;
     *) file=inline.json ;;
     esac
     ;;
@@ -68,6 +70,7 @@ chmod +x "$work/bin/gh"
 export STUB="$work/stub"
 echo '{"required_status_checks":{"contexts":["aldis/verify"]}}' >"$STUB/protection.json"
 echo '[]' >"$STUB/inline.json"
+echo '[]' >"$STUB/timeline.json"
 
 rev='"author":{"login":"rev"},"state":"COMMENTED","body":"ok"'
 review='{'"$rev"',"submittedAt":"2026-01-02T00:00:00Z"}'
@@ -79,13 +82,12 @@ comment() { # comment <time> <body>
 pr() { # pr <head> <reviews json array> <comments json array> [branch] [verify state] [labels]
     jq -nc --arg head "$1" --argjson reviews "$2" --argjson comments "$3" \
         --arg branch "${4:-feature}" --arg verify "${5-SUCCESS}" --arg labels "${6:-}" \
-        --arg committed "${COMMITTED:-2026-01-01T00:00:00Z}" '{
+        '{
         state: "OPEN", isDraft: false, headRefOid: $head, headRefName: $branch,
         baseRefName: "main", reviewDecision: "",
         statusCheckRollup: (if $verify == "" then []
                             else [{context: "aldis/verify", state: $verify}] end),
         labels: ($labels | split(",") | map(select(. != "") | {name: .})),
-        commits: [{committedDate: $committed}],
         reviews: $reviews, comments: $comments}' >"$STUB/pr.json"
 }
 
@@ -148,23 +150,35 @@ expect "READY" "an agent review answered by a later comment"
 pr "$old" "[]" "[]"
 expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
 
-# A constituent of a train (--train): no record, no up-to-date head, but a reviewed head.
+# A constituent of a train (--train): no record, no up-to-date head, but a reviewed head, and a
+# reply that names it.
+named() { comment 2026-01-03T00:00:00Z "Fix round, head ${1:0:9}.
+
+$marker"; }
 export FLAG=--train
-pr "$old" "[$review]" "[$reply]" feature ""
+pr "$old" "[$review]" "[$(named "$old")]" feature ""
 expect "READY FOR TRAIN" "an answered review, no verify record, head behind origin/main"
-pr "$old" "[$review]" "[$reply]" feature FAILURE
+pr "$old" "[$review]" "[$(named "$old")]" feature FAILURE
 expect "READY FOR TRAIN" "a failing verify state is ignored"
 pr "$current" "[]" "[]" feature ""
 expect "NOT READY" "no review at all" "no review"
 pr "$current" "[$review]" "[]" feature ""
 expect "NOT READY" "an unanswered review" "review unanswered"
-COMMITTED=2026-01-03T12:00:00Z pr "$current" "[$review]" "[$reply]" feature ""
-expect "NOT READY" "a commit newer than the reply" "newer than the reply"
-pr "$current" "[$review]" "[$reply]" feature "" "needs-maintainer"
+pr "$current" "[$review]" "[$reply]" feature ""
+expect "NOT READY" "a reply that does not name the head" "does not name the head"
+pr "$current" "[$review]" "[$(named "$old")]" feature ""
+expect "NOT READY" "a reply that names an earlier head (a push after it)" "does not name the head"
+echo '[{"event":"head_ref_force_pushed","created_at":"2026-01-04T00:00:00Z"}]' >"$STUB/timeline.json"
+pr "$current" "[$review]" "[$(named "$current")]" feature ""
+expect "NOT READY" "a force-push after the reply" "force-pushed"
+echo '[{"event":"head_ref_force_pushed","created_at":"2026-01-02T12:00:00Z"}]' >"$STUB/timeline.json"
+expect "READY FOR TRAIN" "a force-push before the reply"
+echo '[]' >"$STUB/timeline.json"
+pr "$current" "[$review]" "[$(named "$current")]" feature "" "needs-maintainer"
 expect "NOT READY" "the label needs-maintainer" "needs-maintainer"
-pr "$current" "[$review]" "[$reply]" feature "" "other,docs"
+pr "$current" "[$review]" "[$(named "$current")]" feature "" "other,docs"
 expect "READY FOR TRAIN" "other labels do not matter"
-pr "$old" "[$review]" "[$reply]" "train/2026-11-07-1" ""
+pr "$old" "[$review]" "[$(named "$old")]" "train/2026-11-07-1" ""
 expect "READY FOR TRAIN" "--train is the constituent verdict whatever the branch"
 FLAG=
 pr "$old" "[$review]" "[$reply]" feature ""
@@ -172,7 +186,7 @@ expect "NOT READY" "the default verdict stays strict" "behind origin/main by 1"
 pr "$current" "[$review]" "[$reply]" feature ""
 expect "NOT READY" "the default verdict asks for the record" "aldis/verify missing"
 # The flag may stand after the numbers.
-pr "$current" "[$review]" "[$reply]" feature ""
+pr "$current" "[$review]" "[$(named "$current")]" feature ""
 out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 --train 2>&1)"
 if grep -Fq "#7: READY FOR TRAIN" <<<"$out"; then
     echo "ok: --train after the number"

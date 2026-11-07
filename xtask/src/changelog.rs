@@ -4,14 +4,16 @@
 //! A pull request does not touch `CHANGELOG.md`: its title, a conventional commit
 //! (`type(scope)!: description`), is the entry. The merge commits of `main` carry the titles
 //! (`Merge pull request #N from ...`, the title as the body), so the generator reads `git log`
-//! and needs no network. It lists the merges after a base: the commit named by the marker
+//! and needs no network, except for a hand-built merge train (below). It lists the merges after a base: the commit named by the marker
 //! `<!-- changelog-base: <sha> -->` in the `## [Unreleased]` section of `CHANGELOG.md`, else the
 //! last `v*` tag. A merge train (a pull request from a `train/` branch) gets no entry of its
 //! own: the pull requests it merged do, read from the merges between the first and the second
 //! parent of its merge commit (`Merge pull request #N from ...`, as `scripts/train` writes them;
-//! for a hand-built train, `Merge branch '<b>' into train/...`, resolved to its pull request
-//! with `gh`, and a merge of `main` into the train is ignored). The text of the Unreleased
-//! section is kept in the release as it stands.
+//! for a hand-built train, `Merge branch '<b>' into train/...`, resolved to its pull request by
+//! the second parent of the merge, the head of the pull request, with `gh api
+//! repos/{owner}/{repo}/commits/<sha>/pulls`, a failure being a warning naming the merge; a merge
+//! of `main` into the train is ignored). The text of the Unreleased section is kept in the
+//! release as it stands.
 
 use std::fmt::Write as _;
 use std::process::Command;
@@ -174,14 +176,15 @@ fn train_branch_merge(subject: &str) -> Option<TrainMerge<'_>> {
 /// Turns the `%H%x1f%s%x1f%b%x1e` log of `main` into the `%s%x1f%b%x1e` log that `parse_merges`
 /// reads. A merge train (`docs/process/coordinator.md`) is a pull request from a `train/`
 /// branch: its own merge commit is dropped and the merge commits of its constituents, which `sub`
-/// reads for the hash of the train's merge commit, take its place. A constituent merged by hand
-/// (`Merge branch '<b>' into train/...`) is resolved by `lookup` to the number and title of the
-/// merged pull request of that branch; one that `lookup` cannot resolve stays and is reported as
+/// reads (as `%P%x1f%s%x1f%b%x1e`) for the hash of the train's merge commit, take its place. A
+/// constituent merged by hand (`Merge branch '<b>' into train/...`) is resolved by `lookup`, given
+/// the merge's second parent (the head of the pull request) and the branch, to the number and
+/// title of the merged pull request; one that `lookup` cannot resolve stays and is reported as
 /// skipped, naming the train; a merge of `main` into the train is dropped.
 fn expand_trains(
     log: &str,
     mut sub: impl FnMut(&str) -> Result<String, String>,
-    mut lookup: impl FnMut(&str) -> Option<(u64, String)>,
+    mut lookup: impl FnMut(&str, &str) -> Option<(u64, String)>,
 ) -> Result<String, String> {
     let mut out = String::new();
     for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
@@ -198,10 +201,15 @@ fn expand_trains(
             .map(str::trim)
             .filter(|r| !r.is_empty())
         {
+            let (parents, member) = member.split_once('\x1f').unwrap_or(("", member));
             let member_subject = member.split('\x1f').next().unwrap_or_default();
             let resolved = match train_branch_merge(member_subject) {
                 Some(TrainMerge::Refresh) => continue,
-                Some(TrainMerge::Branch(branch)) => lookup(branch).map(|r| (branch, r)),
+                Some(TrainMerge::Branch(branch)) => parents
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|sha| lookup(sha, branch))
+                    .map(|r| (branch, r)),
                 None => None,
             };
             if let Some((branch, (number, title))) = resolved {
@@ -218,29 +226,35 @@ fn expand_trains(
     Ok(out)
 }
 
-/// The number and title of the merged pull request whose head branch is `branch`, from `gh`.
-fn merged_pull_request(branch: &str) -> Option<(u64, String)> {
+/// The number and title of the merged pull request whose head commit is `sha` (the second parent
+/// of the merge of `branch` into a train), from `gh api repos/{owner}/{repo}/commits/<sha>/pulls`.
+/// A `gh` failure, or no merged pull request, prints a warning naming the merge and gives `None`.
+fn merged_pull_request(sha: &str, branch: &str) -> Option<(u64, String)> {
     let out = Command::new("gh")
         .args([
-            "pr",
-            "list",
-            "--state",
-            "merged",
-            "--head",
-            branch,
-            "--limit",
-            "1",
-            "--json",
-            "number,title",
+            "api",
+            &format!("repos/{{owner}}/{{repo}}/commits/{sha}/pulls"),
             "--jq",
-            r#".[0] | select(. != null) | "\(.number)\t\(.title)""#,
+            r#".[] | select(.merged_at != null) | "\(.number)\t\(.title)""#,
         ])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    let (number, title) = text.trim().split_once('\t')?;
-    Some((number.parse().ok()?, title.to_owned()))
+        .output();
+    let found = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .next()
+            .and_then(|l| l.split_once('\t'))
+            .and_then(|(n, t)| Some((n.parse().ok()?, t.to_owned()))),
+        _ => {
+            println!("warning: gh could not look up the merge of '{branch}' ({sha}) into a train");
+            return None;
+        }
+    };
+    if found.is_none() {
+        println!(
+            "warning: no merged pull request has the head {sha} (merge of '{branch}' into a train)"
+        );
+    }
+    found
 }
 
 /// The generated entries, by section, and the titles that do not follow the form.
@@ -428,7 +442,7 @@ fn merges_since_base() -> Result<(Merges, String, String), String> {
                 "log",
                 "--first-parent",
                 "--merges",
-                "--format=%s%x1f%b%x1e",
+                "--format=%P%x1f%s%x1f%b%x1e",
                 &format!("{hash}^1..{hash}^2"),
             ])
         },
@@ -604,11 +618,11 @@ mod tests {
             log,
             |h| {
                 assert_eq!(h, "h3");
-                Ok("Merge pull request #5 from a/e\x1ffix: b\x1e\
-                    Merge pull request #4 from a/f\x1ffeat: a\x1e"
+                Ok("p1 p2\x1fMerge pull request #5 from a/e\x1ffix: b\x1e\
+                    p3 p4\x1fMerge pull request #4 from a/f\x1ffeat: a\x1e"
                     .to_owned())
             },
-            |_| None,
+            |_, _| None,
         )
         .unwrap();
         let m = parse_merges(&out);
@@ -621,7 +635,7 @@ mod tests {
             ]
         );
         assert_eq!(m.total, 3);
-        assert!(expand_trains(log, |_| Err("no".to_owned()), |_| None).is_err());
+        assert!(expand_trains(log, |_| Err("no".to_owned()), |_, _| None).is_err());
     }
 
     #[test]
@@ -632,16 +646,16 @@ mod tests {
         let out = expand_trains(
             log,
             |_| {
-                Ok("Merge branch 'm5/time' into train/2026-11-07-1\x1f\x1e\
-                    Merge branch 'main' into train/2026-11-07-1\x1f\x1e\
-                    Merge remote-tracking branch 'origin/main' into train/2026-11-07-1\x1f\x1e\
-                    Merge branch 'a1/lost' into train/2026-11-07-1\x1f\x1e\
-                    Merge branch 'a1/wp-5' into train/2026-11-07-1\x1f\x1e"
+                Ok("a1 b1\x1fMerge branch 'm5/time' into train/2026-11-07-1\x1f\x1e\
+                    a2 b2\x1fMerge branch 'main' into train/2026-11-07-1\x1f\x1e\
+                    a3 b3\x1fMerge remote-tracking branch 'origin/main' into train/2026-11-07-1\x1f\x1e\
+                    a4 b4\x1fMerge branch 'a1/lost' into train/2026-11-07-1\x1f\x1e\
+                    a5 b5\x1fMerge branch 'a1/wp-5' into train/2026-11-07-1\x1f\x1e"
                     .to_owned())
             },
-            |b| match b {
-                "m5/time" => Some((322, "refactor(m5): time".to_owned())),
-                "a1/wp-5" => Some((323, "feat(a1/wp-5): golden".to_owned())),
+            |sha, _| match sha {
+                "b1" => Some((322, "refactor(m5): time".to_owned())),
+                "b5" => Some((323, "feat(a1/wp-5): golden".to_owned())),
                 _ => None,
             },
         )
