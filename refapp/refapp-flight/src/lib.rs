@@ -5,30 +5,46 @@
 //! lint set (APP-102), no `unsafe` (APP-105).
 //!
 //! **A1 WP-3a:** on-board time, housekeeping, the event reporter, and the payload application.
-//! The command handler, the time-tag queue, the table store, and the memory dump arrive in
-//! WP-3b; the node ignores delivered units and ops-script entries until then.
+//! **A1 WP-3b:** the command handler with its time-tag queue, the table store, and the memory
+//! dump (APP-012, APP-013, APP-016, APP-017, APP-024); the node ignores ops-script entries,
+//! which only the ground node uses.
 #![no_std]
 #![forbid(unsafe_code)]
 
+pub mod command;
 pub mod downlink;
+pub mod dump;
 pub mod event;
 pub mod layout;
+pub mod queue;
 pub mod schedule;
+pub mod table;
+
+mod handler;
 
 use aldis::spp::SequenceFlags;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
 pub use downlink::{Downlink, Stream, onboard_time};
+use dump::Dump;
 pub use event::Event;
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
+use queue::TimeTagQueue;
 use schedule::Periodic;
+use table::TableStore;
 
 /// The flight node (APP-010).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FlightNode {
     downlink: Downlink,
     status: Status,
+    /// Time-tagged commands waiting for their execution time (§2.3).
+    queue: TimeTagQueue,
+    /// The most recently uploaded table (APP-017).
+    table: TableStore,
+    /// The dump in progress, if any (APP-016).
+    dump: Option<Dump>,
     /// Index of the next housekeeping slot; also the number of the next HK packet (§3.3.1).
     hk_slot: u32,
     /// Index of the next payload slot (§2.1).
@@ -52,13 +68,15 @@ impl FlightNode {
         &self.status
     }
 
-    /// The status, for the command handler and the table store to update (A1 WP-3b).
+    /// The status, for a test or a harness to set up a state; the command handler and the table
+    /// store update it themselves.
     pub const fn status_mut(&mut self) -> &mut Status {
         &mut self.status
     }
 
     /// Packets the node could not build: 0 unless the time conversion or the packet writer
-    /// fails, which the scenario's values rule out (APP-060).
+    /// fails, which the scenario's values rule out (APP-060). Each failure is also raised as the
+    /// application event `packet_rejected` (APP-131).
     #[must_use]
     pub const fn build_failures(&self) -> u32 {
         self.build_failures
@@ -74,9 +92,8 @@ impl FlightNode {
         let sent = self
             .downlink
             .send(stream, SequenceFlags::Unsegmented, now, user_data, out);
-        // WP-3b surfaces this counter as an application event.
-        if sent.is_err() {
-            self.build_failures = self.build_failures.saturating_add(1);
+        if let Err(e) = sent {
+            self.build_failed(e.kind(), out);
         }
     }
 
@@ -115,9 +132,12 @@ impl FlightNode {
 
     /// The earliest instant after `now` at which a periodic application is due.
     fn next_deadline(&self) -> Option<Instant> {
+        let [queued, dump] = self.next_command_deadline();
         [
             Periodic::HOUSEKEEPING.at(self.hk_slot),
             Periodic::PAYLOAD.at(self.payload_slot),
+            queued,
+            dump,
         ]
         .into_iter()
         .flatten()
@@ -128,7 +148,10 @@ impl FlightNode {
 
 impl Node for FlightNode {
     fn step(&mut self, input: &StepInput<'_>, out: &mut dyn Output) -> Option<Instant> {
-        // §2.1 steps 1–3 (delivered packets, time-tagged commands, dump segment): A1 WP-3b.
+        // §2.1 steps 1–3: delivered packets, time-tagged commands, dump packets.
+        self.handle_delivered(input.now, input.delivered, out);
+        self.execute_due(input.now, out);
+        self.dump_segments(input.now, out);
         self.housekeeping(input.now, out);
         self.payload(input.now, out);
         self.next_deadline()
@@ -136,7 +159,7 @@ impl Node for FlightNode {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     extern crate std;
 
     use std::vec::Vec;
@@ -151,15 +174,17 @@ mod tests {
 
     /// A recorded output: kind, `packet_out` APID or 0, octets.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    enum Out {
+    pub(crate) enum Out {
         Unit(Vec<u8>),
         Packet(u16, Vec<u8>),
+        /// An application event: code and arguments.
+        Event(u16, Vec<u64>),
     }
 
     #[derive(Default)]
-    struct Rec(Vec<(u64, Out)>);
+    pub(crate) struct Rec(pub(crate) Vec<(u64, Out)>);
 
-    struct At<'a>(u64, &'a mut Rec);
+    pub(crate) struct At<'a>(pub(crate) u64, pub(crate) &'a mut Rec);
 
     impl Output for At<'_> {
         fn unit(&mut self, octets: &[u8]) {
@@ -171,14 +196,14 @@ mod tests {
                 .push((self.0, Out::Packet(apid.get(), octets.to_vec())));
         }
         fn packet_in(&mut self, _apid: Apid, _octets: &[u8]) {
-            panic!("the flight node of WP-3a has no packet_in");
+            panic!("the flight node has no packet_in");
         }
-        fn app_event(&mut self, _code: u16, _args: &[u64]) {
-            panic!("WP-3a raises no application event");
+        fn app_event(&mut self, code: u16, args: &[u64]) {
+            self.1.0.push((self.0, Out::Event(code, args.to_vec())));
         }
     }
 
-    fn input(now: u64) -> StepInput<'static> {
+    pub(crate) fn input(now: u64) -> StepInput<'static> {
         StepInput {
             now: Instant::from_micros(now),
             delivered: &[],
@@ -209,12 +234,12 @@ mod tests {
         rec
     }
 
-    fn packets(rec: &Rec, apid: u16) -> Vec<(u64, Vec<u8>)> {
+    pub(crate) fn packets(rec: &Rec, apid: u16) -> Vec<(u64, Vec<u8>)> {
         rec.0
             .iter()
             .filter_map(|(t, o)| match o {
                 Out::Packet(a, p) if *a == apid => Some((*t, p.clone())),
-                Out::Packet(..) | Out::Unit(_) => None,
+                Out::Packet(..) | Out::Unit(_) | Out::Event(..) => None,
             })
             .collect()
     }
@@ -282,7 +307,7 @@ mod tests {
             .iter()
             .filter_map(|(_, o)| match o {
                 Out::Packet(a, _) => Some(*a),
-                Out::Unit(_) => None,
+                Out::Unit(_) | Out::Event(..) => None,
             })
             .collect();
         assert_eq!(order[..3], [apid::HOUSEKEEPING; 3]);
@@ -294,7 +319,7 @@ mod tests {
             .iter()
             .filter_map(|(_, o)| match o {
                 Out::Packet(_, p) => Some((p[9], [p[10], p[11]])),
-                Out::Unit(_) => None,
+                Out::Unit(_) | Out::Event(..) => None,
             })
             .collect();
         assert_eq!(
@@ -429,13 +454,11 @@ mod tests {
         // req: APP-023
         let mut node = FlightNode::new();
         node.status_mut().commands_executed = 3;
-        node.status_mut().queue_occupancy = 2;
         let mut rec = Rec::default();
         node.step(&input(0), &mut At(0, &mut rec));
         let (_, hk) = packets(&rec, apid::HOUSEKEEPING).pop().unwrap();
         // 6 header + 6 time octets, then the user data of §3.3.1.
         assert_eq!(hk[12 + 4..12 + 6], [0, 3]);
-        assert_eq!(hk[12 + 8], 2);
         assert_eq!(hk[12 + 9], 1);
     }
 
@@ -450,3 +473,6 @@ mod tests {
         assert_eq!(next, None);
     }
 }
+
+#[cfg(test)]
+mod command_tests;

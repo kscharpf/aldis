@@ -8,7 +8,7 @@
 use crate::{Call, Execution, GroundNode, OpsEntry, telemetry};
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode};
-use refapp_scenario::{Instant, Node, Output, StepInput};
+use refapp_scenario::{Instant, Node, Output, StepInput, TableId, TableLength};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -559,8 +559,8 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
     let script = [
         noop(),
         OpsEntry::TableUpload {
-            table_id: 1,
-            length: 300,
+            table_id: TableId::new(1).unwrap(),
+            length: TableLength::new(300).unwrap(),
         },
         OpsEntry::Fop1Directive,
         noop(),
@@ -628,9 +628,13 @@ fn a_script_that_cannot_be_built_is_an_error_naming_the_entry() {
     // req: APP-126
     let e = GroundNode::new(&[
         noop(),
-        OpsEntry::TableUpload {
-            table_id: 1,
-            length: 512,
+        OpsEntry::Command {
+            execution: Execution::TimeTagged {
+                // 2 200 000 000 s after T0 does not fit four coarse octets.
+                exec_us: 2_200_000_000_000_000,
+            },
+            call: Call::Noop,
+            extra_octets: 0,
         },
     ])
     .unwrap_err();

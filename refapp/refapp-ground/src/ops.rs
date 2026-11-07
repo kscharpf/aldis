@@ -12,6 +12,7 @@ use aldis::core::{Error, ErrorKind};
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
+use refapp_scenario::{Crc16, TableId, TableLength};
 
 /// Microseconds in a second.
 const US_PER_S: u64 = 1_000_000;
@@ -65,7 +66,7 @@ pub enum Call {
         /// Table ID.
         table_id: u8,
         /// CRC-16 of the table that the command claims (CMN-001).
-        crc: u16,
+        crc: Crc16,
     },
     /// `SET_PAYLOAD_MODE`.
     SetPayloadMode {
@@ -94,9 +95,9 @@ pub enum OpsEntry {
     /// A table-upload packet on the table-upload APID (§3.3.6).
     TableUpload {
         /// Table ID.
-        table_id: u8,
+        table_id: TableId,
         /// Table length, octets.
-        length: u16,
+        length: TableLength,
     },
     /// A FOP-1 directive: issued from A3 on, ignored at A1 (APP-019).
     Fop1Directive,
@@ -181,7 +182,7 @@ fn command_data(execution: Execution, call: Call, extra: u8) -> Result<Vec<u8>, 
         Call::ActivateTable { table_id, crc } => (
             FN_ACTIVATE_TABLE,
             core::iter::once(table_id)
-                .chain(crc.to_be_bytes())
+                .chain(crc.get().to_be_bytes())
                 .collect(),
         ),
         Call::SetPayloadMode { mode } => (FN_SET_PAYLOAD_MODE, vec![mode]),
@@ -200,8 +201,9 @@ fn command_data(execution: Execution, call: Call, extra: u8) -> Result<Vec<u8>, 
 
 /// The user data of a table-upload packet (§3.3.6): table ID, length, and table octet
 /// `i = (3 · i + 1) mod 256`.
-fn table_data(table_id: u8, length: u16) -> Vec<u8> {
-    let mut data = vec![table_id];
+fn table_data(table_id: TableId, length: TableLength) -> Vec<u8> {
+    let length = length.get();
+    let mut data = vec![table_id.get()];
     data.extend_from_slice(&length.to_be_bytes());
     // Only `i mod 256` matters to `(3 · i + 1) mod 256`, and the low octet of `i` is that.
     data.extend((0..length).map(|i| i.to_be_bytes()[1].wrapping_mul(3).wrapping_add(1)));
@@ -250,6 +252,7 @@ fn build(apid: u16, count: SeqCount, data: &[u8]) -> Result<Built, Error> {
 mod tests {
     use super::{Call, Execution, OpsEntry, Script};
     use refapp_scenario::generated::apid;
+    use refapp_scenario::{Crc16, TableId, TableLength};
 
     fn octets(entry: OpsEntry) -> Vec<u8> {
         let script = Script::new(&[entry]).unwrap();
@@ -290,7 +293,7 @@ mod tests {
         assert_eq!(dump[14..], [0x00, 0x01, 0x00, 0x00, 0x02, 0x58]);
         let act = octets(immediate(Call::ActivateTable {
             table_id: 1,
-            crc: 0x0C4F,
+            crc: Crc16::from_wire(0x0C4F),
         }));
         assert_eq!((act.len(), act[6]), (17, 0x03));
         assert_eq!(act[14..], [0x01, 0x0C, 0x4F]);
@@ -316,8 +319,8 @@ mod tests {
     fn table_upload_layout() {
         // req: APP-024
         let p = octets(OpsEntry::TableUpload {
-            table_id: 1,
-            length: 300,
+            table_id: TableId::new(1).unwrap(),
+            length: TableLength::new(300).unwrap(),
         });
         assert_eq!(p.len(), 309, "§3.3.6: the nominal table packet");
         // Type 1 (TC), APID 129 = 0x081; flags 11; count 0; data length 303 - 1 = 302.
@@ -338,8 +341,8 @@ mod tests {
             extra_octets: 0,
         };
         let table = OpsEntry::TableUpload {
-            table_id: 1,
-            length: 1,
+            table_id: TableId::new(1).unwrap(),
+            length: TableLength::new(1).unwrap(),
         };
         let script = Script::new(&[noop, table, noop, OpsEntry::Fop1Directive, table]).unwrap();
         let counts: Vec<_> = (0..5)
@@ -382,16 +385,5 @@ mod tests {
         };
         let e = Script::new(&[noop, too_late]).unwrap_err();
         assert_eq!(e.index, 1);
-    }
-
-    #[test]
-    fn a_table_longer_than_the_uplink_packet_is_an_error() {
-        // req: APP-126
-        let e = Script::new(&[OpsEntry::TableUpload {
-            table_id: 1,
-            length: 512,
-        }])
-        .unwrap_err();
-        assert_eq!(e.index, 0);
     }
 }
