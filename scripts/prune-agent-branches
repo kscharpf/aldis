@@ -34,13 +34,13 @@ act() { # act <description> <command...>
 }
 
 # Whether worktree $1 is locked by Claude Code for a finished agent (reason `claude agent
-# agent-<id> (pid N)`; N is the coordinator's own session, so liveness cannot tell). Called only
+# agent-<id> (pid N)` or `(pid N start <time>)`; N is the coordinator's own session, so liveness cannot tell). Called only
 # for a clean worktree, nothing unpushed, branch merged or gone from the remote.
 claude_lock() {
     g worktree list --porcelain | awk -v wt="$1" '
         $1 == "worktree" { in_wt = (substr($0, 10) == wt) }
         in_wt && $1 == "locked" { print substr($0, 8) }' \
-        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+\)$'
+        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+( start [^)]*)?\)$'
 }
 
 merged() { g merge-base --is-ancestor "$1" origin/main 2>/dev/null; }

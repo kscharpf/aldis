@@ -8,7 +8,7 @@
 #   - a merged pull request has it as its head branch;
 #   - its tip is an ancestor of origin/main (never of the local main, which may be stale);
 #   - its worktree, if it has one, is clean and is not the main checkout. A clean worktree locked
-#     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)`) is unlocked
+#     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)` or `(pid N start <time>)`) is unlocked
 #     first; a lock with any other reason fails the removal.
 # Then: the worktree is removed, the local branch deleted (-D: the ancestry test is the proof
 # it is merged), and the remote branch deleted if it still exists and is an ancestor of
@@ -45,13 +45,13 @@ worktree_of() {
 }
 
 # Whether worktree $1 is locked by Claude Code for a finished agent (reason `claude agent
-# agent-<id> (pid N)`; N is the coordinator's own session, so liveness cannot tell). Called only
+# agent-<id> (pid N)` or `(pid N start <time>)`; N is the coordinator's own session, so liveness cannot tell). Called only
 # for a clean worktree whose branch is merged. Any other lock is not ours to remove.
 claude_lock() {
     g worktree list --porcelain | awk -v wt="$1" '
         $1 == "worktree" { in_wt = (substr($0, 10) == wt) }
         in_wt && $1 == "locked" { print substr($0, 8) }' \
-        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+\)$'
+        | grep -Eq '^claude agent agent-[0-9a-f]+ \(pid [0-9]+( start [^)]*)?\)$'
 }
 
 act() { # act <description> <command...>
