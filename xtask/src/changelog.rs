@@ -515,7 +515,11 @@ mod tests {
         let m = parse_merges(&out);
         assert_eq!(
             m.prs,
-            [merge(2, "feat: solo"), merge(4, "feat: a"), merge(5, "fix: b")]
+            [
+                merge(2, "feat: solo"),
+                merge(4, "feat: a"),
+                merge(5, "fix: b")
+            ]
         );
         assert_eq!(m.total, 3);
         assert!(expand_trains(log, |_| Err("no".to_owned())).is_err());
