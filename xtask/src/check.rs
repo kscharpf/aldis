@@ -688,13 +688,14 @@ const GATE_ONLY: &[(&str, &str)] = &[
         "non-gating: needs the LEON3 toolchain (OI-08)",
     ),
     ("kani", "nightly-only (VER-059)"),
+    ("ffi-miri-lib", "nightly-only (VER-059)"),
     (
         "c-sanitizers",
         "not mirrored: needs the pinned clang with its sanitizer runtimes; `cargo xtask header sanitizers <cc>` runs it by hand",
     ),
     (
         "ffi-miri",
-        "not mirrored: runs the aldis-ffi tests under Miri on the tooling nightly; `MIRIFLAGS=-Zmiri-disable-isolation cargo +<tooling-nightly> miri test -p aldis-ffi --lib --test <name>` runs it by hand, without the `vectors` test, which runs weekly",
+        "not mirrored: runs the aldis-ffi tests under Miri on the tooling nightly; `MIRIFLAGS=-Zmiri-disable-isolation cargo +<tooling-nightly> miri test -p aldis-ffi --test <name>` runs it by hand, for the integration tests but `vectors`, which runs weekly; the unit tests are the nightly-only `ffi-miri-lib`",
     ),
     (
         "spec",
@@ -1465,7 +1466,11 @@ mod tests {
         );
         assert!(full.iter().any(|n| n == "spec"));
         // A non-gating or nightly-only check is not something the gate fails on.
-        assert!(!full.iter().any(|n| n == "kani" || n == "rust-sparc-leon3"));
+        assert!(
+            !full
+                .iter()
+                .any(|n| n == "kani" || n == "ffi-miri-lib" || n == "rust-sparc-leon3")
+        );
         // A check that the change does not make the gate run is not listed.
         let docs = touched(&paths(&["docs/x.md"]));
         let p = plan(&docs, ALL, Mode::Full);
