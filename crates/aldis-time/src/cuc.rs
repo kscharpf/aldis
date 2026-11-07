@@ -305,6 +305,15 @@ fn check_coarse(format: &CucFormat, coarse: u64) -> Result<()> {
     Ok(())
 }
 
+/// `micros` microseconds as nanoseconds.
+///
+/// # Errors
+/// `OutOfRange` (`nanoseconds`) if the result does not fit `u32`; never for a value below 10⁶.
+fn micros_to_nanos(micros: u64) -> Result<u32> {
+    u32::try_from(micros.saturating_mul(1000))
+        .map_err(|_| range(field::NANOSECONDS, u64::from(u32::MAX), micros))
+}
+
 /// A CUC time code: format and value (301.0 §3.2, TIME-010, TIME-011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cuc {
@@ -385,10 +394,7 @@ impl Cuc {
         let coarse = epoch_offset
             .checked_add(seconds)
             .ok_or_else(|| range(field::COARSE, u64::MAX.wrapping_sub(seconds), epoch_offset))?;
-        // sub_micros < 10⁶, so the nanoseconds are below 10⁹ and fit `u32`.
-        let nanos = u32::try_from(sub_micros.wrapping_mul(1000))
-            .map_err(|_| range(field::NANOSECONDS, 999_999_999, sub_micros))?;
-        Cuc::from_seconds_nanos(format, coarse, nanos)
+        micros_to_nanos(sub_micros).and_then(|nanos| Cuc::from_seconds_nanos(format, coarse, nanos))
     }
 
     /// The code as whole seconds and nanoseconds, truncated toward zero; the counterpart of
@@ -575,6 +581,10 @@ mod tests {
             Cuc::from_instant(fmt(7, 0), u64::MAX, Instant::from_micros(1_000_000)).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::OutOfRange);
         assert_eq!(e.field(), Some(crate::field::COARSE));
+        // The helper's error path, which no Instant reaches.
+        assert_eq!(super::micros_to_nanos(999_999), Ok(999_999_000));
+        let e = super::micros_to_nanos(5_000_000).unwrap_err();
+        assert_eq!(e.field(), Some(crate::field::NANOSECONDS));
         // The largest Instant with a zero offset.
         let c = Cuc::from_instant(fmt(7, 0), 0, Instant::from_micros(u64::MAX)).unwrap();
         assert_eq!(c.value().coarse(), u64::MAX / 1_000_000);
