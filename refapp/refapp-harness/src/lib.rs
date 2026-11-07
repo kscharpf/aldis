@@ -30,7 +30,8 @@ pub fn run_case(case_id: &str) -> Result<String, String> {
     let scenario = Scenario::load()?;
     let case = scenario.case(case_id)?;
     let mut flight = FlightNode::new();
-    let mut ground = GroundNode::new();
+    let script: Vec<_> = case.ops.iter().map(scenario::OpsEntry::to_node).collect();
+    let mut ground = GroundNode::new(&script).map_err(|e| format!("case `{case_id}`: {e}"))?;
     sim::run(&scenario, case, &mut flight, &mut ground)
 }
 
