@@ -7,7 +7,7 @@ Who may decide what on Aldis, so that routine questions don't wait for the maint
 | Role | Who | Records a decision in |
 |---|---|---|
 | **Maintainer** | The project owner | Where the rules below say: the OI, the plan's Decisions table, the requirement, the PR's "Maintainer decisions" section; a decision that has none of these goes in the description or commit message of the change it governs |
-| **Coordinator** | The Claude session that plans the work, dispatches agents, opens and readies pull requests, and answers reviews | The PR description, under **Coordinator decisions**, or its reply to the review |
+| **Coordinator** | The Claude session that plans the work, dispatches agents, opens and readies pull requests, and answers reviews (several may run at once, each for its own scope: [coordinator.md](coordinator.md#multiple-coordinators)) | The PR description, under **Coordinator decisions**, or its reply to the review |
 | **Agent** | A session dispatched for one work package or task, in its own worktree and branch | Its report, under **Judgement calls**; the coordinator copies them into the PR description |
 
 A contributor who is neither coordinator nor agent decides as an agent for their own pull request and asks the maintainer as §3 says.
@@ -104,7 +104,7 @@ GitHub records merges. A merge that also decides something, such as merging over
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| Deleting work that is on no remote and not merged, or a branch kept on purpose (the `xtask` split, #75); rewriting pushed history | Merging `main` into open pull requests and re-verifying; deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
+| Deleting work that is on no remote and not merged, or a branch kept on purpose (the `xtask` split, #75); rewriting pushed history | Merging `main` into open pull requests and re-verifying (with several coordinators, see [coordinator.md](coordinator.md#multiple-coordinators)); deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
 
 ### 2.12 Approvals
 
