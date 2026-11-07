@@ -107,7 +107,7 @@ Requirements appear in tables with these columns:
 
 Every requirement SHALL be traced to at least one verification artefact (see VER-020).
 
-**Release scope.** A requirement belongs to v1 unless its area is deferred. The deferred areas are listed in `DEFERRED_AREAS` in `xtask/src/spec.rs`: today FW (later, [05](05-framework.md)) and CPP (Phase 3: track C, native C++, was retired from v1; [roadmap](08-roadmap.md) §2, maintainer 2026-11-05). A deferred area's requirements keep their IDs and rows; the unscoped `cargo xtask trace` (the v1 trace) leaves them out and prints how many, and no v1 milestone exit table or the v1.0 gate includes them. `cargo xtask trace --scope <id>` still measures a milestone plan that names them, such as M6 once it has a plan.
+**Release scope.** A requirement belongs to v1 unless its area is deferred. The deferred areas are listed in `DEFERRED_AREAS` in `xtask/src/spec.rs`: today FW (later, [05](05-framework.md)) and CPP (Phase 3: track C, native C++, was retired from v1; [roadmap](08-roadmap.md) §2, maintainer 2026-11-05). A deferred area's requirements keep their IDs and rows; the unscoped `cargo xtask trace` (the v1 trace) leaves them out and prints how many, and no v1 milestone exit table or the v1.0 gate includes them. `cargo xtask trace --scope <id>` still measures a milestone plan that names them, such as the framework once a plan names them.
 
 ## 6. References
 

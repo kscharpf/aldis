@@ -532,7 +532,7 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | Location | `refapp/golden/<case>.jsonl`, owned by track A |
 | Versioning | A change to a released golden trace bumps its `trace_version` and records the reason in `refapp/golden/CHANGES.md`, as TV-021 does for vectors |
 | Vectors | Golden traces are whole-system regression baselines, **not** conformance vectors: a frame or packet from a golden trace becomes a vector only with `hand-derived` or `cross-checked` provenance (TV-020; OI-23) |
-| Framework trace | Each node's step inputs (`now`, delivered units, slot) can be extracted from a golden trace, so that M6 (later) can define the FW-013 trace to match and replay both nodes from the golden traces (OI-25) |
+| Framework trace | Each node's step inputs (`now`, delivered units, slot) can be extracted from a golden trace, so that the framework (after v1) can define the FW-013 trace to match and replay both nodes from the golden traces (OI-25) |
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
