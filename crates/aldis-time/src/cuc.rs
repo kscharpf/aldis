@@ -1,17 +1,21 @@
-//! CCSDS Unsegmented Code, CUC (301.0 §3.2; TIME-010…TIME-014).
+//! CCSDS Unsegmented Code, CUC (301.0 §3.2; TIME-010…TIME-015).
 //!
 //! Level 1 CUC counts TAI seconds from 1958 January 1. It is not UTC-based, and the library
 //! applies no leap-second correction to it (TIME-014). Level 2 uses an agency-defined epoch;
 //! Aldis treats its value the same way and does not interpret the epoch.
 
+use aldis_core::time::Instant;
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::wide8;
+use crate::util::{octets, wide8};
 
 /// Nanoseconds per second.
 const NANOS: u32 = 1_000_000_000;
+
+/// Microseconds per second.
+const MICROS: u64 = 1_000_000;
 
 /// The epoch of a CUC code (301.0 §3.2.2, TIME-010, TIME-014).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,7 +118,7 @@ impl CucFormat {
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if the tail is longer than 6 octets, which would make the
     /// P-field longer than 8.
-    pub fn with_tail(self, tail: PFieldTail) -> Result<CucFormat> {
+    pub const fn with_tail(self, tail: PFieldTail) -> Result<CucFormat> {
         if tail.len() > 6 {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::PFIELD_TAIL));
         }
@@ -163,8 +167,18 @@ impl CucFormat {
 
     /// T-field length in octets (301.0 §3.2.1, TIME-003).
     #[must_use]
-    pub fn t_len(&self) -> usize {
-        usize::from(self.coarse).wrapping_add(usize::from(self.fine))
+    pub const fn t_len(&self) -> usize {
+        octets(self.coarse).wrapping_add(octets(self.fine))
+    }
+
+    /// P-field length in octets: 1, or 2 plus the undefined tail with octet 2 (301.0 §3.2.2,
+    /// TIME-003).
+    pub(crate) const fn pfield_len(&self) -> usize {
+        if self.octet2 {
+            self.tail.len().wrapping_add(2)
+        } else {
+            1
+        }
     }
 
     /// The P-field for this format (301.0 §3.2.2, TIME-010, TIME-013). Octet 1 carries as many
@@ -291,6 +305,15 @@ fn check_coarse(format: &CucFormat, coarse: u64) -> Result<()> {
     Ok(())
 }
 
+/// `micros` microseconds as nanoseconds.
+///
+/// # Errors
+/// `OutOfRange` (`nanoseconds`) if the result does not fit `u32`; never for a value below 10⁶.
+fn micros_to_nanos(micros: u64) -> Result<u32> {
+    u32::try_from(micros.saturating_mul(1000))
+        .map_err(|_| range(field::NANOSECONDS, u64::from(u32::MAX), micros))
+}
+
 /// A CUC time code: format and value (301.0 §3.2, TIME-010, TIME-011).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cuc {
@@ -348,6 +371,30 @@ impl Cuc {
                 fine: raw.checked_shl(128_u32.wrapping_sub(bits)).unwrap_or(0),
             },
         })
+    }
+
+    /// The code for the time `epoch_offset` seconds plus `instant` after the code's epoch: the
+    /// coarse time is `epoch_offset` plus the whole seconds of `instant`, and the fraction is the
+    /// remaining microseconds, rounded down like [`from_seconds_nanos`](Self::from_seconds_nanos)
+    /// (301.0 §3.2.1; TIME-011, TIME-015, OI-40).
+    ///
+    /// `instant` counts microseconds from the caller's own epoch (API-003). `epoch_offset` is the
+    /// coarse time, in the basic time unit of `format`, at which that epoch falls, so on-board
+    /// time is T0 + `instant` with T0 = `epoch_offset`. Nothing is clamped or wrapped. The basic
+    /// time unit is taken to be the second, as for `from_seconds_nanos` (TIME-011).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`coarse`) if `epoch_offset` plus the seconds of `instant` overflows `u64`
+    /// (the limit is the largest offset that does not) or does not fit the format's coarse octets
+    /// (TIME-012, TIME-015).
+    pub fn from_instant(format: CucFormat, epoch_offset: u64, instant: Instant) -> Result<Cuc> {
+        let micros = instant.as_micros();
+        let seconds = micros / MICROS;
+        let sub_micros = micros % MICROS;
+        let coarse = epoch_offset
+            .checked_add(seconds)
+            .ok_or_else(|| range(field::COARSE, u64::MAX.wrapping_sub(seconds), epoch_offset))?;
+        micros_to_nanos(sub_micros).and_then(|nanos| Cuc::from_seconds_nanos(format, coarse, nanos))
     }
 
     /// The code as whole seconds and nanoseconds, truncated toward zero; the counterpart of
@@ -499,6 +546,48 @@ mod tests {
             }
         }
         assert_eq!(fmt(4, 2).pfield().first(), 0x1E);
+    }
+
+    #[test]
+    fn from_instant() {
+        // req: TIME-011, TIME-012, TIME-015
+        use aldis_core::time::Instant;
+        let f = fmt(4, 2);
+        // The scenario's T0 and a multiple of 125 000 us: exact in 2 fine octets.
+        let c = Cuc::from_instant(f, 2_100_000_000, Instant::from_micros(3_125_000)).unwrap();
+        assert_eq!(c.value().coarse(), 2_100_000_003);
+        assert_eq!(c.value().fine(), 1_u128 << 125);
+        assert_eq!(c.to_seconds_nanos(), (2_100_000_003, 125_000_000));
+        // Same result as the split by hand.
+        for micros in [0, 1, 999_999, 1_000_000, 123_456_789, 4_000_000_000_000] {
+            let (s, us) = (micros / 1_000_000, micros % 1_000_000);
+            assert_eq!(
+                Cuc::from_instant(f, 7, Instant::from_micros(micros)),
+                Cuc::from_seconds_nanos(f, 7 + s, u32::try_from(us * 1000).unwrap()),
+                "{micros}"
+            );
+        }
+        // The fraction rounds down.
+        let c = Cuc::from_instant(fmt(4, 0), 0, Instant::from_micros(999_999)).unwrap();
+        assert_eq!((c.value().coarse(), c.value().fine()), (0, 0));
+        // The largest value that fits 4 coarse octets, and one second more.
+        let max = u64::from(u32::MAX);
+        assert!(Cuc::from_instant(f, max - 1, Instant::from_micros(1_999_999)).is_ok());
+        let e = Cuc::from_instant(f, max - 1, Instant::from_micros(2_000_000)).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(crate::field::COARSE));
+        // A u64 overflow of the sum is an error too, even with 7 coarse octets.
+        let e =
+            Cuc::from_instant(fmt(7, 0), u64::MAX, Instant::from_micros(1_000_000)).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::OutOfRange);
+        assert_eq!(e.field(), Some(crate::field::COARSE));
+        // The helper's error path, which no Instant reaches.
+        assert_eq!(super::micros_to_nanos(999_999), Ok(999_999_000));
+        let e = super::micros_to_nanos(5_000_000).unwrap_err();
+        assert_eq!(e.field(), Some(crate::field::NANOSECONDS));
+        // The largest Instant with a zero offset.
+        let c = Cuc::from_instant(fmt(7, 0), 0, Instant::from_micros(u64::MAX)).unwrap();
+        assert_eq!(c.value().coarse(), u64::MAX / 1_000_000);
     }
 
     #[test]

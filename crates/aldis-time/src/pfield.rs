@@ -253,8 +253,8 @@ impl PFieldTail {
 
     /// Number of octets (301.0 §3.1.1, TIME-005).
     #[must_use]
-    pub fn len(&self) -> usize {
-        usize::from(self.len)
+    pub const fn len(&self) -> usize {
+        crate::util::octets(self.len)
     }
 
     /// Whether there are no undefined octets (301.0 §3.1.1, TIME-005).
