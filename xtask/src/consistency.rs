@@ -34,6 +34,13 @@
 //! declared. A listed name that the header now declares, or that no document mentions, is
 //! reported too, so the list shrinks when the code catches up (CABI-005).
 //!
+//! **Status tables.** A milestone plan (`docs/milestones/*.md`) whose first `**Status:` line
+//! begins `complete` or `exited` has no work-package row (a first cell `WP-<n>...`) whose State
+//! is `planned`, `in review`, or `in progress` (the values `cargo xtask status-table` writes
+//! for an unfinished row, and the hand-written ones), except that the last work-package row, the
+//! exit, may be `in progress`: its pull request is open while the plan says complete. The cure
+//! is `cargo xtask status-table --write` in the exit pull request.
+//!
 //! **Vector files.** Every vector file (`test-vectors/<area>/*.json`, except the schemas and the
 //! generated field catalogue, [`crate::vectors::is_vector_file`]) is matched by a path in the
 //! first column of a table of `test-vectors/README.md` (braces and `*` expand), and every such
@@ -1005,6 +1012,49 @@ fn engine_check() -> Result<Vec<String>, String> {
 /// The capacities of the C ABI (CABI-030).
 const CAPACITIES: &str = crate::header::CAPACITIES_TOML;
 
+/// States of a work-package row that a plan called complete may not show.
+const NOT_DONE: [&str; 3] = ["planned", "in review", "in progress"];
+
+/// The rows of the work-package status tables of the plan `name` that contradict its status
+/// line. Only a plan whose first `**Status:` line begins `complete` or `exited` is checked.
+fn status_table_problems(name: &str, plan: &str) -> Vec<String> {
+    let finished = plan
+        .lines()
+        .find_map(|l| l.strip_prefix("**Status:"))
+        .is_some_and(|s| {
+            let s = s.trim_start_matches([' ', '*']);
+            s.starts_with("complete") || s.starts_with("exited")
+        });
+    if !finished {
+        return Vec::new();
+    }
+    let mut problems = Vec::new();
+    for table in tables(plan) {
+        let is_status = table.header.len() >= 2
+            && table.header[0].trim() == "WP"
+            && table.header[1].trim() == "State";
+        if !is_status {
+            continue;
+        }
+        let wp_rows: Vec<&(usize, Vec<String>)> = table
+            .rows
+            .iter()
+            .filter(|(_, c)| c.first().is_some_and(|c| c.trim().starts_with("WP-")))
+            .collect();
+        for (i, (line, cells)) in wp_rows.iter().enumerate() {
+            let state = cells.get(1).map_or("", |c| c.trim());
+            let exit = i + 1 == wp_rows.len();
+            if NOT_DONE.contains(&state) && !(exit && state == "in progress") {
+                problems.push(format!(
+                    "{name}:{line}: the plan is complete but {} is `{state}`; run `cargo xtask status-table --write`",
+                    cells.first().map_or("", |c| c.trim())
+                ));
+            }
+        }
+    }
+    problems
+}
+
 /// Runs every check; returns the number of problems.
 pub fn check() -> Result<usize, String> {
     let c = crates()?;
@@ -1052,6 +1102,12 @@ pub fn check() -> Result<usize, String> {
     let docs: Vec<(&str, &str)> = docs.iter().map(|(d, t)| (*d, t.as_str())).collect();
     problems.extend(header_name_problems(&docs, &read(C_HEADER)?, NOT_IN_HEADER));
     problems.extend(engine_check()?);
+    for path in repo::files("docs/milestones", &["md"]) {
+        problems.extend(status_table_problems(
+            &repo::rel(&path),
+            &repo::read(&path)?,
+        ));
+    }
 
     for p in &problems {
         println!("error: {p}");
@@ -1074,7 +1130,7 @@ mod tests {
         crate_problems, engine_problems, engines_in, exerciser_groups, expand_braces,
         ffi_runner_files, fuzz_problems, fuzz_source_problems, glob, has_code,
         header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
-        readme_patterns, vector_problems, without_c_comments,
+        readme_patterns, status_table_problems, vector_problems, without_c_comments,
     };
 
     /// A consistent registration of the M1 crates and `aldis-aos`, with two skeletons.
@@ -1641,5 +1697,62 @@ uint32_t aldis_tc_encode(void);
         let problems = header_name_problems(&[("a.md", "nothing")], HEADER, &allowed);
         assert_eq!(problems.len(), 1);
         assert!(problems[0].contains("mentioned by none"));
+    }
+
+    /// A plan with a status table of the given states and the given status line.
+    fn sample(line: &str, states: &[&str]) -> String {
+        let head = format!(
+            "**Status: {line}.**\n\n| WP | State | PRs | Notes |\n|---|---|---|---|\n| Plan | merged | #1 | |\n"
+        );
+        let rows: Vec<String> = states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("| WP-{i} Work | {s} | — | |"))
+            .collect();
+        head + &rows.join("\n") + "\n"
+    }
+
+    #[test]
+    fn status_table_a1_shape_fails() {
+        let text = sample(
+            "complete (2026-11-07)",
+            &["in progress", "planned", "planned"],
+        );
+        let p = status_table_problems("a1.md", &text);
+        assert_eq!(p.len(), 3, "{p:?}");
+        assert!(p[0].starts_with("a1.md:6:"), "{p:?}");
+    }
+
+    #[test]
+    fn status_table_finished_plan_passes() {
+        let done = sample("complete", &["merged", "merged"]);
+        assert_eq!(status_table_problems("m.md", &done), Vec::<String>::new());
+        // The exit pull request is open while the plan says complete.
+        let exiting = sample("exited (2026-11-06)", &["merged", "in progress"]);
+        assert_eq!(
+            status_table_problems("m.md", &exiting),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn status_table_exit_row_only_in_progress() {
+        let p = status_table_problems("m.md", &sample("complete", &["merged", "planned"]));
+        assert_eq!(p.len(), 1, "{p:?}");
+        let p = status_table_problems("m.md", &sample("complete", &["in progress", "merged"]));
+        assert_eq!(p.len(), 1, "{p:?}");
+    }
+
+    #[test]
+    fn status_table_unfinished_plan_is_not_checked() {
+        let text = sample("plan approved (2026-10-21)", &["planned", "in review"]);
+        assert_eq!(
+            status_table_problems("acfs.md", &text),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            status_table_problems("none.md", "no status line\n"),
+            Vec::<String>::new()
+        );
     }
 }
