@@ -261,7 +261,8 @@ rv=("$script" --alone)
 export STUB="$stub" STUB_MOVE="$work/move-main"
 run() {
     # A hang is a failure: perl's alarm ends the run after a minute.
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" perl -e 'alarm 60; exec @ARGV' "${rv[@]}" "$@" 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" \
+        perl -e 'alarm 60; exec @ARGV' "${rv[@]}" "$@" 2>&1)"
     rc=$?
 }
 # Start one in the background; its output goes to $work/bg.<tag>.
@@ -769,7 +770,8 @@ expect "--timeout x is a usage error" status_is 2
 run --timeout
 expect "--timeout without a value is a usage error" status_is 2
 for bad in 0 x '$(touch /nonexistent-x)'; do
-    out="$(cd "$repo" && REVERIFY_SECONDS_PER_MIN="$bad" PATH="$work/bin:$PATH" "$script" --alone 7 2>&1)"
+    out="$(cd "$repo" && REVERIFY_SECONDS_PER_MIN="$bad" PATH="$work/bin:$PATH" \
+        "$script" --alone 7 2>&1)"
     rc=$?
     expect "REVERIFY_SECONDS_PER_MIN='$bad' is a usage error" status_is 2
 done

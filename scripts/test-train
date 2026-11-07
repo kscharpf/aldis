@@ -219,7 +219,7 @@ status=$?
 rm "$STUB/create-fails"
 { [ "$status" -eq 2 ] && ! remote_has "train/$today-1"; }
 check "a failing gh pr create exits 2 and deletes the pushed branch" $?
-[ ! -d "$repo/.claude/worktrees/train/$today-1" ]
+t [ ! -d "$repo/.claude/worktrees/train/$today-1" ]
 check "it leaves no worktree" $?
 git -C "$repo" branch -D "train/$today-1" >/dev/null 2>&1
 out="$(run 11 12)"
