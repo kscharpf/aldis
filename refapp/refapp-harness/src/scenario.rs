@@ -292,8 +292,7 @@ pub enum Call {
     },
     /// A function code that no function has (reason 1 of `CMD_REJECTED`, §3.3.2).
     Unknown {
-        /// The code; not one of `0x01`…`0x04`, and chosen from outside the codes that
-        /// APP-025 hands out next.
+        /// The code; not one of `0x01`…`0x04`.
         code: u8,
     },
 }
@@ -430,10 +429,14 @@ impl Scenario {
         Ok(())
     }
 
-    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128).
+    /// The rules of §6.5 that the schema cannot express, and the ranges of the entries
+    /// (APP-061, APP-126, APP-128).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us;
+        let delay = self.link.one_way_delay_us;
         let mut previous = 0;
+        // Execution times of the time-tagged commands the flight node holds (§2.3).
+        let mut queue: Vec<u64> = Vec::new();
         for (i, entry) in c.ops.iter().enumerate() {
             let at_us = match entry {
                 OpsEntry::Command {
@@ -442,31 +445,38 @@ impl Scenario {
                     call,
                     ..
                 } => {
+                    let arrival = at_us.saturating_add(delay);
+                    let on_grid = arrival.is_multiple_of(slot);
                     match execution {
-                        Execution::Immediate {}
-                            if !(at_us.saturating_add(self.link.one_way_delay_us))
-                                .is_multiple_of(slot) =>
-                        {
+                        Execution::Immediate {} if !on_grid => {
                             return Err(format!(
                                 "ops[{i}]: an immediate command must arrive on a multiple of \
                                  {slot} µs (APP-128)"
                             ));
                         }
-                        Execution::TimeTagged { exec_us } if !exec_us.is_multiple_of(slot) => {
-                            return Err(format!(
-                                "ops[{i}]: execution time must be a multiple of {slot} µs (APP-061)"
-                            ));
+                        Execution::TimeTagged { exec_us } => {
+                            check_tagged(&mut queue, arrival, *exec_us, slot)
+                                .map_err(|e| format!("ops[{i}]: {e}"))?;
                         }
-                        Execution::Immediate {} | Execution::TimeTagged { .. } => {}
+                        Execution::Immediate {} => {}
                     }
-                    if matches!(call, Call::Unknown { code: 1..=4 }) {
-                        return Err(format!("ops[{i}]: an unknown function code is 1 to 4"));
+                    check_call(*call).map_err(|e| format!("ops[{i}]: {e}"))?;
+                    *at_us
+                }
+                OpsEntry::TableUpload {
+                    at_us,
+                    table_id,
+                    length,
+                } => {
+                    if *table_id == 0 {
+                        return Err(format!("ops[{i}]: table_id is 1 to 255"));
+                    }
+                    if !(1..=512).contains(length) {
+                        return Err(format!("ops[{i}]: table length is 1 to 512"));
                     }
                     *at_us
                 }
-                OpsEntry::TableUpload { at_us, .. } | OpsEntry::Fop1Directive { at_us, .. } => {
-                    *at_us
-                }
+                OpsEntry::Fop1Directive { at_us, .. } => *at_us,
             };
             if at_us < previous {
                 return Err(format!("ops[{i}]: release instants must not decrease"));
@@ -476,17 +486,63 @@ impl Scenario {
             }
             previous = at_us;
         }
-        if c.level == Level::Packets
-            && let Some(i) = c
-                .faults
-                .iter()
-                .position(|f| matches!(f.fault, Fault::Flip { .. }))
-        {
-            return Err(format!(
-                "faults[{i}]: `flip` needs a FECF, so frame level only"
-            ));
+        for (i, f) in c.faults.iter().enumerate() {
+            match f.fault {
+                Fault::Flip { .. } if c.level == Level::Packets => {
+                    return Err(format!(
+                        "faults[{i}]: `flip` needs a FECF, so frame level only"
+                    ));
+                }
+                Fault::Flip { bit: 8.., .. } => {
+                    return Err(format!("faults[{i}]: bit is 0 to 7"));
+                }
+                _ => {}
+            }
         }
         Ok(())
+    }
+}
+
+/// Time-tag queue capacity of the flight node (§2.3).
+const QUEUE_CAPACITY: usize = 8;
+
+/// A time-tagged command arriving at `arrival`: its execution time is on the grid (APP-061),
+/// and one that the flight node rejects at delivery (§2.3: a time tag before the arrival, or a
+/// full queue) arrives on the grid too (APP-128). `queue` holds the execution times of the
+/// commands the flight node still has queued.
+fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> Result<(), String> {
+    if !exec_us.is_multiple_of(slot) {
+        return Err(format!(
+            "execution time must be a multiple of {slot} µs (APP-061)"
+        ));
+    }
+    queue.retain(|e| *e >= arrival);
+    if exec_us >= arrival && queue.len() < QUEUE_CAPACITY {
+        queue.push(exec_us);
+    } else if !arrival.is_multiple_of(slot) {
+        return Err(format!(
+            "a command rejected at delivery must arrive on a multiple of {slot} µs (APP-128)"
+        ));
+    }
+    Ok(())
+}
+
+/// The ranges of a command's arguments (§3.3.5).
+fn check_call(call: Call) -> Result<(), String> {
+    match call {
+        Call::DumpMemory { length, .. } if !(1..=1024).contains(&length) => {
+            Err("dump length is 1 to 1024".to_owned())
+        }
+        Call::ActivateTable { table_id: 0, .. } => Err("table_id is 1 to 255".to_owned()),
+        Call::SetPayloadMode { mode: 2.. } => Err("mode is 0 or 1".to_owned()),
+        Call::Unknown { code: 1..=4 } => {
+            Err("the function codes 1 to 4 are not unknown".to_owned())
+        }
+        Call::Noop {}
+        | Call::DumpMemory { .. }
+        | Call::ActivateTable { .. }
+        | Call::SetPayloadMode { .. }
+        | Call::Unknown { .. } => Ok(()),
     }
 }
 
@@ -945,7 +1001,7 @@ mod tests {
             call: Call::Unknown { code: 4 },
             extra_octets: None,
         };
-        assert!(rejects(&s, "unknown function"));
+        assert!(rejects(&s, "not unknown"));
         // Release order, and the end instant.
         let mut s = ok.clone();
         s.cases[3].ops.swap(0, 1);
@@ -961,6 +1017,123 @@ mod tests {
             fault: Fault::Flip { octet: 0, bit: 0 },
         });
         assert!(rejects(&s, "flip"));
+    }
+
+    /// The `a1-rejects` case with its ops entry `i` replaced.
+    fn rejects_with(i: usize, entry: OpsEntry) -> Scenario {
+        let mut s = with_a1_cases();
+        s.cases[3].ops[i] = entry;
+        s
+    }
+
+    fn command(at_us: u64, execution: Execution, call: Call) -> OpsEntry {
+        OpsEntry::Command {
+            at_us,
+            execution,
+            call,
+            extra_octets: None,
+        }
+    }
+
+    #[test]
+    fn rejected_at_delivery_commands_arrive_on_the_grid() {
+        // req: APP-128
+        // Reason 2: a time tag before the arrival, released off the grid.
+        let tagged = Execution::TimeTagged { exec_us: 3_000_000 };
+        let s = rejects_with(3, command(3_600_000, tagged, Call::Noop {}));
+        assert!(rejects(&s, "rejected at delivery"));
+        // The same command on the grid is fine.
+        assert!(
+            rejects_with(3, command(3_615_000, tagged, Call::Noop {}))
+                .check()
+                .is_ok()
+        );
+        // Reason 4: the ninth command of a full queue, released off the grid.
+        let mut s = with_a1_cases();
+        s.cases[3].ops[17] = command(
+            10_115_001,
+            Execution::TimeTagged {
+                exec_us: 20_000_000,
+            },
+            Call::Noop {},
+        );
+        assert!(rejects(&s, "rejected at delivery"));
+        // A command that only queues needs no grid: `a1-nominal` releases on whole seconds.
+        with_a1_cases().check().unwrap();
+    }
+
+    #[test]
+    fn script_ranges_are_enforced() {
+        // req: APP-126
+        let imm = Execution::Immediate {};
+        let table = |table_id, length| OpsEntry::TableUpload {
+            at_us: 5_115_000,
+            table_id,
+            length,
+        };
+        for (entry, what) in [
+            (table(0, 300), "table_id"),
+            (table(1, 0), "table length"),
+            (table(1, 513), "table length"),
+            (
+                command(
+                    115_000,
+                    imm,
+                    Call::DumpMemory {
+                        address: 0,
+                        length: 0,
+                    },
+                ),
+                "dump length",
+            ),
+            (
+                command(
+                    115_000,
+                    imm,
+                    Call::DumpMemory {
+                        address: 0,
+                        length: 1025,
+                    },
+                ),
+                "dump length",
+            ),
+            (
+                command(
+                    115_000,
+                    imm,
+                    Call::ActivateTable {
+                        table_id: 0,
+                        crc: 0,
+                    },
+                ),
+                "table_id",
+            ),
+            (
+                command(115_000, imm, Call::SetPayloadMode { mode: 2 }),
+                "mode",
+            ),
+            (
+                command(115_000, imm, Call::Unknown { code: 1 }),
+                "not unknown",
+            ),
+        ] {
+            let idx = if matches!(entry, OpsEntry::TableUpload { .. }) {
+                5
+            } else {
+                0
+            };
+            assert!(rejects(&rejects_with(idx, entry), what), "{what}");
+        }
+        let mut s = with_a1_cases();
+        s.cases[4].level = super::Level::Frames;
+        s.cases[4].faults.push(FaultEntry {
+            dir: Direction::Down,
+            index: 0,
+            fault: Fault::Flip { octet: 0, bit: 8 },
+        });
+        assert!(rejects(&s, "bit is 0 to 7"));
+        s.cases[4].faults[5].fault = Fault::Flip { octet: 0, bit: 7 };
+        s.check().unwrap();
     }
 
     #[test]

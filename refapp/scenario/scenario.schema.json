@@ -718,7 +718,7 @@
               "const": "unknown"
             },
             "code": {
-              "description": "The code; not one of `0x01`…`0x04`, and chosen from outside the codes that\nAPP-025 hands out next.",
+              "description": "The code; not one of `0x01`…`0x04`.",
               "type": "integer",
               "format": "uint8",
               "minimum": 0,
