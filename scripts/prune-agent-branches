@@ -3,9 +3,10 @@
 #
 # Usage: scripts/prune-agent-branches [--apply]
 #
-# 1. Worktrees under .claude/worktrees/ (a Claude Code agent lock is unlocked first) that are
-#    clean, hold no commit missing from the
-#    remote, and whose branch is merged into origin/main or deleted on the remote: removed.
+# 1. Worktrees under .claude/worktrees/ that are
+#    clean, hold no commit missing from the remote, and whose branch is merged into origin/main
+#    or deleted on the remote: removed. A Claude Code agent lock on such a worktree is unlocked
+#    first.
 # 2. Local branches named worktree-agent-* with no worktree and a tip that is an ancestor of
 #    origin/main (or of their remote branch): deleted.
 set -euo pipefail
@@ -14,7 +15,7 @@ apply=0
 case "${1:-}" in
     "") ;;
     --apply) apply=1 ;;
-    *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
@@ -69,7 +70,7 @@ while IFS= read -r line; do
             if merged "$ref" || ! has_remote "$ref"; then
                 if claude_lock "$wt"; then
                     act "the Claude Code lock of worktree $wt" \
-                        git -C "$main_checkout" worktree unlock "$wt"
+                        git -C "$main_checkout" worktree unlock "$wt" || continue
                 fi
                 act "worktree $wt (branch $ref)" git -C "$main_checkout" worktree remove "$wt"
             else
