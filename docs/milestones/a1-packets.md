@@ -70,7 +70,7 @@ Only what the document lacks; nothing in it is restated.
 - Checklist: "A spec-readings pull request before a codec", for the readings.
 - **Done when:** `cargo xtask spec-lint` passes.
 
-**Results (WP-1).** Added to [reference-application.md](../reference-application.md): §6.5 (script entries), §6.6 (the cases `a1-immediate`, `a1-rejects`, `a1-downlink-faults` with their expected results), and APP-126…APP-130, which are in the exit table (§4). The harness's scenario model and the generated schema carry the `ops` and `faults` arrays; the entries of the cases wait in `refapp/refapp-harness/tests/data/a1-cases.json` until WP-5 moves them into `scenario.json` with their golden traces (a case in `scenario.json` needs a golden trace, which no node can produce before WP-3 and WP-4). The readings, checked against the Blue Books on 2026-11-06:
+**Results (WP-1).** Added to [reference-application.md](../reference-application.md): §6.5 (script entries), §6.6 (the cases `a1-immediate`, `a1-rejects`, `a1-downlink-faults` with their expected results), and APP-126…APP-130, which are in the exit table (§4). The harness's scenario model and the generated schema carry the `ops` and `faults` arrays; the entries of the cases were kept in a temporary file until WP-5 moved them into `scenario.json` with their golden traces (a case in `scenario.json` needs a golden trace, which no node could produce before WP-3 and WP-4). The readings, checked against the Blue Books on 2026-11-06:
 
 | Reading | Clauses | Result |
 |---|---|---|

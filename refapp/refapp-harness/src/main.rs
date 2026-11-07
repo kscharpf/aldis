@@ -15,8 +15,8 @@ commands:
                              (default directory: refapp/target/runs)
   compare [<case>]           run a case (default: every case) and compare it byte for byte
                              with refapp/golden/<case>.jsonl
-  bless <case>               write the run's trace to refapp/golden/<case>.jsonl; bump the
-                             case's trace_version and add a line to refapp/golden/CHANGES.md
+  bless <case>               write the run's trace to refapp/golden/<case>.jsonl (changing a
+                             released trace needs a trace_version bump and a CHANGES.md row)
   check-golden               every file in refapp/golden/ is a canonical trace
   gen-scenario [--check]     (re)generate the schema and Rust constants from
                              refapp/scenario/scenario.json, or check that they are current

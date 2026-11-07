@@ -956,7 +956,7 @@ pub fn generate(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Call, Case, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
+        Call, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
         literal,
     };
 
@@ -1081,16 +1081,6 @@ mod tests {
         }
     }
 
-    /// The scenario file with the A1 cases of `tests/data/a1-cases.json` added.
-    fn with_a1_cases() -> Scenario {
-        let mut s = Scenario::load().unwrap();
-        let cases: Vec<Case> = serde_json::from_str(A1_CASES).unwrap();
-        s.cases.extend(cases);
-        s
-    }
-
-    const A1_CASES: &str = include_str!("../tests/data/a1-cases.json");
-
     fn rejects(s: &Scenario, what: &str) -> bool {
         s.check().is_err_and(|e| e.contains(what))
     }
@@ -1098,14 +1088,15 @@ mod tests {
     #[test]
     fn script_entries_of_the_a1_cases_parse_and_check() {
         // req: APP-126, APP-127, APP-128
-        let s = with_a1_cases();
+        let s = Scenario::load().unwrap();
         s.check().unwrap();
         let rejects_case = s.case("a1-rejects").unwrap();
         assert_eq!(rejects_case.ops.len(), 18);
         assert_eq!(s.case("a1-downlink-faults").unwrap().faults.len(), 5);
         // An entry names parameters, not octets: it serializes back to the same JSON.
-        let entries: Vec<serde_json::Value> = serde_json::from_str(A1_CASES).unwrap();
-        for (case, json) in s.cases[1..].iter().zip(&entries) {
+        let file: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let entries = file["cases"].as_array().unwrap();
+        for (case, json) in s.cases.iter().zip(entries).skip(1) {
             assert_eq!(&serde_json::to_value(case).unwrap()["ops"], &json["ops"]);
         }
     }
@@ -1113,7 +1104,7 @@ mod tests {
     #[test]
     fn script_rules_the_schema_cannot_express() {
         // req: APP-061, APP-126, APP-128
-        let ok = with_a1_cases();
+        let ok = Scenario::load().unwrap();
         let mut s = ok.clone();
         // An immediate command that arrives off the 125 000 µs grid.
         s.cases[3].ops[0] = OpsEntry::Command {
@@ -1160,7 +1151,7 @@ mod tests {
 
     /// The `a1-rejects` case with its ops entry `i` replaced.
     fn rejects_with(i: usize, entry: OpsEntry) -> Scenario {
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[i] = entry;
         s
     }
@@ -1188,7 +1179,7 @@ mod tests {
                 .is_ok()
         );
         // Reason 4: the ninth command of a full queue, released off the grid.
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[3].ops[17] = command(
             10_115_001,
             Execution::TimeTagged {
@@ -1198,7 +1189,7 @@ mod tests {
         );
         assert!(rejects(&s, "rejected at delivery"));
         // A command that only queues needs no grid: `a1-nominal` releases on whole seconds.
-        with_a1_cases().check().unwrap();
+        Scenario::load().unwrap().check().unwrap();
     }
 
     #[test]
@@ -1263,7 +1254,7 @@ mod tests {
             };
             assert!(rejects(&rejects_with(idx, entry), what), "{what}");
         }
-        let mut s = with_a1_cases();
+        let mut s = Scenario::load().unwrap();
         s.cases[4].level = super::Level::Frames;
         s.cases[4].faults.push(FaultEntry {
             dir: Direction::Down,
