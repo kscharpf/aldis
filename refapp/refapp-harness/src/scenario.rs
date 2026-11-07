@@ -250,6 +250,41 @@ pub enum OpsEntry {
 }
 
 impl OpsEntry {
+    /// The entry as the ground node takes it (§6.5).
+    #[must_use]
+    pub fn to_node(&self) -> refapp_ground::OpsEntry {
+        use refapp_ground as node;
+        match *self {
+            OpsEntry::Command {
+                execution,
+                call,
+                extra_octets,
+                ..
+            } => node::OpsEntry::Command {
+                execution: match execution {
+                    Execution::Immediate {} => node::Execution::Immediate,
+                    Execution::TimeTagged { exec_us } => node::Execution::TimeTagged { exec_us },
+                },
+                call: match call {
+                    Call::Noop {} => node::Call::Noop,
+                    Call::DumpMemory { address, length } => {
+                        node::Call::DumpMemory { address, length }
+                    }
+                    Call::ActivateTable { table_id, crc } => {
+                        node::Call::ActivateTable { table_id, crc }
+                    }
+                    Call::SetPayloadMode { mode } => node::Call::SetPayloadMode { mode },
+                    Call::Unknown { code } => node::Call::Unknown { code },
+                },
+                extra_octets: extra_octets.unwrap_or(0),
+            },
+            OpsEntry::TableUpload {
+                table_id, length, ..
+            } => node::OpsEntry::TableUpload { table_id, length },
+            OpsEntry::Fop1Directive { .. } => node::OpsEntry::Fop1Directive,
+        }
+    }
+
     /// The release instant, µs (§6.5).
     #[must_use]
     pub const fn at_us(&self) -> u64 {
