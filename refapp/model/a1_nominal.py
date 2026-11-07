@@ -140,7 +140,7 @@ def model():
         return (t_us, "flight", APID["events"],
                 tm(APID["events"], 0b11, t_us, u16(code) + u16(p1) + u16(p2) + u16(p3), True))
 
-    instants = sorted(set(range(0, END_US, 125_000)))  # every instant of interest is on this grid (APP-061)
+    instants = range(0, END_US, 125_000)  # every instant of interest is on this grid (APP-061)
     for t in instants:
         # §6.2 step 2: ground first
         for apid, pkt in ground.get(t, []):
@@ -209,11 +209,15 @@ def record(t, node, apid, octets):
 
 
 def main(argv):
+    import argparse
+    ap = argparse.ArgumentParser(description="Blind model of the a1-nominal packet_out records")
+    ap.add_argument("--compare", metavar="FILE", help="golden trace to compare against")
+    args = ap.parse_args(argv[1:])  # exits 2 with a usage error on bad arguments
     assert crc16(b"123456789") == 0x29B1  # CMN-002 check value
     assert crc16(table_octets(300)) == 0x0C4F and crc16(memory(0x10000, 600)) == 0x80A8  # §2.4
     mine = [record(*r) for r in model()]
-    if len(argv) >= 3 and argv[1] == "--compare":
-        golden = [ln for ln in Path(argv[2]).read_text().splitlines()
+    if args.compare is not None:
+        golden = [ln for ln in Path(args.compare).read_text().splitlines()
                   if json.loads(ln).get("kind") == "packet_out"]
         bad = 0
         for i in range(max(len(mine), len(golden))):

@@ -351,7 +351,9 @@ None was run against the vector files. The independent check of the link engines
 
 ## 7. Reference application (A1)
 
-A1 D5(c): the blind Python model `file:refapp/model/a1_nominal.py`, written from `docs/reference-application.md`, `file:refapp/scenario/scenario.json`, and 133.0, 301.0, and 132.0 §4.1.6.2.2 (CMN-001) without sight of the refapp crates (TV-023), regenerates the `packet_out` records of `a1-nominal`.
+A1 D5(c): the blind Python model `file:refapp/model/a1_nominal.py`, written from `docs/reference-application.md` and 133.0, 301.0, and 132.0 §4.1.6.2.2 (CMN-001) without sight of the refapp crates (TV-023), regenerates the `packet_out` records of `a1-nominal`. It also reads `file:refapp/scenario/scenario.json` as scenario input data, which D5(c) accepts as input (data, not implementation).
+
+The model is valid for `a1-nominal` only: it applies each delivery at the next 125 ms instant rather than at x.010 s, and it has no rejected-command path.
 
 | Item | Value |
 |---|---|
