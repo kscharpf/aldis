@@ -100,15 +100,15 @@ Example: the tag `v0.2.0-m1` (#54), the repository made public (#57), the GHCR p
 
 GitHub records merges. A merge that also decides something, such as merging over an open question, says so in the pull request description.
 
-Merge trains (maintainer, 2026-11-07): each pull request keeps its own independent review and the implementer's reply, and needs no verify record of its own; verify runs on the train, and the merge gate (VER-058) applies to the train PR, which the maintainer approves and merges. One train for all scopes, run by the process coordinator; the merge order stays the maintainer's. A pull request that waits on a maintainer decision (a breaking C ABI change, a requirement amendment) stays out of trains until it is decided. A failing train drops the pull request that caused it; a conflict leaves out the later pull request of the agreed order; both go back to their owners ([coordinator.md](coordinator.md#merge-trains)).
-
-Build directories (maintainer, 2026-11-07): an agent runs `cargo clean` in its worktree, and in the separate workspaces it built, after the final push of each round ([agent-brief.md](agent-brief.md) item 5).
+Merge trains (maintainer, 2026-11-07): each pull request keeps its own independent review and the implementer's reply, and needs no verify record of its own; verify runs on the train, and the merge gate (VER-058) applies to the train PR, which the maintainer approves and merges. One train for all scopes, run by the process coordinator; the merge order stays the maintainer's. A pull request that waits on a maintainer decision (a breaking C ABI change, a requirement amendment) stays out of trains until it is decided (the label `needs-maintainer`, enforced by `scripts/pr-status --train` and `scripts/train`). A failing train drops the pull request that caused it; a conflict leaves out the later pull request of the agreed order; both go back to their owners ([coordinator.md](coordinator.md#merge-trains)).
 
 ### 2.11 Repository housekeeping
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
 | Deleting work that is on no remote and not merged, or a branch kept on purpose (the `xtask` split, #75); rewriting pushed history | Merging `main` into open pull requests and re-verifying (with several coordinators, see [coordinator.md](coordinator.md#multiple-coordinators)); building, verifying, and rebuilding merge trains ([coordinator.md](coordinator.md#merge-trains)); deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
+
+Build directories (maintainer, 2026-11-07): an agent runs `cargo clean` in its worktree, and in the separate workspaces it built, after the final push of each round ([agent-brief.md](agent-brief.md) item 5).
 
 ### 2.12 Approvals
 

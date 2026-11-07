@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Bring open pull requests up to date with main and start their verification run (VER-060).
 #
-# Usage: scripts/reverify [--wait] [--cancel] [--stale-retries <n>] [--timeout <min>]
+# Usage: scripts/reverify [--alone] [--wait] [--cancel] [--stale-retries <n>] [--timeout <min>]
 #                         <pr-number>...
 #        scripts/reverify [options] --all-behind
 #        scripts/reverify --status [--wait] [--timeout <min>] <pr-number>
 #
+# Merge trains (docs/process/coordinator.md): verification runs on the train PR, whose head
+# branch is `train/*`. Without `--alone` this script refuses a PR whose head branch is not
+# `train/*` (exit 2, nothing started) and points to scripts/train; `--alone` is for a PR that
+# merges alone and lifts the restriction. `--all-behind` covers only the `train/*` PRs, and with
+# `--alone` every open PR behind origin/main. `--status` takes `--alone` and ignores it.
+#
 # `--all-behind` takes the place of the PR numbers: it lists the open pull requests (against
-# main) whose head does not contain origin/main and reverifies them as one call; with none behind
+# main, `train/*` ones unless --alone) whose head does not contain origin/main and reverifies
+# them as one call; with none behind
 # it prints that and exits 0. It cannot be combined with PR numbers or `--status`.
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
@@ -89,12 +96,14 @@ secs_per_min="${REVERIFY_SECONDS_PER_MIN:-60}"
 secs_per_min=$((10#$secs_per_min))
 status_mode=0
 all_behind=0
+alone=0
 args=()
 while [ $# -gt 0 ]; do
     case "$1" in
     --wait) wait_lock=1 ;;
     --status) status_mode=1 ;;
     --all-behind) all_behind=1 ;;
+    --alone) alone=1 ;;
     --cancel)
         cancel=1
         wait_lock=1
@@ -141,6 +150,21 @@ main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-di
 state_dir="$(git rev-parse --path-format=absolute --git-common-dir)/reverify"
 mkdir -p "$state_dir"
 
+# Without --alone, only a train PR is verified here: a PR that rides a train is verified on the
+# train (docs/process/coordinator.md, Merge trains). A PR gh cannot read is left to phase 1.
+if [ "$alone" -eq 0 ] && [ "$status_mode" -eq 0 ] && [ "$all_behind" -eq 0 ]; then
+    for pr in "${args[@]}"; do
+        info="$(gh pr view "$pr" --json state,headRefName \
+            --jq '.state + " " + .headRefName' 2>/dev/null)" || continue
+        if [[ ${info#* } != train/* ]]; then
+            echo "#$pr: head branch ${info#* } is not a train branch: a pull request rides a" \
+                "merge train (scripts/train <pr>...), and the train PR is verified here;" \
+                "pass --alone to verify a PR that merges alone" >&2
+            exit 2
+        fi
+    done
+fi
+
 # --all-behind: the open PRs whose head does not contain origin/main.
 if [ "$all_behind" -eq 1 ]; then
     git -C "$main_checkout" fetch --quiet origin || { echo "cannot fetch origin" >&2; exit 2; }
@@ -148,6 +172,7 @@ if [ "$all_behind" -eq 1 ]; then
         --jq '.[] | "\(.number) \(.headRefName)"')" || { echo "gh pr list failed" >&2; exit 2; }
     while read -r num branch; do
         [ -n "$num" ] || continue
+        [ "$alone" -eq 1 ] || [[ $branch == train/* ]] || continue
         head="$(git -C "$main_checkout" rev-parse --verify --quiet "origin/$branch")" || continue
         # Only exit status 1 says "main is not in the head's history".
         rc=0

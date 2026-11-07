@@ -57,20 +57,54 @@ for ((i = 0; i < ${#args[@]}; i++)); do
 done
 case "$1 $2" in
 "pr view") jq -r "$filter" "$STUB/pr-$3.json" ;;
-"pr create") echo "https://github.test/o/r/pull/99" ;;
+"pr list") jq -r "$filter" "$STUB/all-prs.json" ;;
+"pr create")
+    [ ! -e "$STUB/create-fails" ] || exit 1
+    echo "https://github.test/o/r/pull/99"
+    ;;
 "pr close") ;;
 "repo view") echo '{"url":"https://github.test/o/r"}' | jq -r "$filter" ;;
+"api "*)
+    case "$2" in
+    */protection) echo '{}' | jq -r "$filter" ;;
+    *) echo '[]' ;;
+    esac
+    ;;
+"run list") ;;
 *) exit 1 ;;
 esac
 STUB
 chmod +x "$work/bin/gh"
 export STUB="$work/stub"
+echo '[]' >"$STUB/all-prs.json"
+marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
-pr() { # pr <n> <branch> <title> [state] [draft]
-    jq -nc --arg b "$2" --arg t "$3" --arg s "${4:-OPEN}" --argjson d "${5:-false}" '{
+# pr <n> <branch> <title> [state] [draft] [labels] [reviewed: 1|0] [committed]: the JSON that
+# gh prints for the PR, with the head of origin/<branch>, a review of 2026-01-02 and, when
+# reviewed, a reply of 2026-01-03 that ends with the marker.
+pr() {
+    local sha reviews comments
+    sha="$(git -C "$repo" rev-parse "origin/$2")"
+    reviews='[]'
+    comments='[]'
+    if [ "${7:-1}" = 1 ]; then
+        reviews='[{"author":{"login":"rev"},"state":"COMMENTED","body":"ok",
+                   "submittedAt":"2026-01-02T00:00:00Z"}]'
+        comments="$(jq -nc --arg m "$marker" '[{author: {login: "me"},
+            createdAt: "2026-01-03T00:00:00Z", body: ("Fixed.\n\n" + $m)}]')"
+    fi
+    jq -nc --arg b "$2" --arg t "$3" --arg s "${4:-OPEN}" --argjson d "${5:-false}" \
+        --arg sha "$sha" --arg labels "${6:-}" --argjson reviews "$reviews" \
+        --argjson comments "$comments" --arg committed "${8:-2026-01-01T00:00:00Z}" '{
         state: $s, isDraft: $d, headRefName: $b, headRepositoryOwner: {login: "o"},
-        title: $t, body: ""}' >"$STUB/pr-$1.json"
+        headRefOid: $sha, baseRefName: "main", reviewDecision: "", title: $t, body: "",
+        statusCheckRollup: [], reviews: $reviews, comments: $comments,
+        labels: ($labels | split(",") | map(select(. != "") | {name: .})),
+        commits: [{committedDate: $committed}]}' >"$STUB/pr-$1.json"
 }
+branch train/x ftx 1
+branch e fe 1
+branch f ff 1
 pr 11 a "feat(m1/wp-1): add a"
 pr 12 b "fix(spp): fix b"
 pr 13 c "feat: change c"
@@ -78,6 +112,9 @@ pr 14 d "feat: change d"
 pr 15 a "feat: closed" CLOSED
 pr 16 a "feat: draft" OPEN true
 pr 17 train/x "chore(train): other"
+pr 18 e "feat: unreviewed" OPEN false "" 0
+pr 19 f "feat: waits" OPEN false "needs-maintainer"
+pr 20 f "feat: pushed after the reply" OPEN false "" 1 2026-01-04T00:00:00Z
 
 failures=0
 run() { (cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
@@ -126,11 +163,35 @@ check "pushes nothing on a conflict" $?
 t [ -z "$(git -C "$repo" branch --list "train/$today-2")" ]
 check "leaves no local train branch" $?
 
-for n in 15 16 17; do
+for n in 15 16 17 18 19 20; do
     out="$(run 11 "$n")"
     [ $? -eq 1 ] && contains "$out" "#$n"
     check "#$n cannot ride" $?
 done
+
+out="$(run 18)"
+contains "$out" "no review"
+check "an unreviewed PR is refused with its reason" $?
+out="$(run 19)"
+contains "$out" "needs-maintainer"
+check "a PR that waits on the maintainer is refused with its reason" $?
+out="$(run 20)"
+contains "$out" "newer than the reply"
+check "a PR pushed after the reply is refused" $?
+
+# The train merges the SHA that was checked: a push after the check is not merged.
+pr 11 a "feat(m1/wp-1): add a"
+git -C "$repo" checkout -q a
+echo late >"$repo/late"
+git -C "$repo" add late
+git -C "$repo" commit -q -m late
+git -C "$repo" push -q origin a
+git -C "$repo" checkout -q main
+out="$(run 11)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "is not at the checked head"; }
+check "a push between the check and the merge refuses the PR" $?
+pr 11 a "feat(m1/wp-1): add a"
 
 out="$(run --dry-run 11 12)"
 status=$?
@@ -142,6 +203,26 @@ git -C "$repo" branch -D "train/$today-2" >/dev/null
 out="$(run 12)"
 remote_has "train/$today-2"
 check "a second train of the day is -2" $?
+git -C "$work/origin.git" branch -D "train/$today-1" "train/$today-2" >/dev/null
+echo "[{\"headRefName\":\"train/$today-1\"},{\"headRefName\":\"train/$today-2\"}]" \
+    >"$STUB/all-prs.json"
+out="$(run 12)"
+remote_has "train/$today-3"
+check "numbers count train PRs of any state, not live branches" $?
+git -C "$work/origin.git" branch -D "train/$today-3" >/dev/null
+echo '[]' >"$STUB/all-prs.json"
+git -C "$repo" branch -D "train/$today-1" "train/$today-2" "train/$today-3" >/dev/null 2>&1
+
+touch "$STUB/create-fails"
+out="$(run 12)"
+status=$?
+rm "$STUB/create-fails"
+{ [ "$status" -eq 2 ] && ! remote_has "train/$today-1"; }
+check "a failing gh pr create exits 2 and deletes the pushed branch" $?
+[ ! -d "$repo/.claude/worktrees/train/$today-1" ]
+check "it leaves no worktree" $?
+git -C "$repo" branch -D "train/$today-1" >/dev/null 2>&1
+out="$(run 11 12)"
 
 pr 99 "train/$today-1" "chore(train): $today-1, #11, #12"
 jq -c --arg b "$(cat "$STUB/created-body")" '.body = $b' "$STUB/pr-99.json" >"$STUB/t" &&
@@ -149,10 +230,10 @@ jq -c --arg b "$(cat "$STUB/created-body")" '.body = $b' "$STUB/pr-99.json" >"$S
 : >"$STUB/calls"
 out="$(run --rebuild 99 --without 11)"
 status=$?
-{ [ "$status" -eq 0 ] && remote_has "train/$today-3"; }
+{ [ "$status" -eq 0 ] && remote_has "train/$today-2"; }
 check "--rebuild builds a new train" $?
-git -C "$work/origin.git" log --first-parent --format=%s "train/$today-3" | grep -Fq "#12" &&
-    ! git -C "$work/origin.git" log --first-parent --format=%s "train/$today-3" | grep -Fq "#11"
+git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#12" &&
+    ! git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#11"
 check "--rebuild leaves the dropped PR out" $?
 grep -Fq "pr close 99" "$STUB/calls" && contains "$(cat "$STUB/close-comment")" "without #11"
 check "--rebuild closes the old train PR" $?

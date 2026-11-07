@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Is a pull request ready to merge? Read-only: it posts nothing.
 #
-# Usage: scripts/pr-status [--alone] <pr-number>...
+# Usage: scripts/pr-status [--train] <pr-number>...   (flags in any position)
 #
-# A constituent of a merge train (docs/process/coordinator.md) needs no verify record of its own:
-# the train PR is verified once. So a PR from any branch but `train/*` gets the verdict
-# `READY FOR TRAIN` when it is open, not a draft, with no changes requested, no review
-# outstanding, and the review answered; behind origin/<base> and the contexts do not count. The
-# full verdict `READY` applies to a train PR (a head branch `train/*`) and, with --alone, to a PR
-# that merges alone. A verdict that is not ready is `NOT READY: <reasons>` in every mode.
+# Verdicts. Default: the merge gate's verdict, `READY` or `NOT READY: <reasons>`, for a PR that
+# merges alone and for a train PR (head branch `train/*`). With --train: the verdict of a
+# constituent of a merge train (docs/process/coordinator.md, Merge trains), `READY FOR TRAIN` or
+# `NOT READY: <reasons>`. A constituent needs no verify record of its own and no merge of
+# origin/<base>, since the train PR is verified once; its review is the only per-PR gate, so
+# `READY FOR TRAIN` needs: open, not a draft, no changes requested, at least one submitted review,
+# a later reply ending in the marker (below), no commit on the head newer than that reply, and no
+# label `needs-maintainer` (a PR that waits on a maintainer decision stays out of trains).
 #
 # Per PR: state, head, commits behind origin/<base>, the required status contexts of branch
 # protection with their state on the head, the other checks (not required), the newest
@@ -27,11 +29,16 @@ set -euo pipefail
 
 marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
-alone=0
-if [ "${1:-}" = --alone ]; then
-    alone=1
-    shift
-fi
+train=0
+nums=()
+for a in "$@"; do
+    case "$a" in
+    --train) train=1 ;;
+    -*) nums=() && break ;;
+    *) nums+=("$a") ;;
+    esac
+done
+set -- ${nums[@]+"${nums[@]}"}
 
 if [ $# -eq 0 ]; then
     awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
@@ -50,6 +57,7 @@ fi
 
 status_one() {
     local n="$1" info state draft head branch base decision behind checks required ctx s
+    local labels last_commit reply_at reviews_n
     local run run_id run_status run_conclusion run_sha record reasons="" inline unanswered of
     info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
         --jq '[.state, (.isDraft|tostring), .headRefOid, .headRefName, .baseRefName,
@@ -135,18 +143,29 @@ status_one() {
           then empty
           else "\($r.author.login) \($r.state) \($r.submittedAt)" end'
     unanswered="$(gh pr view "$n" --json reviews,comments --jq "${reply_filter//@MARKER@/$marker}")"
+    # The newest reply that ends with the marker and follows the newest submitted review.
+    # shellcheck disable=SC2016  # $r is a jq variable
+    reply_at_filter='
+        ([.reviews[] | select(.submittedAt != null)] | max_by(.submittedAt)) as $r
+        | if $r == null then empty
+          else [.comments[]
+                | select(.createdAt > $r.submittedAt
+                    and ((.body // "") | gsub("\\s+$"; "") | split("\n") | last) == "@MARKER@")
+                | .createdAt] | max // empty end'
+    reply_at="$(gh pr view "$n" --json reviews,comments \
+        --jq "${reply_at_filter//@MARKER@/$marker}")"
+    reviews_n="$(gh pr view "$n" --json reviews --jq '[.reviews[] | select(.submittedAt != null)]
+        | length')"
+    labels="$(gh pr view "$n" --json labels --jq '[.labels[].name] | join(",")')"
+    last_commit="$(gh pr view "$n" --json commits --jq '.commits[-1].committedDate // empty')"
     echo "comments:"
     gh pr view "$n" --json comments --jq 'if (.comments | length) == 0 then "  (none)"
         else .comments[]
           | "  \(.author.login) \(.createdAt): \(.body[0:300] | gsub("\n"; " "))" end'
 
-    # A constituent of a train needs neither an up-to-date head nor a verify record.
-    local full=1
-    if [ "$alone" -eq 0 ] && [[ $branch != train/* ]]; then full=0; fi
-
     [ "$state" = OPEN ] || reasons="$reasons; PR is $state"
     [ "$draft" != true ] || reasons="$reasons; draft"
-    if [ "$state" != OPEN ] || [ "$full" -eq 0 ]; then
+    if [ "$state" != OPEN ] || [ "$train" -eq 1 ]; then
         :
     elif [ "$behind" = "?" ]; then
         reasons="$reasons; head not fetched, cannot tell whether it contains origin/$base"
@@ -157,8 +176,16 @@ status_one() {
         reasons="$reasons; review unanswered ($unanswered): no later reply ends in the marker"
     [ "$decision" != CHANGES_REQUESTED ] || reasons="$reasons; changes requested"
     [ "$decision" != REVIEW_REQUIRED ] || reasons="$reasons; review required"
-    if [ "$full" -eq 0 ]; then
-        :
+    if [ "$train" -eq 1 ]; then
+        # The review is the only per-PR gate of a constituent: it must exist, be answered, and
+        # still describe the head; and a decision of the maintainer must not be pending.
+        [ "$reviews_n" -gt 0 ] || reasons="$reasons; no review"
+        if [ -n "$reply_at" ] && [ -n "$last_commit" ] && [[ $last_commit > $reply_at ]]; then
+            reasons="$reasons; head commit ($last_commit) is newer than the reply ($reply_at)"
+        fi
+        case ",$labels," in
+        *,needs-maintainer,*) reasons="$reasons; label needs-maintainer (waits on a decision)" ;;
+        esac
     elif [ "$required" = "?" ]; then
         reasons="$reasons; required contexts unreadable"
     elif [ -n "$required" ]; then
@@ -175,7 +202,7 @@ status_one() {
             fi
         done <<<"$required"
     fi
-    if [ -z "$reasons" ] && [ "$full" -eq 0 ]; then
+    if [ -z "$reasons" ] && [ "$train" -eq 1 ]; then
         echo "#$n: READY FOR TRAIN"
     elif [ -z "$reasons" ]; then
         echo "#$n: READY"

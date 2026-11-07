@@ -8,9 +8,9 @@
 # marker, a reply with text after the marker, a reply older than the review, and a review
 # without findings left unanswered are each NOT READY, and the newest review decides; a later
 # review, or an agent review ending in the marker, is not a reply; a head behind origin/main is
-# NOT READY. A PR that is not a train PR is READY FOR TRAIN with no verify record and a head
-# behind origin/main, and NOT READY for the review reasons; --alone and a `train/*` head ask for
-# the full READY.
+# NOT READY. With --train (a constituent of a merge train): no verify record and a head behind
+# origin/main do not matter, but a PR with no review, an unanswered review, a head commit newer
+# than the reply, or the label `needs-maintainer` is NOT READY; the flag may stand anywhere.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -76,20 +76,23 @@ comment() { # comment <time> <body>
     jq -nc --arg t "$1" --arg b "$2" '{author: {login: "me"}, createdAt: $t, body: $b}'
 }
 
-pr() { # pr <head> <reviews json array> <comments json array> [branch] [verify state]
+pr() { # pr <head> <reviews json array> <comments json array> [branch] [verify state] [labels]
     jq -nc --arg head "$1" --argjson reviews "$2" --argjson comments "$3" \
-        --arg branch "${4:-feature}" --arg verify "${5-SUCCESS}" '{
+        --arg branch "${4:-feature}" --arg verify "${5-SUCCESS}" --arg labels "${6:-}" \
+        --arg committed "${COMMITTED:-2026-01-01T00:00:00Z}" '{
         state: "OPEN", isDraft: false, headRefOid: $head, headRefName: $branch,
         baseRefName: "main", reviewDecision: "",
         statusCheckRollup: (if $verify == "" then []
                             else [{context: "aldis/verify", state: $verify}] end),
+        labels: ($labels | split(",") | map(select(. != "") | {name: .})),
+        commits: [{committedDate: $committed}],
         reviews: $reviews, comments: $comments}' >"$STUB/pr.json"
 }
 
 failures=0
 expect() { # expect <verdict prefix> <case> [text the output must contain]
     local out
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" ${ALONE:+--alone} 7 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" ${FLAG:+"$FLAG"} 7 2>&1)"
     if grep -Fq "#7: $1" <<<"$out" &&
         { [ -z "${3:-}" ] || grep -Fq -- "$3" <<<"$out"; }; then
         echo "ok: $2"
@@ -104,7 +107,6 @@ reply="$(comment 2026-01-03T00:00:00Z "Fixed in abc123, point by point.
 
 $marker")"
 
-export ALONE=1
 pr "$current" "[]" "[]"
 expect "READY" "no review"
 pr "$current" "[$review]" "[$reply]"
@@ -146,22 +148,38 @@ expect "READY" "an agent review answered by a later comment"
 pr "$old" "[]" "[]"
 expect "NOT READY" "a head behind origin/main" "behind origin/main by 1"
 
-unset ALONE
-# A constituent of a train: no record, no up-to-date head.
-pr "$old" "[]" "[]" feature ""
-expect "READY FOR TRAIN" "a PR with no verify record and a head behind origin/main"
+# A constituent of a train (--train): no record, no up-to-date head, but a reviewed head.
+export FLAG=--train
+pr "$old" "[$review]" "[$reply]" feature ""
+expect "READY FOR TRAIN" "an answered review, no verify record, head behind origin/main"
 pr "$old" "[$review]" "[$reply]" feature FAILURE
-expect "READY FOR TRAIN" "a reviewed and answered PR, a failing verify state is ignored"
-pr "$current" "[$review]" "[]" feature ""
-expect "NOT READY" "a constituent with an unanswered review" "review unanswered"
-pr "$old" "[]" "[]" "train/2026-11-07-1" ""
-expect "NOT READY" "a train PR needs its record and an up-to-date head" "behind origin/main by 1"
-pr "$current" "[]" "[]" "train/2026-11-07-1" ""
-expect "NOT READY" "a train PR without the verify context" "aldis/verify missing"
-pr "$current" "[]" "[]" "train/2026-11-07-1"
-expect "READY" "a train PR with a record"
+expect "READY FOR TRAIN" "a failing verify state is ignored"
 pr "$current" "[]" "[]" feature ""
-ALONE=1 expect "NOT READY" "--alone asks for the record" "aldis/verify missing"
+expect "NOT READY" "no review at all" "no review"
+pr "$current" "[$review]" "[]" feature ""
+expect "NOT READY" "an unanswered review" "review unanswered"
+COMMITTED=2026-01-03T12:00:00Z pr "$current" "[$review]" "[$reply]" feature ""
+expect "NOT READY" "a commit newer than the reply" "newer than the reply"
+pr "$current" "[$review]" "[$reply]" feature "" "needs-maintainer"
+expect "NOT READY" "the label needs-maintainer" "needs-maintainer"
+pr "$current" "[$review]" "[$reply]" feature "" "other,docs"
+expect "READY FOR TRAIN" "other labels do not matter"
+pr "$old" "[$review]" "[$reply]" "train/2026-11-07-1" ""
+expect "READY FOR TRAIN" "--train is the constituent verdict whatever the branch"
+FLAG=
+pr "$old" "[$review]" "[$reply]" feature ""
+expect "NOT READY" "the default verdict stays strict" "behind origin/main by 1"
+pr "$current" "[$review]" "[$reply]" feature ""
+expect "NOT READY" "the default verdict asks for the record" "aldis/verify missing"
+# The flag may stand after the numbers.
+pr "$current" "[$review]" "[$reply]" feature ""
+out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 --train 2>&1)"
+if grep -Fq "#7: READY FOR TRAIN" <<<"$out"; then
+    echo "ok: --train after the number"
+else
+    echo "FAIL: --train after the number"
+    failures=$((failures + 1))
+fi
 
 [ "$failures" -eq 0 ] || exit 1
 echo "all cases hold"
