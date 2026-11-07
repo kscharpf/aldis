@@ -36,7 +36,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
-| **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer |
+| **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer (exited 2026-11-06) |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI |
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by hand-written loops in the application | A1; M2 | Trace reproduced in CI; API issues found are filed |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF; injected frame loss exercises retransmission | A2; M3 | Trace reproduced in CI, including the fault cases |
