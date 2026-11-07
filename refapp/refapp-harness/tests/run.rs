@@ -189,8 +189,8 @@ fn deadlines_wake_nodes() {
 fn frame_level_slots() {
     // req: APP-071, APP-090
     let scenario = Scenario::load().unwrap();
-    let frame = scenario.link.frame_slot_us;
-    let uplink = scenario.link.uplink_slot_us;
+    let frame = scenario.link.frame_slot_us.get();
+    let uplink = scenario.link.uplink_slot_us.get();
     let mut flight = Scripted(
         |_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
             if tx {
