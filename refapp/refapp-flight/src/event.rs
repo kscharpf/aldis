@@ -4,8 +4,17 @@
 
 use crate::layout::{EVENT_LEN, PayloadMode};
 
+/// Code of the application event `packet_rejected` (§7.4, APP-131): the argument is the error
+/// code of the catalogue in docs/03-api-model.md §9.
+pub const APP_PACKET_REJECTED: u16 = 6;
+/// Code of the application event `cmd_received` (§7.4, APP-129): function code, command sequence
+/// count.
+pub const APP_CMD_RECEIVED: u16 = 20;
+/// Code of the application event `table_received` (§7.4, APP-129): table ID, length.
+pub const APP_TABLE_RECEIVED: u16 = 21;
+
 /// An on-board event, reported as one packet on the event APID at the instant it is raised
-/// (§2.1). The command handler and the table store of A1 WP-3b raise them.
+/// (§2.1). The command handler, the table store, and the memory dump raise them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     /// `CMD_EXECUTED` (`0x0001`).

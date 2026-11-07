@@ -4,7 +4,8 @@
 use aldis::core::ids::Apid;
 use aldis::core::{Error, ErrorKind, Result};
 use aldis::spp::{
-    PacketFields, PacketType, SequenceCounter, SequenceFlags, SpacePacketWriter, SppConfig,
+    PacketFields, PacketType, Segmenter, SegmenterState, SequenceCounter, SequenceFlags,
+    SpacePacketWriter, SppConfig,
 };
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, time};
@@ -77,6 +78,14 @@ pub fn onboard_time(now: Instant) -> Result<TimeCode> {
     )?))
 }
 
+/// The T-field of the secondary header for `now`, with the P-field if the stream has one
+/// (§3.2), in `buffer`.
+fn time_stamp(stream: Stream, now: Instant, buffer: &mut [u8; 8]) -> Result<&[u8]> {
+    // The size of the scratch buffer is a guess of the caller: #306.
+    let len = onboard_time(now)?.encode(stream.explicit_pfield(), buffer)?;
+    buffer.get(..len).ok_or(Error::buffer_too_small(len))
+}
+
 /// Copies `src` to the start of `dst`.
 fn copy_into(dst: &mut [u8], src: &[u8]) -> Result<()> {
     let to = dst
@@ -138,12 +147,9 @@ impl Downlink {
             sequence_flags: flags,
             sequence_count: count,
         };
-        // The size of the scratch buffer is a guess of the caller: #306.
         let mut stamp_buffer = [0_u8; 8];
-        let stamp_len = onboard_time(now)?.encode(stream.explicit_pfield(), &mut stamp_buffer)?;
-        let stamp = stamp_buffer
-            .get(..stamp_len)
-            .ok_or(Error::buffer_too_small(stamp_len))?;
+        let stamp = time_stamp(stream, now, &mut stamp_buffer)?;
+        let stamp_len = stamp.len();
         let mut buffer = [0_u8; PACKET_BUFFER];
         let mut writer = SpacePacketWriter::begin(
             &mut buffer,
@@ -160,5 +166,51 @@ impl Downlink {
         out.packet_out(apid, packet);
         out.unit(packet);
         Ok(())
+    }
+
+    /// The progress of a segmenter over `sdu` for the dump APID, at most `max_user_len` user-data
+    /// octets per packet (SPP-013, APP-016).
+    ///
+    /// # Errors
+    /// The segmenter's error, or `InvalidConfig` for the APID (#304).
+    pub fn segmenter(sdu: &[u8], max_user_len: usize) -> Result<SegmenterState> {
+        let apid = Apid::new(apid::DUMP).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        Ok(Segmenter::new(
+            &SppConfig::DEFAULT,
+            PacketType::Telemetry,
+            apid,
+            sdu,
+            max_user_len,
+        )?
+        .suspend())
+    }
+
+    /// Sends the next dump packet of `sdu` with the time stamp of `now`, as `packet_out` and then
+    /// as a link unit (§7.3), and returns the progress after it. The Segmenter sets the Sequence
+    /// Flags (`01`, `00`, `10`, or `11` for a single packet, SPP-013) and takes the next count of
+    /// the dump APID (APP-021).
+    ///
+    /// # Errors
+    /// The error of the segmenter, the time conversion, or `InvalidState` if `progress` is
+    /// already done; nothing is output and the count does not advance.
+    pub fn send_segment(
+        &mut self,
+        progress: SegmenterState,
+        sdu: &[u8],
+        now: Instant,
+        out: &mut dyn Output,
+    ) -> Result<SegmenterState> {
+        let apid = Apid::new(apid::DUMP).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        let mut stamp_buffer = [0_u8; 8];
+        let stamp = time_stamp(Stream::Dump, now, &mut stamp_buffer)?;
+        let mut segmenter = progress.resume(sdu)?;
+        let mut buffer = [0_u8; PACKET_BUFFER];
+        let total = segmenter
+            .next_packet(&mut self.dump, stamp, &mut buffer)?
+            .ok_or(Error::new(ErrorKind::InvalidState))?;
+        let packet = buffer.get(..total).ok_or(Error::buffer_too_small(total))?;
+        out.packet_out(apid, packet);
+        out.unit(packet);
+        Ok(segmenter.suspend())
     }
 }
