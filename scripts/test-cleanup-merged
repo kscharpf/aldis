@@ -6,7 +6,8 @@
 # Cases: a dry run changes nothing; a merged branch is cleaned (worktree, local branch, remote
 # branch); the branch whose remote is already gone is cleaned; each of these is kept with its
 # reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
-# a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`) is unlocked and
+# a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
+# ` start <time>`) is unlocked and
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
 # branch and leaves its branches in place.
 # Exit status: 0 when every case holds, 1 otherwise.
@@ -38,7 +39,7 @@ branch() { # branch <name>: one commit on its own branch, pushed
     git -C "$repo" checkout -q main
 }
 for b in merged-clean merged-dirty merged-after not-merged-pr merged-remote-gone merged-locked \
-    merged-claude merged-claude-dirty; do
+    merged-claude merged-claude-dirty merged-claude-nostart merged-foreign; do
     branch "$b"
     git -C "$repo" merge -q --no-ff "$b" -m "merge $b"
 done
@@ -56,7 +57,13 @@ echo untracked >"$work/wt-dirty/untracked.txt"
 git -C "$repo" worktree add -q "$work/wt-locked" merged-locked
 git -C "$repo" worktree lock "$work/wt-locked"
 git -C "$repo" worktree add -q "$work/wt-claude" merged-claude
-git -C "$repo" worktree lock --reason "claude agent agent-a1b2c3 (pid 4242)" "$work/wt-claude"
+real_reason="claude agent agent-a21e24a259f0a8ec5 (pid 11671 start Sat Nov  7 14:26:54 2026)"
+git -C "$repo" worktree lock --reason "$real_reason" "$work/wt-claude"
+git -C "$repo" worktree add -q "$work/wt-claude-nostart" merged-claude-nostart
+git -C "$repo" worktree lock --reason "claude agent agent-a1b2c3 (pid 4242)" \
+    "$work/wt-claude-nostart"
+git -C "$repo" worktree add -q "$work/wt-foreign" merged-foreign
+git -C "$repo" worktree lock --reason "$real_reason trailing" "$work/wt-foreign"
 git -C "$repo" worktree add -q "$work/wt-claude-dirty" merged-claude-dirty
 echo x >"$work/wt-claude-dirty/u.txt"
 git -C "$repo" worktree lock --reason "claude agent agent-d4e5f6 (pid 4242)" "$work/wt-claude-dirty"
@@ -75,7 +82,8 @@ case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac
 EOF
 chmod +x "$work/bin/gh"
 
-merged="merged-claude merged-claude-dirty merged-clean merged-dirty merged-after"
+merged="merged-claude merged-claude-dirty merged-claude-nostart merged-foreign"
+merged="$merged merged-clean merged-dirty merged-after"
 merged="$merged merged-remote-gone merged-locked main"
 out="" rc=0
 run() {
@@ -151,6 +159,16 @@ expect_not "and its local branch is deleted" local_has merged-claude
 expect "a dirty one is kept" said "wt-claude-dirty is dirty"
 expect "and keeps its directory" dir_has "$work/wt-claude-dirty"
 expect "and its branch" local_has merged-claude-dirty
+
+echo "# a Claude Code lock without a start time"
+run --apply merged-claude-nostart
+expect "is unlocked and removed" test ! -d "$work/wt-claude-nostart"
+
+echo "# a foreign lock reason"
+run --apply merged-foreign
+expect "is not unlocked" dir_has "$work/wt-foreign"
+expect "and fails" status_is 1
+expect "and its branch stays" local_has merged-foreign
 
 if [ "$failures" -eq 0 ]; then
     echo "cleanup-merged: every case holds"
