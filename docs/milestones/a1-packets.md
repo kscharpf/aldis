@@ -3,7 +3,7 @@
 **Goal:** the first working reference application: the flight node produces every telemetry packet of the scenario's nominal timeline (housekeeping, events, payload, dump) as Space Packets with CUC time stamps and executes the uplink commands; the ground node decodes the packets with the strict codecs, tracks sequence counts, decodes time codes, reassembles dumps, and runs the ops script; the harness reproduces the first golden traces byte for byte in CI. The link level is packets: one Space Packet per link unit ([reference-application.md](../reference-application.md) §6.1).
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A0](a0-scenario.md) (scenario, skeleton, harness) and [M1](m1-packets-time.md) (`v0.2.0-m1`: `aldis-time`, `aldis-spp`) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
 
-**Status: complete (2026-11-07).** WP-0 to WP-7 are on `main`; every criterion of §4 is met and `cargo xtask trace --scope a1 --strict` passes (29 of 29 requirements traced). Decisions D1–D5 (§2) accepted by the maintainer 2026-11-06. Entry gate: M1 met (`v0.2.0-m1`); A0 exited (D1: the merge of #33, #35, and #37 on 2026-10-19 is its approval). A track-A milestone cuts no release.
+**Status: complete (2026-11-07).** WP-0 to WP-7 are on `main`; every criterion of §4 is met and `cargo xtask trace --scope a1 --strict` passes. Decisions D1–D5 (§2) accepted by the maintainer 2026-11-06. Entry gate: M1 met (`v0.2.0-m1`); A0 exited (D1: the merge of #33, #35, and #37 on 2026-10-19 is its approval). A track-A milestone cuts no release.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -121,7 +121,7 @@ Only what the document lacks; nothing in it is restated.
 
 ## 4. Exit criteria
 
-A1 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-003 and APP-004 belong to A2 and A3, which compare two link levels. The results column was filled at the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a1`, not repeated here.
+A1 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-003 and APP-004 belong to A2 and A3, which compare two link levels. The results column was filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a1`, not repeated here.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
@@ -134,7 +134,7 @@ A1 is complete when every item below is green on `main`. Requirements of the sce
 | Scenario scripts and A1 cases | APP-126, APP-127, APP-128 | Met. Ops and fault scripts in `refapp/scenario/scenario.json` with the schema tests in `refapp-harness/src/scenario.rs`; the cases `a1-immediate`, `a1-rejects`, `a1-downlink-faults` have golden traces |
 | Event rules of the nodes | APP-129, APP-130, APP-131 | Met. `command_tests.rs` and `refapp-ground/src/tests.rs`; golden traces `a1-rejects`, `a1-downlink-faults` |
 | Golden traces | APP-082, APP-083, APP-086, APP-090 | Met. Golden traces of the four `a1-*` cases in `refapp/golden/`; `refapp-harness/tests/trace.rs` decodes every unit with the strict codecs (APP-086, WP-6); `tests/run.rs`; hand check of the first packet per APID and the blind model (D5) |
-| Reproduction in CI | The check `refapp` runs `compare` for every `a1-*` case (APP-106); `cargo xtask trace --scope a1 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | Met. Verify check `refapp` (APP-106); `cargo xtask trace --scope a1 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`, and reports 29 of 29 traced; the bare-metal build and clippy of `refapp-flight` are in the `refapp` job of `ci.yml` |
+| Reproduction in CI | The check `refapp` runs `compare` for every `a1-*` case (APP-106); `cargo xtask trace --scope a1 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | Met. Verify check `refapp` (APP-106); `cargo xtask trace --scope a1 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; the bare-metal build and clippy of `refapp-flight` are in the `refapp` job of `ci.yml` |
 | Docs | A0 recorded as exited (D1); roadmap §3, the READMEs, and the ACFS entry gate updated; the new requirements of WP-1 listed here | Met. A0 recorded as exited by D1; roadmap §3, `README.md`, `refapp/README.md`, and the ACFS P1 entry gate updated by the exit pull request; APP-126 to APP-131 are in this table |
 
 APP-075 and the fault case leave the table if D4 is decided without `a1-downlink-faults`; the IDs of WP-1 join it.
