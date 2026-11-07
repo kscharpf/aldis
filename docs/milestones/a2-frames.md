@@ -1,0 +1,165 @@
+# Milestone A2 — Frames
+
+**Goal:** the link level of the reference application becomes the transfer frame. The flight node packs its telemetry packets into TM frames (223 octets, FECF, VC 0, 1, and 7, the CLCW in the OCF) with the `aldis-link` generators and multiplexer, one frame in every 125 ms slot; the ground node receives the frames with the strict TM codec and the `FrameReceiver` and `PacketExtractor`, tracks frame counts, and hands the packets to the A1 applications. Uplink commands and the table upload go from the ground node as TC frames (Segment Header, MAP 0 and 1, Type-BD) built from the `MapSegmenter`, and the flight node accepts them with the `FrameReceiver`, FARM-1, and the `MapReassembler`. The packet projection of the nominal case is the same as A1's (APP-003). The harness reproduces the `a2-*` traces byte for byte in CI. The link level is the frame ([reference-application.md](../reference-application.md) §6.1, §4.1, §4.2).
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A1](a1-packets.md) (packet-level nodes and golden traces) and [M4](m4-link-engines.md) (`v0.5.0-m4`: the `aldis-link` engines) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
+
+**Status: plan drafted (2026-11-07), decisions D1–D8 (§2) proposed.** Entry gate: A1 exited (2026-11-07, #335); M4 exited (2026-11-04, `v0.5.0-m4`, see §1). A track-A milestone cuts no release.
+
+| WP | State | PRs | Notes |
+|---|---|---|---|
+| WP-0 Plan | planned | | This plan, D1–D8, `--scope a2` trace gate (D1) |
+| WP-1 Scenario additions | planned | | Only what [reference-application.md](../reference-application.md) lacks for A2: the per-instant order of frame building, the CLCW sampling rule, the frame-level events, the cases (D5), the expected frame schedule; no code |
+| WP-2 Harness: frames | planned | | `flip` and the frame-level fault rules, frame-level scenario parameters, strict decoding of frames; the link-engine features of the facade (D3) are its entry |
+| WP-3a Flight node: downlink | planned | | Generators, multiplexer, OID frames, OCF from FARM-1, TM frame writer |
+| WP-3b Flight node: uplink | planned | | `FrameReceiver` (TC), FARM-1 for Type-BD, `MapReassembler` into the A1 command handler |
+| WP-4a Ground node: downlink | planned | | Strict TM decoding, `FrameReceiver`, `PacketExtractor`, frame events, CLCW |
+| WP-4b Ground node: uplink | planned | | `MapSegmenter`, FOP-1 for Type-BD, TC frame writer, one frame per uplink slot |
+| WP-5 Golden traces | planned | | `a2-*` cases blessed, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
+| WP-6 Strict decoding of frame traces | planned | | APP-086 for frames in the `refapp` check |
+| WP-7 Exit | planned | | `trace --scope a2 --strict`; roadmap, README, ACFS entry gate |
+
+A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
+
+History:
+- 2026-11-07: plan drafted after the A1 exit (#335); D1–D8 proposed. The `--scope a2` trace (non-strict) is wired into `cargo xtask ci`, the check `spec`, and `ci.yml` by the plan's pull request (D1).
+
+## 1. Starting point
+
+| In place | Missing for A2 |
+|---|---|
+| **Entry gate, A1:** exited 2026-11-07 by #335. `refapp-flight` and `refapp-ground` produce and decode every packet of the scenario; `a1-nominal`, `a1-immediate`, `a1-rejects`, and `a1-downlink-faults` are blessed and reproduced by the check `refapp`; `refapp-harness/src/trace.rs` has `packet_projection` (APP-003), the baseline A2 checks against | |
+| **Entry gate, M4:** met. Status "exit criteria met" in [m4-link-engines.md](m4-link-engines.md), roadmap §3 row "Complete (2026-11-04)", released as `v0.5.0-m4`. The engines A2 uses are on `main`: `PacketGenerator`, `ChannelMux`, `FrameReceiver`, `PacketExtractor`, `MapSegmenter`, `MapReassembler` in `aldis-link`; `Fop1` and `Farm1` in `aldis-cop1` (M3, `v0.4.0-m3`); the TM and TC codecs with the CLCW (`aldis-tm`, `aldis-tc`, M2). The library has no work left for A2 (engine changes A2 finds go to §6) | The facade `aldis` has no feature that turns on the engines of the link crate for TM and TC, or the TC feature of `aldis-cop1`; only `full` does (`crates/aldis/Cargo.toml:71-91`, `crates/aldis-cop1/Cargo.toml:18`). `refapp/` may depend on the facade only (APP-100): see D3 |
+| The scenario for A2: the TM downlink and TC uplink plans ([§4.1](../reference-application.md#41-tm-downlink-a2-on), [§4.2](../reference-application.md#42-tc-uplink-a2-on-and-cop-1-a3-on)) with their managed parameters, APP-030…APP-045; the frame slot, uplink slot, and delay of [§6.1](../reference-application.md#61-clock-slots-and-delay); the `tx_slot` rules of [§8.1](../reference-application.md#81-step-contract); the case names `a2-nominal` and `a2-downlink-*` ([§6.4](../reference-application.md#64-cases)) | The expected frame-level behaviour of `a2-nominal` (when each field is released, how many frames carry idle fill or are OID frames, what the CLCW says); the faults of the `a2-*` cases (§6.4 says "defined in A2"); the frame-level application events (§7.4 reserves codes 100–199 and defines none); the order of work within an instant once frames exist (§2.1 ends at the payload packet); how the ground node orders its uplink (§6.2 gives only the harness's order); see WP-1 |
+| `refapp/`: the scenario model has `Level::Frames` and the link parameters of §4 in generated constants (`refapp-scenario/src/generated.rs`, modules `tm` and `tc`); the scheduler already has downlink and uplink slots and checks the `tx_slot` rules of §8.1 by level (`refapp-harness/src/sim.rs`); `flip` is accepted only at frame level (`scenario.rs`) | The nodes have no frame code; the facade features the nodes need (`link`, `tm`, `tc`, `cop1`) are not enabled; the harness refuses `flip` at run time (`sim.rs`: "not applied before the frame levels of A2") and `decode_strict` of the trace decodes packets only |
+| The A2 rows of the roadmap and of the ACFS plan: "Trace reproduced in CI; API issues found are filed"; ACFS P2 ("TM and TC frames through the C ABI handles") enters on A2 exited | |
+
+What A2 does not do: COP-1 beyond what Type-BD needs (A3: Type-AD, Type-BC, directives, FOP-1 notifications and alerts, retransmission, the `a3-*` cases); the AOS and USLP variants (A4); the C and C++ nodes (A5, ACFS); the bare-metal target (A6); channel coding, synchronisation, SDLS (APP-006). The nodes' packet applications do not change: A2 adds a link level under them, so every flight application and the ground's packet decoding stay as A1 left them.
+
+## 2. Decisions
+
+All proposed with a recommended choice; the maintainer accepts them. The rows keep the options considered.
+
+| # | Decision | Choice (recommended) | Status |
+|---|---|---|---|
+| D1 | Trace scope | As for A1 (D2 of [a1-packets.md](a1-packets.md)): `cargo xtask trace --scope a2` needs no change in the trace tool, which finds `docs/milestones/a2-*.md` and reads the `Area` / `Criteria` table of §4. This plan's pull request adds the non-strict run to `cargo xtask ci` (the `CI` list in `xtask/src/main.rs`), the check `spec` (`xtask/src/verify/checks.rs`), and `ci.yml`; `--strict` replaces it at the exit (WP-7). No separate work package | Proposed |
+| D2 | Type-BD through the COP-1 engines in A2 | **The ground node sends every FDU through `Fop1` (`RequestBd` only) and the flight node accepts frames through `Farm1`, and neither uses anything else of COP-1 in A2.** The scenario already prescribes Type-BD frames with N(S) = 0 (COP-010, TC-008), a CLCW with the FARM-B Counter (COP-034, COP-035), and COP in Effect 1 on the VC (APP-043, §4.2), which are the rules of those engines; the FARM-B Counter and the CLCW come out of FARM-1 and are not computed by the application. A3 adds the AD service, directives, the CLCW input of FOP-1, and the fault cases on the same wiring. *For:* one wiring from A2 to A4 (D3 of a1-packets.md), no hand-written Type-B path to throw away, the FARM-B Counter checks the receive path end to end. *Against:* it brings two A3 engines into A2, so a defect of them can show first in an A2 trace; A2 then exercises FOP-1 and FARM-1 only on their Bypass events (E6, E21, E22 of the tables). *Alternative:* build the Type-BD frames with the TC writer and compute the CLCW in the application for A2, and switch to the engines in A3 (an extra step that the D3 decision removed for the packet engines). The ground node does not give the CLCW to FOP-1 in A2: it decodes the OCF and reports a change as an application event (D6), because Type-BD needs no CLCW and the first use of `Fop1Input::Clcw` is A3 | Proposed |
+| D3 | Facade features for the link engines | **File an `api-feedback` issue now; track R adds facade features that enable the engines of `aldis-link` (SPP and EPP with TM, SPP and EPP with TC) and the TC part of `aldis-cop1`, in a pull request that merges before WP-3a and WP-4a start.** The engines are compiled only with the features `spp` and `epp` of `aldis-link` together with `tm` or `tc` (`crates/aldis-link/src/lib.rs:36-47`), and the facade enables them only inside `full`, which also turns on AOS, USLP, the framework crate, and the rest, against "only the features each crate uses" (APP-100) and the size of the flight build. The names are a public API convention and so the maintainer's. *Alternative:* enable `full` in the `refapp/` crates until track R has the features, with the rule of APP-100 waived in the plan, which makes every A2 build pull in the variants A4 has not reached. *Alternative:* depend on `aldis-link` directly, which APP-100 forbids and which would hide the finding. The finding is the first entry of §6 | Proposed |
+| D4 | Immediate commands at frame level | **No A2 case uses an immediate command, and APP-128 stays a rule of the packet-level cases.** The uplink slot is a multiple of 250 000 µs and the delay 10 000 µs, so a frame arrives at 10 000 µs after a multiple of 125 000 µs and never on the grid: an immediate command executes at its delivery (§2.3), and its on-board time stamps and the dump segments that follow would leave the 125 000 µs grid that APP-061 and APP-128 require. The nominal case uses time-tagged commands only (APP-014), so it is not affected. The rejection paths and immediate execution are exercised by `a1-immediate` and `a1-rejects` at packet level; the frame level adds nothing to them. *Alternative:* a frame-level twin of `a1-rejects` with the commands moved to arrive on the grid. That cannot be done by the choice of the release instant, since the arrival is fixed by the slot, so it needs a change of the delivery rule (for example, the flight node executes an immediate command at the next downlink slot) and with it a change of §2.3 and APP-002 for all levels; not recommended | Proposed |
+| D5 | Cases of A2 | **`a2-nominal` and three fault cases**, each by APP-002 (a case, no change of an existing one): **`a2-nominal`**, the timeline of §2.4 over TM and TC frames, end 35 s, no faults, with the same packet projection as `a1-nominal` (APP-003); **`a2-downlink-loss`**, scripted `drop` and `duplicate` of downlink frames chosen so that the MC and VC frame count gaps (LNK-051) fall on frames that start a packet, continue one (the 412-octet payload packet spans fields), and carry a dump segment, with the packet-level consequences (extractor resynchronisation, `seq_gap`, `dump_discarded`); **`a2-downlink-corrupt`**, `flip` (the FECF catches it), `truncate`, and `delay` of downlink frames, so that the strict codec error path, the `CallerDiscard` path, and the reordering of frames exist before COP-1 hides them; **`a2-uplink-faults`**, scripted `drop`, `flip`, and `duplicate` of uplink frames on a Type-BD run (one segment of the table upload lost, a command frame corrupted, a duplicate accepted twice by the Bypass service), so that the TC receive and reassembly error paths and the lack of recovery without COP-1 are traced; A3 repeats the idea with COP-1 as `a3-uplink-*`. The fault scripts are fixed in WP-1 and cannot change afterwards (APP-005). *For:* the TC side has no fault case in the roadmap, so its error paths would first run in A3, where retransmission hides them (the argument of D4 of a1-packets.md); frame loss with Type-BD makes A3's gain visible in a trace. *Against:* four traces to bless and hand-check instead of one or two. *Alternative:* `a2-nominal` and `a2-downlink-*` only, as §6.4 has them; `a2-uplink-faults` then leaves §4 | Proposed |
+| D6 | Frame-level application events | **Closed vocabulary in the range 100–199 (§7.4), raised on state changes and errors, not per frame.** Candidates, with arguments to be fixed in WP-1: `frame_gap` (ground; scope MC or VC, VCID, missing count; LNK-051), `frame_rejected` (either; error code of [03 §9](../03-api-model.md#9-error-catalogue) when the strict codec fails, including a FECF mismatch), `frame_discarded` (either; the discard reason the `FrameReceiver` or FARM-1 names), `clcw_changed` (ground; the report fields that changed, raised when the OCF differs from the last one, so that the FARM-B Counter is visible in the trace without 280 identical records), and the uplink reassembly events of the flight node (`sequence_violation`, `unknown_map`, `sdu_too_long` of `ReassemblyEvent`, which the ground node cannot see). The order within a delivered frame is fixed like APP-130 does for packets. *For:* the faults of D5 need events to be seen; per-frame events would make the traces unreadable and the review of the golden traces hopeless. *Alternative:* record frame-level events as library-internal and leave them out of the trace; then a lost frame shows only through its packet-level effect, and the engine's gap action is untested in the traces | Proposed |
+| D7 | How APP-003 is checked | **A test in `refapp-harness/tests/` that compares `packet_projection` of the blessed `a2-nominal` with that of `a1-nominal` for equality, run by the check `refapp`, and nothing more in the trace tooling.** The function exists (`refapp-harness/src/trace.rs`, written in A1 WP-5). The projection leaves out instants and the order across APIDs (APP-003), so the idle packets and OID frames, which no application generates and which the extractor drops, are not in it. The test also asserts the stronger fact that the flight node's and the ground node's `packet_out` records are equal in instants, which the time-tagged nominal case should give; that is a test of A2's, not part of APP-003. *Alternative:* a `compare --projection` command line; a new interface for one test | Proposed |
+| D8 | Independent check of the first frame traces | As A1 D5, for frames: (a) every `unit_sent` of the `a2-*` traces is decoded with the strict TM and TC codecs in CI (APP-086, WP-6); (b) the first frame of each kind (a VC 0 frame with idle fill, a VC 1 frame that starts a packet, a VC 1 frame that continues one, an OID frame, a TC command frame with a blocked FDU, the three TC frames of the table upload) is checked by hand against 132.0, 232.0, and the codecs' tables, naming the clauses, in the WP-5 pull request; (c) an independent program, written blind from `reference-application.md` and the Blue Books only (TV-023, no implementation path given to its author), regenerates the `unit_sent` records of `a2-nominal` including the downlink schedule and the FECF, and its result is recorded in [cross-checks.md](../verification/cross-checks.md) (VER-040). Python, in `refapp/model/`, no CI step, as in A1. The program is larger than A1's since it must also model the multiplexing and the release deadlines. *Alternative:* (a) and (b) only; then the frame schedule rests on the engines' own vectors (TV-023 models of M4) and on the hand check | Proposed |
+
+Raised with this plan: no open issue. A reading that the Blue Books leave open and that A2 meets would become an OI for the maintainer; WP-1 checks them (below). The pain points that `refapp/` finds in the public API are filed as GitHub issues labelled `api-feedback` for track R (APP-101); §6 lists them.
+
+## 3. Work packages
+
+Size: **S** ≈ small, **M** ≈ medium, **L** ≈ large. The nodes are written against the node interface of A0 and need the scenario of WP-1 and the harness of WP-2 only to run; their unit tests run on scripted inputs.
+
+```
+WP-0 Plan ─▶ WP-1 Scenario additions ─▶ WP-2 Harness ─┬─▶ WP-3a Flight downlink ─┐
+                  (D3 facade features ───────────────▶│                         ├─▶ WP-5 Golden traces ─▶ WP-6 Strict decode ─▶ WP-7 Exit
+                   before WP-3a, WP-4a)               ├─▶ WP-3b Flight uplink ───┤
+                                                      ├─▶ WP-4a Ground downlink ─┤
+                                                      └─▶ WP-4b Ground uplink ───┘
+```
+
+WP-3a, WP-3b, WP-4a, and WP-4b run in parallel; each has unit tests on scripted inputs. WP-3b needs the ground uplink (WP-4b) and WP-4a needs the flight downlink (WP-3a) only for the integrated run of WP-5. The facade features of D3 are a track-R pull request, not a work package of this plan; it must merge before the first node code builds.
+
+### WP-1 Scenario additions (S) — area APP, no code
+Only what the document lacks; nothing in it is restated. The gaps found while writing this plan, each of which becomes text of `reference-application.md` and, where it is a rule a test checks, a new requirement (candidates, numbered in WP-1 from the next free `APP-` ID):
+- **Order within an instant (§2.1, §6.2).** §2.1 ends with the payload packet. Frame building is the step after it, at a downlink slot: the flight node submits the packets of the instant to the generators of their VCs, then releases fields, offers them to the multiplexer, and takes the frame (so a packet generated at a slot instant is in a field of that instant's frame only if the field is releasable then). The ground node's counterpart: the entries of the ops script due at an instant are released first, and at an uplink slot the segmenter hands out one FDU, after those entries (so that the two commands released at 5.0 s in §2.4 share one FDU, APP-042). Candidate requirement.
+- **CLCW sampling.** Which CLCW the OCF of a frame holds: the FARM-1 report after all uplink frames delivered at or before the slot instant. A frame sent at an uplink slot arrives 10 000 µs after it, so it shows in the CLCW of the next downlink slot. Candidate requirement.
+- **Release deadlines and wake-ups.** The deadlines of §4.1 (250 000 µs on VC 0, 1 000 000 µs on VC 1) run from the first octet written; the nodes report them as `next_deadline`, and APP-074 holds. Which of the values are in `scenario.json` and the generated constants (the link engines' configuration: capacities, deadlines, idle policy, valid PVNs) is checked, and what is missing is added (APP-107).
+- **The expected frame schedule of `a2-nominal`.** For the nominal timeline: at which slots VC 0 and VC 1 release fields, which carry idle fill and how much (SPP-010, LNK-013), at which slots an OID frame goes out (LNK-014, APP-034), the frame counts at the end of the run, how the 412-octet payload packet and the dump packets span the 211-octet data fields, and the uplink frames (command FDUs, the three table segments of 120, 120, and 69 octets with their Segment Headers, §4.2). Derived by hand from §4.1, §4.2, and §2.4, in the manner of §2.4's "expected on-board result", so that WP-5 has something to compare the blessed trace with.
+- **Frame-level events (D6)**, their codes, arguments, and their order within a delivered frame (the analogue of APP-130), and the extension of APP-131 to a frame: what a flight node does with an uplink unit that is not a valid frame, and with a reassembled packet that is not one unsegmented telecommand packet.
+- **The cases of D5**, each with its end instant, ops script, fault script, and expected result, in the manner of §6.6. The fault scripts address units by index as sent (§6.5); the indexes of downlink frames follow from the schedule above. D4: APP-128 is limited to the packet-level cases in the same pull request.
+- **The readings the nodes rely on**, checked clause by clause against the Blue Books before code (specs fetched with `specs/fetch.sh`; none was found open at planning): the Type-BD frame and its N(S) of 0 (232.0 §4.1.2.8 note 3 says the COP does not use the field of Type-B frames and sets it to zero; the scenario's choice follows COP-010 and TC-008, the codec accepts any value); the FARM-B Counter in the CLCW (232.0 §4.2.1.9: bits 21 and 22, one counter per VC, incremented for each Type-B frame accepted in Bypass mode); the OCF present in every frame of the channel (132.0 §4.1.5.3, so in OID frames too, LNK-033); blocking of packets in one FDU under one Segment Header (232.0 §4.3.1.8). The frame-level classification of a gap, repeat, and reset of frame counts is the Blue Books' (LNK-051), unlike the packet-level one. A reading the Blue Books do not settle becomes an OI for the maintainer (decision rights §2.1).
+- New requirements take the next free ID of area APP and go in the exit table (§4). Checklist: "A spec-readings pull request before a codec", for the readings.
+- **Done when:** `cargo xtask spec-lint` passes.
+
+### WP-2 Harness: frames (M) — APP-071, APP-075, APP-090
+- The cases of WP-1 in `scenario.json` come with their golden traces in WP-5 (a case in the file needs a trace); the harness work here is what the frame level needs that A1 left out. `flip` (octet, bit; GEN-050) is applied to the delivered octets of a frame and recorded as a `fault` record; `truncate` and `delay` at frame level are as at packet level. The scheduler's slot handling and the `tx_slot` rules of §8.1 exist from A0 (`sim.rs`) and are tested for `Level::Frames` with scripted test nodes.
+- Link-engine parameters that WP-1 finds missing from the scenario file are added to the file and the generated constants (`gen-scenario`, APP-107).
+- The decoding of a frame unit by level for the trace tests: the harness gets the `tm` and `tc` features of the facade (allowed by `cargo xtask refapp-deps`, APP-100) so that WP-6 can decode every `unit_sent` as a frame; the function is here, the check is WP-6.
+- Tests with `// req:`; `a0-empty` and the four `a1-*` traces stay byte-identical.
+- **Done when:** a scripted node pair at `Level::Frames` reproduces a hand-written trace with every fault kind of D5 including `flip`, and `compare` for the A0 and A1 cases is unchanged.
+
+### WP-3a Flight node: downlink (L) — APP-030…APP-035, APP-026
+- `refapp-flight` (`no_std`, no heap, flight lint set, APP-102): one `PacketGenerator` for VC 0 (housekeeping, events) and one for VC 1 (payload, dump) with the deadlines and idle fill of §4.1, the `ChannelMux` with fixed priority and an OID frame on VC 7, the OCF slot updated from `Farm1::clcw` converted by `Clcw::to_ocf` (APP-031), the TM frame writer for the FECF, the SCID of §3.4 (APP-026), frame counts from 0 (APP-035). The packet side is the A1 code: `downlink.rs` hands the packets to the generators instead of the output.
+- One frame at every `tx_slot` and none otherwise (APP-090); `next_deadline` from the generators' deadlines and the dump (APP-074).
+- Features through the facade only, as D3 settles (APP-100); every API pain point filed as `api-feedback` (APP-101). The `thumbv7em-none-eabihf` build and Clippy stay green, with the engines' capacities chosen as const generics and the memory they take checked in the build (the stack of the bare-metal target is A6's concern, but a capacity that makes the node unbuildable for it is found here).
+- Unit tests with `// req:`: field filling and spanning, idle fill on both deadlines, OID frames, priority, counts, the OCF in every frame.
+- Checklist: none of the library ones applies; the check `refapp` is the gate.
+
+### WP-3b Flight node: uplink (M) — APP-040…APP-043
+- `FrameReceiver` for TC (VC 0, MAP 0 and 1 as §4.2), strict TC decoding with the FECF (TC-021, TC-023: a frame is validated before FARM-1), `Farm1` for Type-BD frames (APP-043), the `MapReassembler` with its two MAPs and the packets it delivers (blocked FDUs split, LNK-071) into the A1 command handler and table store unchanged. Frame discards and reassembly events become application events (D6).
+- The CLCW for the downlink, from `Farm1::clcw` (WP-3a reads it).
+- Unit tests with `// req:`, including a frame for another VC or MAP, a corrupt frame, a lost segment, and a duplicate frame.
+
+### WP-4a Ground node: downlink (M) — APP-036, APP-011
+- `refapp-ground` (restriction lints, APP-103): strict TM decoding (TM-001…TM-011), `FrameReceiver` for TM (frame counts and gaps, LNK-051; OID frames, LNK-052), one `PacketExtractor` for each of VC 0 and VC 1 (LNK-060…LNK-064), and the A1 telemetry path from the extracted packet on (strict packet decoding, sequence tracking, time, dump reassembly). The OCF is decoded as a CLCW and a change of it is reported (D6); it is not given to FOP-1 in A2 (D2).
+- Frame-level events in the order WP-1 fixes.
+- Unit tests with `// req:`.
+
+### WP-4b Ground node: uplink (M) — APP-040…APP-043
+- The `MapSegmenter` with MAP 0 (blocking) and MAP 1 (segmentation), the request for one FDU at each uplink slot with the expedited quality of service (LNK-043), `Fop1` with `RequestBd` and the TC frame writer (COP-010, TC-008), one frame per uplink slot (APP-071, APP-090). The ops-script entries of A1 build the same command and table-upload packets, which now go to the segmenter instead of out (the `packet_out` record is as before); `fop1_directive` stays ignored (APP-019).
+- Unit tests with `// req:`: blocking of the two commands at 5.0 s, the table upload in three frames without interleaving (LNK-041), the frame fields.
+
+### WP-5 Golden traces (M) — APP-003, APP-082, APP-083, APP-090
+- The `a2-*` cases added to the scenario file with their requirement lists; `bless` writes `refapp/golden/<case>.jsonl`; trace version 1 needs no row in `CHANGES.md`.
+- The expected frame schedule of WP-1 compared with the blessed `a2-nominal`; tests of the invariants each case states in WP-1.
+- The packet projection of `a2-nominal` equal to that of `a1-nominal` (D7).
+- The independent check of D8 and its record.
+- **Done when:** `compare` reproduces every `a2-*` trace in CI and the projection test passes.
+
+### WP-6 Strict decoding of frame traces (S) — APP-086
+- The check `refapp` decodes every `unit_sent` of every `a2-*` trace as a TM frame (downlink) or TC frame (uplink) with the strict codecs, and the packets inside with the strict packet codec, extending the A1 check (`refapp-harness/tests/trace.rs`).
+- **Done when:** a planted frame with a wrong FECF in a copy of a trace fails the check (checked once, then reverted).
+
+### WP-7 Exit (S) — VER-020
+- `trace --scope a2 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec` (checklist "Milestone exit").
+- The results column of §4; the A2 status line; roadmap §3 A2 row, `refapp/README.md` and root `README.md` status; the entry gate of ACFS P2 ([acfs-flight-side.md](acfs-flight-side.md)) updated by the pull request that exits A2.
+- The `api-feedback` issues listed in §6; process metrics for the milestone reviewed (VER-063).
+- A track-A milestone cuts no release.
+
+## 4. Exit criteria
+
+A2 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3. The requirements WP-1 adds join the table in that pull request. The results column is filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a2`, not repeated here.
+
+| Area | Criteria | Results / evidence |
+|---|---|---|
+| TM downlink | APP-030, APP-031, APP-032, APP-033, APP-034, APP-035 | |
+| Ground downlink | APP-036 | |
+| TC uplink | APP-040, APP-041, APP-042, APP-043 | |
+| Frame identity | APP-026 | |
+| Link model at frame level | APP-071, APP-090 | |
+| Packet projection | APP-003 | |
+| Golden traces | APP-086 | |
+| Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
+| Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS entry gate updated | |
+
+`a2-uplink-faults` and the requirements that only it exercises leave the table if D5 is decided without it; the IDs of WP-1 join it.
+
+## 5. Risks
+
+| Risk | Mitigation |
+|---|---|
+| A golden trace freezes a defect of the first implementation, and A3 to A6 then reproduce it; the engines make the traces, so a defect of an engine looks like the expected behaviour | D8: strict decoding of every frame in CI, a hand check of the first frame of each kind, and an independent regeneration of the frames; the expected frame schedule is derived by hand in WP-1 before any node exists, so the blessed trace is compared with it and not only with itself |
+| The facade offers no feature for the engines (D3), so the first node code cannot build under APP-100 | D3 is raised with this plan; the pull request of track R is the entry of WP-3a and WP-4a, and the plan's dependency sketch shows it |
+| A2 uses FOP-1 and FARM-1 before A3 (D2), and a defect of theirs on the Bypass events costs time in a milestone that is about the multiplexing | The engines passed M3 (`v0.4.0-m3`) with cross-checks; only E6, E21, and E22 of the tables are reached, and A3 repeats the wiring with the full tables |
+| The timeline is "fixed in A1 and only extended" (APP-002), yet frames show that immediate commands cannot stay on the grid (D4) | Decided with this plan, not in a node; the nominal case is unaffected, and the packet-level cases keep covering immediate execution |
+| The `a2-*` fault scripts are fixed in WP-1 and A3 may need a different one (APP-005) | A3 adds its own `a3-*` cases and does not redefine an `a2-*` one; a trace that needs a change before release is a new version (APP-087) |
+| Golden traces of 280 downlink frames of 223 octets each are large and hard to review by eye | The review reads the hand-derived schedule (WP-1), the invariants of WP-5, and the independent model (D8) instead of the hex; the canonical form keeps diffs line-based |
+| Engine capacities chosen for the flight node make the bare-metal build large (A6) | WP-3a builds for `thumbv7em-none-eabihf` on every pull request, and the capacities are the smallest the scenario needs |
+| The multiplexer, generator, and receiver compose through the caller (the framework feeds a generator's field to the mux as an `Offer`, API-059, LNK-076), so the nodes duplicate glue that the framework crate would own | The glue is the application's by APP-001 and APP-100 (the facade without `framework`); where it is awkward the finding is filed (§6) |
+
+## 6. API feedback found
+
+Each finding is a GitHub issue labelled `api-feedback`; this list names them as they are filed (APP-101). A2 does not plan changes to the engines: whatever the work packages find in the engines' interfaces is filed here and fixed in track R.
+
+| Issue | Found in | Finding |
+|---|---|---|
+| to be filed with D3 | Plan | The facade `aldis` has no feature that enables `aldis-link/{spp,epp,tm,tc}` or `aldis-cop1/tc`; only `full` does (`crates/aldis/Cargo.toml:71-91`), and `aldis-cop1` has `tc` as its default feature, which the facade turns off (`crates/aldis-cop1/Cargo.toml:18`). A consumer that is limited to the facade (APP-100) cannot use the engines without everything else |
+
+Questions the work packages are expected to meet, to be filed only when the code shows them to be real: the number of calls and the copying between a generator's `Release`, the multiplexer's `Offer` and `Opportunity`, and the frame writer, for a node that wants one frame per slot (WP-3a); the chain from a codec-validated TC frame through `FrameReceiver` and `Farm1` to the `MapReassembler` (WP-3b); whether `Fop1` in S6 with `RequestBd` alone needs the store and capacities of the AD service (WP-4b); the deadline values the nodes must forward as `next_deadline` from several engines (WP-3a, WP-4b).
