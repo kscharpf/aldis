@@ -102,6 +102,8 @@ GitHub records merges. A merge that also decides something, such as merging over
 
 Merge trains (maintainer, 2026-11-07): each pull request keeps its own independent review and the implementer's reply, and needs no verify record of its own; verify runs on the train, and the merge gate (VER-058) applies to the train PR, which the maintainer approves and merges. One train for all scopes, run by the process coordinator; the merge order stays the maintainer's. A pull request that waits on a maintainer decision (a breaking C ABI change, a requirement amendment) stays out of trains until it is decided. A failing train drops the pull request that caused it; a conflict leaves out the later pull request of the agreed order; both go back to their owners ([coordinator.md](coordinator.md#merge-trains)).
 
+Build directories (maintainer, 2026-11-07): an agent runs `cargo clean` in its worktree, and in the separate workspaces it built, after the final push of each round ([agent-brief.md](agent-brief.md) item 5).
+
 ### 2.11 Repository housekeeping
 
 | Maintainer only | Coordinator | Agent in a work package |
