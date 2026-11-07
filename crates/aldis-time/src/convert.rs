@@ -8,7 +8,7 @@
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::ascii::{AsciiFormat, AsciiTime, Fraction};
-use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year, civil, day_number};
+use crate::calendar::{CalendarDate, Hour, Minute, Second, Year, civil, day_number};
 use crate::ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
 use crate::cds::{Cds, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis};
 use crate::field;
@@ -218,19 +218,7 @@ impl UtcInstant {
     pub fn date(&self, variation: CcsVariation) -> Result<CalendarDate> {
         let (y, m, d) = civil(self.day);
         let year = Year::try_from(u16::try_from(y).unwrap_or(u16::MAX))?;
-        // Valid by construction of the day-number algorithm (M1 D3).
-        Ok(match variation {
-            CcsVariation::MonthDay => {
-                CalendarDate::from_month_day_unchecked(year, Month::new(m).unwrap_or_default(), d)
-            }
-            CcsVariation::DayOfYear => {
-                let doy = self
-                    .day
-                    .wrapping_sub(day_number(year.get(), 1, 1))
-                    .wrapping_add(1);
-                CalendarDate::from_day_of_year_unchecked(year, u16::try_from(doy).unwrap_or(1))
-            }
-        })
+        Ok(CalendarDate::from_civil(year, m, d).to_variation(variation))
     }
 
     /// Hour (301.0 Annex A, TIME-033).

@@ -1,11 +1,12 @@
 //! Golden traces: writer, canonical-form check, and comparator (docs/reference-application.md §7).
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde_json::{Map, Value, json};
 
 /// Which node a record belongs to (§7.3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NodeId {
     /// The flight node.
     Flight,
@@ -476,6 +477,53 @@ pub fn check_canonical(text: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Whether a projected packet was generated or delivered (§7.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PacketRecord {
+    /// A `packet_out` record.
+    Out,
+    /// A `packet_in` record.
+    In,
+}
+
+/// The packet projection of a trace (APP-003).
+///
+/// For each record kind, node, and APID, the packet octets in trace order, as the uppercase
+/// hexadecimal of the trace. Order across APIDs and the instants are not part of it.
+pub type Projection = BTreeMap<(PacketRecord, NodeId, u16), Vec<String>>;
+
+/// The packet projection of `text`, a canonical trace (APP-003, §7.3).
+///
+/// # Errors
+/// If `text` is not a canonical trace (APP-080).
+pub fn packet_projection(text: &str) -> Result<Projection, String> {
+    check_canonical(text)?;
+    let mut projection = Projection::new();
+    for l in text.split_terminator('\n') {
+        let v: Value = serde_json::from_str(l).map_err(|e| e.to_string())?;
+        let record = match v["kind"].as_str() {
+            Some("packet_out") => PacketRecord::Out,
+            Some("packet_in") => PacketRecord::In,
+            _ => continue,
+        };
+        let node = match v["node"].as_str() {
+            Some("flight") => NodeId::Flight,
+            Some("ground") => NodeId::Ground,
+            other => return Err(format!("unknown node {other:?}")),
+        };
+        let apid = v["apid"]
+            .as_u64()
+            .and_then(|a| u16::try_from(a).ok())
+            .ok_or("packet record without a valid apid")?;
+        let octets = v["hex"].as_str().ok_or("packet record without hex")?;
+        projection
+            .entry((record, node, apid))
+            .or_default()
+            .push(octets.to_owned());
+    }
+    Ok(projection)
 }
 
 /// The first difference between an expected and an actual trace (APP-085).

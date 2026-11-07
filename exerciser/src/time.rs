@@ -3,6 +3,7 @@
 
 use core::hint::black_box as bb;
 
+use aldis_core::time::Instant;
 use aldis_core::{AnomalySet, DecodeMode, ErrorKind, Lenient};
 use aldis_time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
@@ -86,6 +87,14 @@ fn cuc_codes(t: &mut Tally) {
             t.check(false);
         }
         t.check(Cuc::new(f, CucValue::new(bb(u64::MAX), 0)).is_err());
+        // The way back from an `Instant`, TIME-016.
+        let t0 = bb(2_100_000_000);
+        let back = Cuc::from_instant(f, t0, Instant::from_micros(bb(3_125_000)))
+            .and_then(|c| c.to_instant(t0));
+        t.check(back == Ok(Instant::from_micros(3_125_000)));
+        let before =
+            Cuc::from_seconds_nanos(f, bb(t0).saturating_sub(1), 0).and_then(|c| c.to_instant(t0));
+        t.check(before.is_err_and(|e| e.kind() == ErrorKind::OutOfRange));
     } else {
         t.check(false);
     }
@@ -314,6 +323,16 @@ fn conversions(t: &mut Tally, a: AsciiTime) {
             .date(CcsVariation::DayOfYear)
             .is_ok_and(|d| d.day_of_year() == Some(18)),
     );
+    // The two calendar variations name the same day (TIME-035); 2024 is a leap year.
+    let leap = Year::new(bb(2024)).and_then(|y| Month::new(bb(3)).map(|m| (y, m)));
+    if let Some((y, m)) = leap {
+        let md = CalendarDate::from_month_day(y, m, bb(1));
+        let doy = md.map(|d| d.to_variation(CcsVariation::DayOfYear));
+        t.check(doy.is_ok_and(|d| d.day_of_year() == Some(61)));
+        t.check(doy.map(|d| d.to_variation(CcsVariation::MonthDay)) == md);
+    } else {
+        t.check(false);
+    }
     let cds = CdsFormat::new(CdsEpoch::Ccsds1958, CdsDayLen::Bits16, CdsSubMs::Micros);
     match instant.to_cds(cds, None) {
         Ok(c) => {
