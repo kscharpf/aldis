@@ -125,7 +125,7 @@ jobs:
         with:
           extra-targets: s390x-unknown-linux-gnu
           cache-key: big-endian
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cross
       # xtask is host tooling, and its tests need a newer git (`merge-tree --write-tree`, 2.38)
@@ -228,7 +228,7 @@ jobs:
           cache-key: coverage
       - name: Install pinned tooling nightly (RS-002)
         run: rustup toolchain install "$(cat tooling-nightly)" --profile minimal --component llvm-tools
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-llvm-cov@0.9.1
       - run: cargo xtask coverage
@@ -292,7 +292,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust
-      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-deny
       - run: cargo deny --all-features check
