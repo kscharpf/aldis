@@ -11,7 +11,7 @@ For the coordinator: the main Claude session that dispatches agents, reviews, ve
 
 ## Review
 
-- **Review with the reviewer agent.** Reviews use `reviewer` ([`.claude/agents/reviewer.md`](../../.claude/agents/reviewer.md)), fresh, given the pull request number and head only: never your conclusions or the implementer's report. Run it after the implementer reports a pull request ready, and after each fix round ([review.md](review.md)).
+- **Review with the reviewer agent.** Reviews use `reviewer` ([`.claude/agents/reviewer.md`](../../.claude/agents/reviewer.md)), fresh, given the pull request number and head only: never your conclusions or the implementer's report. When an implementer reports a pull request ready, dispatch the reviewer at once, without waiting for the maintainer to ask; dispatch it again after each fix round ([review.md](review.md); 2026-11-07).
 - **Answer every review.** Watch open pull requests for reviews and comments. Every review (the reviewer agent's included) and every comment not written by an agent gets a point-by-point reply on the pull request quoting the fix commit; the reply ends in the marker of [AGENTS.md](../../AGENTS.md). A fix-round brief tells the implementer to post that reply (2026-10-21 #74; 2026-10-31 #205, #206).
 - **Order inversions.** Tell the maintainer at once when they approve a pull request that depends (by branch ancestry or merge order) on an unreviewed one. Review latency in raw time is the maintainer's availability, not a process delay; count only active time.
 
