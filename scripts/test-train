@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# Test scripts/train without a network and without the real gh: a scratch bare origin, a clone,
+# and a stub `gh` that answers from files.
+#
+# Usage: scripts/test-train
+# Cases: a train of two PRs merges both in order with `Merge pull request #N from owner/branch`
+# merge commits whose body is the PR title, pushes `train/<date>-1`, and opens a PR titled
+# `chore(train): ...` whose body lists both; a conflict between two PRs names the later one and
+# pushes nothing; a closed PR, a draft, and a train PR cannot ride; --dry-run pushes nothing;
+# a second train of the day is `-2`; --rebuild --without drops a PR, opens the new train, and
+# closes the old one.
+# Exit status: 0 when every case holds, 1 otherwise.
+set -uo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/train"
+work="$(mktemp -d "${TMPDIR:-/tmp}/train-test.XXXXXX")"
+trap 'rm -rf "$work"' EXIT
+repo="$work/repo"
+today="$(date -u +%Y-%m-%d)"
+
+git init -q --bare "$work/origin.git"
+git -C "$work/origin.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$work/origin.git" "$repo" 2>/dev/null
+git -C "$repo" symbolic-ref HEAD refs/heads/main
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name test
+echo base >"$repo/shared"
+git -C "$repo" add shared
+git -C "$repo" commit -q -m base
+git -C "$repo" push -q -u origin main
+
+branch() { # branch <name> <file> <content>: a branch off main with one commit
+    git -C "$repo" checkout -q -b "$1" main
+    echo "$3" >"$repo/$2"
+    git -C "$repo" add "$2"
+    git -C "$repo" commit -q -m "$1"
+    git -C "$repo" push -q origin "$1"
+    git -C "$repo" checkout -q main
+}
+branch a fa 1
+branch b fb 1
+branch c shared "changed by c"
+branch d shared "changed by d"
+
+mkdir "$work/bin" "$work/stub"
+cat >"$work/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$STUB/calls"
+filter=""
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+    [ "${args[i]}" = --jq ] && filter="${args[i + 1]}"
+    [ "${args[i]}" = --body ] && printf '%s' "${args[i + 1]}" >"$STUB/created-body"
+    [ "${args[i]}" = --title ] && printf '%s' "${args[i + 1]}" >"$STUB/created-title"
+    [ "${args[i]}" = --comment ] && printf '%s' "${args[i + 1]}" >"$STUB/close-comment"
+done
+case "$1 $2" in
+"pr view") jq -r "$filter" "$STUB/pr-$3.json" ;;
+"pr list") jq -r "$filter" "$STUB/all-prs.json" ;;
+"pr create")
+    [ ! -e "$STUB/create-fails" ] || exit 1
+    echo "https://github.test/o/r/pull/99"
+    ;;
+"pr close") ;;
+"repo view") echo '{"url":"https://github.test/o/r"}' | jq -r "$filter" ;;
+"api "*)
+    case "$2" in
+    */protection) echo '{}' | jq -r "$filter" ;;
+    */timeline) echo '[]' | jq -r "$filter" ;;
+    *) echo '[]' ;;
+    esac
+    ;;
+"run list") ;;
+*) exit 1 ;;
+esac
+STUB
+chmod +x "$work/bin/gh"
+export STUB="$work/stub"
+echo '[]' >"$STUB/all-prs.json"
+marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+
+# pr <n> <branch> <title> [state] [draft] [labels] [reviewed: 1|0] [committed]: the JSON that
+# gh prints for the PR, with the head of origin/<branch>, a review of 2026-01-02 and, when
+# reviewed, a reply of 2026-01-03 that ends with the marker.
+pr() {
+    local sha reviews comments
+    sha="$(git -C "$repo" rev-parse "origin/$2")"
+    reviews='[]'
+    comments='[]'
+    if [ "${7:-1}" = 1 ]; then
+        reviews='[{"author":{"login":"rev"},"state":"COMMENTED","body":"ok",
+                   "submittedAt":"2026-01-02T00:00:00Z"}]'
+        comments="$(jq -nc --arg m "$marker" '[{author: {login: "me"},
+            createdAt: "2026-01-03T00:00:00Z",
+            body: ("Fix round, head " + ($sha | .[0:9]) + ".\n\n" + $m)}]' --arg sha "$sha")"
+    fi
+    jq -nc --arg b "$2" --arg t "$3" --arg s "${4:-OPEN}" --argjson d "${5:-false}" \
+        --arg sha "$sha" --arg base "${BASE:-main}" --arg labels "${6:-}" \
+        --argjson reviews "$reviews" \
+        --argjson comments "$comments" '{
+        state: $s, isDraft: $d, headRefName: $b, headRepositoryOwner: {login: "o"},
+        baseRefName: $base,
+        headRefOid: $sha, reviewDecision: "", title: $t, body: "",
+        statusCheckRollup: [], reviews: $reviews, comments: $comments,
+        labels: ($labels | split(",") | map(select(. != "") | {name: .})),
+        }' >"$STUB/pr-$1.json"
+}
+branch train/x ftx 1
+branch e fe 1
+branch f ff 1
+pr 11 a "feat(m1/wp-1): add a"
+pr 12 b "fix(spp): fix b"
+pr 13 c "feat: change c"
+pr 14 d "feat: change d"
+pr 15 a "feat: closed" CLOSED
+pr 16 a "feat: draft" OPEN true
+pr 17 train/x "chore(train): other"
+pr 18 e "feat: unreviewed" OPEN false "" 0
+pr 19 f "feat: waits" OPEN false "needs-maintainer"
+pr 20 f "feat: reply names no current head" OPEN false "" 1
+branch g fg 1
+BASE=a pr 21 g "feat: stacked on a"
+
+failures=0
+run() { (cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
+check() { # check <case> <condition exit status>
+    if [ "$2" -eq 0 ]; then echo "ok: $1"; else echo "FAIL: $1"; failures=$((failures + 1)); fi
+}
+remote_has() { git -C "$work/origin.git" rev-parse -q --verify "refs/heads/$1" >/dev/null; }
+t() { "$@"; }
+contains() { grep -Fq -- "$2" <<<"$1"; }
+
+: >"$STUB/calls"
+out="$(run 11 12)"
+status=$?
+check "a train of two PRs builds" "$status"
+remote_has "train/$today-1"
+check "pushes train/<date>-1" $?
+log="$(git -C "$work/origin.git" log --first-parent --format='%s|%b' "train/$today-1")"
+contains "$log" "Merge pull request #12 from o/b|fix(spp): fix b"
+check "merge commit of #12 carries the title" $?
+contains "$log" "Merge pull request #11 from o/a|feat(m1/wp-1): add a"
+check "merge commit of #11 carries the title" $?
+t [ "$(git -C "$work/origin.git" log --first-parent --format=%s -n 2 "train/$today-1" |
+    sed -n '2p')" = "Merge pull request #11 from o/a" ]
+check "merged in the order given" $?
+t [ "$(cat "$STUB/created-title")" = "chore(train): $today-1, #11, #12" ]
+check "the train PR is chore(train)" $?
+body="$(cat "$STUB/created-body")"
+contains "$body" "- #11 [feat(m1/wp-1): add a](https://github.test/o/r/pull/11)" &&
+    contains "$body" "- #12 [fix(spp): fix b](https://github.test/o/r/pull/12)" &&
+    contains "$body" "## Merge Danger" &&
+    contains "$body" "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+check "the body lists the PRs and has the three sections" $?
+contains "$out" "https://github.test/o/r/pull/99"
+check "prints the PR URL" $?
+t [ ! -d "$repo/.claude/worktrees/train/$today-1" ]
+check "removes its worktree" $?
+
+out="$(run 11 13 14)"
+status=$?
+t [ "$status" -eq 1 ]
+check "a conflict exits 1" $?
+contains "$out" "#14 conflicts"
+check "names the later PR of the conflict" $?
+! remote_has "train/$today-2"
+check "pushes nothing on a conflict" $?
+t [ -z "$(git -C "$repo" branch --list "train/$today-2")" ]
+check "leaves no local train branch" $?
+
+for n in 15 16 17 18 19; do
+    out="$(run 11 "$n")"
+    [ $? -eq 1 ] && contains "$out" "#$n"
+    check "#$n cannot ride" $?
+done
+
+out="$(run 18)"
+contains "$out" "no review"
+check "an unreviewed PR is refused with its reason" $?
+out="$(run 19)"
+contains "$out" "needs-maintainer"
+check "a PR that waits on the maintainer is refused with its reason" $?
+git -C "$repo" checkout -q f
+echo more >"$repo/more"
+git -C "$repo" add more
+git -C "$repo" commit -q -m more
+git -C "$repo" push -q origin f
+git -C "$repo" checkout -q main
+git -C "$repo" fetch -q origin
+pr 20 f "feat: pushed after the reply" OPEN false "" 1
+sed -i.bak 's/head [0-9a-f]\{9\}/head 000000000/' "$STUB/pr-20.json"
+out="$(run 20)"
+contains "$out" "does not name the head"
+check "a PR whose reply does not name the head is refused" $?
+out="$(run 21 11)"
+contains "$out" "#21 is stacked on a"
+check "a stacked PR before its base PR is refused" $?
+out="$(run --dry-run 21)"
+contains "$out" "#21 is stacked on a"
+check "a stacked PR without its base PR is refused" $?
+out="$(run --dry-run 11 21)"
+contains "$out" "dry run"
+check "a stacked PR after its base PR rides the train" $?
+git -C "$repo" worktree remove --force "$repo/.claude/worktrees/train/$today-2"
+git -C "$repo" branch -D "train/$today-2" >/dev/null
+
+# The train merges the SHA that was checked: a push after the check is not merged.
+pr 11 a "feat(m1/wp-1): add a"
+git -C "$repo" checkout -q a
+echo late >"$repo/late"
+git -C "$repo" add late
+git -C "$repo" commit -q -m late
+git -C "$repo" push -q origin a
+git -C "$repo" checkout -q main
+out="$(run 11)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "is not at the checked head"; }
+check "a push between the check and the merge refuses the PR" $?
+pr 11 a "feat(m1/wp-1): add a"
+
+out="$(run --dry-run 11 12)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "dry run" && ! remote_has "train/$today-2"; }
+check "--dry-run pushes nothing" $?
+git -C "$repo" worktree remove --force "$repo/.claude/worktrees/train/$today-2"
+git -C "$repo" branch -D "train/$today-2" >/dev/null
+
+out="$(run 12)"
+remote_has "train/$today-2"
+check "a second train of the day is -2" $?
+git -C "$work/origin.git" branch -D "train/$today-1" "train/$today-2" >/dev/null
+echo "[{\"headRefName\":\"train/$today-1\"},{\"headRefName\":\"train/$today-2\"}]" \
+    >"$STUB/all-prs.json"
+out="$(run 12)"
+remote_has "train/$today-3"
+check "numbers count train PRs of any state, not live branches" $?
+git -C "$work/origin.git" branch -D "train/$today-3" >/dev/null
+echo '[]' >"$STUB/all-prs.json"
+git -C "$repo" branch -D "train/$today-1" "train/$today-2" "train/$today-3" >/dev/null 2>&1
+
+touch "$STUB/create-fails"
+out="$(run 12)"
+status=$?
+rm "$STUB/create-fails"
+{ [ "$status" -eq 2 ] && ! remote_has "train/$today-1"; }
+check "a failing gh pr create exits 2 and deletes the pushed branch" $?
+t [ ! -d "$repo/.claude/worktrees/train/$today-1" ]
+check "it leaves no worktree" $?
+git -C "$repo" branch -D "train/$today-1" >/dev/null 2>&1
+out="$(run 11 12)"
+
+pr 99 "train/$today-1" "chore(train): $today-1, #11, #12"
+jq -c --arg b "$(cat "$STUB/created-body")" '.body = $b' "$STUB/pr-99.json" >"$STUB/t" &&
+    mv "$STUB/t" "$STUB/pr-99.json"
+: >"$STUB/calls"
+out="$(run --rebuild 99 --without 11)"
+status=$?
+{ [ "$status" -eq 0 ] && remote_has "train/$today-2"; }
+check "--rebuild builds a new train" $?
+git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#12" &&
+    ! git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#11"
+check "--rebuild leaves the dropped PR out" $?
+grep -Fq "pr close 99" "$STUB/calls" && contains "$(cat "$STUB/close-comment")" "without #11"
+check "--rebuild closes the old train PR" $?
+
+run >/dev/null
+t [ $? -eq 2 ]
+check "no argument is a usage error" $?
+run --without 11 >/dev/null
+t [ $? -eq 2 ]
+check "--without alone is a usage error" $?
+
+t [ "$failures" -eq 0 ] || exit 1
+echo "all cases hold"

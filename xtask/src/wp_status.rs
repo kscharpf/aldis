@@ -397,6 +397,8 @@ mod tests {
         assert_eq!(loc("feat: x", "m3/wp-3a-engine"), some("m3", "WP-3a"));
         assert_eq!(loc("feat(spp): x", "m3/wp-3a-engine"), some("m3", "WP-3a"));
         assert_eq!(loc("chore: x", "chore"), None);
+        // A merge train is no work package, and its branch names none.
+        assert_eq!(loc("chore(train): x", "train/2026-11-07-1"), None);
         assert_eq!(loc("feat(m3/other): x", "feature"), None);
         // A milestone scope without a work package does not fall back to the branch.
         assert_eq!(loc("feat(m3/other): x", "m3/wp-2-x"), None);
