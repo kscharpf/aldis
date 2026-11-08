@@ -361,3 +361,24 @@ The model is valid for `a1-nominal` only: it applies each delivery at the next 1
 | Date | 2026-11-07 |
 | Golden file | `refapp/golden/a1-nominal.jsonl`, trace version 1, as on branch `a1/wp-5-golden` (#323) |
 | Result | **Match**: 65 model records, 65 golden `packet_out` records (7 ground, 30 HK, 10 event, 13 payload, 5 dump), 0 mismatches, compared in order and octet for octet |
+
+### 7.1 The other A1 cases
+
+Maintainer decision (2026-11-07): D5(c) extended to every A1 case. The blind model `file:refapp/model/a1_cases.py` generalises the first (TV-023): written from `docs/reference-application.md`, `docs/03-api-model.md` §9, `docs/standards/space-packet.md` §5.1, §5.3, and §5.4, the Blue Books, and `file:refapp/scenario/scenario.json`, without sight of the refapp crates or the library crates, and with the golden traces read only as the comparison target. It steps at the true arrival instant of each delivery (release + 10 000 µs, §6.1, plus the fault delay, §6.3; order of §6.2) and compares, in trace order, every `packet_out` record of both nodes, every `packet_in` record of the ground node, and every `app_event` record of both nodes (the flight `cmd_received` and `table_received`, the ground sequence, dump, and rejected-packet events). It also checks the unit indices of the fault table of §6.6 against its own downlink order. The comparison ran once per case.
+
+Not covered by the model: `fault`, `unit_sent`, and `unit_delivered` records; the reassembler `Overflow` path; APP-131 (the flight node's `packet_rejected` and its handling of a malformed uplink unit); uplink-unit faults; and the error code of an SDU that does not parse as §3.3.4 (APP-130; the spec names none). Three choices of the model's own, which the spec leaves open and no case tests: ground deliveries before ops outputs within a step; the queue-full check before the due commands leave the queue; and the rejection (`LengthMismatch`) of a link unit with octets after its packet (API-011's strict decode accepts longer input, API-019 only offers an exact decode, and `docs/reference-application.md` does not say the ground node uses it). No A1 case exercises the strict-decode paths beyond `Incomplete` either (the version check, the SPP-004 idle check, the trailing-octets check), so a match says nothing about them.
+
+| Item | Value |
+|---|---|
+| Run | `python3 refapp/model/a1_cases.py --all --golden-dir refapp/golden` (Python 3, standard library; no CI step) |
+| Date | 2026-11-07 |
+| Golden files | `refapp/golden/a1-nominal.jsonl`, `a1-immediate.jsonl`, `a1-rejects.jsonl`, `a1-downlink-faults.jsonl`, each trace version 1, as on `main` at `7233ca07` |
+
+| Case | Model records | Golden records compared | Mismatches | Result |
+|---|---|---|---|---|
+| `a1-nominal` | 131 (58 flight and 7 ground `packet_out`, 58 ground `packet_in`, 7 flight and 1 ground `app_event`) | 131 | 0 | **Match** (the 65 `packet_out` records of the first check included) |
+| `a1-immediate` | 143 (62 and 9 `packet_out`, 62 `packet_in`, 9 and 1 `app_event`) | 143 | 0 | **Match** |
+| `a1-rejects` | 147 (55 and 18 `packet_out`, 55 `packet_in`, 18 and 1 `app_event`) | 147 | 0 | **Match** |
+| `a1-downlink-faults` | 137 (58 and 7 `packet_out`, 56 `packet_in`, 7 and 9 `app_event`) | 137 | 0 | **Match** |
+
+The model needed one correction while it was written, found before any comparison, when its first run asserted on a time stamp off the 125 ms grid: a dump segment is due every 125 000 µs from the execution instant, not at every step of the node (§2.1, §6.2, APP-074). No correction followed a comparison.

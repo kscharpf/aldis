@@ -405,7 +405,7 @@ The fault scripts of the A2 and A3 cases are fixed by the milestone that adds th
 
 ### 6.5 Script entries in the scenario file
 
-A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file (the ranges of the other sections of the file are only in the schema so far, #299); this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
+A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file; this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
 
 | Ops entry `kind` | Parameters | Meaning |
 |---|---|---|
@@ -589,7 +589,7 @@ The harness sends one message and waits for its answer; it never reads the wall 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | APP-100 | `refapp/` crates SHALL depend on Aldis only through the `aldis` facade, by path, with default features off and only the features each crate uses. They SHALL NOT depend on any other `aldis-*` crate, on `aldis-testkit`, or on a `test-hooks` feature, also not as dev-dependencies, and SHALL NOT use items hidden from the documentation. From A5 the C++ node SHALL use only the C header and the C++ wrapper header (CABI-072). | — | A/I |
-| APP-101 | Every API pain point found in `refapp/` SHALL be filed as a GitHub issue labelled `api-feedback` for track R; the workaround SHALL cite the issue, and each A-milestone plan SHALL list its findings. `refapp/` SHALL NOT ask for an application-specific API. | — | I |
+| APP-101 | Every API pain point found in `refapp/` SHALL be filed as a GitHub issue labelled `api-feedback` for track R; the workaround SHALL cite the issue, and each A-milestone plan SHALL list its findings and the track-R pull request that resolved each; when track R resolves such an issue with an API change, `refapp/` SHALL adopt the change and drop the workaround, in that pull request or in a track-A pull request the issue links, before the A milestone that found it is called complete. `refapp/` SHALL NOT ask for an application-specific API. | — | I |
 | APP-102 | `refapp-flight` SHALL be `no_std` without a heap and SHALL pass the flight lint set (VER-001); it SHALL build for `thumbv7em-none-eabihf`. From A6 it SHALL also pass the panic-freedom link check (VER-010 method). | GEN-010, GEN-020 | A |
 | APP-103 | `refapp-ground` SHALL pass the flight lint set's restriction lints, because it parses untrusted downlink; it MAY use `std`. | GEN-020 | A |
 | APP-104 | `refapp-scenario` and `refapp-harness` SHALL use the tooling lint profile (RS-017). | — | A |
