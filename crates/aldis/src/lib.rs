@@ -32,8 +32,7 @@
 //! selected.
 //!
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
-//! secondary header (GEN-002). The link and COP-1 crates are skeletons until their
-//! milestones (`docs/08-roadmap.md`).
+//! secondary header (GEN-002).
 #![no_std]
 
 /// AOS Space Data Link Protocol frames (732.0; AOS-001…AOS-020). Feature `aos`.
