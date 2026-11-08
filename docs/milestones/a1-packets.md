@@ -3,7 +3,7 @@
 **Goal:** the first working reference application: the flight node produces every telemetry packet of the scenario's nominal timeline (housekeeping, events, payload, dump) as Space Packets with CUC time stamps and executes the uplink commands; the ground node decodes the packets with the strict codecs, tracks sequence counts, decodes time codes, reassembles dumps, and runs the ops script; the harness reproduces the first golden traces byte for byte in CI. The link level is packets: one Space Packet per link unit ([reference-application.md](../reference-application.md) §6.1).
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A0](a0-scenario.md) (scenario, skeleton, harness) and [M1](m1-packets-time.md) (`v0.2.0-m1`: `aldis-time`, `aldis-spp`) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
 
-**Status: complete (2026-11-07).** WP-0 to WP-7 are on `main`; every criterion of §4 is met and `cargo xtask trace --scope a1 --strict` passes. Decisions D1–D5 (§2) accepted by the maintainer 2026-11-06. Entry gate: M1 met (`v0.2.0-m1`); A0 exited (D1: the merge of #33, #35, and #37 on 2026-10-19 is its approval). A track-A milestone cuts no release.
+**Status: exit pending the adoption of the API findings (APP-101).** WP-0 to WP-7 are on `main`; every criterion of §4 is met and `cargo xtask trace --scope a1 --strict` passes. Decisions D1–D5 (§2) accepted by the maintainer 2026-11-06. Entry gate: M1 met (`v0.2.0-m1`); A0 exited (D1: the merge of #33, #35, and #37 on 2026-10-19 is its approval). A track-A milestone cuts no release. A1 is complete when the adoption pull request (#351) merges (see History).
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -20,7 +20,8 @@
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
 History:
-- 2026-11-07: WP-7: `trace --scope a1 --strict` gates `cargo xtask ci`, `ci.yml`, and the check `spec` (D2); the §4 results column filled; roadmap, READMEs, and the ACFS P1 entry gate say A1 exited.
+- 2026-11-07: WP-7: `trace --scope a1 --strict` gates `cargo xtask ci`, `ci.yml`, and the check `spec` (D2); the §4 results column filled; roadmap, READMEs, and the ACFS P1 entry gate say A1 exited (complete only once the adoption of 2026-11-07 below lands).
+- 2026-11-07: maintainer decision: APP-101 amended, so `refapp/` adopts an API change that resolves an `api-feedback` issue before its A milestone is called complete; #312 (`Cuc::to_instant`) and #305 (`Cuc::from_instant`) adopted in #351; §6 lists every finding with its track-R pull request. A1 is complete when #351 merges.
 - 2026-11-06: plan drafted after the M5 exit; D1–D5 accepted by the maintainer. A0 close-out (D1) and the `--scope a1` trace gate (D2) are in the plan's pull request; the amendments of D3 (roadmap, `reference-application.md`, ACFS plan) are made in the follow-up pull request `a1/d3-fold-a2-a4`.
 
 ## 1. Starting point
@@ -89,7 +90,7 @@ Only what the document lacks; nothing in it is restated.
 
 ### WP-3a Flight node: telemetry (L) — APP-010, APP-015, APP-021…023, APP-060
 - `refapp-flight` (`no_std`, no heap, flight lint set, APP-102): on-board time as T0 + `Instant` converted by `aldis-time` to CUC (APP-060); housekeeping, the event reporter, and the payload application with the layouts of §3.3.1 to §3.3.3, each APID with its own sequence count (SPP-011/012) and its secondary header form (SPP-008); the per-instant order of §2.1.
-- Features `core`, `time`, `spp-time` of the facade only (APP-100); every API pain point filed as `api-feedback` (APP-101); a "Resolved by" names the track-R pull request.
+- Features `core`, `time`, `spp-time` of the facade only (APP-100); every API pain point filed as `api-feedback` (APP-101).
 - Unit tests with `// req:`; the `thumbv7em-none-eabihf` build and Clippy stay green.
 - Checklist: none of the library ones applies (no codec, crate, or engine is added); the `refapp` check is the gate.
 
