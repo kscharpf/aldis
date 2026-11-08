@@ -6,7 +6,7 @@ The libraries are split into three layers plus a foreign-function boundary. Each
 
 ```
  ┌────────────────────────────────────────────────────────────────────────┐
- │ Layer 3 — FRAMEWORK (optional)                         aldis-framework │
+ │ Layer 3 — FRAMEWORK (optional, planned: no crate yet)                  │
  │   Transport/clock/timer traits, run loop, reference adapters           │
  │   ("framework behavior": you plug in I/O, it drives the engines)       │
  ├────────────────────────────────────────────────────────────────────────┤
@@ -52,7 +52,7 @@ Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Lay
 | `aldis-sync` | 1 | 131.0 §9–§10 ASM and CADU, pseudo-randomizer, ASM search engine ([tm-sync](standards/tm-sync.md)) | core |
 | `aldis-link` | 2 | Sending and receiving engines for packets over TM/AOS/USLP and TC/USLP MAPs ([04](04-engines.md)) | core, spp, epp, tm, tc, aos, uslp (each behind a feature) |
 | `aldis-cop1` | 2 | 232.1 FOP-1, FARM-1 ([COP-1](standards/cop1.md)) | core, tc, (uslp feature) |
-| `aldis-framework` | 3 | [05 Framework](05-framework.md) | core, link, cop1 |
+| `aldis-framework` (planned, not in the workspace) | 3 | [05 Framework](05-framework.md) | core, link, cop1 |
 | `aldis` | facade | Re-exports | all, by feature |
 | `aldis-ffi` | boundary | [C ABI profile](profiles/c-abi.md) | aldis (selected features) |
 

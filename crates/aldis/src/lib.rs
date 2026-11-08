@@ -21,7 +21,6 @@
 //! | `sync` | `aldis::sync` (`aldis-sync`): ASM attach, pseudo-randomizer, ASM search engine | 131.0 §9, §10 | SYNC-001…SYNC-020 |
 //! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-082 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
-//! | `framework` | `aldis::framework` (`aldis-framework`): transports, clocks, stacks | `docs/05-framework.md` | FW-001…FW-021 |
 //! | `alloc`, `std` | The same feature of every enabled crate; strictly additive | — | GEN-006 |
 //! | `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` with `link` or `cop1` | The same feature of `aldis-link`, and of `aldis-cop1` for `tc` and `uslp`: the engines of that standard | — | GEN-008 |
 //! | `full` | Every crate above and `spp-time`; the engine features follow from the codec features | — | — |
@@ -33,7 +32,7 @@
 //! selected.
 //!
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
-//! secondary header (GEN-002). The link, COP-1, and framework crates are skeletons until their
+//! secondary header (GEN-002). The link and COP-1 crates are skeletons until their
 //! milestones (`docs/08-roadmap.md`).
 #![no_std]
 
@@ -50,10 +49,6 @@ pub use aldis_core as core;
 /// Encapsulation Packet Protocol (133.1 §4.1–4.3, §5; EPP-001…EPP-012). Feature `epp`.
 #[cfg(feature = "epp")]
 pub use aldis_epp as epp;
-/// Transports, clocks, and protocol stacks (`docs/05-framework.md`; FW-001…FW-021). Feature
-/// `framework`.
-#[cfg(feature = "framework")]
-pub use aldis_framework as framework;
 /// Sending and receiving engines (`docs/04-engines.md`; LNK-001…LNK-082). Feature `link`.
 #[cfg(feature = "link")]
 pub use aldis_link as link;

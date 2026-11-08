@@ -10,7 +10,6 @@ dependencies = [
  "aldis-cop1",
  "aldis-core",
  "aldis-epp",
- "aldis-framework",
  "aldis-link",
  "aldis-spp",
  "aldis-sync",
@@ -72,15 +71,6 @@ name = "aldis-ffi"
 version = "0.4.0"
 dependencies = [
  "aldis",
-]
-
-[[package]]
-name = "aldis-framework"
-version = "0.4.0"
-dependencies = [
- "aldis-cop1",
- "aldis-core",
- "aldis-link",
 ]
 
 [[package]]
