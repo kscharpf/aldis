@@ -444,7 +444,9 @@ impl Scenario {
     /// Parses and checks a scenario file.
     ///
     /// # Errors
-    /// If the text does not match the model, or breaks a rule the schema cannot express.
+    /// If the text does not match the model, or breaks a rule the schema cannot express. The
+    /// entries of the scripts are checked first, so an error in an `ops` or `faults` entry is
+    /// reported, by its entry, before an error elsewhere.
     pub fn parse(text: &str) -> Result<Scenario, String> {
         check_entries(text)?;
         let s: Scenario = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
@@ -589,7 +591,7 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
 
 /// The entries of the scripts of `text`, each parsed on its own. serde reports an error inside
 /// a tagged entry at the end of the entry, so the position says little; this reports
-/// ``case `a1-rejects`: ops[3]: 504 is outside the range 1 to 503``, the entry with the error of
+/// ``scenario.json: case `a1-rejects`: ops[3]: 504 is outside the range 1 to 503``, the entry with the error of
 /// its field, which carries the value and its range. Text that is not JSON, or has another
 /// shape, is left to the parse of the whole [`Scenario`].
 fn check_entries(text: &str) -> Result<(), String> {
@@ -1349,7 +1351,7 @@ mod tests {
             e.contains("faults[0]: 8 is outside the range 0 to 7"),
             "{e}"
         );
-        // Outside the scripts the error is serde's, with its position.
+        // Outside the scripts the error is serde's.
         let e = error_of(r#""trace_version": 1"#, r#""trace_version": 0"#);
         assert!(e.contains("0 is outside the range 1 to 4294967295"), "{e}");
         // A document on one line has no lines to point at; the entry is named all the same.
