@@ -1,5 +1,6 @@
 //! Scheduler, link model, and golden traces (docs/reference-application.md §6, §7; A0 WP-2).
 
+use refapp_harness::ranged::Ranged;
 use refapp_harness::scenario::{
     Call, Case, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario,
     generated_files, refapp_dir,
@@ -14,7 +15,7 @@ fn case(level: Level, end_us: u64) -> Case {
         id: "test".to_owned(),
         level,
         end_us,
-        trace_version: 1,
+        trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
         ops: vec![],
         faults: vec![],
@@ -488,7 +489,14 @@ fn faults_that_cannot_apply_fail_the_run() {
             None
         },
     );
-    c.faults = vec![fault(Direction::Down, 0, Fault::Flip { octet: 0, bit: 0 })];
+    c.faults = vec![fault(
+        Direction::Down,
+        0,
+        Fault::Flip {
+            octet: 0,
+            bit: Ranged::new(0).unwrap(),
+        },
+    )];
     assert!(sim::records(&scenario, &c, &mut sender, &mut ground).is_err());
 }
 

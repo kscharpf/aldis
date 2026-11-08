@@ -405,7 +405,7 @@ The fault scripts of the A2 and A3 cases are fixed by the milestone that adds th
 
 ### 6.5 Script entries in the scenario file
 
-A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file (the ranges of the other sections of the file are only in the schema so far, #299); this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
+A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file; this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
 
 | Ops entry `kind` | Parameters | Meaning |
 |---|---|---|
