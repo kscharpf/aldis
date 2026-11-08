@@ -1,7 +1,8 @@
 //! Table identifiers and lengths (docs/reference-application.md §3.3.5, §3.3.6; APP-017).
 //!
-//! Each type holds a value of its range only (RS-020): the ops-script checks of the harness, the
-//! ground node's table upload, and the flight node's table store share them.
+//! Each type holds a value of its range only (RS-020): the
+//! harness's scenario types take their bounds from the constants of these types, and the ground
+//! node's table upload and the flight node's table store use the types.
 
 use aldis::core::{Error, ErrorKind};
 
@@ -10,12 +11,17 @@ use aldis::core::{Error, ErrorKind};
 pub struct TableId(u8);
 
 impl TableId {
+    /// The lowest table ID.
+    pub const MIN: u8 = 1;
+    /// The highest table ID.
+    pub const MAX: u8 = u8::MAX;
+
     /// The table ID `id`.
     ///
     /// # Errors
     /// `InvalidField` for 0.
     pub const fn new(id: u8) -> Result<TableId, Error> {
-        if id == 0 {
+        if id < TableId::MIN {
             Err(Error::new(ErrorKind::InvalidField))
         } else {
             Ok(TableId(id))
@@ -34,6 +40,8 @@ impl TableId {
 pub struct TableLength(u16);
 
 impl TableLength {
+    /// The shortest table, octets.
+    pub const MIN: u16 = 1;
     /// The longest table, octets (APP-017): 503, so that the upload packet, 9 octets longer
     /// (§3.3.6), fits the 512-octet Maximum Packet Length of the uplink.
     pub const MAX: u16 = 503;
@@ -43,7 +51,7 @@ impl TableLength {
     /// # Errors
     /// `InvalidField` for 0, `OutOfRange` above [`TableLength::MAX`].
     pub const fn new(length: u16) -> Result<TableLength, Error> {
-        if length == 0 {
+        if length < TableLength::MIN {
             Err(Error::new(ErrorKind::InvalidField))
         } else if length > TableLength::MAX {
             Err(Error::new(ErrorKind::OutOfRange))

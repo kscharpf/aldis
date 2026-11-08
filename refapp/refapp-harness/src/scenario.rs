@@ -210,9 +210,9 @@ pub enum OpsEntry {
         /// Release instant, µs.
         at_us: u64,
         /// Table ID.
-        table_id: Ranged<u8, 1, 255>,
+        table_id: Ranged<u8, { TableId::MIN as u64 }, { TableId::MAX as u64 }>,
         /// Table length, octets.
-        length: Ranged<u16, 1, 503>,
+        length: Ranged<u16, { TableLength::MIN as u64 }, { TableLength::MAX as u64 }>,
     },
     /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
     Fop1Directive {
@@ -228,8 +228,8 @@ impl OpsEntry {
     ///
     /// # Errors
     /// `InvalidField` or `OutOfRange` for a table upload whose ID or length the node's types
-    /// refuse. A parsed entry holds both in range (the types of its fields check them), so this
-    /// does not fail for one.
+    /// refuse. A parsed entry holds both in range: the types of its fields take their bounds from
+    /// `TableId` and `TableLength`, so this does not fail for one.
     pub fn to_node(&self) -> Result<refapp_ground::OpsEntry, String> {
         use refapp_ground as node;
         Ok(match *self {
@@ -314,7 +314,7 @@ pub enum Call {
     /// `ACTIVATE_TABLE`, function code `0x03`.
     ActivateTable {
         /// Table ID.
-        table_id: Ranged<u8, 1, 255>,
+        table_id: Ranged<u8, { TableId::MIN as u64 }, { TableId::MAX as u64 }>,
         /// CRC-16 of the table that the command claims (CMN-001).
         crc: u16,
     },

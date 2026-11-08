@@ -177,10 +177,9 @@ mod tests {
     }
 
     #[test]
-    fn the_range_is_checked_at_compile_time() {
+    fn the_full_range_of_u8_builds() {
         // req: APP-107
-        // A range with MIN > MAX or MAX beyond u8 would fail to build when `new` is
-        // instantiated; the valid bounds of u8 build.
+        // The doctests of `Ranged` check that an invalid range does not compile.
         assert_eq!(Ranged::<u8, 0, 255>::new(255).unwrap().get(), 255);
     }
 
