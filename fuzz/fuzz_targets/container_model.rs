@@ -2,7 +2,7 @@
 //! arbitrary operation sequences (GEN-010…GEN-012, API-061, GEN-042).
 #![no_main]
 
-// req: GEN-010, GEN-011, GEN-012, API-061, GEN-042, VER-022
+// req: GEN-012, VER-022
 
 use std::collections::VecDeque;
 

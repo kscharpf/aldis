@@ -83,18 +83,20 @@ impl<const N: usize> ByteQueue<N> {
         N
     }
 
-    /// Copies `out.len()` (<= N) octets starting at ring offset `at` (< N), wrapping.
+    /// Copies `out.len()` (<= N) octets starting at ring offset `at` (<= N), wrapping.
     fn read_at(&self, at: usize, out: &mut [u8]) {
-        let (before, from_at) = self.ring.split_at_checked(at).unwrap_or_default();
+        // `at` is always a ring offset the queue computed, so it is at most N.
+        let (before, from_at) = self.ring.split_at(at);
         for (o, &r) in out.iter_mut().zip(from_at.iter().chain(before)) {
             *o = r;
         }
     }
 
-    /// Writes `data` (<= N octets) starting at ring offset `at` (< N), wrapping; returns the
+    /// Writes `data` (<= N octets) starting at ring offset `at` (<= N), wrapping; returns the
     /// offset after the last octet written.
     fn write_at(&mut self, at: usize, data: &[u8]) -> usize {
-        let (before, from_at) = self.ring.split_at_mut_checked(at).unwrap_or_default();
+        // `at` is always a ring offset the queue computed, so it is at most N.
+        let (before, from_at) = self.ring.split_at_mut(at);
         for (slot, &d) in from_at.iter_mut().chain(before).zip(data) {
             *slot = d;
         }
@@ -107,17 +109,19 @@ impl<const N: usize> ByteQueue<N> {
     /// `RecordTooLong` if the record can never fit (`len + 4 > N`); `WouldBlock` if it does
     /// not fit now.
     pub fn push(&mut self, data: &[u8]) -> Result<(), ByteQueueError> {
-        let need = data.len().checked_add(PREFIX).filter(|&n| n <= N).ok_or(
-            ByteQueueError::RecordTooLong {
-                max_len: N.saturating_sub(PREFIX),
-                len: data.len(),
-            },
-        )?;
+        let too_long = ByteQueueError::RecordTooLong {
+            max_len: N.saturating_sub(PREFIX),
+            len: data.len(),
+        };
+        let len = u32::try_from(data.len()).map_err(|_| too_long)?;
+        let need = data
+            .len()
+            .checked_add(PREFIX)
+            .filter(|&n| n <= N)
+            .ok_or(too_long)?;
         if need > self.free() {
             return Err(ByteQueueError::WouldBlock);
         }
-        // need <= N <= u32::MAX, so the length always fits the prefix.
-        let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
         let tail = wrap_add(self.head, self.used, N);
         let after_prefix = self.write_at(tail, &len.to_be_bytes());
         self.write_at(after_prefix, data);
@@ -184,8 +188,53 @@ mod tests {
     use super::{ByteQueue, ByteQueueError};
 
     #[test]
+    fn peek_len_reports_the_oldest_record() {
+        let mut q: ByteQueue<16> = ByteQueue::new();
+        assert_eq!(q.peek_len(), None);
+        q.push(&[7; 5]).unwrap();
+        q.push(&[]).unwrap();
+        assert_eq!(q.peek_len(), Some(5));
+        assert_eq!(q.discard(), Some(5));
+        assert_eq!(q.peek_len(), Some(0));
+        assert_eq!(q.discard(), Some(0));
+        assert_eq!(q.peek_len(), None);
+    }
+
+    #[test]
+    fn free_and_contents_survive_wrap_around() {
+        let mut q: ByteQueue<16> = ByteQueue::new();
+        assert_eq!((q.free(), q.capacity(), q.is_empty()), (16, 16, true));
+        q.push(&[1; 8]).unwrap();
+        assert_eq!(q.free(), 4);
+        let mut out = [0_u8; 8];
+        assert_eq!(q.pop_into(&mut out), Ok(Some(8)));
+        assert_eq!(q.free(), 16);
+        // The head is now at offset 12: this record's prefix and data wrap past the end.
+        q.push(&[2, 3, 4, 5, 6, 7]).unwrap();
+        assert_eq!(q.free(), 6);
+        assert_eq!(q.peek_len(), Some(6));
+        assert_eq!(q.pop_into(&mut out), Ok(Some(6)));
+        assert_eq!(&out[..6], &[2, 3, 4, 5, 6, 7]);
+        assert_eq!((q.free(), q.records()), (16, 0));
+    }
+
+    #[test]
+    fn zero_capacity_holds_nothing() {
+        let mut q: ByteQueue<0> = ByteQueue::default();
+        assert_eq!((q.capacity(), q.free(), q.is_empty()), (0, 0, true));
+        assert_eq!(
+            q.push(&[1]),
+            Err(ByteQueueError::RecordTooLong { max_len: 0, len: 1 })
+        );
+        assert_eq!(q.peek_len(), None);
+        assert_eq!(q.pop_into(&mut [0_u8; 4]), Ok(None));
+        assert_eq!(q.discard(), None);
+        q.clear();
+        assert!(q.is_empty());
+    }
+
+    #[test]
     fn errors_keep_records() {
-        // req: GEN-042
         let mut q: ByteQueue<16> = ByteQueue::default();
         assert_eq!(q.capacity(), 16);
         assert_eq!(
@@ -240,7 +289,6 @@ mod model_tests {
 
         #[test]
         fn matches_model(ops in byte_queue_ops(20, 200)) {
-            // req: GEN-010, API-061
             let mut q: ByteQueue<37> = ByteQueue::new();
             let mut model: VecDeque<Vec<u8>> = VecDeque::new();
             let mut used = 0;
