@@ -11,3 +11,5 @@ Spend the review on what no check covers: the reading of the Blue Book behind ea
 **Every statement about the implementation cites the file and line it rests on** (`path:line`), quoting the code where the point depends on it, and a claim about a dependency, an algorithm, or a target names where it is in the code. A statement the reviewer cannot point to is not made. A review whose description of the code does not match the code does not count as a review of that pull request: the coordinator posts the corrections and the review is done again.
 
 **Mismatches between documentation and code, or between two pieces of documentation, are reported together as one batch of nits at the end of the review.** The implementer fixes them in the same round as the code findings, so they cost no round of their own (OI-63).
+
+**A pull request gets at most three reviews by `reviewer`;** the cap, what happens to the findings left after the third, and the case of a blocking finding there are in [coordinator.md](coordinator.md) ("Review with the reviewer agent"; 2026-11-08).

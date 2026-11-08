@@ -68,6 +68,8 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 **Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply. A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue by the coordinator, or by the reviewing agent when the coordinator asks; a finding that exists only in chat is lost.
 
+**Review rounds (maintainer decision, 2026-11-08):** strive for at most three reviews by `reviewer` per pull request, and open the non-blocking items still open then as follow-on issues. The coordinator applies it ([coordinator.md](coordinator.md), "Review with the reviewer agent"); a blocking finding after the third review goes to the maintainer as one question.
+
 ### 2.7 Process and tooling
 
 | Maintainer only | Coordinator | Agent in a work package |
