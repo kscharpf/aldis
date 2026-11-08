@@ -764,9 +764,12 @@ their result from another record (VER-056).
 - **Merges from `main`:** commits of the pull request with a parent outside it. Each is redone \
 with `git merge-tree --write-tree` to find the paths that conflicted. A rebase onto `main` leaves \
 no merge and is not counted.
-- **Review:** reviews and review comments, and conversation comments whose first line is a \
-heading naming a review; anything that contains `Generated with [Claude Code]` is a reply and \
-not counted. A fix is a commit other than a merge authored after the first review.
+- **Review:** reviews of the pull request (the reviewer agent posts them under the maintainer's \
+account, ending in `Generated with [Claude Code]`, and they count), inline review comments, and \
+conversation comments whose first line is a heading naming a review; an inline or conversation \
+comment that contains the marker is read as a reply and not counted. Only the maintainer's own \
+reviews are events of their active time and count toward the approval. A fix is a commit other \
+than a merge authored after the first review.
 - **Follow-ups:** issues (not pull requests) linked as `#N` from the description or the author's \
 replies and opened between the first commit and a day after the merge.
 ";
@@ -793,7 +796,9 @@ Each interval is reported raw and in active time; the raw wait for the first rev
 maintainer's availability and not actionable.
 - **Dependency:** pull request B depends on A if A's head is one of B's commits, or a parent of \
 one of B's commits from outside B is a commit of A (B branched from A's branch or merged it). A \
-merge from `main` brings `main`'s merge commit, which is no commit of A. Only the pull requests \
+merge from `main` brings `main`'s merge commit, which is no commit of A. A merge train (a \
+`train/*` branch) depends on none of its constituents, the pull requests whose heads it \
+contains, but still on any other pull request. Only the pull requests \
 fetched (this period and the previous one) are compared.
 - **Order inversion:** B was approved while A, which it depends on, was unreviewed: A's first \
 review (or its approval, if that came first) is later than B's approval; it lasts from B's \

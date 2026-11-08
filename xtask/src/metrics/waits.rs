@@ -121,9 +121,13 @@ impl Waits {
 /// `b`'s commits from outside `b` is a commit of `a` (`b` was branched from `a`, or merged it).
 /// A merge from `main` takes `main`'s merge commit, which is no commit of `a`, so a pull request
 /// merged into `main` before `b` merged `main` is no dependency. A pull request from the base
-/// branch itself (`main` into another branch) is never one.
+/// branch itself (`main` into another branch) is never one. A merge train (a `train/*` branch)
+/// merges with the pull requests whose heads it contains, its constituents (#339), and depends on
+/// none of them; it still depends on any other pull request it took commits from.
 pub fn depends_on(b: &Pr, a: &Pr) -> bool {
+    let constituent = b.branch.starts_with("train/") && b.shas.contains(&a.head);
     a.number != b.number
+        && !constituent
         && a.branch != a.base
         && b.branch != b.base
         && (b.shas.contains(&a.head) || b.outside_parents.iter().any(|p| a.shas.contains(p)))
@@ -536,6 +540,24 @@ mod tests {
         assert!(!depends_on(&four, &one));
         assert!(depends_on(&five, &one));
         assert!(!depends_on(&one, &one));
+        // A train carries its constituents' heads: it depends on none of them (#339), while a
+        // pull request stacked on a constituent still does.
+        let mut train = pr(7, &["a1", "a2", "b1", "b2", "t1"], &["base"], None, 100);
+        train.branch = "train/2026-11-07-1".to_owned();
+        assert!(!depends_on(&train, &one));
+        assert!(!depends_on(&train, &two));
+        let mut late = pr(8, &["z1"], &["t1"], Some(900), 950);
+        late.branch = "b8".to_owned();
+        assert!(depends_on(&late, &train));
+        // A train branched from a pull request that is no constituent (its head is not among the
+        // train's commits) still depends on it. The case also carries `one`'s head (`a2`), so
+        // the last assertion checks the constituent exemption from `one`.
+        let mut other = pr(9, &["f1", "f2"], &["base"], None, 100);
+        other.branch = "b9".to_owned();
+        let mut stacked = pr(10, &["a1", "a2", "t2"], &["f2"], None, 100);
+        stacked.branch = "train/2026-11-07-2".to_owned();
+        assert!(depends_on(&stacked, &other));
+        assert!(!depends_on(&stacked, &one));
         // A pull request from the base branch is never a dependency.
         let mut main = pr(6, &["a2"], &[], None, 1);
         main.branch = "main".to_owned();
@@ -568,6 +590,20 @@ mod tests {
         // Never reviewed and merged after #2: inverted until its merge.
         let one = pr(1, &["a1"], &["base"], None, 160);
         assert_eq!(inversions(&[&one, &two])[0].seconds(), 60);
+    }
+
+    // req: VER-063
+    #[test]
+    fn a_train_and_its_constituents_are_no_inversion() {
+        // Two constituents merged about 2 s after the train, unreviewed; the train approved at 100.
+        let one = pr(1, &["a1"], &["base"], None, 102);
+        let two = pr(2, &["b1"], &["base"], None, 102);
+        let mut train = pr(3, &["a1", "b1", "t1"], &["base"], Some(50), 100);
+        train.branch = "train/2026-11-07-1".to_owned();
+        assert_eq!(inversions(&[&one, &two, &train]), Vec::<Inversion>::new());
+        // The same pull request on an ordinary branch is a real inversion.
+        train.branch = "b3".to_owned();
+        assert_eq!(inversions(&[&one, &two, &train]).len(), 2);
     }
 
     // req: VER-063
