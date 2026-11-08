@@ -16,7 +16,7 @@
 //! | [`ocf`] | Operational Control Field classification | CMN-010, CMN-011 |
 //! | [`oid`] | OID pseudo-noise generators | CMN-020…CMN-023 |
 //! | [`counter`] | Modular counters, gap classification | CMN-030, CMN-031 |
-//! | [`container`] | Fixed-capacity queues and vectors | GEN-010…GEN-012, API-061 |
+//! | [`container`] | Fixed-capacity vector | GEN-010…GEN-012 |
 //! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |

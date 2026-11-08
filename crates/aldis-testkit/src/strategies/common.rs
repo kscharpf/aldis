@@ -299,7 +299,7 @@ pub fn layout_spec() -> impl Strategy<Value = LayoutSpec> {
         )
 }
 
-/// One operation on a record queue such as `ByteQueue` (GEN-010, API-061).
+/// One operation on a record queue such as [`crate::byte_queue::ByteQueue`] (GEN-010, API-061).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueueOp {
     /// Push a record with these octets.
@@ -319,12 +319,6 @@ pub fn byte_queue_ops(max_record: usize, max_ops: usize) -> impl Strategy<Value 
         Just(QueueOp::Discard),
     ];
     proptest::collection::vec(op, 0..max_ops)
-}
-
-/// Up to `max_ops - 1` operations on a fixed queue of octets: `Some(v)` pushes `v`, `None` pops
-/// (GEN-010).
-pub fn fixed_queue_ops(max_ops: usize) -> impl Strategy<Value = Vec<Option<u8>>> {
-    proptest::collection::vec(proptest::option::of(any::<u8>()), 0..max_ops)
 }
 
 #[cfg(test)]
