@@ -30,7 +30,7 @@ Name the goal, the base, what done means, and what the agent leaves alone: other
 
 ## The reply to a review
 
-The reply to a review (a pull request comment, point by point, ending in the marker of [AGENTS.md](../../AGENTS.md)) names the commit it answers, a hex prefix of the head of at least 7 characters: "Fix round, head 81db08a2". A pull request that rides a merge train is ready only while its latest reply names its current head ([coordinator.md](coordinator.md#merge-trains)); push again after the reply and the reply is posted again. The implementer posts the reply in the fix round itself, after the push, also when nothing changed (a finding deferred to an issue is answered with the issue's number); a fix round without a reply is not finished.
+The reply to a review (a pull request comment, point by point, ending in the marker of [AGENTS.md](../../AGENTS.md)) names the commit it answers, a hex prefix of the head of at least 7 characters: "Fix round, head 81db08a2". A pull request that rides a merge train is ready only while its latest reply names its current head ([coordinator.md](coordinator.md#merge-trains)); push again after the reply and the reply is posted again. The implementer posts the reply in the fix round itself, after the push, also when nothing changed (a finding deferred to an issue is answered with the issue's number); a fix round without a reply is not finished. After the third review no implementer is dispatched: the coordinator posts the reply ([coordinator.md](coordinator.md), "At most three reviews").
 
 ## The report
 
