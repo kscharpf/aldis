@@ -757,6 +757,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Delivers the Insert Zone (LNK-053, LNK-054); nothing for a channel without one.
+    #[cfg(any(feature = "aos", feature = "uslp"))]
     pub(crate) fn deliver_insert(&mut self, octets: &[u8], replay: Option<bool>) -> Result<()> {
         if !octets.is_empty() {
             let sdu = self.put(octets)?;
@@ -767,6 +768,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
 
     /// Delivers an Insert Zone that is already in the output area (a range of the whole frame,
     /// LNK-075); nothing for a channel without one.
+    #[cfg(feature = "uslp")]
     pub(crate) fn deliver_insert_range(
         &mut self,
         sdu: OutRange,
@@ -829,6 +831,7 @@ pub(crate) fn vc_of<P: Protocol>(raw: u8) -> Result<P::Vc> {
 ///
 /// # Errors
 /// `OutOfRange` (`map_id`) as for [`vc_of`].
+#[cfg(feature = "uslp")]
 pub(crate) fn map_of(raw: u8) -> Result<MapId<4>> {
     MapId::<4>::try_from(raw)
 }
@@ -1058,8 +1061,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
 mod tests {
     use super::{
         FrameContext, FrameReceiver, FrameReceiverConfig, ReceiverStatus, Track, VcEntry, advance,
-        header, lay_out, map_of, ocf_of, spec, vc_of,
+        header, lay_out, ocf_of, spec, vc_of,
     };
+    #[cfg(feature = "uslp")]
+    use super::map_of;
     use crate::protocol::{Tc, Tm};
     use crate::receiver::{TcChannel, TcVc};
     use aldis_core::counter::{Continuity, ModCounter};
@@ -1094,6 +1099,7 @@ mod tests {
         );
         assert_eq!(header::<2>(&[1, 2, 3]), Ok([1, 2]));
         assert_eq!(vc_of::<Tm>(8).unwrap_err().field(), Some(field::VC_ID));
+        #[cfg(feature = "uslp")]
         assert_eq!(map_of(16).unwrap_err().field(), Some(field::MAP_ID));
         assert!(ocf_of(&[]).is_none() && ocf_of(&[0; 4]).is_some());
         let e = lay_out(&[0; 8], spec(8, 6, 2, true, true)).unwrap_err();
