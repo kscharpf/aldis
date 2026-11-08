@@ -166,6 +166,7 @@ class Run:
         self.case = case
         self.end = case["end_us"]
         self.faults = {(f["dir"], f["index"]): f["fault"] for f in case.get("faults", [])}
+        require(all(f["dir"] == "down" for f in case.get("faults", [])), "uplink-unit faults are not modelled")
         self.trace = []  # json lines in trace order
         self.heap = []  # instants of interest
         self.seen = set()
@@ -237,6 +238,8 @@ class Run:
     def flight_deliver(self, t, pkt):
         apid = int.from_bytes(pkt[0:2], "big") & 0x7FF
         d = pkt[6:]
+        require(len(pkt) >= 7 and len(d) >= (3 if apid == APID["table_upload"] else 8),
+                "short uplink packet: flight handling of a malformed uplink unit is not modelled (APP-131)")
         if apid == APID["table_upload"]:
             tid, ln = d[0], int.from_bytes(d[1:3], "big")
             octets = d[3:]
