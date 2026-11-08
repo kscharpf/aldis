@@ -7,6 +7,7 @@ name = "aldis"
 version = "0.4.0"
 dependencies = [
  "aldis-core",
+ "aldis-link",
  "aldis-spp",
  "aldis-time",
 ]
@@ -14,6 +15,14 @@ dependencies = [
 [[package]]
 name = "aldis-core"
 version = "0.4.0"
+
+[[package]]
+name = "aldis-link"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+ "aldis-spp",
+]
 
 [[package]]
 name = "aldis-spp"

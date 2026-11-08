@@ -14,6 +14,11 @@
 //!    with `std`, on each base feature set in [`crates`]; the `alloc` and `std` runs pass the
 //!    same tests as the run without them. Every vector output is compared with the expected
 //!    octets, so the wire output is the same in each configuration.
+//!
+//! A fourth check covers the facade (GEN-008): `aldis` built and tested with exactly
+//! `link,cop1,tm,tc,spp` and no default features, under the gate's `-D warnings`, must run the
+//! test of `crates/aldis/tests/engine_features.rs`, so the codec features reach the engines
+//! without `full`.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -214,6 +219,7 @@ pub fn check() -> Result<usize, String> {
             problems += check_tests(krate, base)?;
         }
     }
+    problems += check_facade_engines()?;
     if problems == 0 {
         println!(
             "features: `alloc` and `std` are additive in {} crates",
@@ -221,6 +227,40 @@ pub fn check() -> Result<usize, String> {
         );
     }
     Ok(problems)
+}
+
+/// The features of the facade build that must reach the engines without `full` (GEN-008).
+const FACADE_ENGINE_FEATURES: &str = "link,cop1,tm,tc,spp";
+
+/// The test of the facade that names the engines (`crates/aldis/tests/engine_features.rs`).
+const FACADE_ENGINE_TEST: &str = "engines_are_nameable_through_the_facade";
+
+/// Builds and tests `aldis` with [`FACADE_ENGINE_FEATURES`] alone under `-D warnings` (GEN-008);
+/// the number of problems.
+fn check_facade_engines() -> Result<usize, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let out = Command::new(cargo)
+        .args(["test", "-p", "aldis", "--no-default-features", "--features"])
+        .arg(FACADE_ENGINE_FEATURES)
+        .env("RUSTFLAGS", "-D warnings")
+        .current_dir(repo::root())
+        .output()
+        .map_err(|e| format!("cargo test: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let ran = passed_tests(&stdout)
+        .iter()
+        .any(|t| t.ends_with(FACADE_ENGINE_TEST));
+    if out.status.success() && ran {
+        println!("features aldis: the engines are reachable with {FACADE_ENGINE_FEATURES}");
+        return Ok(0);
+    }
+    print!("{stdout}");
+    eprint!("{}", String::from_utf8_lossy(&out.stderr));
+    println!(
+        "error: GEN-008 aldis: `{FACADE_ENGINE_TEST}` did not pass with {FACADE_ENGINE_FEATURES} \
+         (no default features, -D warnings)"
+    );
+    Ok(1)
 }
 
 /// Runs the tests of `krate` on `base` alone and with each additive feature.
