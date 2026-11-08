@@ -550,7 +550,8 @@ mod tests {
         late.branch = "b8".to_owned();
         assert!(depends_on(&late, &train));
         // A train branched from a pull request that is no constituent (its head is not among the
-        // train's commits) still depends on it.
+        // train's commits) still depends on it. The case also carries `one`'s head (`a2`), so
+        // the last assertion checks the constituent exemption from `one`.
         let mut other = pr(9, &["f1", "f2"], &["base"], None, 100);
         other.branch = "b9".to_owned();
         let mut stacked = pr(10, &["a1", "a2", "t2"], &["f2"], None, 100);
