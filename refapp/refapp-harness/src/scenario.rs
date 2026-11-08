@@ -591,9 +591,9 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
 
 /// The entries of the scripts of `text`, each parsed on its own. serde reports an error inside
 /// a tagged entry at the end of the entry, so the position says little; this reports
-/// ``scenario.json: case `a1-rejects`: ops[3]: 504 is outside the range 1 to 503``, the entry with the error of
-/// its field, which carries the value and its range. Text that is not JSON, or has another
-/// shape, is left to the parse of the whole [`Scenario`].
+/// ``scenario.json: case `a1-rejects`: ops[5]: 504 is outside the range 1 to 503``, the entry
+/// with the error of its field, which carries the value and its range. Text that is not JSON,
+/// or has another shape, is left to the parse of the whole [`Scenario`].
 fn check_entries(text: &str) -> Result<(), String> {
     let Ok(doc) = serde_json::from_str::<serde_json::Value>(text) else {
         return Ok(());
