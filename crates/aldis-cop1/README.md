@@ -37,4 +37,4 @@ FARM-1 (M3 WP-3) and FOP-1 (M3 WP-4) are implemented for TC frames, FOP-1 builds
 
 ## Where it sits
 
-Layer 2 (engines) of the [architecture](../../docs/01-architecture.md) §2. It depends on `aldis-core` and `aldis-tc`, and on `aldis-uslp` with the feature `uslp`. As a library, the application calls the engines directly; `aldis-framework` uses the same engines.
+Layer 2 (engines) of the [architecture](../../docs/01-architecture.md) §2. It depends on `aldis-core` and `aldis-tc`, and on `aldis-uslp` with the feature `uslp`. As a library, the application calls the engines directly; the planned framework (`aldis-framework`, deferred, no crate yet) is to use the same engines.

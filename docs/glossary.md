@@ -233,7 +233,7 @@ Areas CPP and APP belong to tracks C and A; the others are shared ([08 §6](08-r
 | <a id="area-gen"></a>**GEN** | Architecture, layering, and dependency rules; design rules: no heap, panic freedom, bounded execution, determinism, error model, bit conventions, configuration, `unsafe`, versioning | [01](01-architecture.md), [02](02-design-rules.md) |
 | <a id="area-api"></a>**API** | The language-neutral API: identifier types, views and writers, strict and lenient decoding, configurations, the sans-I/O engine contract, buffers, security hooks, events, the error and field catalogues | [03](03-api-model.md) |
 | <a id="area-lnk"></a>**LNK** | The link engines of `aldis-link`: packet generation, multiplexing, frame reception, packet extraction, segmentation and reassembly | [04](04-engines.md) |
-| <a id="area-fw"></a>**FW** | The optional framework `aldis-framework` (later): traits, stacks, run loop, adapters, trace and replay | [05](05-framework.md) |
+| <a id="area-fw"></a>**FW** | The optional framework `aldis-framework` (planned, no crate yet; later): traits, stacks, run loop, adapters, trace and replay | [05](05-framework.md) |
 | <a id="area-ver"></a>**VER** | Verification: lints, panic freedom, testing, coverage, the target matrix, cross-checks, C and C++ checks, the verification run and merge gate | [06](06-verification.md) |
 | <a id="area-tv"></a>**TV** | The conformance test-vector format and provenance | [07](07-test-vectors.md) |
 | <a id="area-cmn"></a>**CMN** | Common link features: FECF CRC-16, OCF, OID pattern, frame counters, field placement with SDLS | [Common link features](standards/common-link-features.md) |
@@ -255,7 +255,7 @@ Areas CPP and APP belong to tracks C and A; the others are shared ([08 §6](08-r
 
 | Term | Meaning | Defined in |
 |---|---|---|
-| <a id="layer"></a>**Layer 0–3** | The library's layers, each depending only on those below: **0** foundation (`aldis-core`); **1** stateless codecs (`aldis-time`, `-spp`, `-epp`, `-tm`, `-tc`, `-aos`, `-uslp`); **2** sans-I/O engines (`aldis-link`, `aldis-cop1`); **3** the optional framework (`aldis-framework`). The facade `aldis` and the C ABI crate `aldis-ffi` sit outside the layers. | [01 §1–2](01-architecture.md#1-layering); GEN-002 |
+| <a id="layer"></a>**Layer 0–3** | The library's layers, each depending only on those below: **0** foundation (`aldis-core`); **1** stateless codecs (`aldis-time`, `-spp`, `-epp`, `-tm`, `-tc`, `-aos`, `-uslp`); **2** sans-I/O engines (`aldis-link`, `aldis-cop1`); **3** the optional framework (`aldis-framework`, planned, no crate yet). The facade `aldis` and the C ABI crate `aldis-ffi` sit outside the layers. | [01 §1–2](01-architecture.md#1-layering); GEN-002 |
 | <a id="codec"></a>**Codec** | A stateless function or type that encodes or decodes one CCSDS data unit (Layer 1). | [00 §4](00-introduction.md#4-terminology) |
 | <a id="view"></a>**View** | The zero-copy, read-only result of a decode: typed accessors over the caller's buffer that cannot fail. | [00 §4](00-introduction.md#4-terminology); API-010 |
 | <a id="frame-stream"></a>**Frame stream** | A zero-allocation iterator over a received data unit (such as a CLTU) that fuses delimiting, fill removal, and channel validation in a single pass, yielding accepted frame views or classified discard items. | TC-020, TC-021 |
