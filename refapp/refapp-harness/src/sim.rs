@@ -117,7 +117,7 @@ pub fn run(
         scenario: scenario.scenario.clone(),
         scenario_version: scenario.scenario_version,
         case: case.id.clone(),
-        trace_version: case.trace_version,
+        trace_version: case.trace_version.get(),
         requirements: case.requirements.clone(),
     };
     let mut trace = header.to_line();

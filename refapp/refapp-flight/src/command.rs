@@ -199,17 +199,13 @@ fn time_tag(t_field: &[u8]) -> Option<Timing> {
     let TimeCode::Cuc(cuc) = decoded.code() else {
         return None;
     };
-    let (seconds, nanos) = cuc.to_seconds_nanos();
-    let Some(after_t0) = seconds.checked_sub(u64::from(time::T0_COARSE_S)) else {
+    let t0 = u64::from(time::T0_COARSE_S);
+    if cuc.to_seconds_nanos().0 < t0 {
         return Some(Timing::BeforeRun);
-    };
-    // The seconds-to-microseconds arithmetic is glue that the library lacks: #312.
+    }
     // The fraction is truncated to whole µs; every execution time of the scenario is a multiple
-    // of 125 000 µs, which two fractional octets hold exactly (APP-061).
-    let micros = after_t0
-        .checked_mul(1_000_000)?
-        .checked_add(u64::from(nanos.checked_div(1_000)?))?;
-    Some(Timing::At(Instant::from_micros(micros)))
+    // of 125 000 µs, which two fractional octets hold exactly (APP-061, TIME-016).
+    cuc.to_instant(t0).ok().map(Timing::At)
 }
 
 /// The function with code `code` and its `args` (§3.3.5).

@@ -171,8 +171,7 @@ pub struct Case {
     /// End instant, exclusive, µs.
     pub end_us: u64,
     /// Version of the case's golden trace (§7.5, APP-087).
-    #[schemars(range(min = 1))]
-    pub trace_version: u32,
+    pub trace_version: Ranged<u32, 1, 4_294_967_295>,
     /// Requirement IDs the case verifies, sorted (§7.2).
     pub requirements: Vec<String>,
     /// The ops script: what the ground node releases, and when (§6.5, APP-126). Entry `i` is
@@ -211,11 +210,9 @@ pub enum OpsEntry {
         /// Release instant, µs.
         at_us: u64,
         /// Table ID.
-        #[schemars(range(min = 1, max = 255))]
-        table_id: u8,
+        table_id: Ranged<u8, { TableId::MIN as u64 }, { TableId::MAX as u64 }>,
         /// Table length, octets.
-        #[schemars(range(min = 1, max = 503))]
-        length: u16,
+        length: Ranged<u16, { TableLength::MIN as u64 }, { TableLength::MAX as u64 }>,
     },
     /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
     Fop1Directive {
@@ -230,8 +227,9 @@ impl OpsEntry {
     /// The entry as the ground node takes it (§6.5).
     ///
     /// # Errors
-    /// `InvalidField` or `OutOfRange` for a table upload whose ID or length is outside its range,
-    /// which [`Scenario::check`] rejects first.
+    /// `InvalidField` or `OutOfRange` for a table upload whose ID or length the node's types
+    /// refuse. A parsed entry holds both in range: the types of its fields take their bounds from
+    /// `TableId` and `TableLength`, so this does not fail for one.
     pub fn to_node(&self) -> Result<refapp_ground::OpsEntry, String> {
         use refapp_ground as node;
         Ok(match *self {
@@ -249,24 +247,27 @@ impl OpsEntry {
                 },
                 call: match call {
                     Call::Noop {} => node::Call::Noop,
-                    Call::DumpMemory { address, length } => {
-                        node::Call::DumpMemory { address, length }
-                    }
+                    Call::DumpMemory { address, length } => node::Call::DumpMemory {
+                        address,
+                        length: length.get(),
+                    },
                     Call::ActivateTable { table_id, crc } => node::Call::ActivateTable {
-                        table_id,
+                        table_id: table_id.get(),
                         crc: Crc16::from_wire(crc),
                     },
-                    Call::SetPayloadMode { mode } => node::Call::SetPayloadMode { mode },
-                    Call::Unknown { code } => node::Call::Unknown { code },
+                    Call::SetPayloadMode { mode } => {
+                        node::Call::SetPayloadMode { mode: mode.get() }
+                    }
+                    Call::Unknown { code } => node::Call::Unknown { code: code.get() },
                 },
                 extra_octets: extra_octets.unwrap_or(0),
             },
             OpsEntry::TableUpload {
                 table_id, length, ..
             } => node::OpsEntry::TableUpload {
-                table_id: TableId::new(table_id)
+                table_id: TableId::new(table_id.get())
                     .map_err(|e| format!("table_id: {:?}", e.kind()))?,
-                length: TableLength::new(length)
+                length: TableLength::new(length.get())
                     .map_err(|e| format!("table length: {:?}", e.kind()))?,
             },
             OpsEntry::Fop1Directive { .. } => node::OpsEntry::Fop1Directive,
@@ -308,28 +309,77 @@ pub enum Call {
         /// First address of the dump.
         address: u32,
         /// Length, octets.
-        #[schemars(range(min = 1, max = 1024))]
-        length: u16,
+        length: Ranged<u16, 1, 1024>,
     },
     /// `ACTIVATE_TABLE`, function code `0x03`.
     ActivateTable {
         /// Table ID.
-        #[schemars(range(min = 1, max = 255))]
-        table_id: u8,
+        table_id: Ranged<u8, { TableId::MIN as u64 }, { TableId::MAX as u64 }>,
         /// CRC-16 of the table that the command claims (CMN-001).
         crc: u16,
     },
     /// `SET_PAYLOAD_MODE`, function code `0x04`.
     SetPayloadMode {
         /// New mode: 0 off, 1 on.
-        #[schemars(range(max = 1))]
-        mode: u8,
+        mode: Ranged<u8, 0, 1>,
     },
     /// A function code that no function has (reason 1 of `CMD_REJECTED`, §3.3.2).
     Unknown {
         /// The code; not one of `0x01`…`0x04`.
-        code: u8,
+        code: UnknownCode,
     },
+}
+
+/// A function code that no function has: any octet but `0x01`…`0x04` (§3.3.5, RS-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct UnknownCode(u8);
+
+impl UnknownCode {
+    /// The code `code`.
+    ///
+    /// # Errors
+    /// If `code` is one of `0x01`…`0x04`, which have a function.
+    pub fn new(code: u8) -> Result<Self, String> {
+        if (1..=4).contains(&code) {
+            Err(format!(
+                "{code} is the code of a function, not unknown (the function codes are 1 to 4)"
+            ))
+        } else {
+            Ok(Self(code))
+        }
+    }
+
+    /// The code, not one of `0x01`…`0x04`.
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for UnknownCode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(u8::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+impl JsonSchema for UnknownCode {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "UnknownCode".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut schema = u8::json_schema(generator);
+        schema.insert(
+            "not".to_owned(),
+            serde_json::json!({"minimum": 1, "maximum": 4}),
+        );
+        schema
+    }
 }
 
 /// A FOP-1 directive (§2.4).
@@ -381,8 +431,7 @@ pub enum Fault {
         /// Octet number, from 0.
         octet: u32,
         /// Bit number in the octet, 0 the most significant (GEN-050).
-        #[schemars(range(max = 7))]
-        bit: u8,
+        bit: Ranged<u8, 0, 7>,
     },
     /// Only the first `octets` octets are delivered.
     Truncate {
@@ -395,8 +444,11 @@ impl Scenario {
     /// Parses and checks a scenario file.
     ///
     /// # Errors
-    /// If the text does not match the model, or breaks a rule the schema cannot express.
+    /// If the text does not match the model, or breaks a rule the schema cannot express. The
+    /// entries of the scripts are checked first, so an error in an `ops` or `faults` entry is
+    /// reported, by its entry, before an error elsewhere.
     pub fn parse(text: &str) -> Result<Scenario, String> {
+        check_entries(text)?;
         let s: Scenario = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
         s.check()?;
         Ok(s)
@@ -443,9 +495,6 @@ impl Scenario {
             if !valid_id {
                 return Err(format!("scenario.json: invalid case ID `{}`", c.id));
             }
-            if c.trace_version == 0 {
-                return Err(format!("scenario.json: case `{}`: trace_version 0", c.id));
-            }
             let mut sorted = c.requirements.clone();
             sorted.sort();
             sorted.dedup();
@@ -461,8 +510,7 @@ impl Scenario {
         Ok(())
     }
 
-    /// The rules of §6.5 that the schema cannot express, and the ranges of the entries
-    /// (APP-061, APP-126, APP-128).
+    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us.get();
         let delay = self.link.one_way_delay_us;
@@ -472,10 +520,7 @@ impl Scenario {
         for (i, entry) in c.ops.iter().enumerate() {
             let at_us = match entry {
                 OpsEntry::Command {
-                    at_us,
-                    execution,
-                    call,
-                    ..
+                    at_us, execution, ..
                 } => {
                     let arrival = at_us.saturating_add(delay);
                     let on_grid = arrival.is_multiple_of(slot);
@@ -492,23 +537,11 @@ impl Scenario {
                         }
                         Execution::Immediate {} => {}
                     }
-                    check_call(*call).map_err(|e| format!("ops[{i}]: {e}"))?;
                     *at_us
                 }
-                OpsEntry::TableUpload {
-                    at_us,
-                    table_id,
-                    length,
-                } => {
-                    if TableId::new(*table_id).is_err() {
-                        return Err(format!("ops[{i}]: table_id is 1 to 255"));
-                    }
-                    if TableLength::new(*length).is_err() {
-                        return Err(format!("ops[{i}]: table length is 1 to 503"));
-                    }
+                OpsEntry::TableUpload { at_us, .. } | OpsEntry::Fop1Directive { at_us, .. } => {
                     *at_us
                 }
-                OpsEntry::Fop1Directive { at_us, .. } => *at_us,
             };
             if at_us < previous {
                 return Err(format!("ops[{i}]: release instants must not decrease"));
@@ -524,9 +557,6 @@ impl Scenario {
                     return Err(format!(
                         "faults[{i}]: `flip` needs a FECF, so frame level only"
                     ));
-                }
-                Fault::Flip { bit: 8.., .. } => {
-                    return Err(format!("faults[{i}]: bit is 0 to 7"));
                 }
                 _ => {}
             }
@@ -559,23 +589,36 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
     Ok(())
 }
 
-/// The ranges of a command's arguments (§3.3.5).
-fn check_call(call: Call) -> Result<(), String> {
-    match call {
-        Call::DumpMemory { length, .. } if !(1..=1024).contains(&length) => {
-            Err("dump length is 1 to 1024".to_owned())
-        }
-        Call::ActivateTable { table_id: 0, .. } => Err("table_id is 1 to 255".to_owned()),
-        Call::SetPayloadMode { mode: 2.. } => Err("mode is 0 or 1".to_owned()),
-        Call::Unknown { code: 1..=4 } => {
-            Err("the function codes 1 to 4 are not unknown".to_owned())
-        }
-        Call::Noop {}
-        | Call::DumpMemory { .. }
-        | Call::ActivateTable { .. }
-        | Call::SetPayloadMode { .. }
-        | Call::Unknown { .. } => Ok(()),
+/// The entries of the scripts of `text`, each parsed on its own. serde reports an error inside
+/// a tagged entry at the end of the entry, so the position says little; this reports
+/// ``scenario.json: case `a1-rejects`: ops[5]: 504 is outside the range 1 to 503``, the entry
+/// with the error of its field, which carries the value and its range. Text that is not JSON,
+/// or has another shape, is left to the parse of the whole [`Scenario`].
+fn check_entries(text: &str) -> Result<(), String> {
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Ok(());
+    };
+    let cases = doc.get("cases").and_then(serde_json::Value::as_array);
+    for case in cases.into_iter().flatten() {
+        let id = case.get("id").and_then(serde_json::Value::as_str);
+        entries_of::<OpsEntry>(case, "ops", id.unwrap_or("?"))?;
+        entries_of::<FaultEntry>(case, "faults", id.unwrap_or("?"))?;
     }
+    Ok(())
+}
+
+/// The entries of the list `list` of `case` (the case `id`) as `T`.
+fn entries_of<T: serde::de::DeserializeOwned>(
+    case: &serde_json::Value,
+    list: &str,
+    id: &str,
+) -> Result<(), String> {
+    let entries = case.get(list).and_then(serde_json::Value::as_array);
+    for (i, entry) in entries.into_iter().flatten().enumerate() {
+        serde_json::from_value::<T>(entry.clone())
+            .map_err(|e| format!("scenario.json: case `{id}`: {list}[{i}]: {e}"))?;
+    }
+    Ok(())
 }
 
 /// `AREA-NNN` with an upper-case area and three digits.
@@ -959,6 +1002,7 @@ mod tests {
         Call, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
         literal,
     };
+    use crate::ranged::Ranged;
 
     #[test]
     fn literals_and_ids() {
@@ -1138,15 +1182,6 @@ mod tests {
             extra_octets: None,
         };
         assert!(rejects(&s, "APP-061"));
-        // A function code that exists.
-        let mut s = ok.clone();
-        s.cases[3].ops[1] = OpsEntry::Command {
-            at_us: 615_000,
-            execution: Execution::Immediate {},
-            call: Call::Unknown { code: 4 },
-            extra_octets: None,
-        };
-        assert!(rejects(&s, "not unknown"));
         // Release order, and the end instant.
         let mut s = ok.clone();
         s.cases[3].ops.swap(0, 1);
@@ -1159,7 +1194,10 @@ mod tests {
         s.cases[4].faults.push(FaultEntry {
             dir: Direction::Down,
             index: 0,
-            fault: Fault::Flip { octet: 0, bit: 0 },
+            fault: Fault::Flip {
+                octet: 0,
+                bit: Ranged::new(0).unwrap(),
+            },
         });
         assert!(rejects(&s, "flip"));
     }
@@ -1207,78 +1245,145 @@ mod tests {
         Scenario::load().unwrap().check().unwrap();
     }
 
+    /// Parameters of the entries with a range: the entry's JSON with `{}` for the value, the
+    /// lowest and the highest value.
+    const ENTRY_RANGES: &[(&str, u64, u64)] = &[
+        (
+            r#"{"kind":"table_upload","at_us":0,"table_id":{},"length":1}"#,
+            1,
+            255,
+        ),
+        (
+            r#"{"kind":"table_upload","at_us":0,"table_id":1,"length":{}}"#,
+            1,
+            503,
+        ),
+        (
+            r#"{"kind":"command","at_us":0,"execution":{"mode":"immediate"},"call":{"function":"dump_memory","address":0,"length":{}}}"#,
+            1,
+            1024,
+        ),
+        (
+            r#"{"kind":"command","at_us":0,"execution":{"mode":"immediate"},"call":{"function":"activate_table","table_id":{},"crc":0}}"#,
+            1,
+            255,
+        ),
+        (
+            r#"{"kind":"command","at_us":0,"execution":{"mode":"immediate"},"call":{"function":"set_payload_mode","mode":{}}}"#,
+            0,
+            1,
+        ),
+    ];
+
     #[test]
     fn script_ranges_are_enforced() {
         // req: APP-126
-        let imm = Execution::Immediate {};
-        let table = |table_id, length| OpsEntry::TableUpload {
-            at_us: 5_115_000,
-            table_id,
-            length,
-        };
-        for (entry, what) in [
-            (table(0, 300), "table_id"),
-            (table(1, 0), "table length"),
-            (table(1, 504), "table length"),
-            (
-                command(
-                    115_000,
-                    imm,
-                    Call::DumpMemory {
-                        address: 0,
-                        length: 0,
-                    },
-                ),
-                "dump length",
-            ),
-            (
-                command(
-                    115_000,
-                    imm,
-                    Call::DumpMemory {
-                        address: 0,
-                        length: 1025,
-                    },
-                ),
-                "dump length",
-            ),
-            (
-                command(
-                    115_000,
-                    imm,
-                    Call::ActivateTable {
-                        table_id: 0,
-                        crc: 0,
-                    },
-                ),
-                "table_id",
-            ),
-            (
-                command(115_000, imm, Call::SetPayloadMode { mode: 2 }),
-                "mode",
-            ),
-            (
-                command(115_000, imm, Call::Unknown { code: 1 }),
-                "not unknown",
-            ),
-        ] {
-            let idx = if matches!(entry, OpsEntry::TableUpload { .. }) {
-                5
-            } else {
-                0
-            };
-            assert!(rejects(&rejects_with(idx, entry), what), "{what}");
+        for &(template, min, max) in ENTRY_RANGES {
+            let parse =
+                |v: u64| serde_json::from_str::<OpsEntry>(&template.replace("{}", &v.to_string()));
+            for v in [min, max] {
+                assert!(parse(v).is_ok(), "{template}: {v}: {:?}", parse(v).err());
+            }
+            if let Some(below) = min.checked_sub(1) {
+                let e = parse(below).unwrap_err().to_string();
+                assert!(e.contains("outside the range"), "{template}: {below}: {e}");
+            }
+            // Some of the values above the range (255 + 1 of a `u8`) fail in the type of the
+            // field, not in the range, so only that they fail is asserted.
+            if let Some(above) = max.checked_add(1) {
+                assert!(parse(above).is_err(), "{template}: {above}");
+            }
         }
-        let mut s = Scenario::load().unwrap();
-        s.cases[4].level = super::Level::Frames;
-        s.cases[4].faults.push(FaultEntry {
-            dir: Direction::Down,
-            index: 0,
-            fault: Fault::Flip { octet: 0, bit: 8 },
-        });
-        assert!(rejects(&s, "bit is 0 to 7"));
-        s.cases[4].faults[5].fault = Fault::Flip { octet: 0, bit: 7 };
-        s.check().unwrap();
+        let flip = |bit: u8| {
+            serde_json::from_str::<Fault>(&format!(r#"{{"kind":"flip","octet":0,"bit":{bit}}}"#))
+        };
+        assert!(flip(7).is_ok());
+        assert!(
+            flip(8)
+                .unwrap_err()
+                .to_string()
+                .contains("outside the range")
+        );
+        // The version of a trace starts at 1.
+        let mut doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        doc["cases"][0]["trace_version"] = 0.into();
+        let e = Scenario::parse(&doc.to_string()).unwrap_err();
+        assert!(e.contains("outside the range"), "{e}");
+        // A function code that exists is not an unknown one.
+        let unknown = |code: u8| {
+            serde_json::from_str::<Call>(&format!(r#"{{"function":"unknown","code":{code}}}"#))
+        };
+        assert!(unknown(0).is_ok() && unknown(5).is_ok() && unknown(255).is_ok());
+        for code in 1..=4 {
+            let e = unknown(code).unwrap_err().to_string();
+            assert!(e.contains("not unknown"), "{code}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_range_error_names_its_entry_and_carries_the_range() {
+        // req: APP-107, APP-126
+        let error_of = |from: &str, to: &str| {
+            assert!(super::SCENARIO_JSON.contains(from), "{from}");
+            Scenario::parse(&super::SCENARIO_JSON.replacen(from, to, 1)).unwrap_err()
+        };
+        let e = error_of(
+            r#""table_id": 1, "length": 300"#,
+            r#""table_id": 1, "length": 504"#,
+        );
+        assert!(
+            e.contains("ops[1]: 504 is outside the range 1 to 503"),
+            "{e}"
+        );
+        let e = error_of(
+            r#""function": "unknown", "code": 127"#,
+            r#""function": "unknown", "code": 3"#,
+        );
+        assert!(
+            e.contains("ops[1]: 3 is the code of a function, not unknown"),
+            "{e}"
+        );
+        let e = error_of(
+            r#""fault": {"kind": "drop"}"#,
+            r#""fault": {"kind": "flip", "octet": 0, "bit": 8}"#,
+        );
+        assert!(
+            e.contains("faults[0]: 8 is outside the range 0 to 7"),
+            "{e}"
+        );
+        // Outside the scripts the error is serde's.
+        let e = error_of(r#""trace_version": 1"#, r#""trace_version": 0"#);
+        assert!(e.contains("0 is outside the range 1 to 4294967295"), "{e}");
+        // A document on one line has no lines to point at; the entry is named all the same.
+        let mut doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let case = doc["cases"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|c| c["ops"].as_array().is_some_and(|ops| ops.len() > 1))
+            .unwrap();
+        let id = case["id"].as_str().unwrap().to_owned();
+        case["ops"][1]["length"] = 504.into();
+        let one_line = doc.to_string();
+        assert!(!one_line.contains('\n'));
+        let e = Scenario::parse(&one_line).unwrap_err();
+        assert!(
+            e.contains(&format!(
+                "case `{id}`: ops[1]: 504 is outside the range 1 to 503"
+            )),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn every_range_of_the_scenario_is_in_a_type() {
+        // req: APP-107
+        // A `schemars(range ...)` attribute states a range for the schema only; the parser
+        // would need a second, hand-written check of it (RS-020). `Ranged` holds both.
+        let source = include_str!("scenario.rs");
+        let attribute = ["schemars(", "range"].concat();
+        let (code, _) = source.split_once("#[cfg(test)]").unwrap();
+        assert!(!code.contains(&attribute), "use a `Ranged` for the field");
     }
 
     #[test]
@@ -1287,11 +1392,19 @@ mod tests {
         // req: APP-126
         let table = |length| OpsEntry::TableUpload {
             at_us: 5_115_000,
-            table_id: 1,
+            table_id: Ranged::new(1).unwrap(),
             length,
         };
-        rejects_with(5, table(503)).check().unwrap();
-        assert!(rejects(&rejects_with(5, table(504)), "table length"));
+        rejects_with(5, table(Ranged::new(503).unwrap()))
+            .check()
+            .unwrap();
+        let parse = |length: u16| {
+            serde_json::from_str::<OpsEntry>(&format!(
+                r#"{{"kind":"table_upload","at_us":0,"table_id":1,"length":{length}}}"#
+            ))
+        };
+        assert!(parse(503).is_ok());
+        assert!(parse(504).is_err());
     }
 
     #[test]
