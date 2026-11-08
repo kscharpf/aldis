@@ -446,8 +446,8 @@ impl Scenario {
     /// # Errors
     /// If the text does not match the model, or breaks a rule the schema cannot express.
     pub fn parse(text: &str) -> Result<Scenario, String> {
-        let s: Scenario = serde_json::from_str(text)
-            .map_err(|e| format!("scenario.json: {}", describe(text, &e)))?;
+        check_entries(text)?;
+        let s: Scenario = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
         s.check()?;
         Ok(s)
     }
@@ -587,69 +587,36 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
     Ok(())
 }
 
-/// The error `e` of parsing `text`, with where the author of the file finds it. serde reports
-/// an error inside a tagged entry at the end of the entry, so an entry of a script is parsed
-/// again on its own: the error is then `case `a1-rejects`: ops[3].length: …`, with the field
-/// whose replacement by 0 or 1 makes the entry parse. Any other error names the last key before
-/// its position.
-fn describe(text: &str, e: &serde_json::Error) -> String {
-    let in_script = serde_json::from_str::<serde_json::Value>(text)
-        .ok()
-        .and_then(|doc| {
-            let cases = doc.get("cases")?.as_array()?;
-            cases.iter().find_map(|case| {
-                let id = case.get("id")?.as_str()?;
-                script_error::<OpsEntry>(case, "ops")
-                    .or_else(|| script_error::<FaultEntry>(case, "faults"))
-                    .map(|(at, field, err)| format!("case `{id}`: {at}.{field}: {err}"))
-            })
-        });
-    in_script.unwrap_or_else(|| {
-        let key = text.lines().nth(e.line().wrapping_sub(1)).and_then(|l| {
-            let before: String = l.chars().take(e.column()).collect();
-            Some(before.rsplit_once("\":")?.0.rsplit_once('"')?.1.to_owned())
-        });
-        key.map_or_else(|| e.to_string(), |k| format!("{k}: {e}"))
-    })
+/// The entries of the scripts of `text`, each parsed on its own. serde reports an error inside
+/// a tagged entry at the end of the entry, so the position says little; this reports
+/// ``case `a1-rejects`: ops[3]: 504 is outside the range 1 to 503``, the entry with the error of
+/// its field, which carries the value and its range. Text that is not JSON, or has another
+/// shape, is left to the parse of the whole [`Scenario`].
+fn check_entries(text: &str) -> Result<(), String> {
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(text) else {
+        return Ok(());
+    };
+    let cases = doc.get("cases").and_then(serde_json::Value::as_array);
+    for case in cases.into_iter().flatten() {
+        let id = case.get("id").and_then(serde_json::Value::as_str);
+        entries_of::<OpsEntry>(case, "ops", id.unwrap_or("?"))?;
+        entries_of::<FaultEntry>(case, "faults", id.unwrap_or("?"))?;
+    }
+    Ok(())
 }
 
-/// The first entry of the list `list` of `case` that is not a `T`: `list[i]`, its field, and the
-/// error of the entry.
-fn script_error<T: serde::de::DeserializeOwned>(
+/// The entries of the list `list` of `case` (the case `id`) as `T`.
+fn entries_of<T: serde::de::DeserializeOwned>(
     case: &serde_json::Value,
     list: &str,
-) -> Option<(String, String, serde_json::Error)> {
-    let entries = case.get(list)?.as_array()?;
-    let (i, entry, err) = entries.iter().enumerate().find_map(|(i, entry)| {
+    id: &str,
+) -> Result<(), String> {
+    let entries = case.get(list).and_then(serde_json::Value::as_array);
+    for (i, entry) in entries.into_iter().flatten().enumerate() {
         serde_json::from_value::<T>(entry.clone())
-            .err()
-            .map(|err| (i, entry, err))
-    })?;
-    // The integers of the entry and of its `call`, `execution` or `fault` object.
-    let mut leaves = Vec::new();
-    for (key, value) in entry.as_object()? {
-        match value {
-            serde_json::Value::Object(inner) => {
-                leaves.extend(inner.keys().map(|k| (format!("/{key}/{k}"), k.clone())));
-            }
-            _ => leaves.push((format!("/{key}"), key.clone())),
-        }
+            .map_err(|e| format!("scenario.json: case `{id}`: {list}[{i}]: {e}"))?;
     }
-    let field = leaves
-        .into_iter()
-        .find(|(pointer, _)| {
-            [0, 1].into_iter().any(|trial| {
-                let mut fixed = entry.clone();
-                let is_number = fixed.pointer_mut(pointer).is_some_and(|v| {
-                    let number = v.is_number();
-                    *v = trial.into();
-                    number
-                });
-                is_number && serde_json::from_value::<T>(fixed).is_ok()
-            })
-        })
-        .map(|(_, name)| name)?;
-    Some((format!("{list}[{i}]"), field, err))
+    Ok(())
 }
 
 /// `AREA-NNN` with an upper-case area and three digits.
@@ -1352,7 +1319,7 @@ mod tests {
     }
 
     #[test]
-    fn a_range_error_names_its_field_and_entry() {
+    fn a_range_error_names_its_entry_and_carries_the_range() {
         // req: APP-107, APP-126
         let error_of = |from: &str, to: &str| {
             assert!(super::SCENARIO_JSON.contains(from), "{from}");
@@ -1363,7 +1330,7 @@ mod tests {
             r#""table_id": 1, "length": 504"#,
         );
         assert!(
-            e.contains("ops[1].length: ") && e.contains("outside the range"),
+            e.contains("ops[1]: 504 is outside the range 1 to 503"),
             "{e}"
         );
         let e = error_of(
@@ -1371,16 +1338,39 @@ mod tests {
             r#""function": "unknown", "code": 3"#,
         );
         assert!(
-            e.contains("ops[1].code: ") && e.contains("not unknown"),
+            e.contains("ops[1]: 3 is the code of a function, not unknown"),
             "{e}"
         );
         let e = error_of(
             r#""fault": {"kind": "drop"}"#,
             r#""fault": {"kind": "flip", "octet": 0, "bit": 8}"#,
         );
-        assert!(e.contains("faults[0].bit: "), "{e}");
+        assert!(
+            e.contains("faults[0]: 8 is outside the range 0 to 7"),
+            "{e}"
+        );
+        // Outside the scripts the error is serde's, with its position.
         let e = error_of(r#""trace_version": 1"#, r#""trace_version": 0"#);
-        assert!(e.contains("trace_version: "), "{e}");
+        assert!(e.contains("0 is outside the range 1 to 4294967295"), "{e}");
+        // A document on one line has no lines to point at; the entry is named all the same.
+        let mut doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let case = doc["cases"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|c| c["ops"].as_array().is_some_and(|ops| ops.len() > 1))
+            .unwrap();
+        let id = case["id"].as_str().unwrap().to_owned();
+        case["ops"][1]["length"] = 504.into();
+        let one_line = doc.to_string();
+        assert!(!one_line.contains('\n'));
+        let e = Scenario::parse(&one_line).unwrap_err();
+        assert!(
+            e.contains(&format!(
+                "case `{id}`: ops[1]: 504 is outside the range 1 to 503"
+            )),
+            "{e}"
+        );
     }
 
     #[test]
