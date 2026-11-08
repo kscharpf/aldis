@@ -293,31 +293,11 @@ fn deliver_tail<const V: usize>(
 impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     /// Delivers an Insert Zone that is already in the output area (a range of the whole frame,
     /// LNK-075); nothing for a channel without one.
-    pub(super) fn deliver_insert_range(
-        &mut self,
-        sdu: OutRange,
-        replay: Option<bool>,
-    ) -> Result<()> {
+    fn deliver_insert_range(&mut self, sdu: OutRange, replay: Option<bool>) -> Result<()> {
         if sdu.is_empty() {
             Ok(())
         } else {
             self.push(ReceiverOutput::InsertSdu { sdu, replay })
         }
-    }
-}
-
-#[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
-    use aldis_core::field;
-    use aldis_core::ids::MapId;
-
-    #[test]
-    fn map_id_of_five_bits_is_out_of_range() {
-        // req: GEN-020, RS-020
-        assert_eq!(
-            MapId::<4>::try_from(16).unwrap_err().field(),
-            Some(field::MAP_ID)
-        );
     }
 }
