@@ -35,11 +35,15 @@
 //! reported too, so the list shrinks when the code catches up (CABI-005).
 //!
 //! **Status tables.** A milestone plan (`docs/milestones/*.md`) whose first `**Status:` line
-//! begins `complete` or `exited` has no work-package row (a first cell `WP-<n>...`) whose State
-//! is `planned`, `in review`, or `in progress` (the values `cargo xtask status-table` writes
-//! for an unfinished row, and the hand-written ones), except that the last work-package row, the
-//! exit, may be `in progress`: its pull request is open while the plan says complete. The cure
-//! is `cargo xtask status-table --write` in the exit pull request.
+//! begins `complete` or `exited` has no work-package row (a first cell starting `WP-`) whose
+//! State is `planned`, `in review`, or `in progress` (the values `cargo xtask status-table`
+//! writes for an unfinished row, and the hand-written ones). The exception is the last
+//! work-package row, the exit, which may read `in progress` while its pull request is open and
+//! the plan says complete; it expires when a later plan of the same track exists (the same
+//! letter and a higher number in the file name: `a1-` until `a2-` is on disk), whose plan pull
+//! request runs `status-table --write` for the previous plan. A row that no pull-request title
+//! maps to (`WP-0 Plan`, since `feat(a1/plan): ...` names no work package) needs its pull
+//! requests listed in the PRs cell by hand first.
 //!
 //! **Vector files.** Every vector file (`test-vectors/<area>/*.json`, except the schemas and the
 //! generated field catalogue, [`crate::vectors::is_vector_file`]) is matched by a path in the
@@ -1015,9 +1019,32 @@ const CAPACITIES: &str = crate::header::CAPACITIES_TOML;
 /// States of a work-package row that a plan called complete may not show.
 const NOT_DONE: [&str; 3] = ["planned", "in review", "in progress"];
 
+/// The track letter and milestone number of a plan file (`docs/milestones/a1-packets.md` is
+/// `('a', 1)`); `None` for a file with no such name (`acfs-flight-side.md`, `checklists.md`).
+fn plan_id(path: &str) -> Option<(char, u32)> {
+    let stem = path.rsplit('/').next()?;
+    let mut chars = stem.chars();
+    let track = chars.next().filter(char::is_ascii_lowercase)?;
+    let digits: String = chars.take_while(char::is_ascii_digit).collect();
+    let rest = stem.get(1 + digits.len()..)?;
+    rest.starts_with('-').then_some(())?;
+    Some((track, digits.parse().ok()?))
+}
+
+/// Whether some plan of `paths` is a later plan of the same track as `path`.
+fn has_later_plan(path: &str, paths: &[String]) -> bool {
+    plan_id(path).is_some_and(|(track, n)| {
+        paths
+            .iter()
+            .filter_map(|p| plan_id(p))
+            .any(|(t, m)| t == track && m > n)
+    })
+}
+
 /// The rows of the work-package status tables of the plan `name` that contradict its status
-/// line. Only a plan whose first `**Status:` line begins `complete` or `exited` is checked.
-fn status_table_problems(name: &str, plan: &str) -> Vec<String> {
+/// line. Only a plan whose first `**Status:` line begins `complete` or `exited` is checked; its
+/// exit row may read `in progress` unless `later_plan` (a later plan of its track exists).
+fn status_table_problems(name: &str, plan: &str, later_plan: bool) -> Vec<String> {
     let finished = plan
         .lines()
         .find_map(|l| l.strip_prefix("**Status:"))
@@ -1044,9 +1071,9 @@ fn status_table_problems(name: &str, plan: &str) -> Vec<String> {
         for (i, (line, cells)) in wp_rows.iter().enumerate() {
             let state = cells.get(1).map_or("", |c| c.trim());
             let exit = i + 1 == wp_rows.len();
-            if NOT_DONE.contains(&state) && !(exit && state == "in progress") {
+            if NOT_DONE.contains(&state) && !(exit && !later_plan && state == "in progress") {
                 problems.push(format!(
-                    "{name}:{line}: the plan is complete but {} is `{state}`; run `cargo xtask status-table --write`",
+                    "{name}:{line}: the plan is complete but {} is `{state}`; list its pull requests in the PRs cell by hand if no PR title maps to it (`WP-0 Plan`, as in m5-c-abi-completion.md), then run `cargo xtask status-table --write`",
                     cells.first().map_or("", |c| c.trim())
                 ));
             }
@@ -1102,10 +1129,15 @@ pub fn check() -> Result<usize, String> {
     let docs: Vec<(&str, &str)> = docs.iter().map(|(d, t)| (*d, t.as_str())).collect();
     problems.extend(header_name_problems(&docs, &read(C_HEADER)?, NOT_IN_HEADER));
     problems.extend(engine_check()?);
-    for path in repo::files("docs/milestones", &["md"]) {
+    let plans: Vec<String> = repo::files("docs/milestones", &["md"])
+        .iter()
+        .map(|p| repo::rel(p))
+        .collect();
+    for rel in &plans {
         problems.extend(status_table_problems(
-            &repo::rel(&path),
-            &repo::read(&path)?,
+            rel,
+            &read(rel)?,
+            has_later_plan(rel, &plans),
         ));
     }
 
@@ -1128,8 +1160,8 @@ mod tests {
     use super::{
         Crates, Form, Sizing, aldis_dependencies, awaiting_runner, bin_paths, bin_targets, c_names,
         crate_problems, engine_problems, engines_in, exerciser_groups, expand_braces,
-        ffi_runner_files, fuzz_problems, fuzz_source_problems, glob, has_code,
-        header_name_problems, matrix_targets, mutants_crates, named_by_test, names,
+        ffi_runner_files, fuzz_problems, fuzz_source_problems, glob, has_code, has_later_plan,
+        header_name_problems, matrix_targets, mutants_crates, named_by_test, names, plan_id,
         readme_patterns, status_table_problems, vector_problems, without_c_comments,
     };
 
@@ -1713,46 +1745,79 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
+    // req: VER-056
     fn status_table_a1_shape_fails() {
         let text = sample(
             "complete (2026-11-07)",
             &["in progress", "planned", "planned"],
         );
-        let p = status_table_problems("a1.md", &text);
+        let p = status_table_problems("a1.md", &text, false);
         assert_eq!(p.len(), 3, "{p:?}");
         assert!(p[0].starts_with("a1.md:6:"), "{p:?}");
     }
 
     #[test]
+    // req: VER-056
     fn status_table_finished_plan_passes() {
         let done = sample("complete", &["merged", "merged"]);
-        assert_eq!(status_table_problems("m.md", &done), Vec::<String>::new());
+        assert_eq!(
+            status_table_problems("m.md", &done, false),
+            Vec::<String>::new()
+        );
         // The exit pull request is open while the plan says complete.
         let exiting = sample("exited (2026-11-06)", &["merged", "in progress"]);
         assert_eq!(
-            status_table_problems("m.md", &exiting),
+            status_table_problems("m.md", &exiting, false),
             Vec::<String>::new()
         );
     }
 
     #[test]
+    // req: VER-056
     fn status_table_exit_row_only_in_progress() {
-        let p = status_table_problems("m.md", &sample("complete", &["merged", "planned"]));
+        let p = status_table_problems("m.md", &sample("complete", &["merged", "planned"]), false);
         assert_eq!(p.len(), 1, "{p:?}");
-        let p = status_table_problems("m.md", &sample("complete", &["in progress", "merged"]));
+        let p = status_table_problems(
+            "m.md",
+            &sample("complete", &["in progress", "merged"]),
+            false,
+        );
         assert_eq!(p.len(), 1, "{p:?}");
     }
 
     #[test]
+    // req: VER-056
     fn status_table_unfinished_plan_is_not_checked() {
         let text = sample("plan approved (2026-10-21)", &["planned", "in review"]);
         assert_eq!(
-            status_table_problems("acfs.md", &text),
+            status_table_problems("acfs.md", &text, false),
             Vec::<String>::new()
         );
         assert_eq!(
-            status_table_problems("none.md", "no status line\n"),
+            status_table_problems("none.md", "no status line\n", false),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    // req: VER-056
+    fn status_table_exit_row_expires_with_a_later_plan() {
+        let exiting = sample("complete", &["merged", "in progress"]);
+        let p = status_table_problems("a1.md", &exiting, true);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("PRs cell"), "{p:?}");
+        let paths: Vec<String> = ["docs/milestones/a1-packets.md", "docs/milestones/m2-x.md"]
+            .map(String::from)
+            .to_vec();
+        assert!(!has_later_plan("docs/milestones/a1-packets.md", &paths));
+        let mut more = paths;
+        more.push("docs/milestones/a2-faults.md".to_owned());
+        assert!(has_later_plan("docs/milestones/a1-packets.md", &more));
+        assert!(!has_later_plan("docs/milestones/a2-faults.md", &more));
+        assert!(!has_later_plan(
+            "docs/milestones/acfs-flight-side.md",
+            &more
+        ));
+        assert_eq!(plan_id("docs/milestones/checklists.md"), None);
     }
 }
