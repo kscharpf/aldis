@@ -62,7 +62,7 @@ A failed exerciser link with `undefined symbol: aldis_panic_is_unreachable` mean
 
 Each check in `xtask/src/verify/checks.rs` declares its inputs (`cargo xtask verify list` shows which checks HEAD needs); when a check starts reading a new path, add that path to its inputs in the same change.
 
-Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision there (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
+Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints and selected nursery lints ([docs/profiles/rust.md](docs/profiles/rust.md) §5; the lints are `[workspace.lints]` in `Cargo.toml`). Do not enable the whole `nursery` group; adopt a nursery lint only after checking its findings, and record the decision in [docs/profiles/rust-lints.md](docs/profiles/rust-lints.md) (RS-019). To relax a lint, use a local `#[expect(clippy::<lint>, reason = "…")]` on the smallest item (RS-016). Never use crate-wide `allow`.
 
 ## Conventions
 

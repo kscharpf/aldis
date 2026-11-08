@@ -64,9 +64,11 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| A finding whose fix changes behaviour the specification defines, a requirement, the public API or C ABI, or a released vector; rejecting a finding the reviewer still holds after the reply | Whether a finding is blocking; fixing a finding that changes none of those and re-verifying; moving a non-blocking finding to a follow-up issue named in the reply; the point-by-point reply | Fixing such findings on its own branch |
+| A finding whose fix changes behaviour the specification defines, a requirement, the public API or C ABI, or a released vector; rejecting a finding the reviewer still holds after the reply | Whether a finding is blocking; fixing a finding that changes none of those and re-verifying; moving a non-blocking finding to a follow-up issue named in the reply (mandatory after the third review, below); the point-by-point reply | Fixing such findings on its own branch |
 
 **Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply. Standing maintainer decision (2026-11-08): the coordinator reads a fix round instead of dispatching a fresh review when it changes only what a list of allowed changes names (code comments and a few Markdown files); the conditions are in [coordinator.md](coordinator.md#a-comments-only-fix-round). A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue by the coordinator, or by the reviewing agent when the coordinator asks; a finding that exists only in chat is lost.
+
+Review rounds (maintainer, 2026-11-08, given in the coordinating session): "we should strive for max 3 review rounds and open non-blocking items at that point become follow-on issues." Read as a hard cap of three reviews by `reviewer` per pull request; after the third, the coordinator opens the remaining non-blocking findings and nits as follow-up issues, and a blocking finding left then goes to the maintainer as one question ([coordinator.md](coordinator.md), "At most three reviews").
 
 ### 2.7 Process and tooling
 
