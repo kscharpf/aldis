@@ -1,9 +1,9 @@
 //! A FIFO of variable-length octet records in a ring of `N` octets, for test models.
 //!
 //! It was a container of `aldis-core`; the flight crates have no user for it, and the tests,
-//! fuzz targets, and strategies that exercise it live here (GEN-010, GEN-011, API-061). Each
-//! record costs its length plus a 4-octet length prefix. The type has no dependency on the
-//! flight crates, so every tooling crate can use it without a feature.
+//! fuzz targets, and strategies that exercise it live here (VER-054). Each record costs its
+//! length plus a 4-octet length prefix. The type has no dependency on the flight crates, so
+//! every tooling crate can use it without a feature.
 
 /// Why a [`ByteQueue`] operation failed; the queue is unchanged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +189,7 @@ mod tests {
 
     #[test]
     fn peek_len_reports_the_oldest_record() {
+        // req: VER-054
         let mut q: ByteQueue<16> = ByteQueue::new();
         assert_eq!(q.peek_len(), None);
         q.push(&[7; 5]).unwrap();
@@ -202,6 +203,7 @@ mod tests {
 
     #[test]
     fn free_and_contents_survive_wrap_around() {
+        // req: VER-054
         let mut q: ByteQueue<16> = ByteQueue::new();
         assert_eq!((q.free(), q.capacity(), q.is_empty()), (16, 16, true));
         q.push(&[1; 8]).unwrap();
@@ -220,6 +222,7 @@ mod tests {
 
     #[test]
     fn zero_capacity_holds_nothing() {
+        // req: VER-054
         let mut q: ByteQueue<0> = ByteQueue::default();
         assert_eq!((q.capacity(), q.free(), q.is_empty()), (0, 0, true));
         assert_eq!(
@@ -235,6 +238,7 @@ mod tests {
 
     #[test]
     fn errors_keep_records() {
+        // req: VER-054
         let mut q: ByteQueue<16> = ByteQueue::default();
         assert_eq!(q.capacity(), 16);
         assert_eq!(
@@ -289,6 +293,7 @@ mod model_tests {
 
         #[test]
         fn matches_model(ops in byte_queue_ops(20, 200)) {
+            // req: VER-054
             let mut q: ByteQueue<37> = ByteQueue::new();
             let mut model: VecDeque<Vec<u8>> = VecDeque::new();
             let mut used = 0;
