@@ -1018,7 +1018,7 @@ fn engine_check() -> Result<Vec<String>, String> {
 /// The capacities of the C ABI (CABI-030).
 const CAPACITIES: &str = crate::header::CAPACITIES_TOML;
 
-/// States of a work-package row that a plan called complete may not show.
+/// States of a work-package row that a plan called complete or exited may not show.
 const NOT_DONE: [&str; 3] = ["planned", "in review", "in progress"];
 
 /// The track letter and milestone number of a plan file (`docs/milestones/a1-packets.md` is
