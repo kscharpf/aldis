@@ -12,4 +12,4 @@ Spend the review on what no check covers: the reading of the Blue Book behind ea
 
 **Mismatches between documentation and code, or between two pieces of documentation, are reported together as one batch of nits at the end of the review.** The implementer fixes them in the same round as the code findings, so they cost no round of their own (OI-63).
 
-**A pull request gets at most three reviews by `reviewer`;** the cap, what happens to the findings left after the third, and the case of a blocking finding there are in [coordinator.md](coordinator.md) ("Review with the reviewer agent"; 2026-11-08).
+**A pull request gets at most three reviews by `reviewer`;** the cap, what happens to the findings left after the third, and the case of a blocking finding there are in [coordinator.md](coordinator.md) ("At most three reviews").
