@@ -3,7 +3,7 @@
 a1-rejects and a1-downlink-faults.
 
 Written from docs/reference-application.md (the scenario spec), docs/03-api-model.md §9
-(error codes), docs/standards/space-packet.md §5.1, §5.3-5.4 (strict decode, sequence classes, reassembler), docs/03-api-model.md API-019,
+(error codes), docs/standards/space-packet.md §5.1, §5.3-5.4 (strict decode, sequence classes, reassembler),
 refapp/scenario/scenario.json (scenario input data) and the CCSDS Blue Books 133.0-B-2,
 301.0-B-4 and 132.0-B-3 (CRC-16), without sight of the refapp implementation. The golden
 traces are read only as the comparison target.
@@ -348,7 +348,8 @@ class Run:
             # SPP-004 strict: Idle Packet with Secondary Header Flag = 1
             return self.ground_app_event(t, 6, "packet_rejected", [ERR_INVALID_FIELD])
         if len(unit) > total:
-            # API-019 exact decode: a link unit is exactly one packet; octets after it
+            # The model's own reading (the spec does not settle it: API-011 strict decode accepts
+            # longer input; API-019 only offers an exact decode): a link unit is exactly one packet.
             return self.ground_app_event(t, 6, "packet_rejected", [ERR_LENGTH_MISMATCH])
         pkt = unit
         self.rec(t, "packet_in", node="ground", apid=apid, hex=pkt.hex().upper())
