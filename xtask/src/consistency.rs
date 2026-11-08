@@ -1075,7 +1075,7 @@ fn status_table_problems(name: &str, plan: &str, later_plan: bool) -> Vec<String
             let exit = i + 1 == wp_rows.len();
             if NOT_DONE.contains(&state) && !(exit && !later_plan && state == "in progress") {
                 problems.push(format!(
-                    "{name}:{line}: the plan is complete but {} is `{state}`; list its pull requests in the PRs cell by hand if no PR title maps to it (`WP-0 Plan`, as in m5-c-abi-completion.md), then run `cargo xtask status-table --write`",
+                    "{name}:{line}: the plan is complete or exited but {} is `{state}`; list its pull requests in the PRs cell by hand if no PR title maps to it (`WP-0 Plan`, as in m5-c-abi-completion.md), then run `cargo xtask status-table --write`",
                     cells.first().map_or("", |c| c.trim())
                 ));
             }
@@ -1747,7 +1747,6 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
-    // req: VER-056
     fn status_table_a1_shape_fails() {
         let text = sample(
             "complete (2026-11-07)",
@@ -1759,7 +1758,6 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
-    // req: VER-056
     fn status_table_finished_plan_passes() {
         let done = sample("complete", &["merged", "merged"]);
         assert_eq!(
@@ -1775,7 +1773,6 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
-    // req: VER-056
     fn status_table_exit_row_only_in_progress() {
         let p = status_table_problems("m.md", &sample("complete", &["merged", "planned"]), false);
         assert_eq!(p.len(), 1, "{p:?}");
@@ -1788,7 +1785,6 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
-    // req: VER-056
     fn status_table_unfinished_plan_is_not_checked() {
         let text = sample("plan approved (2026-10-21)", &["planned", "in review"]);
         assert_eq!(
@@ -1802,7 +1798,6 @@ uint32_t aldis_tc_encode(void);
     }
 
     #[test]
-    // req: VER-056
     fn status_table_exit_row_expires_with_a_later_plan() {
         let exiting = sample("complete", &["merged", "in progress"]);
         let p = status_table_problems("a1.md", &exiting, true);
