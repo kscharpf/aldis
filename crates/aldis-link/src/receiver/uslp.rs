@@ -8,7 +8,7 @@ use aldis_core::{Error, ErrorKind, Result, field};
 
 use super::{
     ChannelScope, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, Service, header,
-    lay_out, map_of, ocf_of, spec, vc_of,
+    lay_out, ocf_of, spec, vc_of,
 };
 use crate::protocol::Uslp;
 
@@ -195,7 +195,7 @@ impl ReceiveProtocol for Uslp {
         // TFVN (4 bits), SCID (16), Source or Destination (1), VCID (6), MAP ID (4), End of
         // Frame Primary Header Flag (1), from the most significant bit (732.1 §4.1.2).
         let vc: VcId<6> = vc_of::<Uslp>(((t2 & 0x07) << 3) | (t3 >> 5))?;
-        let map: MapId<4> = map_of((t3 >> 1) & 0x0F)?;
+        let map: MapId<4> = MapId::<4>::try_from((t3 >> 1) & 0x0F)?;
         let bypass = flags & 0x80 != 0;
         let control = flags & 0x40 != 0;
         let ocf_flag = flags & 0x08 != 0;
@@ -288,4 +288,16 @@ fn deliver_tail<const V: usize>(
 ) -> Result<()> {
     cx.deliver_insert(insert, None)?;
     cx.deliver_ocf(ocf_scope, ocf, None)
+}
+
+impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
+    /// Delivers an Insert Zone that is already in the output area (a range of the whole frame,
+    /// LNK-075); nothing for a channel without one.
+    fn deliver_insert_range(&mut self, sdu: OutRange, replay: Option<bool>) -> Result<()> {
+        if sdu.is_empty() {
+            Ok(())
+        } else {
+            self.push(ReceiverOutput::InsertSdu { sdu, replay })
+        }
+    }
 }

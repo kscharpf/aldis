@@ -766,21 +766,6 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
         Ok(())
     }
 
-    /// Delivers an Insert Zone that is already in the output area (a range of the whole frame,
-    /// LNK-075); nothing for a channel without one.
-    #[cfg(feature = "uslp")]
-    pub(crate) fn deliver_insert_range(
-        &mut self,
-        sdu: OutRange,
-        replay: Option<bool>,
-    ) -> Result<()> {
-        if sdu.is_empty() {
-            Ok(())
-        } else {
-            self.push(ReceiverOutput::InsertSdu { sdu, replay })
-        }
-    }
-
     /// Delivers the OCF (LNK-053, LNK-054).
     pub(crate) fn deliver_ocf(
         &mut self,
@@ -825,15 +810,6 @@ pub(crate) fn header<const N: usize>(frame: &[u8]) -> Result<[u8; N]> {
 /// the field they read, so this is not reachable from a frame.
 pub(crate) fn vc_of<P: Protocol>(raw: u8) -> Result<P::Vc> {
     P::Vc::try_from(raw)
-}
-
-/// The MAP ID `raw` (USLP: four bits).
-///
-/// # Errors
-/// `OutOfRange` (`map_id`) as for [`vc_of`].
-#[cfg(feature = "uslp")]
-pub(crate) fn map_of(raw: u8) -> Result<MapId<4>> {
-    MapId::<4>::try_from(raw)
 }
 
 /// The frame laid out with its parts, for the slices of the fields (CMN-040).
@@ -1059,8 +1035,6 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
 #[cfg(all(test, feature = "tm", feature = "tc"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    #[cfg(feature = "uslp")]
-    use super::map_of;
     use super::{
         FrameContext, FrameReceiver, FrameReceiverConfig, ReceiverStatus, Track, VcEntry, advance,
         header, lay_out, ocf_of, spec, vc_of,
@@ -1099,8 +1073,6 @@ mod tests {
         );
         assert_eq!(header::<2>(&[1, 2, 3]), Ok([1, 2]));
         assert_eq!(vc_of::<Tm>(8).unwrap_err().field(), Some(field::VC_ID));
-        #[cfg(feature = "uslp")]
-        assert_eq!(map_of(16).unwrap_err().field(), Some(field::MAP_ID));
         assert!(ocf_of(&[]).is_none() && ocf_of(&[0; 4]).is_some());
         let e = lay_out(&[0; 8], spec(8, 6, 2, true, true)).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Malformed);
