@@ -58,7 +58,6 @@ pub const CRATES: &[&str] = &[
     "aldis-uslp",
     "aldis-link",
     "aldis-cop1",
-    "aldis-framework",
     "aldis",
     "aldis-ffi",
 ];
