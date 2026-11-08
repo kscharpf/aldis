@@ -138,7 +138,7 @@ A2 is complete when every item below is green on `main`. Requirements of the sce
 | Link model at frame level | APP-071, APP-090 | |
 | Order, sampling, and deadlines at frame level | APP-132, APP-133, APP-134, APP-135 | |
 | Link-engine parameters | APP-136 | |
-| Frame schedule and cases | APP-137, APP-140, APP-128 (packet-level cases only) | |
+| Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | |
 | Frame-level events | APP-138, APP-139, APP-131 (frames) | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
