@@ -43,7 +43,9 @@
 //! letter and a higher number in the file name: `a1-` until `a2-` is on disk), whose plan pull
 //! request runs `status-table --write` for the previous plan. A row that no pull-request title
 //! maps to (`WP-0 Plan`, since `feat(a1/plan): ...` names no work package) needs its pull
-//! requests listed in the PRs cell by hand first.
+//! requests listed in the PRs cell by hand first. A status line such as "exit criteria met"
+//! does not trigger the check (maintainer, 2026-11-07): the time between meeting the exit
+//! criteria and the release is legitimately open.
 //!
 //! **Vector files.** Every vector file (`test-vectors/<area>/*.json`, except the schemas and the
 //! generated field catalogue, [`crate::vectors::is_vector_file`]) is matched by a path in the
