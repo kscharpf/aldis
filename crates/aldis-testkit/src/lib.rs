@@ -15,6 +15,7 @@
 //! ```
 
 pub mod bitflip;
+pub mod byte_queue;
 pub mod hex;
 pub mod model;
 pub mod oracle;
