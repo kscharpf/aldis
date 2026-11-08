@@ -83,7 +83,7 @@ Within one instant the flight node works in this order: (1) handle delivered lin
 | Time-tagged command | Queued at delivery; executes in the first step at or after its execution time; equal execution times execute in delivery order |
 | Time-tag queue capacity | 8 commands |
 | Verification report | `CMD_EXECUTED` or `CMD_REJECTED` (§3.3.2) at the execution instant; checks of function code and arguments happen at execution |
-| Rejected at delivery | A time tag earlier than the delivery instant (reason 2), or a full queue (reason 4) |
+| Rejected at delivery | A time tag earlier than the delivery instant (reason 2), or a full queue (reason 4). A time tag equal to the delivery instant is not earlier: the command is queued and executes in that step (APP-012) |
 | Nominal case | Uses only time-tagged commands, each released at least 5 s before its execution time, so that no on-board packet depends on uplink latency (APP-003) |
 
 ### 2.4 Nominal timeline (case `nominal`)
@@ -161,6 +161,8 @@ All integers are unsigned and big-endian (GEN-050). Octet offsets count from the
 | 12–13 | CRC-16 of the last activated table (0 = none) |
 | 14–15 | Dumps completed |
 | 16–31 | Sensor channels j = 0…7, u16 each: (1000 · (j + 1) + 3 · k) mod 2¹⁶ |
+
+An `ACTIVATE_TABLE` that raises `TABLE_REJECTED` is an executed command (APP-129) and counts in "Commands executed", not in "Commands rejected", which count the `CMD_REJECTED` reports (APP-013).
 
 A housekeeping packet reports the state after steps 1–3 of its instant (§2.1). A command executed at that instant is counted (executed, rejected, payload mode, table, dumps completed). The queue occupancy is the number of time-tagged commands then queued, so a command delivered after the HK instant is not counted until the next HK packet. A delivery at the HK instant itself is handled in step 1 and counted. Deliveries arrive 10 000 µs after their release instant (§6.1).
 
@@ -506,7 +508,7 @@ Every line after the header records one observable event, in the order of §6.2.
 | `fault` | `t_us`, `kind`, `dir`, `index`, `fault`, `args` | A fault of §6.3 is applied to unit `index` in direction `dir` (`down` or `up`); recorded just before that unit's `unit_sent`; `args` is the list of §6.3 arguments, `[]` if none |
 | `unit_sent` | `t_us`, `kind`, `dir`, `index`, `hex` | A node outputs a link unit (the octets as sent, before faults) |
 | `unit_delivered` | `t_us`, `kind`, `dir`, `index`, `copy` | A unit arrives at the other node; `copy` is 0, or 1 for the second copy of a duplicate. The delivered octets are those of `unit_sent` after the faults recorded for the unit |
-| `packet_in` | `t_us`, `kind`, `node`, `apid`, `hex` | A packet is delivered to an application of `node` |
+| `packet_in` | `t_us`, `kind`, `node`, `apid`, `hex` | A packet is delivered to an application of `node`. Only the ground node's telemetry packets are `packet_in`: the flight node's command and table-upload packets appear as the application events `cmd_received` and `table_received` (APP-129), never as `packet_in` |
 | `app_event` | `t_us`, `kind`, `node`, `code`, `name`, `args` | A node raises an application event (§7.4); `args` is a list of unsigned integers |
 
 Library-internal events and step instants are **not** recorded, so an implementation that drives the engines through the C ABI or the C++ wrapper can produce the same trace as the Rust nodes.
