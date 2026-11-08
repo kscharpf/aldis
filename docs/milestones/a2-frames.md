@@ -21,7 +21,7 @@
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
 History:
-- 2026-11-08: WP-1 (documents only) adds §2.1/§2.2 (order within an instant), §4.4 (CLCW sampling, deadlines, missing engine parameters, the hand-derived schedule of `a2-nominal`), §6.7 (the four cases and their fault scripts, fixed from here, APP-005), and §7.4 (frame events 100 to 112) to [reference-application.md](../reference-application.md), requirements APP-132 to APP-140, APP-128 limited to the packet-level cases (D4), and APP-131 and APP-036 extended to frames. OI-86 to OI-89 carry a WP-1 recommendation; OI-90 (the sequence count of the Idle Packets) is new. D6 gained two entries: `frame_discontinuity` (a repeated or backward count is not a gap, LNK-051) and `partial_discarded`/`extraction_error` (the extractor's resynchronisation, which D5 asks to see).
+- 2026-11-08: WP-1 (documents only) adds §2.1/§2.2 (order within an instant), §4.4 (CLCW sampling, deadlines, missing engine parameters, the hand-derived schedule of `a2-nominal`), §6.7 (the four cases and their fault scripts, fixed from here, APP-005), and §7.4 (frame events 100 to 112) to [reference-application.md](../reference-application.md), requirements APP-132 to APP-140, APP-128 limited to the packet-level cases (D4), and APP-131 and APP-036 extended to frames. OI-86 to OI-89 and the new OI-90 (the sequence count of the Idle Packets) were decided by the maintainer on 2026-11-08, all as option (a), and the text records them. The vocabulary of §7.4 gained entries beyond D6's candidates: `frame_discontinuity` (a repeated or backward count is not a gap, LNK-051) and `partial_discarded`/`extraction_error` (the extractor's resynchronisation, which D5 asks to see).
 - 2026-11-07: D1–D8 accepted by the maintainer as recommended; D3 revised to weak-dependency forwarding of the engines' features by the facade (no new feature names). Status line, decisions, and §6 updated.
 - 2026-11-07: plan drafted after the A1 exit (#335); D1–D8 proposed. The `--scope a2` trace (non-strict) is wired into `cargo xtask ci`, the check `spec`, and `ci.yml` by the plan's pull request (D1).
 
@@ -138,8 +138,8 @@ A2 is complete when every item below is green on `main`. Requirements of the sce
 | Link model at frame level | APP-071, APP-090 | |
 | Order, sampling, and deadlines at frame level | APP-132, APP-133, APP-134, APP-135 | |
 | Link-engine parameters | APP-136 | |
-| Frame schedule and cases | APP-137, APP-140 | |
-| Frame-level events | APP-138, APP-139, APP-131 (frames), APP-128 (frame levels) | |
+| Frame schedule and cases | APP-137, APP-140, APP-128 (packet-level cases only) | |
+| Frame-level events | APP-138, APP-139, APP-131 (frames) | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
