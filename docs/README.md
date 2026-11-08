@@ -78,6 +78,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | Document | Defines |
 |---|---|
 | [Rust profile](profiles/rust.md) | Crate names, API shapes, feature flags, MSRV, lint configuration |
+| [Rust lint rationale](profiles/rust-lints.md) | Why each restriction and nursery lint is denied, deferred, or not adopted (for human readers) |
 | [C ABI profile](profiles/c-abi.md) | C linkage, naming, memory model (caller-owned storage), status codes, header generation, C++ wrapper guidance, rules for native C/C++ ports |
 | [C++ profile](profiles/cpp.md) | Native C++ implementation: language subset, API shapes, build, lint configuration, verification, differential testing against the Rust reference (draft) |
 
