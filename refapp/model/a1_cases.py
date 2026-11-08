@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Blind model of the A1 cases (TV-023, A1 D5(c) extended): a1-nominal, a1-immediate,
+"""Blind model of the A1 cases (TV-023; maintainer decision 2026-11-07: A1 D5(c) extended to every A1 case): a1-nominal, a1-immediate,
 a1-rejects and a1-downlink-faults.
 
 Written from docs/reference-application.md (the scenario spec), docs/03-api-model.md §9
-(error codes), docs/standards/space-packet.md §5.3-5.4 (sequence classes, reassembler),
+(error codes), docs/standards/space-packet.md §5.1, §5.3-5.4 (strict decode, sequence classes, reassembler), docs/03-api-model.md API-019,
 refapp/scenario/scenario.json (scenario input data) and the CCSDS Blue Books 133.0-B-2,
 301.0-B-4 and 132.0-B-3 (CRC-16), without sight of the refapp implementation. The golden
 traces are read only as the comparison target.
@@ -39,8 +39,21 @@ GEN_END_US = 30 * SEC_US  # §2.1 "while t < 30 s"
 DUMP_CHUNK = 128  # §3.3.4
 QUEUE_CAP = 8  # §2.3
 ERR_INCOMPLETE = 2  # docs/03-api-model.md §9
+ERR_LENGTH_MISMATCH = 3
 ERR_UNSUPPORTED_VERSION = 4
+ERR_OUT_OF_RANGE = 5
+ERR_INVALID_FIELD = 6
 CASE_IDS = ["a1-nominal", "a1-immediate", "a1-rejects", "a1-downlink-faults"]
+
+
+class ModelError(Exception):
+    """A broken precondition or self-check of the model; main() exits non-zero (not an `assert`:
+    `python3 -O` removes those)."""
+
+
+def require(cond, msg):
+    if not cond:
+        raise ModelError(msg)
 
 
 def crc16(data: bytes) -> int:
@@ -61,7 +74,7 @@ def cuc_tfield(t_us: int) -> bytes:
     # §5: T0 + now; 4 coarse + 2 fractional octets (2^-16 s), exact on the 125 000 µs grid.
     coarse = T0 + t_us // SEC_US
     num = (t_us % SEC_US) * 65536
-    assert num % SEC_US == 0, f"time {t_us} not exact in 2^-16 s"
+    require(num % SEC_US == 0, f"time {t_us} not exact in 2^-16 s")
     return u32(coarse) + u16(num // SEC_US)
 
 
@@ -212,7 +225,7 @@ class Run:
         self.rec(t, "packet_out", node="flight", apid=apid, hex=pkt.hex().upper())
         idx = self.send(t, "down", pkt)
         self.down_units.append((apid, int.from_bytes(pkt[2:4], "big") & 0x3FFF))
-        assert idx == len(self.down_units) - 1
+        require(idx == len(self.down_units) - 1, "downlink unit index out of step")
 
     def event(self, t, code, p1=0, p2=0, p3=0):  # §3.3.2
         self.tm(t, APID["events"], 0b11, u16(code) + u16(p1) + u16(p2) + u16(p3), True)
@@ -227,11 +240,11 @@ class Run:
         if apid == APID["table_upload"]:
             tid, ln = d[0], int.from_bytes(d[1:3], "big")
             octets = d[3:]
-            assert len(octets) == ln
+            require(len(octets) == ln, "table upload length field disagrees with its octets")
             self.table = (tid, octets)  # APP-017: keeps the most recent
             self.flight_app_event(t, 21, "table_received", [tid, ln])
             return
-        assert apid == APID["commands"]
+        require(apid == APID["commands"], f"unexpected uplink APID {apid}")
         func = d[0]
         seq = int.from_bytes(pkt[2:4], "big") & 0x3FFF
         self.flight_app_event(t, 20, "cmd_received", [func, seq])  # APP-129
@@ -310,7 +323,7 @@ class Run:
                   + bytes([len(self.queue), 1 if self.payload_on else 0, self.last_table_id, 0])
                   + u16(self.last_table_crc) + u16(self.dumps_completed)
                   + b"".join(u16(1000 * (j + 1) + 3 * k) for j in range(8)))
-            assert len(ud) == 32
+            require(len(ud) == 32, "HK user data is not 32 octets")
             self.tm(t, APID["housekeeping"], 0b11, ud)
         if t < GEN_END_US and t >= 500_000 and (t - 500_000) % (2 * SEC_US) == 0 and self.payload_on:  # (5)
             ud = u32(self.payload_n) + bytes((self.payload_n + i) % 256 for i in range(4, 400))
@@ -330,8 +343,14 @@ class Run:
         total = 7 + int.from_bytes(unit[4:6], "big")
         if len(unit) < total:
             return self.ground_app_event(t, 6, "packet_rejected", [ERR_INCOMPLETE])
-        pkt = unit[:total]
-        apid = int.from_bytes(pkt[0:2], "big") & 0x7FF
+        apid = int.from_bytes(unit[0:2], "big") & 0x7FF
+        if apid == 0x7FF and (unit[0] >> 3) & 1:
+            # SPP-004 strict: Idle Packet with Secondary Header Flag = 1
+            return self.ground_app_event(t, 6, "packet_rejected", [ERR_INVALID_FIELD])
+        if len(unit) > total:
+            # API-019 exact decode: a link unit is exactly one packet; octets after it
+            return self.ground_app_event(t, 6, "packet_rejected", [ERR_LENGTH_MISMATCH])
+        pkt = unit
         self.rec(t, "packet_in", node="ground", apid=apid, hex=pkt.hex().upper())
         w1 = int.from_bytes(pkt[2:4], "big")
         flags, count = w1 >> 14, w1 & 0x3FFF
@@ -381,8 +400,16 @@ class Run:
         if complete is not None:
             addr, ln = int.from_bytes(complete[0:4], "big"), int.from_bytes(complete[4:6], "big")
             mem = complete[6:]
-            assert len(mem) == ln and 1 <= ln <= 1024, "SDU does not parse as §3.3.4 (APP-130)"
-            self.ground_app_event(t, 4, "dump_reassembled", [addr, ln, crc16(mem)])
+            # APP-130: an SDU that does not parse as §3.3.4 raises packet_rejected after the events
+            # above. The spec names no error code for it; the codes below are the model's reading.
+            if len(complete) < 6:
+                self.ground_app_event(t, 6, "packet_rejected", [ERR_INCOMPLETE])
+            elif not 1 <= ln <= 1024:
+                self.ground_app_event(t, 6, "packet_rejected", [ERR_OUT_OF_RANGE])
+            elif len(mem) != ln:
+                self.ground_app_event(t, 6, "packet_rejected", [ERR_LENGTH_MISMATCH])
+            else:
+                self.ground_app_event(t, 4, "dump_reassembled", [addr, ln, crc16(mem)])
 
     # -- harness loop (§6.2)
     def go(self):
@@ -415,9 +442,9 @@ def self_checks(case_id, run):
     if case_id == "a1-downlink-faults":
         want = {2: (16, 1), 4: (32, 1), 5: (16, 3), 11: (32, 3), 25: (33, 2)}
         for idx, ac in want.items():
-            assert run.down_units[idx] == ac, (idx, run.down_units[idx], ac)
-    assert crc16(b"123456789") == 0x29B1  # CMN-002
-    assert crc16(table_octets(300)) == 0x0C4F and crc16(memory(0x10000, 600)) == 0x80A8  # §2.4
+            require(run.down_units[idx] == ac, f"unit {idx}: {run.down_units[idx]} != {ac} (§6.6)")
+    require(crc16(b"123456789") == 0x29B1, "CRC-16 check value (CMN-002)")
+    require(crc16(table_octets(300)) == 0x0C4F and crc16(memory(0x10000, 600)) == 0x80A8, "CRC-16 of §2.4")
 
 
 def model(case_id):
@@ -462,7 +489,8 @@ def main(argv):
     ap.add_argument("--golden-dir", metavar="DIR")
     args = ap.parse_args(argv[1:])
     if args.all:
-        assert args.golden_dir
+        if not args.golden_dir:
+            ap.error("--all needs --golden-dir")
         bad = sum(compare(c, Path(args.golden_dir) / f"{c}.jsonl") for c in CASE_IDS)
         return 1 if bad else 0
     if args.case is None:
@@ -474,4 +502,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except ModelError as e:
+        print(f"model error: {e}", file=sys.stderr)
+        sys.exit(2)
