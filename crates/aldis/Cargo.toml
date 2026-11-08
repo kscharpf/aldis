@@ -24,17 +24,19 @@ aldis-cop1 = { path = "../aldis-cop1", default-features = false, optional = true
 aldis-framework = { path = "../aldis-framework", default-features = false, optional = true }
 
 [features]
+# The codec features also forward to the engines that serve the standard, through weak
+# dependencies, so that `link` or `cop1` with `tm` or `tc` has the engines (no extra feature).
 core = ["dep:aldis-core"]
 time = ["dep:aldis-time"]
-spp = ["dep:aldis-spp"]
-epp = ["dep:aldis-epp"]
+spp = ["dep:aldis-spp", "aldis-link?/spp"]
+epp = ["dep:aldis-epp", "aldis-link?/epp"]
 # The typed time secondary header of the Space Packet (SPP-008): `spp` and `time`, plus
 # `aldis-spp/time`, without `full`.
 spp-time = ["spp", "time", "aldis-spp/time"]
-tm = ["dep:aldis-tm"]
-tc = ["dep:aldis-tc"]
-aos = ["dep:aldis-aos"]
-uslp = ["dep:aldis-uslp"]
+tm = ["dep:aldis-tm", "aldis-link?/tm"]
+tc = ["dep:aldis-tc", "aldis-link?/tc", "aldis-cop1?/tc"]
+aos = ["dep:aldis-aos", "aldis-link?/aos"]
+uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
@@ -80,15 +82,7 @@ full = [
     "uslp",
     "sync",
     "link",
-    "aldis-link/spp",
-    "aldis-link/epp",
-    "aldis-link/tm",
-    "aldis-link/tc",
-    "aldis-link/aos",
-    "aldis-link/uslp",
     "cop1",
-    "aldis-cop1/tc",
-    "aldis-cop1/uslp",
     "framework",
 ]
 

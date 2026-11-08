@@ -118,6 +118,7 @@ The goal of GEN-001 to GEN-003 is to **keep the certification surface minimal**.
 | GEN-005 | All crates SHALL build with **no features enabled** for a `no_std` target with no global allocator. | — | A |
 | GEN-006 | The `alloc` and `std` features SHALL be strictly additive. Enabling them SHALL NOT change the behavior or wire output of any existing API. | — | T/V |
 | GEN-007 | Behavior SHALL be identical across targets of different endianness and pointer width. | — | V |
+| GEN-008 | A facade feature for a codec, together with `link` or `cop1`, SHALL make that standard's engines available. | — | T |
 
 ## 5. Relationship to native C/C++ implementations (Phase 3)
 

@@ -23,7 +23,14 @@
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
 //! | `framework` | `aldis::framework` (`aldis-framework`): transports, clocks, stacks | `docs/05-framework.md` | FW-001…FW-021 |
 //! | `alloc`, `std` | The same feature of every enabled crate; strictly additive | — | GEN-006 |
-//! | `full` | Every crate above, `spp-time`, and the cross-crate features of `aldis-link` and `aldis-cop1` | — | — |
+//! | `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` with `link` or `cop1` | The same feature of `aldis-link`, and of `aldis-cop1` for `tc` and `uslp`: the engines of that standard | — | GEN-008 |
+//! | `full` | Every crate above and `spp-time`; the engine features follow from the codec features | — | — |
+//!
+//! Requirement GEN-008: `spp`, `epp`, `tm`, `aos`, `tc`, and `uslp` also enable the same-named feature of `aldis-link`
+//! when `link` is enabled, and `tc` and `uslp` that of `aldis-cop1` when `cop1` is enabled (weak
+//! dependency features, so they enable neither crate): `link` with `tm` has the TM engines, and
+//! `cop1` with `tc` has `Fop1` and `Farm1`. No engine is built for a standard that is not
+//! selected.
 //!
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
 //! secondary header (GEN-002). The link, COP-1, and framework crates are skeletons until their
