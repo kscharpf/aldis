@@ -1059,12 +1059,12 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
 #[cfg(all(test, feature = "tm", feature = "tc"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
+    #[cfg(feature = "uslp")]
+    use super::map_of;
     use super::{
         FrameContext, FrameReceiver, FrameReceiverConfig, ReceiverStatus, Track, VcEntry, advance,
         header, lay_out, ocf_of, spec, vc_of,
     };
-    #[cfg(feature = "uslp")]
-    use super::map_of;
     use crate::protocol::{Tc, Tm};
     use crate::receiver::{TcChannel, TcVc};
     use aldis_core::counter::{Continuity, ModCounter};
