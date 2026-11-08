@@ -7,7 +7,7 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | in progress | | This plan, D1–D5, `--scope a1` trace gate (D2), A0 close-out (D1) |
+| WP-0 Plan | merged | #296 | This plan, D1–D5, `--scope a1` trace gate (D2), A0 close-out (D1) |
 | WP-1 Scenario additions | merged | #298 | Only what [reference-application.md](../reference-application.md) lacks for A1: the extra cases (D4), the ops-script and fault-script entries of the scenario file, the check of the derived values; no code |
 | WP-2 Harness: ops script and faults | merged | #301 | Ops-script instants in the scheduler, scripted faults, the `fault` record, `ops` in `StepInput` |
 | WP-3a Flight node: telemetry | merged | #307 | On-board time, housekeeping, events, payload |
