@@ -1177,21 +1177,30 @@ pub mod tests {
     fn an_agent_review_counts_and_its_reply_does_not() {
         // The reviewer agent posts a review under the maintainer's account, ending in the
         // marker (#287); the implementer answers in a conversation comment naming the head.
-        let mut raw = fixture();
-        raw.review_comments.clear();
-        raw.reviews = vec![json!({"user": {"login": "me"}, "state": "COMMENTED",
-            "submitted_at": "2026-10-21T13:46:03Z",
-            "body": format!("Independent review of head e.\n\n{MARKER}")})];
-        raw.issue_comments = vec![json!({"user": {"login": "me"},
-            "created_at": "2026-10-21T13:48:00Z",
-            "body": format!("Fix round, head e1234567\n\n{MARKER}")})];
-        let pr = compute(&raw).unwrap();
+        let with_review = |at: &str| {
+            let mut raw = fixture();
+            raw.review_comments.clear();
+            raw.reviews = vec![json!({"user": {"login": "me"}, "state": "COMMENTED",
+                "submitted_at": at,
+                "body": format!("Independent review of head e.\n\n{MARKER}")})];
+            raw.issue_comments = vec![json!({"user": {"login": "me"},
+                "created_at": "2026-10-21T14:05:00Z",
+                "body": format!("Fix round, head e1234567\n\n{MARKER}")})];
+            compute(&raw).unwrap()
+        };
+        // Reviewed before commit e (13:54:12): counted, and e is a fix.
+        let pr = with_review("2026-10-21T13:46:03Z");
         assert_eq!(pr.reviews, 1);
         assert_eq!(pr.first_review, time::parse("2026-10-21T13:46:03Z"));
-        // Commit e was authored after the review: one fix; the agent's words approve nothing.
         assert_eq!(pr.fix_commits, 1);
-        assert_eq!(pr.stages.approval.kind, ApprovalKind::Merge);
         assert_eq!(pr.stages.first_review, pr.first_review);
+        // Reviewed after all the work: were the agent's review the maintainer's last word, the
+        // approval would be that word. It is the merge, and the review is no maintainer event.
+        let pr = with_review("2026-10-21T14:00:00Z");
+        assert_eq!((pr.reviews, pr.fix_commits), (1, 0));
+        assert_eq!(pr.stages.approval.kind, ApprovalKind::Merge);
+        let at = time::parse("2026-10-21T14:00:00Z").unwrap();
+        assert!(!pr.events.contains(&at));
     }
 
     // req: VER-063

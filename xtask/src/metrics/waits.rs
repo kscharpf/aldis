@@ -121,12 +121,13 @@ impl Waits {
 /// `b`'s commits from outside `b` is a commit of `a` (`b` was branched from `a`, or merged it).
 /// A merge from `main` takes `main`'s merge commit, which is no commit of `a`, so a pull request
 /// merged into `main` before `b` merged `main` is no dependency. A pull request from the base
-/// branch itself (`main` into another branch) is never one, and neither is a constituent of a merge
-/// train (`train/*` branch): the train merges with the heads it contains.
+/// branch itself (`main` into another branch) is never one. A merge train (a `train/*` branch)
+/// merges with the pull requests whose heads it contains, its constituents (#339), and depends on
+/// none of them; it still depends on any other pull request it took commits from.
 pub fn depends_on(b: &Pr, a: &Pr) -> bool {
-    // A merge train contains its constituents' heads and merges with them (#339).
+    let constituent = b.branch.starts_with("train/") && b.shas.contains(&a.head);
     a.number != b.number
-        && !b.branch.starts_with("train/")
+        && !constituent
         && a.branch != a.base
         && b.branch != b.base
         && (b.shas.contains(&a.head) || b.outside_parents.iter().any(|p| a.shas.contains(p)))
@@ -548,6 +549,14 @@ mod tests {
         let mut late = pr(8, &["z1"], &["t1"], Some(900), 950);
         late.branch = "b8".to_owned();
         assert!(depends_on(&late, &train));
+        // A train branched from a pull request that is no constituent (its head is not among the
+        // train's commits) still depends on it.
+        let mut other = pr(9, &["f1", "f2"], &["base"], None, 100);
+        other.branch = "b9".to_owned();
+        let mut stacked = pr(10, &["a1", "t2"], &["f2"], None, 100);
+        stacked.branch = "train/2026-11-07-2".to_owned();
+        assert!(depends_on(&stacked, &other));
+        assert!(!depends_on(&stacked, &one));
         // A pull request from the base branch is never a dependency.
         let mut main = pr(6, &["a2"], &[], None, 1);
         main.branch = "main".to_owned();
