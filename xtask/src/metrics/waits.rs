@@ -553,7 +553,7 @@ mod tests {
         // train's commits) still depends on it.
         let mut other = pr(9, &["f1", "f2"], &["base"], None, 100);
         other.branch = "b9".to_owned();
-        let mut stacked = pr(10, &["a1", "t2"], &["f2"], None, 100);
+        let mut stacked = pr(10, &["a1", "a2", "t2"], &["f2"], None, 100);
         stacked.branch = "train/2026-11-07-2".to_owned();
         assert!(depends_on(&stacked, &other));
         assert!(!depends_on(&stacked, &one));
