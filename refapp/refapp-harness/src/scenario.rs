@@ -227,8 +227,9 @@ impl OpsEntry {
     /// The entry as the ground node takes it (§6.5).
     ///
     /// # Errors
-    /// `InvalidField` or `OutOfRange` for a table upload whose ID or length is outside its range,
-    /// which [`Scenario::check`] rejects first.
+    /// `InvalidField` or `OutOfRange` for a table upload whose ID or length the node's types
+    /// refuse. A parsed entry holds both in range (the types of its fields check them), so this
+    /// does not fail for one.
     pub fn to_node(&self) -> Result<refapp_ground::OpsEntry, String> {
         use refapp_ground as node;
         Ok(match *self {
@@ -257,7 +258,7 @@ impl OpsEntry {
                     Call::SetPayloadMode { mode } => {
                         node::Call::SetPayloadMode { mode: mode.get() }
                     }
-                    Call::Unknown { code } => node::Call::Unknown { code },
+                    Call::Unknown { code } => node::Call::Unknown { code: code.get() },
                 },
                 extra_octets: extra_octets.unwrap_or(0),
             },
@@ -325,8 +326,60 @@ pub enum Call {
     /// A function code that no function has (reason 1 of `CMD_REJECTED`, §3.3.2).
     Unknown {
         /// The code; not one of `0x01`…`0x04`.
-        code: u8,
+        code: UnknownCode,
     },
+}
+
+/// A function code that no function has: any octet but `0x01`…`0x04` (§3.3.5, RS-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct UnknownCode(u8);
+
+impl UnknownCode {
+    /// The code `code`.
+    ///
+    /// # Errors
+    /// If `code` is one of `0x01`…`0x04`, which have a function.
+    pub fn new(code: u8) -> Result<Self, String> {
+        if (1..=4).contains(&code) {
+            Err(format!(
+                "{code} is the code of a function, not unknown (the function codes are 1 to 4)"
+            ))
+        } else {
+            Ok(Self(code))
+        }
+    }
+
+    /// The code, not one of `0x01`…`0x04`.
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for UnknownCode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(u8::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+impl JsonSchema for UnknownCode {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "UnknownCode".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut schema = u8::json_schema(generator);
+        schema.insert(
+            "not".to_owned(),
+            serde_json::json!({"minimum": 1, "maximum": 4}),
+        );
+        schema
+    }
 }
 
 /// A FOP-1 directive (§2.4).
@@ -393,7 +446,8 @@ impl Scenario {
     /// # Errors
     /// If the text does not match the model, or breaks a rule the schema cannot express.
     pub fn parse(text: &str) -> Result<Scenario, String> {
-        let s: Scenario = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
+        let s: Scenario = serde_json::from_str(text)
+            .map_err(|e| format!("scenario.json: {}", describe(text, &e)))?;
         s.check()?;
         Ok(s)
     }
@@ -454,8 +508,7 @@ impl Scenario {
         Ok(())
     }
 
-    /// The rules of §6.5 that the schema cannot express, and the function code of
-    /// an unknown command (APP-061, APP-126, APP-128).
+    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us.get();
         let delay = self.link.one_way_delay_us;
@@ -465,10 +518,7 @@ impl Scenario {
         for (i, entry) in c.ops.iter().enumerate() {
             let at_us = match entry {
                 OpsEntry::Command {
-                    at_us,
-                    execution,
-                    call,
-                    ..
+                    at_us, execution, ..
                 } => {
                     let arrival = at_us.saturating_add(delay);
                     let on_grid = arrival.is_multiple_of(slot);
@@ -485,7 +535,6 @@ impl Scenario {
                         }
                         Execution::Immediate {} => {}
                     }
-                    check_call(*call).map_err(|e| format!("ops[{i}]: {e}"))?;
                     *at_us
                 }
                 OpsEntry::TableUpload { at_us, .. } | OpsEntry::Fop1Directive { at_us, .. } => {
@@ -538,19 +587,69 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
     Ok(())
 }
 
-/// The relation of a command's function code to the codes that exist (§3.3.5); the ranges of
-/// its arguments are in their types.
-fn check_call(call: Call) -> Result<(), String> {
-    match call {
-        Call::Unknown { code: 1..=4 } => {
-            Err("the function codes 1 to 4 are not unknown".to_owned())
+/// The error `e` of parsing `text`, with where the author of the file finds it. serde reports
+/// an error inside a tagged entry at the end of the entry, so an entry of a script is parsed
+/// again on its own: the error is then `case `a1-rejects`: ops[3].length: …`, with the field
+/// whose replacement by 0 or 1 makes the entry parse. Any other error names the last key before
+/// its position.
+fn describe(text: &str, e: &serde_json::Error) -> String {
+    let in_script = serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|doc| {
+            let cases = doc.get("cases")?.as_array()?;
+            cases.iter().find_map(|case| {
+                let id = case.get("id")?.as_str()?;
+                script_error::<OpsEntry>(case, "ops")
+                    .or_else(|| script_error::<FaultEntry>(case, "faults"))
+                    .map(|(at, field, err)| format!("case `{id}`: {at}.{field}: {err}"))
+            })
+        });
+    in_script.unwrap_or_else(|| {
+        let key = text.lines().nth(e.line().wrapping_sub(1)).and_then(|l| {
+            let before: String = l.chars().take(e.column()).collect();
+            Some(before.rsplit_once("\":")?.0.rsplit_once('"')?.1.to_owned())
+        });
+        key.map_or_else(|| e.to_string(), |k| format!("{k}: {e}"))
+    })
+}
+
+/// The first entry of the list `list` of `case` that is not a `T`: `list[i]`, its field, and the
+/// error of the entry.
+fn script_error<T: serde::de::DeserializeOwned>(
+    case: &serde_json::Value,
+    list: &str,
+) -> Option<(String, String, serde_json::Error)> {
+    let entries = case.get(list)?.as_array()?;
+    let (i, entry, err) = entries.iter().enumerate().find_map(|(i, entry)| {
+        serde_json::from_value::<T>(entry.clone())
+            .err()
+            .map(|err| (i, entry, err))
+    })?;
+    // The integers of the entry and of its `call`, `execution` or `fault` object.
+    let mut leaves = Vec::new();
+    for (key, value) in entry.as_object()? {
+        match value {
+            serde_json::Value::Object(inner) => {
+                leaves.extend(inner.keys().map(|k| (format!("/{key}/{k}"), k.clone())));
+            }
+            _ => leaves.push((format!("/{key}"), key.clone())),
         }
-        Call::Noop {}
-        | Call::DumpMemory { .. }
-        | Call::ActivateTable { .. }
-        | Call::SetPayloadMode { .. }
-        | Call::Unknown { .. } => Ok(()),
     }
+    let field = leaves
+        .into_iter()
+        .find(|(pointer, _)| {
+            [0, 1].into_iter().any(|trial| {
+                let mut fixed = entry.clone();
+                let is_number = fixed.pointer_mut(pointer).is_some_and(|v| {
+                    let number = v.is_number();
+                    *v = trial.into();
+                    number
+                });
+                is_number && serde_json::from_value::<T>(fixed).is_ok()
+            })
+        })
+        .map(|(_, name)| name)?;
+    Some((format!("{list}[{i}]"), field, err))
 }
 
 /// `AREA-NNN` with an upper-case area and three digits.
@@ -1114,15 +1213,6 @@ mod tests {
             extra_octets: None,
         };
         assert!(rejects(&s, "APP-061"));
-        // A function code that exists.
-        let mut s = ok.clone();
-        s.cases[3].ops[1] = OpsEntry::Command {
-            at_us: 615_000,
-            execution: Execution::Immediate {},
-            call: Call::Unknown { code: 4 },
-            extra_octets: None,
-        };
-        assert!(rejects(&s, "not unknown"));
         // Release order, and the end instant.
         let mut s = ok.clone();
         s.cases[3].ops.swap(0, 1);
@@ -1229,7 +1319,8 @@ mod tests {
                 let e = parse(below).unwrap_err().to_string();
                 assert!(e.contains("outside the range"), "{template}: {below}: {e}");
             }
-            // A value above the range of the field's type fails in the type, not the range.
+            // Some of the values above the range (255 + 1 of a `u8`) fail in the type of the
+            // field, not in the range, so only that they fail is asserted.
             if let Some(above) = max.checked_add(1) {
                 assert!(parse(above).is_err(), "{template}: {above}");
             }
@@ -1249,10 +1340,47 @@ mod tests {
         doc["cases"][0]["trace_version"] = 0.into();
         let e = Scenario::parse(&doc.to_string()).unwrap_err();
         assert!(e.contains("outside the range"), "{e}");
-        // What no type holds: a function code that exists is not an unknown one.
-        let imm = Execution::Immediate {};
-        let s = rejects_with(0, command(115_000, imm, Call::Unknown { code: 1 }));
-        assert!(rejects(&s, "not unknown"));
+        // A function code that exists is not an unknown one.
+        let unknown = |code: u8| {
+            serde_json::from_str::<Call>(&format!(r#"{{"function":"unknown","code":{code}}}"#))
+        };
+        assert!(unknown(0).is_ok() && unknown(5).is_ok() && unknown(255).is_ok());
+        for code in 1..=4 {
+            let e = unknown(code).unwrap_err().to_string();
+            assert!(e.contains("not unknown"), "{code}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_range_error_names_its_field_and_entry() {
+        // req: APP-107, APP-126
+        let error_of = |from: &str, to: &str| {
+            assert!(super::SCENARIO_JSON.contains(from), "{from}");
+            Scenario::parse(&super::SCENARIO_JSON.replacen(from, to, 1)).unwrap_err()
+        };
+        let e = error_of(
+            r#""table_id": 1, "length": 300"#,
+            r#""table_id": 1, "length": 504"#,
+        );
+        assert!(
+            e.contains("ops[1].length: ") && e.contains("outside the range"),
+            "{e}"
+        );
+        let e = error_of(
+            r#""function": "unknown", "code": 127"#,
+            r#""function": "unknown", "code": 3"#,
+        );
+        assert!(
+            e.contains("ops[1].code: ") && e.contains("not unknown"),
+            "{e}"
+        );
+        let e = error_of(
+            r#""fault": {"kind": "drop"}"#,
+            r#""fault": {"kind": "flip", "octet": 0, "bit": 8}"#,
+        );
+        assert!(e.contains("faults[0].bit: "), "{e}");
+        let e = error_of(r#""trace_version": 1"#, r#""trace_version": 0"#);
+        assert!(e.contains("trace_version: "), "{e}");
     }
 
     #[test]
@@ -1278,7 +1406,13 @@ mod tests {
         rejects_with(5, table(Ranged::new(503).unwrap()))
             .check()
             .unwrap();
-        assert!(Ranged::<u16, 1, 503>::new(504).is_err());
+        let parse = |length: u16| {
+            serde_json::from_str::<OpsEntry>(&format!(
+                r#"{{"kind":"table_upload","at_us":0,"table_id":1,"length":{length}}}"#
+            ))
+        };
+        assert!(parse(503).is_ok());
+        assert!(parse(504).is_err());
     }
 
     #[test]

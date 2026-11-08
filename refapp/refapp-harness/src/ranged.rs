@@ -105,7 +105,7 @@ where
 }
 
 /// An even integer of type `T` in `MIN..=MAX`, such as the COP-1 window W (232.1-B-2 Cor. 1
-/// §6.1.8.3).
+/// §6.1.8.2, §6.1.8.3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct EvenRanged<T, const MIN: u64, const MAX: u64>(Ranged<T, MIN, MAX>);
