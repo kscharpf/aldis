@@ -28,11 +28,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "std")]
-extern crate std;
-
 pub mod anomaly;
 pub mod bits;
 pub mod container;

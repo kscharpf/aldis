@@ -13,8 +13,6 @@ publish = false
 
 
 [features]
-alloc = []
-std = ["alloc"]
 crc-table = []
 # Test-only security hook that writes fixed patterns (API-073); never enable in flight builds.
 test-hooks = []

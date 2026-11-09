@@ -1,6 +1,7 @@
 //! Trace writer, canonical-form check, and comparator against a hand-written sample trace
 //! (docs/reference-application.md §7; A0 WP-2).
 
+use refapp_harness::micros::Micros;
 use refapp_harness::trace::{
     Dir, FaultKind, Header, Mismatch, NodeId, Record, check_canonical, compare, decode_strict,
 };
@@ -34,74 +35,74 @@ fn writer_reproduces_the_sample() {
     };
     let records = [
         Record::PacketOut {
-            t_us: 0,
+            t_us: Micros::new(0),
             node: NodeId::Flight,
             apid: 16,
             octets: tm.clone(),
         },
         Record::UnitSent {
-            t_us: 0,
+            t_us: Micros::new(0),
             dir: Dir::Down,
             index: 0,
             octets: tm.clone(),
         },
         Record::UnitDelivered {
-            t_us: 10_000,
+            t_us: Micros::new(10_000),
             dir: Dir::Down,
             index: 0,
             copy: 0,
         },
         Record::PacketIn {
-            t_us: 10_000,
+            t_us: Micros::new(10_000),
             node: NodeId::Ground,
             apid: 16,
             octets: tm,
         },
         Record::AppEvent {
-            t_us: 10_000,
+            t_us: Micros::new(10_000),
             node: NodeId::Ground,
             code: 1,
             args: vec![16, 2],
         },
         Record::PacketOut {
-            t_us: 1_000_000,
+            t_us: Micros::new(1_000_000),
             node: NodeId::Ground,
             apid: 128,
             octets: tc.clone(),
         },
         Record::Fault {
-            t_us: 1_000_000,
+            t_us: Micros::new(1_000_000),
             dir: Dir::Up,
             index: 0,
             fault: FaultKind::Duplicate,
             args: vec![],
         },
         Record::UnitSent {
-            t_us: 1_000_000,
+            t_us: Micros::new(1_000_000),
             dir: Dir::Up,
             index: 0,
             octets: tc.clone(),
         },
         Record::UnitDelivered {
-            t_us: 1_010_000,
+            t_us: Micros::new(1_010_000),
             dir: Dir::Up,
             index: 0,
             copy: 0,
         },
         Record::UnitDelivered {
-            t_us: 1_010_000,
+            t_us: Micros::new(1_010_000),
             dir: Dir::Up,
             index: 0,
             copy: 1,
         },
         Record::PacketIn {
-            t_us: 1_010_000,
+            t_us: Micros::new(1_010_000),
             node: NodeId::Flight,
             apid: 128,
             octets: tc,
         },
         Record::AppEvent {
-            t_us: 1_010_000,
+            t_us: Micros::new(1_010_000),
             node: NodeId::Flight,
             code: 20,
             args: vec![1, 0],
@@ -118,7 +119,7 @@ fn writer_reproduces_the_sample() {
 fn writer_rejects_unknown_event_codes() {
     // req: APP-083
     let r = Record::AppEvent {
-        t_us: 0,
+        t_us: Micros::new(0),
         node: NodeId::Ground,
         code: 999,
         args: vec![],

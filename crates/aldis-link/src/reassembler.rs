@@ -72,7 +72,7 @@ fn raw<I: Into<u8>>(id: I) -> u8 {
 
 /// What a MAP carries and so how its SDUs are delivered (232.0 §4.4.1–2; 732.1 §4.3.2–4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Service {
+pub enum ReassemblyService {
     /// Packets: whole packets are split by their length fields (LNK-071), a segmented packet is
     /// delivered once.
     Packets,
@@ -139,7 +139,7 @@ pub trait ReassemblerProtocol: Protocol {
 pub struct ReassemblerMap<P: ReassemblerProtocol> {
     vc: P::Vc,
     id: P::Map,
-    service: Service,
+    service: ReassemblyService,
     max_sdu_len: usize,
 }
 
@@ -150,7 +150,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
     pub const fn packets(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, Service::Packets, max_sdu_len)
+        ReassemblerMap::checked(vc, id, ReassemblyService::Packets, max_sdu_len)
     }
 
     /// A MAP of SDUs of at most `max_sdu_len` octets, the maximum `MAP_SDU` length (232.0 Table
@@ -159,7 +159,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
     pub const fn sdu(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, Service::Sdu, max_sdu_len)
+        ReassemblerMap::checked(vc, id, ReassemblyService::Sdu, max_sdu_len)
     }
 
     /// An octet-stream MAP: no SDU is assembled, so it has no maximum.
@@ -170,7 +170,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
         ReassemblerMap {
             vc,
             id,
-            service: Service::OctetStream,
+            service: ReassemblyService::OctetStream,
             max_sdu_len: 0,
         }
     }
@@ -178,7 +178,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     const fn checked(
         vc: P::Vc,
         id: P::Map,
-        service: Service,
+        service: ReassemblyService,
         max_sdu_len: usize,
     ) -> Result<ReassemblerMap<P>> {
         if max_sdu_len == 0 {
@@ -213,7 +213,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     ///
     /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
-    pub const fn service(&self) -> Service {
+    pub const fn service(&self) -> ReassemblyService {
         self.service
     }
 
@@ -223,8 +223,8 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     #[must_use]
     pub const fn max_sdu_len(&self) -> Option<usize> {
         match self.service {
-            Service::OctetStream => None,
-            Service::Packets | Service::Sdu => Some(self.max_sdu_len),
+            ReassemblyService::OctetStream => None,
+            ReassemblyService::Packets | ReassemblyService::Sdu => Some(self.max_sdu_len),
         }
     }
 }
@@ -633,14 +633,14 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         let data = match parsed.unit {
             Unit::Idle => return Ok(()),
             Unit::Stream(data) => {
-                if map.service != Service::OctetStream {
+                if map.service != ReassemblyService::OctetStream {
                     return Err(rule);
                 }
                 data
             }
             Unit::Whole(data) | Unit::First(data) | Unit::Continuing(data) | Unit::Last(data) => {
-                let fixed_ok = !parsed.fixed_length || map.service == Service::Sdu;
-                if map.service == Service::OctetStream || !fixed_ok {
+                let fixed_ok = !parsed.fixed_length || map.service == ReassemblyService::Sdu;
+                if map.service == ReassemblyService::OctetStream || !fixed_ok {
                     return Err(rule);
                 }
                 data
@@ -649,14 +649,14 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         // An octet stream assembles nothing: it needs the octets of the FDU only.
         let held_max = match map.max_sdu_len() {
             Some(max) => max.saturating_sub(1),
-            None if map.service == Service::OctetStream => 0,
+            None if map.service == ReassemblyService::OctetStream => 0,
             None => return Err(Error::new(ErrorKind::InternalError)),
         };
         let needed = held_max.saturating_add(data.len());
         if area < needed {
             return Err(Error::buffer_too_small(needed));
         }
-        if map.service == Service::Packets {
+        if map.service == ReassemblyService::Packets {
             match parsed.unit {
                 Unit::Whole(data) => {
                     count_packets(data)?;
@@ -852,7 +852,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// Delivers `head` then `tail` as an SDU or as packets, by the service of the MAP.
     fn deliver(
         &mut self,
-        service: Service,
+        service: ReassemblyService,
         vc: u8,
         map: u8,
         head: &[u8],
@@ -864,7 +864,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
 
     fn deliver_from(
         status: &mut ReassemblerStatus,
-        service: Service,
+        service: ReassemblyService,
         (vc, map): (u8, u8),
         head: &[u8],
         tail: &[u8],
@@ -872,7 +872,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     ) -> Result<()> {
         let range = cx.write(head, tail)?;
         match service {
-            Service::Packets => {
+            ReassemblyService::Packets => {
                 let count = count_packets_of(head, tail)?;
                 status.delivered.add(count);
                 cx.actions.push(ReassemblerOutput::Packets {
@@ -882,7 +882,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                     count,
                 })
             }
-            Service::Sdu | Service::OctetStream => {
+            ReassemblyService::Sdu | ReassemblyService::OctetStream => {
                 status.delivered.incr();
                 cx.actions.push(ReassemblerOutput::Sdu {
                     vc,

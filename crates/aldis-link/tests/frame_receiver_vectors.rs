@@ -14,9 +14,9 @@ use aldis_core::ids::MapId;
 use aldis_core::ocf::Ocf;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DiscardReason, FrameReceiver,
-    FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput, ReceiverOutput, Service,
-    TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
+    DiscardReason, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput,
+    ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
 use serde_json::{Map, Value, json};
@@ -36,11 +36,11 @@ fn num(v: &Value) -> usize {
     usize::try_from(v.as_u64().unwrap_or_else(|| panic!("{v} is not a number"))).unwrap()
 }
 
-fn service(v: &Value) -> Service {
+fn service(v: &Value) -> DeliveryService {
     match v.as_str().unwrap() {
-        "none" => Service::None,
-        "vc" => Service::Vc,
-        "mc" => Service::Mc,
+        "none" => DeliveryService::None,
+        "vc" => DeliveryService::Vc,
+        "mc" => DeliveryService::Mc,
         other => panic!("unknown service {other}"),
     }
 }
