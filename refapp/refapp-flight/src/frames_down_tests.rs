@@ -501,6 +501,53 @@ fn the_engines_fit_the_frame_and_the_queue_is_not_the_limit() {
         run.rec
             .0
             .iter()
-            .all(|(_, o)| !matches!(o, Out::Event(102, _)))
+            .all(|(_, o)| !matches!(o, Out::Event(113, _)))
     );
+}
+
+#[test]
+fn a_packet_a_generator_cannot_take_raises_downlink_refused_and_is_counted() {
+    // req: APP-142, APP-131
+    // Without frame slots nothing leaves the generators; each holds 211 + 512 = 723 octets. VC 1
+    // takes the payload packet of 0.5 s (412) and refuses the next, at 2.5 s, and every later
+    // one (14 in all); VC 0 takes 16 housekeeping packets (704) and refuses those of seconds 16
+    // to 29 (14), each with `WouldBlock`.
+    let mut run = Run::new();
+    for step in 0_u64..60 {
+        run.step(step.saturating_mul(500_000), false, &[]);
+    }
+    let refused: Vec<(u64, Vec<u64>)> = run
+        .rec
+        .0
+        .iter()
+        .filter_map(|(t, o)| match o {
+            Out::Event(113, args) => Some((*t, args.clone())),
+            Out::Packet(..) | Out::Unit(_) | Out::Event(..) => None,
+        })
+        .collect();
+    let would_block = u64::from(aldis::core::ErrorKind::WouldBlock.code());
+    assert_eq!(refused.len(), 28);
+    assert_eq!(refused[0], (2_500_000, std::vec![would_block, 1]));
+    assert!(refused.contains(&(16_000_000, std::vec![would_block, 0])));
+    assert_eq!(run.node.build_failures(), 28);
+    // The packets were built: 30 `packet_out` records, and no frame without a slot.
+    let built = run
+        .rec
+        .0
+        .iter()
+        .filter(|(_, o)| matches!(o, Out::Packet(a, _) if *a == apid::HOUSEKEEPING))
+        .count();
+    assert_eq!(built, 30);
+    assert!(run.frames().is_empty());
+}
+
+#[test]
+fn a_failed_slot_raises_downlink_refused_with_the_error_code_alone() {
+    // req: APP-142
+    let mut node = FlightNode::new_frames().unwrap();
+    let mut rec = Rec::default();
+    node.slot_failed(aldis::core::ErrorKind::InternalError, &mut At(0, &mut rec));
+    let code = u64::from(aldis::core::ErrorKind::InternalError.code());
+    assert_eq!(rec.0, [(0, Out::Event(113, std::vec![code]))]);
+    assert_eq!(node.build_failures(), 1);
 }

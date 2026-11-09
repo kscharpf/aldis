@@ -37,25 +37,33 @@ use refapp_scenario::{Duration, Instant, Output};
 use crate::FlightNode;
 use crate::downlink::Stream;
 use crate::dump::{Dump, Segment};
+use crate::event::APP_DOWNLINK_REFUSED;
 
-/// Code of the application event `frame_rejected` (§7.4, APP-131): the argument is the error code
-/// of the catalogue in docs/03-api-model.md §9.
-pub const APP_FRAME_REJECTED: u16 = 102;
-
-/// Octets of a transfer frame: `generated::tm::FRAME_LENGTH` (APP-030); checked by the engines'
-/// capacity tests at construction and by a unit test.
+/// Octets of a transfer frame: `generated::tm::FRAME_LENGTH` (APP-030), asserted below.
 const FRAME: usize = 223;
 
 /// Octets of the data field: the frame less the primary header (6), the OCF (4), and the FECF
 /// (2) (§4.1, CMN-040).
 const DATA_FIELD: usize = 211;
 
+#[expect(
+    clippy::as_conversions,
+    reason = "const context: `usize::from(u16)` is not const, and the widening cannot truncate"
+)]
+const _: () = {
+    assert!(FRAME == tm::FRAME_LENGTH as usize);
+    assert!(DATA_FIELD + 6 + 4 + 2 == FRAME);
+};
+
 /// Octets of a generator's packet queue, behind the field: one Maximum Packet Length
-/// (`generated::tm::MAX_PACKET_LENGTH`, 512). The engine needs at least 301 (the maximum packet
-/// less the packet zone); VC 1 in `a2-nominal` needs between 441 and 450 (the dump and payload
-/// packets of 12.0 to 12.5 s wait behind VC 0, §4.4.4), measured by lowering the constant until
-/// the unit tests failed. A generator that is out of room refuses a packet with `WouldBlock`,
-/// which the node reports as `frame_rejected`.
+/// (`generated::tm::MAX_PACKET_LENGTH`, 512); the engine needs at least 301 (that maximum less
+/// the 211 of the packet zone). The largest backlog of `a2-nominal` is on VC 1 at 12.5 s (§4.4.4):
+/// the dump packets (140, 140, 140, 140, 106 octets) and payload packet 6 (412) make 1 078 octets
+/// submitted, the fields of frames 97 and 99 (2 × 211) have left the generator, and 211 octets
+/// are in the field, so 1 078 − 422 − 211 = 445 octets wait in the queue (the unit tests agree: a
+/// queue of 440 fails them and one of 450 passes). 512 leaves 67 octets of margin. A generator
+/// out of room refuses a packet with `WouldBlock`, which the node reports as `downlink_refused`
+/// (APP-142).
 const QUEUE: usize = 512;
 
 /// The virtual channels of data, in the order the node serves them (§2.1 step 6).
@@ -73,7 +81,7 @@ const fn mux_priority(rank: u8) -> u8 {
 
 /// The VC of the packets of `stream` (§4.1: VC 0 carries housekeeping and events, VC 1 payload and
 /// dump).
-const fn vc_of(stream: Stream) -> u8 {
+pub(crate) const fn vc_of(stream: Stream) -> u8 {
     match stream {
         Stream::Housekeeping | Stream::Events => tm::VCID_REALTIME,
         Stream::Payload | Stream::Dump => tm::VCID_PAYLOAD,
@@ -210,6 +218,10 @@ impl FrameDownlink {
             if *held {
                 continue;
             }
+            // The field leaves the generator before the multiplexer takes it. `held` mirrors the
+            // multiplexer's slot of the VC, so the offer finds it free (the only `WouldBlock` of
+            // `Offer`, LNK-076), and the VC and field length are those the multiplexer was
+            // configured with, so the other refusals of `Offer` cannot arise.
             let actions = generator.step(GeneratorInput::Release, now, &mut field)?;
             match actions.get(0) {
                 Some(GeneratorOutput::DataField(data)) => {
@@ -353,7 +365,7 @@ impl FlightNode {
     }
 
     /// Sends the next packet of `dump` through the tap of the dump's VC; a generator that refuses
-    /// the packet is reported as `frame_rejected` (the packet itself was built).
+    /// the packet is reported (APP-142; the packet itself was built).
     pub(crate) fn send_dump_packet(
         &mut self,
         dump: &mut Dump,
@@ -365,16 +377,26 @@ impl FlightNode {
             (sent, tap.refused())
         };
         if let Some(kind) = refused {
-            self.frame_refused(kind, out);
+            self.packet_refused(kind, tm::VCID_PAYLOAD, out);
         }
         sent
     }
 
-    /// A generator refused a packet that was built: counted, and raised as `frame_rejected` with
-    /// the error code (APP-131).
-    pub(crate) fn frame_refused(&mut self, kind: ErrorKind, out: &mut dyn Output) {
+    /// A generator refused a packet that was built: counted, and raised as `downlink_refused`
+    /// with the error code and the VCID (APP-142).
+    pub(crate) fn packet_refused(&mut self, kind: ErrorKind, vc: u8, out: &mut dyn Output) {
         self.build_failures = self.build_failures.saturating_add(1);
-        out.app_event(APP_FRAME_REJECTED, &[u64::from(kind.code())]);
+        out.app_event(
+            APP_DOWNLINK_REFUSED,
+            &[u64::from(kind.code()), u64::from(vc)],
+        );
+    }
+
+    /// An engine failed in a slot: counted, and raised as `downlink_refused` with the error code
+    /// alone; no frame was output (APP-142).
+    pub(crate) fn slot_failed(&mut self, kind: ErrorKind, out: &mut dyn Output) {
+        self.build_failures = self.build_failures.saturating_add(1);
+        out.app_event(APP_DOWNLINK_REFUSED, &[u64::from(kind.code())]);
     }
 
     /// Step 6 of §2.1 (APP-132): in a step with `tx_slot`, the frame; otherwise nothing.
@@ -383,7 +405,7 @@ impl FlightNode {
             return;
         }
         if let Some(Err(e)) = self.frames.as_mut().map(|f| f.slot(now, out)) {
-            self.frame_refused(e.kind(), out);
+            self.slot_failed(e.kind(), out);
         }
     }
 }

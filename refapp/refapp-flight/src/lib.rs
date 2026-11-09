@@ -82,7 +82,9 @@ impl FlightNode {
 
     /// Packets the node could not build: 0 unless the time conversion or the packet writer
     /// fails, which the scenario's values rule out (APP-060). Each failure is also raised as the
-    /// application event `packet_rejected` (APP-131).
+    /// application event `packet_rejected` (APP-131). At frame level it also counts a packet a
+    /// generator refused and a slot an engine failed, each raised as `downlink_refused`
+    /// (APP-142).
     #[must_use]
     pub const fn build_failures(&self) -> u32 {
         self.build_failures
@@ -103,7 +105,7 @@ impl FlightNode {
             (sent, tap.refused())
         };
         if let Some(kind) = refused {
-            self.frame_refused(kind, out);
+            self.packet_refused(kind, frames_down::vc_of(stream), out);
         }
         if let Err(e) = sent {
             self.build_failed(e.kind(), out);
