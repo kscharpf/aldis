@@ -3,11 +3,11 @@
 **Goal:** the simplest crate architecture that still meets every requirement. Most protocols (TM, TC, AOS, USLP) were added one work package at a time by copying a sibling, so the codecs, the link engines, and the C ABI each restate protocol facts. The pattern of this milestone: **each protocol fact is stated once, in the codec crate or in `aldis-core`, and the engine, FFI, and feature layers are generic over it.** The work changes no wire behaviour: every vector, every requirement, and the trace stay as they are.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M5](m5-c-abi-completion.md) (`v0.6.0-m5`) · **Release:** none planned; the maintainer decides whether it ships as `v0.7.0-m6` or with the next release
 
-**Status: planned.** Decisions D1–D4 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat); D5–D7 proposed. Entry gate: M5 complete (roadmap §1).
+**Status: planned.** Decisions D1–D4 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat); D5–D7 proposed. Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); the release `v0.6.0-m5` is the maintainer's and is not a condition of the gate.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Phase 0: cheap clean-ups | | | Already acted on before this plan: the no-op `cop1` `tc` feature, the `DeliveryService`/`ReassemblyService` renames, the FFI `link_common` module and the single `qos`, clamps in the mux, USLP, and EPP turned into explicit errors, the writer fallbacks audited (#387); the A2 plan wording (#389); GEN-006 withdrawn and the `alloc`/`std` features removed (#391, D3). |
+| WP-0 Phase 0: cheap clean-ups | | | Merged (State comes from `cargo xtask status-table`): the no-op `cop1` `tc` feature, the `DeliveryService`/`ReassemblyService` renames, the FFI `link_common` module and the single `qos`, clamps in the mux, USLP, and EPP turned into explicit errors, the writer fallbacks audited (#387); the A2 plan wording (#389); GEN-006 withdrawn and the `alloc`/`std` features removed (#391, D3). |
 | WP-1a Channel-lookup trait | | | Phase 1 step 1 |
 | WP-1b One checking pipeline | | | Phase 1 step 2 |
 | WP-1c Generic proof types | | | Phase 1 step 3 |
@@ -23,7 +23,7 @@
 | WP-3d Generated sizes and constants | | | Phase 3 step 4 |
 | WP-4 Exit | | | `cargo xtask trace` against the entry baseline; exit checklist |
 
-A pull request that starts or merges a work package changes only its row (roadmap §6 rule 1). The State and PRs columns are derived by `cargo xtask status-table` and written by the coordinator; title a pull request `refactor(m6/wp-1b): …` ([pr-body.md](../process/pr-body.md)).
+A pull request that starts or merges a work package changes only the Notes column of its row (roadmap §6 rule 1). The State and PRs columns are derived by `cargo xtask status-table` and written by the coordinator; title a pull request `refactor(m6/wp-1b): …` ([pr-body.md](../process/pr-body.md)).
 
 History:
 - 2026-11-08: crate-architecture review (three read-only agents over the codecs and core, the link and COP-1 engines, and the FFI and testkit); D1–D3 decided by the maintainer in chat.
@@ -51,7 +51,7 @@ History:
 | D4 | `refapp/Cargo.lock` | [#387](https://github.com/kscharpf/aldis/pull/387) may change `refapp/Cargo.lock`, a track A path, because the facade change forces it ([roadmap §6](../08-roadmap.md) rule 2 otherwise keeps a pull request to one track's directories) | Accepted (maintainer, 2026-11-09) |
 | D5 | Kept as they are | One codec crate per Blue Book (GEN-003); `aldis-sync`; the facade; the `security`, `layout`, and `finishing` primitives and `DecodeMode`/`Lenient` of `aldis-core`; `engine::Actions`; FOP-1's state table; the FFI handle lifecycle (`handle.rs`), `mirror.rs`, and `abi::call`; the separation of the testkit's model and oracle. No work package rewrites them, and a pull request that must touch one says why | Proposed |
 | D6 | Behaviour-preserving | No wire behaviour, requirement, vector, or field or status code changes. A released vector is never edited (TV-021). The Rust API may break (0.x); a change of the C ABI follows the checklist "Adding C ABI functions" and raises `ALDIS_ABI_VERSION_MINOR`, and the C ABI conventions listed in §5 are the maintainer's | Proposed |
-| D7 | Trace gate | No `--scope m6`: the milestone adds no requirement. The exit compares `cargo xtask trace` with its output at the entry and finds the same requirement coverage (§4); a requirement that loses its test, vector, or record is a defect of the pull request that did it | Proposed |
+| D7 | Trace gate | The exit table of §4 lists, in its Criteria column, the requirements the refactor touches (GEN-051, LNK-001, LNK-078, API-015, API-017, RS-020, RS-023, and the rest it names), so that `cargo xtask trace --scope m6 --strict` measures them (roadmap §6 rule 1; the "Milestone exit" checklist); the scope reads those IDs from the table, and adding it to `cargo xtask ci`, `ci.yml`, and the check `spec` is a small `xtask` pull request of WP-0, as in M5 D1. The milestone adds no requirement, so the unscoped `cargo xtask trace` must also report the same coverage at the exit as at the entry | Proposed |
 
 ## 3. Work packages
 
@@ -65,8 +65,8 @@ WP-0 ─▶ WP-1a ─▶ WP-1b ─▶ WP-1c ─▶ WP-1d ─┐
 
 Phase 1 and the first steps of Phase 2 touch different crates and may run side by side, except where both change `aldis-core` exports: land WP-1a before WP-2c.
 
-### WP-0 Phase 0: cheap clean-ups (S) — done or in a train
-- #387, #389, #391 (see the table). The part of the review's Phase 0 that is not yet done is left to the packages below: the small enums, the retired field code, and the testkit driver are open decisions (§5).
+### WP-0 Phase 0: cheap clean-ups (S) — merged
+- #387, #389, #391 (see the table); all three have merged to `main`, and the later packages build on them. The part of the review's Phase 0 that is not yet done is left to the packages below: the small enums, the retired field code, and the testkit driver are open decisions (§5).
 
 ### WP-1 Phase 1, one checking pipeline (L) — about 1.5k lines removed — API-015, API-017, RS-020, RS-023
 - **WP-1a:** one channel-lookup trait in `aldis-core`, generic over the identifier widths and the VC configuration, with the MAP lookup a second trait; it replaces the four `VcLookup` variants and the duplicated room check.
@@ -94,7 +94,7 @@ Phase 1 and the first steps of Phase 2 touch different crates and may run side b
 - Checklist: "Adding C ABI functions"; the C++ owner told when the header changes (roadmap §6 rule 4).
 
 ### WP-4 Exit (S) — VER-020, RS-015
-- The exit checklist ("Milestone exit"); `cargo xtask trace` compared with the entry baseline (D7); the roadmap row, README status, and this plan's status; open issues of §5 resolved or moved.
+- The exit checklist ("Milestone exit"); `cargo xtask trace --scope m6 --strict` and the unscoped trace compared with the entry baseline (D7); the roadmap row, README status, and this plan's status; open issues of §5 resolved or moved.
 
 ## 4. Exit criteria
 
@@ -103,7 +103,7 @@ Milestone 6 is complete when every item below is green on `main`. The results co
 | Area | Criteria | Results / evidence |
 |---|---|---|
 | Phases 1–3 | Phase 1 (WP-1), Phase 2 (WP-2, with WP-2e decided), and Phase 3 (WP-3) merged | |
-| Trace | `cargo xtask trace` reports the same requirement coverage as at the entry: no requirement loses its test, vector, or record (D7) | |
+| Trace | `cargo xtask trace --scope m6 --strict` passes (GEN-051, LNK-001, LNK-078, API-015, API-017, RS-020, RS-023), and the unscoped `cargo xtask trace` reports the same requirement coverage as at the entry: no requirement loses its test, vector, or record (D7) | |
 | Behaviour | The shared vectors pass through the Rust codecs and engines, the C ABI, and `aldis.hpp`, with no vector file edited (D6); the golden traces of track A are unchanged | |
 | Single statement of protocol facts | One lookup trait, one check pipeline, one proof-type pair, one stream, one frame-format trait per codec, one frame writer, one in-place trait; no hand-written header in `aldis-link`; no field extraction by hand-written shifts in a codec or the mux (GEN-051, D2) | |
 | Gates | Coverage at 100 % without a raised waiver (VER-024), mutants triaged (VER-025), `stack` within its budgets at the `capacities.toml` sizes (VER-011), the exerciser panic-free link check (VER-010), the fuzz targets building | |
@@ -122,7 +122,7 @@ Each is the maintainer's (decision rights: public API and C ABI conventions, sco
 | OI-93 | FOP-1 frame encoding | FOP-1 emits FDUs and a `FrameKind`, framed by the codec | WP-2b |
 | OI-94 | Retired field-code kind (field code 18) | A `retired` kind in [03 §9.1](../03-api-model.md#91-field-codes) | none |
 | OI-95 | Testkit generic `ScenarioEngine` driver | Low priority; after WP-3 | none |
-| OI-96 | Duplicated small enums (COP frame kinds in five places, MAP service shapes) | Fold into WP-2 where the frame-format trait removes them | WP-2b |
+| OI-96 | Duplicated small enums (COP frame kinds in several places, MAP service shapes) | Fold into WP-2 where the frame-format trait removes them | WP-2b |
 | OI-97 | Do `aldis-link`'s codec dependencies become non-optional | Decide after WP-2c, when the dependencies are visible | WP-2e |
 
 ## 6. Risks
