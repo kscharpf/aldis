@@ -273,7 +273,10 @@ fn step(
         tx_slot: slot,
     };
     let mut out = Recorder::default();
-    let deadline = side.node.step(&input, &mut out).map(|i| Micros::new(i.as_micros()));
+    let deadline = side
+        .node
+        .step(&input, &mut out)
+        .map(|i| Micros::new(i.as_micros()));
     let name = side.id.as_str();
     if let Some(d) = deadline.filter(|d| *d <= t) {
         return Err(format!(
@@ -332,7 +335,13 @@ fn step(
 
 /// Sends a unit into the link: records the faults scripted for it (before its `unit_sent`,
 /// §7.3) and queues the arrivals they leave (§6.3).
-fn send(world: &mut World<'_>, dir: Dir, index: u64, t: Micros, octets: &[u8]) -> Result<(), String> {
+fn send(
+    world: &mut World<'_>,
+    dir: Dir,
+    index: u64,
+    t: Micros,
+    octets: &[u8],
+) -> Result<(), String> {
     let mut octets = octets.to_vec();
     let mut dropped = false;
     let mut copies = 1u8;
@@ -397,7 +406,8 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: Micros, octets: &[u8]) -
         });
     }
     if !dropped {
-        let at = t.saturating_add(world.link.one_way_delay_us)
+        let at = t
+            .saturating_add(world.link.one_way_delay_us)
             .saturating_add(extra_delay);
         for copy in 0..copies {
             world.in_flight.push(Arrival {
