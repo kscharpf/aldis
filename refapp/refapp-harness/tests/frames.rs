@@ -106,21 +106,21 @@ fn a_node_pair_with_every_fault_kind_reproduces_a_hand_written_trace() {
     ];
     let records =
         sim::records(&scenario, &case(700_000, faults), &mut flight, &mut ground).unwrap();
-    let sent = |t_us, dir, index, octets: &[u8]| Record::UnitSent {
-        t_us,
+    let sent = |t_us: u64, dir, index, octets: &[u8]| Record::UnitSent {
+        t_us: Micros::new(t_us),
         dir,
         index,
         octets: octets.to_vec(),
     };
-    let fault_rec = |t_us, dir, index, fault, args: &[u64]| Record::Fault {
-        t_us,
+    let fault_rec = |t_us: u64, dir, index, fault, args: &[u64]| Record::Fault {
+        t_us: Micros::new(t_us),
         dir,
         index,
         fault,
         args: args.to_vec(),
     };
-    let delivered = |t_us, dir, index, copy| Record::UnitDelivered {
-        t_us,
+    let delivered = |t_us: u64, dir, index, copy| Record::UnitDelivered {
+        t_us: Micros::new(t_us),
         dir,
         index,
         copy,
