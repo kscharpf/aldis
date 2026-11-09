@@ -7,8 +7,12 @@
 # branch); the branch whose remote is already gone is cleaned; each of these is kept with its
 # reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
 # a closed train whose non-merge commits are all on main is cleaned (worktree, local and remote
-# branch), and is kept when a commit is not, and a closed non-train PR is kept;
-# a closed train is kept, both refs, when only the remote has a unique commit; the closed-PR filter
+# branch), and is kept when a commit is not;
+# a closed non-train PR whose head commit is on main is cleaned (also a stacked one, whose base is
+# another branch), and is kept when its head is not on main, or when its local branch has a newer
+# commit, or when only its remote branch has a commit main lacks (both refs kept, with the
+# reason), and with its own reason when GitHub gives no head commit; a closed train is kept, both
+# refs, when only the remote has a unique commit; the closed-PR filter
 # drops merged PRs (a closed listing with a merged and an unmerged PR picks the unmerged one; one
 # with only a merged PR is kept);
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
@@ -89,6 +93,33 @@ git -C "$repo" push -q origin train/closed-remote-new
 git -C "$repo" checkout -q main
 git -C "$repo" branch -q -f train/closed-remote-new main
 git -C "$repo" push -q origin main
+
+# Closed non-train PRs. closed-head-ok: the head landed on main by a merge. closed-head-no: the
+# head is not on main. closed-head-newer: the head is on main, the local branch has one more
+# commit. closed-stacked-child sits on closed-stacked-parent (its PR's base); both heads landed.
+for b in closed-head-ok closed-head-newer closed-head-remote-new closed-stacked-parent; do
+    branch "$b"
+done
+git -C "$repo" checkout -q -b closed-stacked-child closed-stacked-parent
+echo sc >"$repo/sc.txt"; git -C "$repo" add sc.txt; git -C "$repo" commit -q -m sc
+git -C "$repo" push -q -u origin closed-stacked-child
+git -C "$repo" checkout -q main
+branch closed-head-no
+for b in closed-head-ok closed-head-newer closed-head-remote-new closed-stacked-child; do
+    git -C "$repo" merge -q --no-ff "$b" -m "merge $b"
+done
+git -C "$repo" push -q origin main
+git -C "$repo" checkout -q closed-head-newer
+echo newer >"$repo/newer.txt"; git -C "$repo" add newer.txt; git -C "$repo" commit -q -m newer
+git -C "$repo" checkout -q main
+# closed-head-remote-new: the head is on main, the local tip is that head, origin has one more.
+rhead="$(git -C "$repo" rev-parse closed-head-remote-new)"
+git -C "$repo" checkout -q closed-head-remote-new
+echo rnew >"$repo/rnew.txt"; git -C "$repo" add rnew.txt; git -C "$repo" commit -q -m rnew
+git -C "$repo" push -q origin closed-head-remote-new
+git -C "$repo" checkout -q main
+git -C "$repo" branch -q -f closed-head-remote-new "$rhead"
+git -C "$repo" worktree add -q "$work/wt-head-ok" closed-head-ok
 git -C "$repo" worktree add -q "$work/wt-closed-ok" train/closed-ok
 
 # merged-after: a commit on the branch after the merge, which origin/main lacks.
@@ -123,7 +154,8 @@ cat >"$work/bin/gh" <<'EOF'
 # branches with a merged PR (#42); $STUB_CLOSED those with a closed, unmerged PR (#43);
 # $STUB_BOTH those whose closed listing holds a merged PR (#44) and an unmerged one (#45), as
 # gh's `--state closed` does, while the merged listing is empty; $STUB_ONLYMERGED those whose
-# closed listing holds only a merged PR (#46).
+# closed listing holds only a merged PR (#46). A closed unmerged PR reports the head commit the
+# file $STUB_HEADS gives for its branch ("<branch> <oid>" lines; none: an empty headRefOid).
 b="" st="" filter=""
 while [ $# -gt 0 ]; do
     [ "$1" = --head ] && b="$2"
@@ -136,7 +168,12 @@ in_list() { case " $1 " in *" $b "*) return 0 ;; esac; return 1; }
 case "$st" in
     merged) in_list "$STUB_MERGED" && json='[{"number":42,"mergedAt":"2026-11-01T00:00:00Z"}]' ;;
     closed)
-        if in_list "$STUB_CLOSED"; then json='[{"number":43,"mergedAt":null}]'
+        head="$(awk -v b="$b" '$1 == b { print $2 }' "$STUB_HEADS")"
+        if in_list "$STUB_CLOSED"; then
+            json="[{\"number\":43,\"mergedAt\":null,\"headRefOid\":\"$head\"}]"
+        elif in_list "$STUB_STACKED"; then
+            # Its base is another branch (closed-stacked-parent); the script does not read it.
+            json="[{\"number\":47,\"mergedAt\":null,\"headRefOid\":\"$head\"}]"
         elif in_list "$STUB_BOTH"; then
             json='[{"number":44,"mergedAt":"2026-11-01T00:00:00Z"},{"number":45,"mergedAt":null}]'
         elif in_list "$STUB_ONLYMERGED"; then
@@ -151,12 +188,22 @@ merged="merged-claude merged-claude-dirty merged-claude-nostart merged-foreign"
 merged="$merged merged-clean merged-dirty merged-after"
 merged="$merged merged-remote-gone merged-locked main"
 closed="train/closed-ok train/closed-new closed-other train/closed-remote-new"
+closed="$closed closed-head-ok closed-head-no closed-head-newer closed-head-remote-new"
+stacked="closed-stacked-child"
+# The head of each closed non-train PR (closed-head-no: a tip not on main). closed-other has
+# none (an empty headRefOid): kept.
+heads="$work/heads"
+for b in closed-head-ok closed-head-newer closed-stacked-child closed-head-no; do
+    echo "$b $(git -C "$repo" rev-parse "origin/$b")" >>"$heads"
+done
+echo "closed-head-remote-new $rhead" >>"$heads"
 both="train/closed-both"
 onlymerged="train/closed-onlymerged"
 out="" rc=0
 run() {
     out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" STUB_CLOSED="$closed" \
-        STUB_BOTH="$both" STUB_ONLYMERGED="$onlymerged" \
+        STUB_BOTH="$both" STUB_ONLYMERGED="$onlymerged" STUB_STACKED="$stacked" \
+        STUB_HEADS="$heads" \
         "$script" "$@" 2>&1)"
     rc=$?
     [ -z "${DEBUG:-}" ] || printf '%s\n' "$out"
@@ -249,6 +296,50 @@ expect "train/closed-new: the local branch stays" local_has train/closed-new
 expect "train/closed-new: the remote branch stays" remote_has train/closed-new
 expect "closed-other: the local branch stays" local_has closed-other
 expect "closed-other: the remote branch stays" remote_has closed-other
+
+echo "# a closed non-train PR: head not on main, and head on main with a newer local commit"
+run --apply closed-head-no closed-head-newer
+expect "a head outside main is kept" said "closed-head-no: KEEP (no merged pull request"
+expect "and says the head is outside origin/main" said "outside origin/main)"
+expect "a newer local commit is kept with the reason" \
+    said "closed-head-newer: KEEP (PR #43 closed with head"
+expect "and names the local branch" said "the local branch is not an ancestor of origin/main"
+expect "exit status 1" status_is 1
+for b in closed-head-no closed-head-newer; do
+    expect "$b: the local branch stays" local_has "$b"
+    expect "$b: the remote branch stays" remote_has "$b"
+done
+
+echo "# a closed non-train PR whose head is on main, but whose remote has a newer commit"
+run --apply closed-head-remote-new
+expect "the remote is named" said "origin/closed-head-remote-new is not an ancestor of origin/main"
+expect "both refs are kept" said "both refs kept"
+expect "exit status 1" status_is 1
+expect "the local branch stays" local_has closed-head-remote-new
+expect "the remote branch stays" remote_has closed-head-remote-new
+
+echo "# a closed non-train PR for which GitHub reports no head commit"
+run closed-other
+expect "the message says so" said "GitHub reported no head commit for closed PR #43"
+expect "exit status 1" status_is 1
+
+echo "# a closed non-train PR whose head is on main, dry run then apply"
+run closed-head-ok
+short="$(git -C "$repo" rev-parse --short=8 origin/closed-head-ok)"
+expect "dry run names the PR and the head" said "PR #43 closed, head $short on origin/main"
+expect "dry run: the remote branch stays" remote_has closed-head-ok
+run --apply closed-head-ok
+expect "the worktree is removed" test ! -d "$work/wt-head-ok"
+expect_not "the local branch is deleted" local_has closed-head-ok
+expect_not "the remote branch is deleted" remote_has closed-head-ok
+expect "exit status 0" status_is 0
+
+echo "# a stacked closed PR (base another branch) whose head is on main"
+run --apply closed-stacked-child
+expect "names PR #47" said "PR #47 closed, head"
+expect_not "the local branch is deleted" local_has closed-stacked-child
+expect_not "the remote branch is deleted" remote_has closed-stacked-child
+expect "exit status 0" status_is 0
 
 echo "# a closed train whose remote alone has a unique commit"
 run --apply train/closed-remote-new
