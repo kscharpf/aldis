@@ -106,7 +106,7 @@ Merge trains (maintainer, 2026-11-07): each pull request keeps its own independe
 
 Train assignment (maintainer, 2026-11-09): only the maintainer assigns pull requests to a train; the coordinator builds a train only from the pull requests the maintainer names, and verifies and rebuilds it ([coordinator.md](coordinator.md#merge-trains)).
 
-Concurrent agents (maintainer, 2026-11-09): at most 4 subagents run at once, counted across all sessions on the machine (`scripts/agent-slots`, [coordinator.md](coordinator.md)).
+Concurrent agents (maintainer, 2026-11-09): at most 2 subagents run at once per coordinator session ([coordinator.md](coordinator.md)).
 
 ### 2.11 Repository housekeeping
 
