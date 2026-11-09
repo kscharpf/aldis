@@ -109,23 +109,23 @@ fn packet_level_delay_and_tie_order() {
         &mut ground,
     )
     .unwrap();
-    let delay = scenario.link.one_way_delay_us.get();
+    let delay = scenario.link.one_way_delay_us;
     let expected = vec![
         // t = 0: ground steps before flight (§6.2).
         Record::UnitSent {
-            t_us: 0,
+            t_us: Micros::new(0),
             dir: Dir::Up,
             index: 0,
             octets: vec![0x0A],
         },
         Record::PacketOut {
-            t_us: 0,
+            t_us: Micros::new(0),
             node: NodeId::Flight,
             apid: 16,
             octets: vec![0xF0],
         },
         Record::UnitSent {
-            t_us: 0,
+            t_us: Micros::new(0),
             dir: Dir::Down,
             index: 0,
             octets: vec![0xF0],
@@ -183,7 +183,7 @@ fn deadlines_wake_nodes() {
         &mut ground,
     )
     .unwrap();
-    let times: Vec<u64> = records.iter().map(Record::t_us).collect();
+    let times: Vec<u64> = records.iter().map(|r| r.t_us().get()).collect();
     assert_eq!(times, [0, 250_000, 500_000]);
 }
 
@@ -224,7 +224,7 @@ fn frame_level_slots() {
                 t_us,
                 dir: Dir::Down,
                 ..
-            } => Some(*t_us),
+            } => Some(t_us.get()),
             _ => None,
         })
         .collect();
@@ -332,7 +332,7 @@ fn ops_entries_wake_the_ground_node_when_due() {
         *seen.borrow(),
         [(1_005_000, vec![0, 1]), (2_500_000, vec![2])]
     );
-    let times: Vec<u64> = records.iter().map(Record::t_us).collect();
+    let times: Vec<u64> = records.iter().map(|r| r.t_us().get()).collect();
     assert_eq!(times, [1_005_000, 2_500_000]);
 }
 
@@ -377,26 +377,26 @@ fn scripted_faults_reproduce_a_hand_written_trace() {
     let records = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
     let delay = scenario.link.one_way_delay_us.get();
     let sent = |t_us: u64, dir: Dir, index: u64, octets: &[u8]| Record::UnitSent {
-        t_us,
+        t_us: Micros::new(t_us),
         dir,
         index,
         octets: octets.to_vec(),
     };
     let flt = |t_us: u64, dir: Dir, index: u64, fault: FaultKind, args: &[u64]| Record::Fault {
-        t_us,
+        t_us: Micros::new(t_us),
         dir,
         index,
         fault,
         args: args.to_vec(),
     };
     let deliv = |t_us: u64, index: u64, copy: u8| Record::UnitDelivered {
-        t_us,
+        t_us: Micros::new(t_us),
         dir: Dir::Down,
         index,
         copy,
     };
     let pkt = |t_us: u64, octets: &[u8]| Record::PacketIn {
-        t_us,
+        t_us: Micros::new(t_us),
         node: NodeId::Ground,
         apid: 16,
         octets: octets.to_vec(),
