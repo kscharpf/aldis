@@ -20,9 +20,9 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 | `aldis-spp` | — | `time` (typed secondary-header time codes), `alloc`, `std` |
 | `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | `alloc`, `std` |
 | `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp`, `alloc`, `std` |
-| `aldis-cop1` | `tc` | `uslp`, `alloc`, `std` |
+| `aldis-cop1` | — | `uslp`, `alloc`, `std` |
 | `aldis-framework` (planned) | — | `alloc`, `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
-| `aldis` (facade) | — | one feature per crate, `spp-time` (`spp` and `time` with `aldis-spp/time`, for the time secondary header of SPP-008), `alloc`, `std`, `full`; the codec features `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` also enable the same feature of `aldis-link` and (`tc`, `uslp`) `aldis-cop1` when those are enabled (weak dependencies) |
+| `aldis` (facade) | — | one feature per crate, `spp-time` (`spp` and `time` with `aldis-spp/time`, for the time secondary header of SPP-008), `alloc`, `std`, `full`; the codec features `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` also enable the same feature of `aldis-link` and (`uslp`) `aldis-cop1` when those are enabled (weak dependencies) |
 | `aldis-ffi` | `std` | `std`, `panic-handler`; enables `aldis/full`; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
 
 ## 3. API shapes
