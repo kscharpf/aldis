@@ -163,6 +163,7 @@ impl Uplink {
     /// [`refused`](Self::refused) and raises `uplink_refused` (APP-143).
     pub(crate) fn submit(&mut self, apid: Apid, packet: &[u8], now: Instant, out: &mut dyn Output) {
         let Some(map) = map_of(apid) else {
+            // No MAP for this APID (APP-143): the MAP argument is 0, since there is none.
             self.refuse(out, STAGE_SUBMIT, Error::new(ErrorKind::UnknownChannel), 0);
             return;
         };
@@ -196,6 +197,8 @@ impl Uplink {
             SegmenterOutput::Discarded { .. } => None,
         })?;
         let Some(octets) = fdu.fdu.slice(&area) else {
+            // Unreachable by construction: the segmenter's FDU lies within the area it was
+            // given. Kept as a refusal so that no index or unwrap is needed (GEN-020).
             self.refuse(out, STAGE_NEXT_FDU, Error::new(ErrorKind::OutOfRange), 0);
             return None;
         };

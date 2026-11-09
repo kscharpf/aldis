@@ -339,7 +339,7 @@ fn a_submit_the_segmenter_refuses_raises_uplink_refused() {
     let (_, recs) = steps.last().unwrap();
     let ev = events(recs);
     assert_eq!(ev.len(), 1, "{ev:?}");
-    assert_eq!((ev[0].0, ev[0].1[0], ev[0].1[2]), (114, 1, 1));
+    assert_eq!(ev, [(114, vec![1, 12, 1])]);
     assert_eq!(node.uplink_refused(), 1);
     // The event comes before the frame, which is the last output of the step.
     assert!(matches!(recs.last(), Some(Rec::Unit(_))));
@@ -362,4 +362,21 @@ fn an_input_fop1_refuses_raises_uplink_refused_and_no_frame_goes_out() {
     let mut out = Recorder::default();
     assert_eq!(uplink.slot(Instant::from_micros(250_000), &mut out), None);
     assert_eq!(out.0, []);
+}
+
+#[test]
+fn a_packet_of_an_apid_without_a_map_raises_uplink_refused_with_map_zero() {
+    // req: APP-143
+    let mut uplink = crate::frames_up::Uplink::new().unwrap();
+    let mut out = Recorder::default();
+    // `UnknownChannel` is read from the type, so the test needs no catalogue number.
+    let code = u64::from(aldis::core::ErrorKind::UnknownChannel.code());
+    uplink.submit(
+        Apid::new(0x7F0).unwrap(),
+        &[0; 8],
+        Instant::from_micros(0),
+        &mut out,
+    );
+    assert_eq!(events(&out.0), [(114, vec![1, code, 0])]);
+    assert_eq!(uplink.refused(), 1);
 }
