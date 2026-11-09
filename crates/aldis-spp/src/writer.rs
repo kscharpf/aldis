@@ -103,6 +103,7 @@ impl<'b> SpacePacketWriter<'b> {
     /// The secondary header to fill in place, `secondary_len` octets (133.0 §4.1.4.2, GEN-014).
     pub fn secondary_header_mut(&mut self) -> &mut [u8] {
         let end = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out
             .get_mut(PRIMARY_HEADER_LEN..end)
             .unwrap_or_default()
@@ -112,6 +113,7 @@ impl<'b> SpacePacketWriter<'b> {
     pub fn user_data_mut(&mut self) -> &mut [u8] {
         let start = PRIMARY_HEADER_LEN.saturating_add(self.secondary_len);
         let end = start.saturating_add(self.max_user_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get_mut(start..end).unwrap_or_default()
     }
 

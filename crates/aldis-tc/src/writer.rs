@@ -268,6 +268,7 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
     pub fn security_header_mut(&mut self) -> &mut [u8] {
         let end = self.plan.data_start;
         let start = end.saturating_sub(self.plan.security_header_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
@@ -275,6 +276,7 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
     pub fn user_data_mut(&mut self) -> &mut [u8] {
         let start = self.plan.data_start;
         let end = start.saturating_add(self.max_user_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
@@ -283,6 +285,7 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
     pub fn security_trailer_mut(&mut self) -> &mut [u8] {
         let start = self.plan.data_start.saturating_add(self.max_user_len);
         let end = start.saturating_add(self.plan.security_trailer_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
@@ -357,9 +360,11 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
             .saturating_add(unused)
             .saturating_add(self.plan.security_trailer_len);
         let mut w = self;
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         let tail = w.out.get_mut(tail_start..tail_end).unwrap_or_default();
         let from = unused.min(tail.len());
         tail.copy_within(from.., 0);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         let frame = w.out.get_mut(..total).unwrap_or_default();
         let header = primary_octets(VERSION, w.plan.fields, total);
         for (d, s) in frame.iter_mut().zip(header) {
@@ -439,6 +444,7 @@ impl<'b> TcFrameWriter<'b, Finalized> {
     /// The octets of the finalized frame, for transmission (RS-023).
     #[must_use]
     pub fn octets(&self) -> &[u8] {
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get(..self.total).unwrap_or_default()
     }
 
@@ -447,6 +453,7 @@ impl<'b> TcFrameWriter<'b, Finalized> {
     #[must_use]
     pub fn into_octets(self) -> &'b [u8] {
         let total = self.total;
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get(..total).unwrap_or_default()
     }
 }

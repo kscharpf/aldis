@@ -15,14 +15,14 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 
 | Crate | Default features | Optional features |
 |---|---|---|
-| `aldis-core` | — | `alloc`, `std`, `crc-table` (default bitwise CRC otherwise) |
-| `aldis-time` | — | `alloc`, `std` |
-| `aldis-spp` | — | `time` (typed secondary-header time codes), `alloc`, `std` |
-| `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | `alloc`, `std` |
-| `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp`, `alloc`, `std` |
-| `aldis-cop1` | `tc` | `uslp`, `alloc`, `std` |
+| `aldis-core` | — | `crc-table` (default bitwise CRC otherwise) |
+| `aldis-time` | — | — |
+| `aldis-spp` | — | `time` (typed secondary-header time codes) |
+| `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | — |
+| `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp` |
+| `aldis-cop1` | — | `uslp` |
 | `aldis-framework` (planned) | — | `alloc`, `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
-| `aldis` (facade) | — | one feature per crate, `spp-time` (`spp` and `time` with `aldis-spp/time`, for the time secondary header of SPP-008), `alloc`, `std`, `full`; the codec features `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` also enable the same feature of `aldis-link` and (`tc`, `uslp`) `aldis-cop1` when those are enabled (weak dependencies) |
+| `aldis` (facade) | — | one feature per crate, `spp-time` (`spp` and `time` with `aldis-spp/time`, for the time secondary header of SPP-008), `full`; the codec features `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` also enable the same feature of `aldis-link` and (`uslp`) `aldis-cop1` when those are enabled (weak dependencies) |
 | `aldis-ffi` | `std` | `std`, `panic-handler`; enables `aldis/full`; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
 
 ## 3. API shapes
@@ -30,7 +30,7 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | RS-010 | Identifier types (API-001) SHALL be newtypes with private fields. Sub-width identifiers SHALL be constructed only through validating functions (`TryFrom<u8/u16/u32>`, `const fn new(..) -> Option<Self>`); full-width identifiers (such as `FrameSeqNum`) SHALL provide `const fn new(..) -> Self` and `From`. The public API SHALL NOT provide unchecked constructors that can produce an out-of-range value. | API-001 | T |
-| RS-011 | `Error` SHALL be a small `Copy` struct `{ kind: ErrorKind, field: Option<FieldId>, detail: ErrorDetail }` with `#[non_exhaustive]` enums (GEN-041, GEN-081). With `std`, it SHALL implement `std::error::Error`. With `core`, it SHALL implement `core::error::Error` (Rust ≥ 1.81). | GEN-040 | T |
+| RS-011 | `Error` SHALL be a small `Copy` struct `{ kind: ErrorKind, field: Option<FieldId>, detail: ErrorDetail }` with `#[non_exhaustive]` enums (GEN-041, GEN-081). It SHALL implement `core::error::Error` (Rust ≥ 1.81), which `std` reuses. | GEN-040 | T |
 | RS-012 | Configuration types SHALL have private fields, validated constructors or builders, and `Clone + PartialEq + Debug`. They SHALL be constructible in `const` context where the validation is `const`-evaluable. | GEN-060, API-041 | T |
 | RS-013 | Engines SHALL implement `Send` when their contents do. They SHALL NOT implement `Sync`-dependent interior mutability (GEN-033). | GEN-033 | A |
 | RS-014 | Withdrawn: engines take no security hook type parameter (API-050, API-074; OI-56). SDLS is applied by the caller, and RS-023 gives its order a typestate. | — | — |

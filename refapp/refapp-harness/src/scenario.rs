@@ -128,8 +128,9 @@ pub struct Tm {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Tc {
-    /// Maximum transfer frame length, octets: at least the primary header (5) and a data field
-    /// of two octets (232.0 §4.1.2, §4.1.3.1.2), at most 1024 (Table 5-1).
+    /// Maximum transfer frame length, octets: at most 1024 (Table 5-1), at least 7. The 7 is a
+    /// bound of the harness, not of the Blue Book: the primary header (5 octets, 232.0 §4.1.2)
+    /// plus the FDU minimum of 2.
     pub max_frame_length: Ranged<u16, 7, 1024>,
     /// FECF present.
     pub fecf: bool,
@@ -196,8 +197,11 @@ pub struct MapServices {
 }
 
 impl Tc {
-    /// The relation between the lengths: the data field (`max_fdu_length`) and the frame around it
-    /// (232.0 §4.1.3.1.2, §4.1.1: a 5-octet primary header, the FECF of 2 octets if present).
+    /// The relation between the lengths: the data field (`max_fdu_length`) and the frame around it.
+    /// The longest data field is 232.0 §4.1.3.1.2; the frame adds the 5-octet primary header
+    /// (§4.1.2) and the FECF of 2 octets if present (§4.1.4). The minimum 7 of
+    /// `max_frame_length` is a bound of the harness, not of the Blue Book: the header (5 octets)
+    /// plus the FDU minimum of 2.
     fn check(&self) -> Result<(), String> {
         let fecf = if self.fecf { FECF_LEN } else { 0 };
         let fdu = u64::from(self.max_fdu_length.get());
