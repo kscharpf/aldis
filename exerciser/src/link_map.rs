@@ -17,8 +17,8 @@ use aldis_link::extractor::PacketRun;
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::reassembler::{
     FduIn, MAP_REASSEMBLER_MAX_ACTIONS, MapReassembler, MapReassemblerConfig, ReassemblerInput,
-    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, Service, TcReassemblerParams, Unit,
-    UslpFdu,
+    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, ReassemblyService, TcReassemblerParams,
+    Unit, UslpFdu,
 };
 use aldis_link::segmenter::{
     Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, MapService,
@@ -164,8 +164,8 @@ fn tc(t: &mut Tally) {
         return;
     };
     t.check(rconfig.channel() == &params && rconfig.maps().count() == 2);
-    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == Service::Sdu);
-    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == Service::Packets);
+    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == ReassemblyService::Sdu);
+    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == ReassemblyService::Packets);
     let Ok(mut reas) = MapReassembler::<Tc, 2, S>::new(rconfig) else {
         t.check(false);
         return;
@@ -428,7 +428,7 @@ fn uslp(t: &mut Tally) {
         return;
     };
     let rm3 = ReassemblerMap::<Uslp>::octet_stream(vc, m3);
-    t.check(rm3.max_sdu_len().is_none() && rm3.service() == Service::OctetStream);
+    t.check(rm3.max_sdu_len().is_none() && rm3.service() == ReassemblyService::OctetStream);
     let Ok(rconfig) = MapReassemblerConfig::<Uslp, 3>::new((), &[rm1, rm2, rm3]) else {
         t.check(false);
         return;

@@ -33,7 +33,7 @@ epp = ["dep:aldis-epp", "aldis-link?/epp"]
 # `aldis-spp/time`, without `full`.
 spp-time = ["spp", "time", "aldis-spp/time"]
 tm = ["dep:aldis-tm", "aldis-link?/tm"]
-tc = ["dep:aldis-tc", "aldis-link?/tc", "aldis-cop1?/tc"]
+tc = ["dep:aldis-tc", "aldis-link?/tc"]
 aos = ["dep:aldis-aos", "aldis-link?/aos"]
 uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]

@@ -1133,3 +1133,31 @@ fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
         named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
     );
 }
+
+#[test]
+fn a_uslp_frame_length_beyond_the_header_field_is_an_error_not_a_clamped_length() {
+    // req: LNK-032, LNK-082
+    use aldis_link::mux::{FrameFields, MuxProtocol};
+    let mut fields = FrameFields {
+        vc: 1,
+        oid: false,
+        frame_len: aldis_uslp::MAX_FRAME_LEN,
+        mc_count: 0,
+        vc_count: 0,
+        ocf: false,
+        secondary: false,
+        pointer: 0,
+        bypass: false,
+        protocol_control: false,
+    };
+    let vc = uslp_vc(1, false);
+    let mut header = [0_u8; 16];
+    // The largest legal frame fills the field: 65 536 octets is the value 0xFFFF.
+    Uslp::write_header(&uslp_channel(), Some(vc.params()), &fields, &mut header).unwrap();
+    assert_eq!(header[4..6], [0xFF, 0xFF]);
+    fields.frame_len = aldis_uslp::MAX_FRAME_LEN + 1;
+    let e =
+        Uslp::write_header(&uslp_channel(), Some(vc.params()), &fields, &mut header).unwrap_err();
+    assert_eq!(e.kind(), ErrorKind::InternalError);
+    assert_eq!(e.field(), Some(field::FRAME_LEN));
+}

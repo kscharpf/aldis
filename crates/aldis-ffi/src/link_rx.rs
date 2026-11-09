@@ -40,10 +40,10 @@ use aldis::link::extractor::{
 };
 use aldis::link::protocol::{Aos, PacketProtocol, Protocol, Tc, Tm, TmParams, Uslp};
 use aldis::link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DiscardReason,
-    FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
-    ReceiverInput, ReceiverOutput, ReceiverStatus, Service, TcChannel, TcVc, TmChannel, TmContent,
-    TmVc, UslpChannel, UslpVc, VcEntry,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
+    DiscardReason, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet,
+    ReceiveProtocol, ReceiverInput, ReceiverOutput, ReceiverStatus, TcChannel, TcVc, TmChannel,
+    TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis::tc::{
     MapConfig as TcMapConfig, PhysicalChannelConfig as TcPhysical, TcFrame, TcMapId,
@@ -65,7 +65,7 @@ use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
     unsupported_protocol, uslp_params, valid_pvns,
 };
-use crate::link_gen::{engine_in_place, range, variant_payload};
+use crate::link_common::{engine_in_place, range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -1048,11 +1048,11 @@ fn aos_edition(c: &aldis_frame_receiver_config_t) -> Result<AosEdition> {
     Ok(aos_params(&channel)?.edition)
 }
 
-fn service(value: u32) -> Result<Service> {
+fn service(value: u32) -> Result<DeliveryService> {
     Ok(match parse::<aldis_link_service>(value)? {
-        aldis_link_service::ALDIS_LINK_SERVICE_NONE => Service::None,
-        aldis_link_service::ALDIS_LINK_SERVICE_VC => Service::Vc,
-        aldis_link_service::ALDIS_LINK_SERVICE_MC => Service::Mc,
+        aldis_link_service::ALDIS_LINK_SERVICE_NONE => DeliveryService::None,
+        aldis_link_service::ALDIS_LINK_SERVICE_VC => DeliveryService::Vc,
+        aldis_link_service::ALDIS_LINK_SERVICE_MC => DeliveryService::Mc,
     })
 }
 
