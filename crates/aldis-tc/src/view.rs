@@ -65,15 +65,16 @@ pub(crate) struct Head {
     segmented: bool,
 }
 
-/// Whether a Spacecraft ID, VCID, and MAP ID that the channels do not hold fail the checks
-/// (232.0 §4.4.7.3, §4.4.3.3; TC-022, RS-023).
+/// Whether a Spacecraft ID and VCID that the channels do not hold fail the checks (232.0
+/// §4.4.9.3.3 b, §4.4.7.3; TC-022, RS-023). A MAP ID the channels do not hold never does: the
+/// MAP Demultiplexing Function discards its FDU after FARM-1 (§4.4.3.3, §4.4.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Channels {
-    /// The Frame Validation Checks: an unknown channel is discarded.
+    /// The Frame Validation Checks: an unknown Spacecraft ID or VCID is discarded.
     Required,
-    /// The decoder: a frame of an unknown channel is read as the Physical Channel allows, with no
-    /// Segment Header and no SDLS fields; [`validate_frame`](crate::validate::validate_frame)
-    /// rejects it.
+    /// The decoder: a frame of an unknown Spacecraft ID or VCID is read as the Physical Channel
+    /// allows, with no Segment Header and no SDLS fields;
+    /// [`validate_frame`](crate::validate::validate_frame) rejects it.
     Open,
 }
 
@@ -202,8 +203,11 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     let (security, map_config) = match segment_header {
         Some(sh) => match channels.map(raw.spacecraft_id, raw.vc_id, sh.map_id) {
             Some(m) => (m.security(), Some(m)),
-            None if known == Channels::Open => (SecurityLayout::NONE, None),
-            None => return Err(fail(Reason::InvalidMapId, unknown(field::MAP_ID))),
+            // A MAP ID the channels do not hold is no Frame Validation Check (232.0 §4.4.9.3.3
+            // checks the Transfer Frame Header and the FECF): the MAP Demultiplexing Function
+            // discards the FDU after FARM-1 (§4.4.3.3, §4.4.5; TC-022), so the frame is read
+            // with no SDLS fields.
+            None => (SecurityLayout::NONE, None),
         },
         None if control => (SecurityLayout::NONE, None),
         None => (head.vc.security(), None),
@@ -254,10 +258,11 @@ impl<'a> TcFrame<'a> {
     /// [`len`](Self::len) (232.0 §4.1; TC-001…TC-006, API-011).
     ///
     /// The checks are those of [`validate_frame`](crate::validate::validate_frame), in its
-    /// order, except that the input may be longer than the frame and that a Spacecraft ID,
-    /// VCID, or MAP ID the channels do not hold is not an error: the frame is read as the
-    /// Physical Channel allows (no Segment Header, no SDLS fields) so that an engine can count
-    /// it, and `validate_frame` rejects it (RS-023, TC-022).
+    /// order, except that the input may be longer than the frame and that a Spacecraft ID
+    /// or VCID the channels do not hold is not an error: the frame is read as the Physical
+    /// Channel allows (no Segment Header, no SDLS fields) so that an engine can count it, and
+    /// `validate_frame` rejects it (RS-023, TC-022). A MAP ID the channels do not hold is no
+    /// error of either: the Segment Header is read, and the frame has no SDLS fields.
     ///
     /// A receiver of delimited frames must run `validate_frame`, or compare
     /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
@@ -557,12 +562,11 @@ mod tests {
     fn a_frame_of_an_unconfigured_channel_decodes() {
         // req: TC-021, TC-022, RS-023, API-017
         let t = standard(false);
-        // An SCID, a VCID, and a MAP ID the channels do not hold. The decoder reads the frame as
-        // the Physical Channel allows; the Frame Validation Checks reject it.
-        let cases: [(&[u8], Option<aldis_core::FieldId>); 3] = [
+        // An SCID and a VCID the channels do not hold. The decoder reads the frame as the
+        // Physical Channel allows; the Frame Validation Checks reject it.
+        let cases: [(&[u8], Option<aldis_core::FieldId>); 2] = [
             (&[0x01, 0x56, 0x04, 0x05, 0, 0], Some(field::SPACECRAFT_ID)),
             (&[0x01, 0x55, 0x10, 0x05, 0, 0], Some(field::VC_ID)),
-            (&[0x01, 0x55, 0x08, 0x06, 0, 0xC7, 0], Some(field::MAP_ID)),
         ];
         for (bytes, fld) in cases {
             let f = TcFrame::decode(bytes, &t).unwrap();
@@ -574,6 +578,14 @@ mod tests {
                 "{bytes:02X?}"
             );
         }
+        // A MAP ID the channels do not hold is no Frame Validation Check (232.0 §4.4.9.3.3): the
+        // frame passes, with its Segment Header, and the MAP Demultiplexing Function discards it.
+        let unknown_map = [0x01, 0x55, 0x08, 0x06, 0, 0xC7, 0];
+        let f = TcFrame::decode(&unknown_map, &t).unwrap();
+        assert_eq!(f.segment_header().map(|s| s.map_id.get()), Some(7));
+        assert_eq!(f.data_field(), [0]);
+        let v = crate::validate::validate_frame(&unknown_map, &t).unwrap();
+        assert_eq!(v.as_frame().segment_header(), f.segment_header());
         // On a VC that is not configured there is no Segment Header: its octet is data.
         let f = TcFrame::decode(&[0x01, 0x55, 0x14, 0x06, 0, 0xC7, 0], &t).unwrap();
         assert_eq!((f.segment_header(), f.data_field().len()), (None, 2));
