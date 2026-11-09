@@ -14,9 +14,11 @@
 #     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)`, with an
 #     optional ` start <time>` after the pid) is unlocked first; a lock with any other reason
 #     fails the removal.
-# Then: the worktree is removed, the local branch deleted (-D: the ancestry test is the proof
-# it is merged), and the remote branch deleted if it still exists and meets the same test as the
-# local branch (an ancestor of origin/main; for a closed train, no commit outside origin/main).
+# Then: the worktree is removed, the local branch deleted (-D: the ancestry test, or for a closed
+# train the no-unique-commits test, is the proof it is safe), and the remote branch deleted if it
+# still exists and meets the same test as the local branch (an ancestor of origin/main; for a
+# closed train, no commit outside origin/main). For a closed train both refs are tested before
+# anything is deleted: if either fails, both are kept and the script says which.
 # Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
@@ -103,9 +105,16 @@ clean_one() {
     fi
 
     if [ "$closed" -eq 1 ]; then
+        local failed=""
         if [ "$local_branch" -eq 1 ] && ! no_unique_commits "refs/heads/$b"; then
-            echo "$b: KEEP (PR #$pr closed, but the branch has a non-merge commit" \
-                "outside origin/main)"
+            failed="the local branch"
+        fi
+        if [ "$remote_branch" -eq 1 ] && ! no_unique_commits "refs/remotes/origin/$b"; then
+            failed="${failed:+$failed and }origin/$b"
+        fi
+        if [ -n "$failed" ]; then
+            echo "$b: KEEP (PR #$pr closed, but $failed has a non-merge commit" \
+                "outside origin/main; both refs kept)"
             return 1
         fi
         echo "$b: PR #$pr closed train, no commits outside origin/main"
@@ -138,13 +147,8 @@ clean_one() {
     fi
     if [ "$remote_branch" -eq 1 ]; then
         if [ "$closed" -eq 1 ]; then
-            if no_unique_commits "refs/remotes/origin/$b"; then
-                echo "  origin/$b has no commits outside origin/main"
-                act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
-            else
-                echo "  KEEP: origin/$b has a non-merge commit outside origin/main"
-                return 1
-            fi
+            echo "  origin/$b has no commits outside origin/main"
+            act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
         elif g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
             act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
         else

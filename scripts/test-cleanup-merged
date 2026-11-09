@@ -8,12 +8,20 @@
 # reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
 # a closed train whose non-merge commits are all on main is cleaned (worktree, local and remote
 # branch), and is kept when a commit is not, and a closed non-train PR is kept;
+# a closed train is kept, both refs, when only the remote has a unique commit; the closed-PR filter
+# drops merged PRs (a closed listing with a merged and an unmerged PR picks the unmerged one; one
+# with only a merged PR is kept);
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
 # ` start <time>`) is unlocked and
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
 # branch and leaves its branches in place.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
+
+command -v jq >/dev/null || {
+    echo "test-cleanup-merged: jq is required (the gh stub runs the --jq filters)" >&2
+    exit 2
+}
 
 here="$(cd "$(dirname "$0")" && pwd)"
 script="$here/cleanup-merged"
@@ -69,6 +77,17 @@ for b in train/closed-ok train/closed-new; do
     git -C "$repo" push -q origin "$b"
 done
 git -C "$repo" push -q origin closed-other
+# Filter cases: no unique commits, differing only in what the stub's closed listing holds.
+for b in train/closed-both train/closed-onlymerged; do
+    git -C "$repo" push -q origin "main:refs/heads/$b"
+    git -C "$repo" branch -q "$b" main
+done
+# train/closed-remote-new: the local tip is on main, origin has a commit main lacks.
+git -C "$repo" checkout -q -b train/closed-remote-new main
+echo c4 >"$repo/c4.txt"; git -C "$repo" add c4.txt; git -C "$repo" commit -q -m c4
+git -C "$repo" push -q origin train/closed-remote-new
+git -C "$repo" checkout -q main
+git -C "$repo" branch -q -f train/closed-remote-new main
 git -C "$repo" push -q origin main
 git -C "$repo" worktree add -q "$work/wt-closed-ok" train/closed-ok
 
@@ -99,28 +118,45 @@ git -C "$repo" push -q origin --delete merged-remote-gone
 mkdir "$work/bin"
 cat >"$work/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# Stub of `gh pr list --head <branch> --state merged|closed ...`: 42 for the branches in
-# $STUB_MERGED (merged), 43 for those in $STUB_CLOSED (closed, not merged).
-b="" st=""
+# Stub of `gh pr list --head <branch> --state merged|closed --json <f> --jq <filter>`: builds the
+# JSON gh would print and runs the script's own --jq filter over it with jq. $STUB_MERGED lists
+# branches with a merged PR (#42); $STUB_CLOSED those with a closed, unmerged PR (#43);
+# $STUB_BOTH those whose closed listing holds a merged PR (#44) and an unmerged one (#45), as
+# gh's `--state closed` does, while the merged listing is empty; $STUB_ONLYMERGED those whose
+# closed listing holds only a merged PR (#46).
+b="" st="" filter=""
 while [ $# -gt 0 ]; do
     [ "$1" = --head ] && b="$2"
     [ "$1" = --state ] && st="$2"
+    [ "$1" = --jq ] && filter="$2"
     shift
 done
+json='[]'
+in_list() { case " $1 " in *" $b "*) return 0 ;; esac; return 1; }
 case "$st" in
-    merged) case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac ;;
-    closed) case " $STUB_CLOSED " in *" $b "*) echo 43 ;; esac ;;
+    merged) in_list "$STUB_MERGED" && json='[{"number":42,"mergedAt":"2026-11-01T00:00:00Z"}]' ;;
+    closed)
+        if in_list "$STUB_CLOSED"; then json='[{"number":43,"mergedAt":null}]'
+        elif in_list "$STUB_BOTH"; then
+            json='[{"number":44,"mergedAt":"2026-11-01T00:00:00Z"},{"number":45,"mergedAt":null}]'
+        elif in_list "$STUB_ONLYMERGED"; then
+            json='[{"number":46,"mergedAt":"2026-11-01T00:00:00Z"}]'
+        fi ;;
 esac
+printf '%s' "$json" | jq -r "$filter"
 EOF
 chmod +x "$work/bin/gh"
 
 merged="merged-claude merged-claude-dirty merged-claude-nostart merged-foreign"
 merged="$merged merged-clean merged-dirty merged-after"
 merged="$merged merged-remote-gone merged-locked main"
-closed="train/closed-ok train/closed-new closed-other"
+closed="train/closed-ok train/closed-new closed-other train/closed-remote-new"
+both="train/closed-both"
+onlymerged="train/closed-onlymerged"
 out="" rc=0
 run() {
     out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" STUB_CLOSED="$closed" \
+        STUB_BOTH="$both" STUB_ONLYMERGED="$onlymerged" \
         "$script" "$@" 2>&1)"
     rc=$?
     [ -z "${DEBUG:-}" ] || printf '%s\n' "$out"
@@ -213,6 +249,22 @@ expect "train/closed-new: the local branch stays" local_has train/closed-new
 expect "train/closed-new: the remote branch stays" remote_has train/closed-new
 expect "closed-other: the local branch stays" local_has closed-other
 expect "closed-other: the remote branch stays" remote_has closed-other
+
+echo "# a closed train whose remote alone has a unique commit"
+run --apply train/closed-remote-new
+expect "the failing ref is named" said "origin/train/closed-remote-new has a non-merge commit"
+expect "both refs are kept" said "both refs kept"
+expect "exit status 1" status_is 1
+expect "the local branch stays" local_has train/closed-remote-new
+expect "the remote branch stays" remote_has train/closed-remote-new
+
+echo "# the closed-PR filter drops merged PRs"
+run train/closed-both
+expect "a merged and an unmerged closed PR: the unmerged one (#45) is chosen" \
+    said "PR #45 closed train"
+run train/closed-onlymerged
+expect "only a merged PR in the closed listing: kept" said "KEEP (no merged pull request"
+expect "exit status 1" status_is 1
 
 echo "# a closed train, dry run then apply"
 run train/closed-ok
