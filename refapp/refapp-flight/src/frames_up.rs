@@ -211,6 +211,11 @@ impl FrameUplink {
     /// A frame the strict decode or the validation refuses: `frame_rejected` with the error code
     /// (APP-139), the receiver told of a FECF failure (LNK-080), and FARM-1 given the invalid
     /// frame (E9). Neither discard is mapped to `frame_discarded`.
+    ///
+    /// One rejected frame raises one `frame_rejected`. The two engine steps run first; neither
+    /// writes an octet or fails with these inputs, but if one does, its error is the one raised,
+    /// because it says the engine is out of step with the node, which the frame's own error
+    /// does not. Otherwise the event carries the error of the frame.
     fn reject_frame(
         &mut self,
         now: CoreInstant,
@@ -218,25 +223,21 @@ impl FrameUplink {
         kind: ErrorKind,
         out: &mut dyn Output,
     ) {
-        out.app_event(APP_FRAME_REJECTED, &[u64::from(kind.code())]);
-        if fecf {
-            // Counts the discard in the receiver's status; the action carries nothing more.
-            let mut none = [0_u8; 0];
-            let told = self.receiver.step(
+        let mut none = [0_u8; 0];
+        let mut kind = kind;
+        if fecf
+            && let Err(e) = self.receiver.step(
                 ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
                 &mut none,
-            );
-            // Neither step writes an octet or fails with these inputs; an error would leave the
-            // engine out of step with the node, so it is raised like every engine error.
-            if let Err(e) = told {
-                out.app_event(APP_FRAME_REJECTED, &[u64::from(e.kind().code())]);
-            }
+            )
+        {
+            kind = e.kind();
         }
-        let mut none = [0_u8; 0];
         match self.farm.step(Farm1Input::InvalidFrame, now, &mut none) {
             Ok((farm, _)) => self.farm = farm,
-            Err(e) => out.app_event(APP_FRAME_REJECTED, &[u64::from(e.kind().code())]),
+            Err(e) => kind = e.kind(),
         }
+        out.app_event(APP_FRAME_REJECTED, &[u64::from(kind.code())]);
     }
 
     /// The accepted FDU through the MAP reassembler: its events, then its packets (APP-139).
