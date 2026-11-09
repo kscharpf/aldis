@@ -88,7 +88,7 @@ impl Run {
     /// instants.
     fn run(&mut self, commands: &[(u64, Vec<u8>)]) {
         for slot in 0..END / SLOT {
-            let now = slot * SLOT;
+            let now = slot.saturating_mul(SLOT);
             let delivered: Vec<Vec<u8>> = commands
                 .iter()
                 .filter(|(at, _)| *at == now)
@@ -163,7 +163,7 @@ fn packets_of(frames: &[Vec<u8>], vc: u8) -> Vec<Vec<u8>> {
         packets.push(rest[..len].to_vec());
         rest = &rest[len..];
     }
-    assert!(rest.is_empty());
+    assert_eq!(rest.len(), 0);
     packets
 }
 
@@ -463,7 +463,7 @@ fn extra_wakeups_between_slots_change_nothing() {
     let mut busy = Run::new();
     let commands = nominal_commands();
     for step in 0..END / 25_000 {
-        let now = step * 25_000;
+        let now = step.saturating_mul(25_000);
         let delivered: Vec<Vec<u8>> = commands
             .iter()
             .filter(|(at, _)| *at == now)

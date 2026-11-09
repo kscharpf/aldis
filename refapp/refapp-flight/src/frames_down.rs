@@ -1,6 +1,8 @@
-//! The downlink at frame level (docs/reference-application.md §2.1 step 6, §4.1, §4.4; A2
-//! WP-3a): one `PacketGenerator` for VC 0 and one for VC 1, the `ChannelMux` with fixed priority
-//! and OID frames on VC 7, the OCF slot, and the FECF.
+//! The downlink at frame level, A2 WP-3a.
+//!
+//! Specification: docs/reference-application.md §2.1 step 6, §4.1, §4.4: one `PacketGenerator`
+//! for VC 0 and one for VC 1, the `ChannelMux` with fixed priority and OID frames on VC 7, the OCF
+//! slot, and the FECF.
 //!
 //! Requirements: APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135.
 //!
@@ -334,7 +336,7 @@ impl FlightNode {
     /// Sets the CLCW that the OCF of the next downlink frames carries (APP-031, APP-134). The
     /// uplink calls it with `Farm1::clcw` after the frames delivered at the instant (§4.4.1). A
     /// node at packet level has no OCF and ignores it.
-    pub fn set_clcw(&mut self, clcw: &Clcw) {
+    pub const fn set_clcw(&mut self, clcw: &Clcw) {
         if let Some(frames) = self.frames.as_mut() {
             frames.ocf = clcw.to_octets();
         }
