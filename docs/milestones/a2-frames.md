@@ -140,7 +140,7 @@ A2 is complete when every item below is green on `main`. Requirements of the sce
 | Link-engine parameters | APP-136 | |
 | Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | |
 | Harness rules at frame level | APP-141 | |
-| Frame-level events | APP-138, APP-139, APP-131 (frames) | |
+| Frame-level events | APP-138, APP-139, APP-143, APP-131 (frames) | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
@@ -168,5 +168,6 @@ Each finding is a GitHub issue labelled `api-feedback`; this list names them as 
 | Issue | Found in | Finding |
 |---|---|---|
 | #348 | Plan | The facade `aldis` does not forward the per-standard features of the engines: `aldis-link/{spp,epp,tm,tc}` were enabled only inside its `full` feature (before #348; `aldis-cop1` also had a `tc` feature, a no-op removed by #387). A consumer limited to the facade (APP-100) cannot use the engines without everything else. Fix decided in D3: weak-dependency forwarding in `spp`, `epp`, `tm`, `aos`, `tc`, and `uslp` |
+| #394 | WP-3b | FARM-1 delivers the TC user data without the Segment Header that `MapReassembler<Tc>` reads as part of the FDU (the result of feeding it directly is `unknown_map` with a wrong MAP ID, not an error), and `ReceiverOutput::TcFrame` gives the frame back as octets from which no `ValidatedTcFrame` can be made without a second validation |
 
 Questions the work packages are expected to meet, to be filed only when the code shows them to be real: the number of calls and the copying between a generator's `Release`, the multiplexer's `Offer` and `Opportunity`, and the frame writer, for a node that wants one frame per slot (WP-3a); the chain from a codec-validated TC frame through `FrameReceiver` and `Farm1` to the `MapReassembler` (WP-3b); whether `Fop1` in S6 with `RequestBd` alone needs the store and capacities of the AD service (WP-4b); the deadline values the nodes must forward as `next_deadline` from several engines (WP-3a, WP-4b).

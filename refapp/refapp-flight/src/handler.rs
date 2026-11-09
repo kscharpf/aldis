@@ -27,9 +27,22 @@ impl FlightNode {
         }
     }
 
-    /// One uplink unit: exactly one Space Packet of Packet Type 1 on the commands or the
-    /// table-upload APID, unsegmented (§3.1). Anything else is `packet_rejected` (APP-131).
+    /// One uplink unit. At packet level it is a Space Packet ([`FlightNode::handle_packet`]); at
+    /// frame level (A2 on) it is a TC frame, and the packets it delivers are handled in the same
+    /// way (APP-139).
     fn handle_unit(&mut self, now: Instant, unit: &[u8], out: &mut dyn Output) {
+        let Some(mut uplink) = self.uplink.take() else {
+            return self.handle_packet(now, unit, out);
+        };
+        uplink.accept(now, unit, out, &mut |packet, out| {
+            self.handle_packet(now, packet, out);
+        });
+        self.uplink = Some(uplink);
+    }
+
+    /// One packet: exactly one Space Packet of Packet Type 1 on the commands or the
+    /// table-upload APID, unsegmented (§3.1). Anything else is `packet_rejected` (APP-131).
+    fn handle_packet(&mut self, now: Instant, unit: &[u8], out: &mut dyn Output) {
         let packet = match SpacePacket::decode_exact(unit) {
             Ok(packet) => packet,
             Err(e) => return reject_unit(out, e.kind()),

@@ -6,7 +6,9 @@ version = 4
 name = "aldis"
 version = "0.4.0"
 dependencies = [
+ "aldis-cop1",
  "aldis-core",
+ "aldis-epp",
  "aldis-link",
  "aldis-spp",
  "aldis-tc",
@@ -15,14 +17,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aldis-cop1"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+ "aldis-tc",
+]
+
+[[package]]
 name = "aldis-core"
 version = "0.4.0"
+
+[[package]]
+name = "aldis-epp"
+version = "0.4.0"
+dependencies = [
+ "aldis-core",
+]
 
 [[package]]
 name = "aldis-link"
 version = "0.4.0"
 dependencies = [
  "aldis-core",
+ "aldis-epp",
  "aldis-spp",
  "aldis-tc",
  "aldis-tm",
