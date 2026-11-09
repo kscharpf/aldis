@@ -227,6 +227,7 @@ fn fix() -> Result<usize, String> {
         + vectors::generated(true)?
         + sana::run(&["--write"])?
         + header::run(true)?
+        + refapp::gen_scenario()?
         + consistency::check()?)
 }
 
