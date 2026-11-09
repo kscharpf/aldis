@@ -45,7 +45,7 @@ History:
 
 | # | Decision | Choice | Status |
 |---|---|---|---|
-| D1 | Direction | Phases 1–3 of the review (§3): one checking pipeline, one frame-format trait per protocol, then a generic FFI. Phase 0 is done or in a train | Accepted (maintainer, 2026-11-08) |
+| D1 | Direction | Phases 1–3 of the review (§3): one checking pipeline, one frame-format trait per protocol, then a generic FFI. Phase 0 has merged | Accepted (maintainer, 2026-11-08) |
 | D2 | GEN-051 | Met by adopting the `aldis_core::bits` primitives in the codecs and the mux, not by amending the rule | Accepted (maintainer, 2026-11-08) |
 | D3 | GEN-006 and features | GEN-006 withdrawn; the `alloc` and `std` features removed from Layers 0–2 ([#391](https://github.com/kscharpf/aldis/pull/391)) | Accepted (maintainer, 2026-11-08) |
 | D4 | `refapp/Cargo.lock` | [#387](https://github.com/kscharpf/aldis/pull/387) may change `refapp/Cargo.lock`, a track A path, because the facade change forces it ([roadmap §6](../08-roadmap.md) rule 2 otherwise keeps a pull request to one track's directories) | Accepted (maintainer, 2026-11-09) |
