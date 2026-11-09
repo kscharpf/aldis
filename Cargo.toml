@@ -15,7 +15,6 @@ members = [
     "crates/aldis-sync",
     "crates/aldis-link",
     "crates/aldis-cop1",
-    "crates/aldis-framework",
     "crates/aldis",
     "crates/aldis-ffi",
     # Tooling (std, dev-only; not part of the layered library)

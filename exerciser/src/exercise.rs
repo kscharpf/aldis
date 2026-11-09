@@ -8,7 +8,7 @@ use core::hint::black_box as bb;
 
 use aldis_core::anomaly::{Anomaly, AnomalySet, CAPACITY};
 use aldis_core::bits;
-use aldis_core::container::{ByteQueue, FixedQueue, FixedVec};
+use aldis_core::container::FixedVec;
 use aldis_core::counter::{Continuity, ModCounter};
 use aldis_core::crc::{
     PRESET, crc16, crc16_bitwise, crc16_table, crc16_update, crc16_update_bitwise,
@@ -316,28 +316,6 @@ fn apis_time_crc_oid_counter(tally: &mut Tally) {
 
 fn apis_containers_security(tally: &mut Tally) {
     // containers
-    let mut queue: FixedQueue<u16, 4> = FixedQueue::default();
-    tally.check(
-        queue.push(bb(1)).is_ok()
-            && queue.peek() == Some(&1)
-            && queue.len() == 1
-            && !queue.is_full(),
-    );
-    tally.check(queue.pop() == Some(1) && queue.is_empty() && queue.capacity() == 4);
-    queue.clear();
-    let mut bytes: ByteQueue<64> = ByteQueue::default();
-    tally.check(
-        bytes.push(bb(&[1, 2, 3])).is_ok() && bytes.push(bb(&[4])).is_ok() && bytes.records() == 2,
-    );
-    tally.check(
-        bytes.peek_len() == Some(3)
-            && bytes.free() == 64 - 12
-            && bytes.capacity() == 64
-            && !bytes.is_empty(),
-    );
-    let mut out = [0_u8; 8];
-    tally.check(bytes.pop_into(bb(&mut out)) == Ok(Some(3)) && bytes.discard() == Some(1));
-    bytes.clear();
     let mut vec: FixedVec<u8, 2> = FixedVec::default();
     tally.check(
         vec.push(bb(9)).is_ok()

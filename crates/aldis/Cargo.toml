@@ -21,7 +21,6 @@ aldis-uslp = { path = "../aldis-uslp", default-features = false, optional = true
 aldis-sync = { path = "../aldis-sync", default-features = false, optional = true }
 aldis-link = { path = "../aldis-link", default-features = false, optional = true }
 aldis-cop1 = { path = "../aldis-cop1", default-features = false, optional = true }
-aldis-framework = { path = "../aldis-framework", default-features = false, optional = true }
 
 [features]
 # The codec features also forward to the engines that serve the standard, through weak
@@ -40,7 +39,6 @@ uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
-framework = ["dep:aldis-framework"]
 alloc = [
     "aldis-core?/alloc",
     "aldis-time?/alloc",
@@ -53,7 +51,6 @@ alloc = [
     "aldis-sync?/alloc",
     "aldis-link?/alloc",
     "aldis-cop1?/alloc",
-    "aldis-framework?/alloc",
 ]
 std = [
     "alloc",
@@ -68,7 +65,6 @@ std = [
     "aldis-sync?/std",
     "aldis-link?/std",
     "aldis-cop1?/std",
-    "aldis-framework?/std",
 ]
 full = [
     "core",
@@ -83,7 +79,6 @@ full = [
     "sync",
     "link",
     "cop1",
-    "framework",
 ]
 
 [lints]

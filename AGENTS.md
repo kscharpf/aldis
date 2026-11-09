@@ -88,7 +88,7 @@ Clippy runs with the `all` and `pedantic` groups denied, plus restriction lints 
 | Shared algorithm or type (CRC, counters, IDs, security hooks) | `crates/aldis-core` |
 | Codec for one standard | `crates/aldis-<std>` (`time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`) |
 | Stateful protocol behavior | `crates/aldis-link`, or `crates/aldis-cop1` for COP-1 |
-| Transports, run loop, adapters | `crates/aldis-framework` |
+| Transports, run loop, adapters | none yet: deferred ([docs/05-framework.md](docs/05-framework.md)) |
 | C interface | `crates/aldis-ffi` (capacities in `capacities.toml`) |
 | Reference application (track A) | `refapp/` |
 | Requirements and design | `docs/` |

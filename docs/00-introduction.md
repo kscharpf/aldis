@@ -33,7 +33,7 @@ The following are **out of scope for v1** and are planned in the [roadmap](08-ro
 - CFDP, DTN (BP/LTP), IP over CCSDS, SLE/CSTS, navigation messages, Proximity-1, COP-P.
 - UTC↔TAI conversion and leap-second tables (see [time codes](standards/time-codes.md) §6).
 - Concrete OS transports inside the core.
-- The framework `aldis-framework` (transport and clock traits, stacks, run loop, reference adapters, trace and replay; [05](05-framework.md), area FW): later, after SDLS (v1.1) and TM coding (v1.2) ([roadmap](08-roadmap.md) §7). Its requirements do not count toward v1 (§5.3).
+- The framework `aldis-framework` (a crate to be created, none exists yet; transport and clock traits, stacks, run loop, reference adapters, trace and replay; [05](05-framework.md), area FW): later, after SDLS (v1.1) and TM coding (v1.2) ([roadmap](08-roadmap.md) §7). Its requirements do not count toward v1 (§5.3).
 
 ## 3. Users and use cases
 

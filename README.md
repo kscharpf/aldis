@@ -82,7 +82,6 @@ code/
 │   ├── aldis-sync        L1  131.0 ASM, CADU, pseudo-randomizer, ASM search
 │   ├── aldis-link        L2  sans-I/O generators, mux, receiver, extraction, segmentation
 │   ├── aldis-cop1        L2  232.1 FOP-1 / FARM-1
-│   ├── aldis-framework   L3  optional transport/clock traits and stacks (later, skeleton)
 │   ├── aldis             facade (feature-gated re-exports)
 │   ├── aldis-ffi         C ABI (staticlib, cbindgen, build-time capacities)
 │   └── aldis-testkit     tooling: test-vector model, loader, runner (dev-only)
@@ -95,7 +94,7 @@ code/
 └── test-vectors/         shared, language-neutral conformance vectors
 ```
 
-Each crate has a README with its purpose, status, and layer, and an example for the implemented crates: [aldis-core](crates/aldis-core/README.md), [aldis-time](crates/aldis-time/README.md), [aldis-spp](crates/aldis-spp/README.md), [aldis-epp](crates/aldis-epp/README.md), [aldis-tm](crates/aldis-tm/README.md), [aldis-tc](crates/aldis-tc/README.md), [aldis-aos](crates/aldis-aos/README.md), [aldis-uslp](crates/aldis-uslp/README.md), [aldis-sync](crates/aldis-sync/README.md), [aldis-link](crates/aldis-link/README.md), [aldis-cop1](crates/aldis-cop1/README.md), [aldis-framework](crates/aldis-framework/README.md), [aldis](crates/aldis/README.md), [aldis-ffi](crates/aldis-ffi/README.md), [aldis-testkit](crates/aldis-testkit/README.md).
+Each crate has a README with its purpose, status, and layer, and an example for the implemented crates: [aldis-core](crates/aldis-core/README.md), [aldis-time](crates/aldis-time/README.md), [aldis-spp](crates/aldis-spp/README.md), [aldis-epp](crates/aldis-epp/README.md), [aldis-tm](crates/aldis-tm/README.md), [aldis-tc](crates/aldis-tc/README.md), [aldis-aos](crates/aldis-aos/README.md), [aldis-uslp](crates/aldis-uslp/README.md), [aldis-sync](crates/aldis-sync/README.md), [aldis-link](crates/aldis-link/README.md), [aldis-cop1](crates/aldis-cop1/README.md), [aldis](crates/aldis/README.md), [aldis-ffi](crates/aldis-ffi/README.md), [aldis-testkit](crates/aldis-testkit/README.md).
 
 ## Building
 

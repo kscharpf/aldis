@@ -288,7 +288,7 @@ First run (`3b51e87`): 41 mutants: 19 caught, 20 unviable, 0 missed, 2 timeouts.
 
 | Mutant | Verdict | Action |
 |---|---|---|
-| `container.rs:56` `FixedQueue::is_full` → `true` | Test gap: `is_full` was only asserted on a zero-capacity queue | `fixed_queue` asserts `is_full` before and after filling; caught |
+| `container.rs:56` `FixedQueue::is_full` → `true` | Test gap: `is_full` was only asserted on a zero-capacity queue | `fixed_queue` asserts `is_full` before and after filling; caught. `FixedQueue` and that test were deleted in #377 (2026-11-08), so the mutant no longer exists |
 | `container.rs:320` `FixedVec::is_empty` → `false` | Test gap: `is_empty` was only asserted on a non-empty vector | `fixed_vec` asserts `is_empty` when new and after `clear`; caught |
 | `security.rs:72` `&&` → `\|\|` in `SecurityLayout::is_none` | Test gap: no case had exactly one of header and trailer empty | `layout_limits` checks header-only and trailer-only layouts; caught |
 | `bits.rs:69`, `bits.rs:90` `\|` → `^` in `get`/`set` (`(acc << 8) \| octet`) | Equivalent: the shifted accumulator's low 8 bits are zero, so OR and XOR agree | None possible |
