@@ -22,9 +22,9 @@ pub struct DecodedFrame {
     pub data: Vec<u8>,
 }
 
-/// Decodes the octets of a link unit sent in direction `dir`, in strict mode (APP-086): a TM
-/// frame for `down`, a TC frame for `up`. A unit of a [`Level::Packets`] case is a Space Packet
-/// ([`crate::trace::decode_strict`]).
+/// Decodes a link unit as a TM (`down`) or TC (`up`) frame, strictly (APP-086).
+///
+/// A unit of a [`Level::Packets`] case is a Space Packet ([`crate::trace::decode_strict`]).
 ///
 /// The frame must carry the Spacecraft ID of the scenario (APP-026), and a TM frame must fill
 /// the configured frame length.

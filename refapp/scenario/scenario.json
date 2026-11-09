@@ -48,10 +48,8 @@
     "max_packet_length": 512,
     "packet_version": 0,
     "segment_header": true,
-    "map_commands_blocking": true,
-    "map_commands_segmentation": false,
-    "map_table_upload_blocking": false,
-    "map_table_upload_segmentation": true
+    "map_commands_services": {"blocking": true, "segmentation": false},
+    "map_table_upload_services": {"blocking": false, "segmentation": true}
   },
   "cop1": {
     "k": 4,

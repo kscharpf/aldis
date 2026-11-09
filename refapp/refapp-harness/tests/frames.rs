@@ -44,6 +44,10 @@ const fn unit(index: u8) -> [u8; 4] {
     [0x10 + index, 0xAA, 0xBB, 0xCC]
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one hand-written expected trace, easier to review in one piece"
+)]
 #[test]
 fn a_node_pair_with_every_fault_kind_reproduces_a_hand_written_trace() {
     // req: APP-071, APP-075, APP-090
@@ -239,7 +243,7 @@ fn frames_decode_by_direction_with_the_strict_codecs() {
     bad[100] ^= 1;
     assert!(decode_frame(&s, Level::Frames, Dir::Down, &bad).is_err());
     assert!(decode_frame(&s, Level::Frames, Dir::Down, &tm[..222]).is_err());
-    let mut bad = tc.clone();
+    let mut bad = tc;
     bad[8] ^= 1;
     assert!(decode_frame(&s, Level::Frames, Dir::Up, &bad).is_err());
     assert!(decode_frame(&s, Level::Frames, Dir::Up, &tm).is_err());

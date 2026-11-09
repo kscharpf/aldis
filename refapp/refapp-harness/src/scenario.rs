@@ -145,14 +145,20 @@ pub struct Tc {
     pub packet_version: Ranged<u8, 0, 7>,
     /// Whether the uplink VC carries a Segment Header (§4.4.3).
     pub segment_header: bool,
-    /// Whether MAP 0 permits blocking (§4.4.3).
-    pub map_commands_blocking: bool,
-    /// Whether MAP 0 permits segmentation (§4.4.3).
-    pub map_commands_segmentation: bool,
-    /// Whether MAP 1 permits blocking (§4.4.3).
-    pub map_table_upload_blocking: bool,
-    /// Whether MAP 1 permits segmentation (§4.4.3).
-    pub map_table_upload_segmentation: bool,
+    /// Blocking and segmentation of MAP 0 (§4.4.3).
+    pub map_commands_services: MapServices,
+    /// Blocking and segmentation of MAP 1 (§4.4.3).
+    pub map_table_upload_services: MapServices,
+}
+
+/// What a MAP permits (232.0 Table 5-4, §4.4.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MapServices {
+    /// Blocking permitted.
+    pub blocking: bool,
+    /// Segmentation permitted.
+    pub segmentation: bool,
 }
 
 /// COP-1 parameters (§4.2, APP-044).
@@ -1100,25 +1106,25 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "MAP_COMMANDS_BLOCKING",
                 "bool",
-                tc.map_commands_blocking.to_string(),
+                tc.map_commands_services.blocking.to_string(),
                 "MAP 0 permits blocking (APP-136).",
             ),
             (
                 "MAP_COMMANDS_SEGMENTATION",
                 "bool",
-                tc.map_commands_segmentation.to_string(),
+                tc.map_commands_services.segmentation.to_string(),
                 "MAP 0 permits segmentation (APP-136).",
             ),
             (
                 "MAP_TABLE_UPLOAD_BLOCKING",
                 "bool",
-                tc.map_table_upload_blocking.to_string(),
+                tc.map_table_upload_services.blocking.to_string(),
                 "MAP 1 permits blocking (APP-136).",
             ),
             (
                 "MAP_TABLE_UPLOAD_SEGMENTATION",
                 "bool",
-                tc.map_table_upload_segmentation.to_string(),
+                tc.map_table_upload_services.segmentation.to_string(),
                 "MAP 1 permits segmentation (APP-136).",
             ),
         ],

@@ -375,21 +375,13 @@
           "description": "Whether the uplink VC carries a Segment Header (§4.4.3).",
           "type": "boolean"
         },
-        "map_commands_blocking": {
-          "description": "Whether MAP 0 permits blocking (§4.4.3).",
-          "type": "boolean"
+        "map_commands_services": {
+          "description": "Blocking and segmentation of MAP 0 (§4.4.3).",
+          "$ref": "#/$defs/MapServices"
         },
-        "map_commands_segmentation": {
-          "description": "Whether MAP 0 permits segmentation (§4.4.3).",
-          "type": "boolean"
-        },
-        "map_table_upload_blocking": {
-          "description": "Whether MAP 1 permits blocking (§4.4.3).",
-          "type": "boolean"
-        },
-        "map_table_upload_segmentation": {
-          "description": "Whether MAP 1 permits segmentation (§4.4.3).",
-          "type": "boolean"
+        "map_table_upload_services": {
+          "description": "Blocking and segmentation of MAP 1 (§4.4.3).",
+          "$ref": "#/$defs/MapServices"
         }
       },
       "additionalProperties": false,
@@ -403,10 +395,27 @@
         "max_packet_length",
         "packet_version",
         "segment_header",
-        "map_commands_blocking",
-        "map_commands_segmentation",
-        "map_table_upload_blocking",
-        "map_table_upload_segmentation"
+        "map_commands_services",
+        "map_table_upload_services"
+      ]
+    },
+    "MapServices": {
+      "description": "What a MAP permits (232.0 Table 5-4, §4.4.3).",
+      "type": "object",
+      "properties": {
+        "blocking": {
+          "description": "Blocking permitted.",
+          "type": "boolean"
+        },
+        "segmentation": {
+          "description": "Segmentation permitted.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "blocking",
+        "segmentation"
       ]
     },
     "Cop1": {
