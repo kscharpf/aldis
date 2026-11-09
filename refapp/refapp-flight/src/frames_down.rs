@@ -409,3 +409,48 @@ impl FlightNode {
         }
     }
 }
+
+/// The failure of an engine in a slot, which the sizes of §4.1 rule out, so that it is driven by
+/// breaking the mirror of `held` from inside the module (no hook in the production code).
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod slot_failure_tests {
+    extern crate std;
+
+    use refapp_scenario::Instant;
+
+    use crate::FlightNode;
+    use crate::tests::{At, Out, Rec};
+
+    /// A space packet of 20 octets (PVN 0, APID 1, unsegmented).
+    const PACKET: [u8; 20] = [
+        0x00, 0x01, 0xC0, 0x00, 0x00, 0x0D, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    #[test]
+    fn an_engine_failing_in_a_slot_raises_downlink_refused_and_outputs_no_frame() {
+        // req: APP-142
+        let mut node = FlightNode::new_frames().unwrap();
+        let mut rec = Rec::default();
+        let at = Instant::from_micros(60_000_000);
+        let later = Instant::from_micros(70_000_000);
+        // VC 0 and VC 1 each hold a field; the slot sends VC 0's, and VC 1's stays in the
+        // multiplexer with `held` set.
+        let frames = node.frames.as_mut().unwrap();
+        frames.submit(0, &PACKET, at).unwrap();
+        frames.submit(1, &PACKET, at).unwrap();
+        node.downlink_frame(true, later, &mut At(0, &mut rec));
+        assert_eq!(rec.0.len(), 1);
+        assert!(matches!(rec.0[0].1, Out::Unit(_)));
+        // Break the mirror: the next release of VC 1 is offered to a slot that is taken.
+        let frames = node.frames.as_mut().unwrap();
+        assert_eq!(frames.held, [false, true]);
+        frames.held[1] = false;
+        frames.submit(1, &PACKET, later).unwrap();
+        let mut failed = Rec::default();
+        node.downlink_frame(true, Instant::from_micros(80_000_000), &mut At(1, &mut failed));
+        let code = u64::from(aldis::core::ErrorKind::WouldBlock.code());
+        assert_eq!(failed.0, [(1, Out::Event(113, std::vec![code]))]);
+        assert_eq!(node.build_failures(), 1);
+    }
+}

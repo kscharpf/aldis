@@ -80,11 +80,11 @@ impl FlightNode {
         &mut self.status
     }
 
-    /// Packets the node could not build: 0 unless the time conversion or the packet writer
-    /// fails, which the scenario's values rule out (APP-060). Each failure is also raised as the
-    /// application event `packet_rejected` (APP-131). At frame level it also counts a packet a
-    /// generator refused and a slot an engine failed, each raised as `downlink_refused`
-    /// (APP-142).
+    /// Failures of the node's output: 0 in a correctly configured run. A packet it could not
+    /// build (the time conversion or the packet writer failed, which the scenario's values rule
+    /// out, APP-060) is raised as the application event `packet_rejected` (APP-131). At frame
+    /// level it also counts a packet a generator refused and a slot an engine failed, each raised
+    /// as `downlink_refused` (APP-142).
     #[must_use]
     pub const fn build_failures(&self) -> u32 {
         self.build_failures
