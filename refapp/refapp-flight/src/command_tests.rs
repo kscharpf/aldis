@@ -363,6 +363,23 @@ fn rejection_reason_4_time_tag_queue_full_at_delivery() {
 }
 
 #[test]
+fn a_command_delivered_to_a_full_queue_at_the_instant_one_is_due_is_rejected_with_reason_4() {
+    // req: APP-012
+    let mut run = Run::default();
+    let eight: Vec<Vec<u8>> = (8..16).map(|seq| noop(seq, Some(20_000_000))).collect();
+    run.step(10_115_000, &eight);
+    assert_eq!(run.node.status().queue_occupancy, 8);
+    // The eight are due at 20 s; the check at delivery (step 1 of §2.1) comes before they leave
+    // the queue (step 2), so the ninth is rejected, and the eight then execute in queue order.
+    run.clear();
+    run.step(20_000_000, &[noop(16, Some(21_000_000))]);
+    let mut expected = std::vec![received(1, 16), rejected(1, 16, 4)];
+    expected.extend((8..16).map(|seq| executed(1, seq)));
+    assert_eq!(events(&run.rec), expected);
+    assert_eq!(run.node.status().queue_occupancy, 0);
+}
+
+#[test]
 fn every_command_gets_exactly_one_report() {
     // req: APP-013
     let mut run = Run::default();
