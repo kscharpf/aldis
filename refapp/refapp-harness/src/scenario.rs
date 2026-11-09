@@ -128,8 +128,9 @@ pub struct Tm {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Tc {
-    /// Maximum transfer frame length, octets: at least the primary header (5) and a data field
-    /// of two octets (232.0 §4.1.2, §4.1.3.1.2), at most 1024 (Table 5-1).
+    /// Maximum transfer frame length, octets: at most 1024 (Table 5-1), at least 7. The 7 is a
+    /// bound of the harness, not of the Blue Book: the primary header (5 octets, 232.0 §4.1.2)
+    /// plus the FDU minimum of 2.
     pub max_frame_length: Ranged<u16, 7, 1024>,
     /// FECF present.
     pub fecf: bool,
