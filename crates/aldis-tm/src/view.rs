@@ -11,7 +11,7 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::TmAnomaly;
-use crate::config::{NoSdls, TmPhysicalChannelConfig, VcLookup};
+use crate::config::{NoSdls, TmPhysicalChannelConfig, VcLookup, security_layout};
 use crate::field;
 use crate::header::{
     DataFieldStatus, FSH_VERSION, FshLen, PRIMARY_HEADER_LEN, PacketPointer, SegmentLengthId,
@@ -154,7 +154,7 @@ impl<'a> TmFrame<'a> {
         mode: DecodeMode,
     ) -> Result<(TmFrame<'a>, AnomalySet<TmAnomaly>)> {
         let header = TmFrame::check(bytes, pc, fecf)?;
-        let security = vcs.security_layout(header.scid, header.vcid)?;
+        let security = security_layout(vcs, header.scid, header.vcid)?;
         TmFrame::parse(bytes, pc, header, security, mode)
     }
 

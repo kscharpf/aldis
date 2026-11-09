@@ -60,7 +60,9 @@ impl Plained for Tm {
 /// A lookup that holds no AOS virtual channel.
 struct NoAosVcs;
 
-impl aldis_aos::VcLookup for NoAosVcs {
+impl aldis_core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs {
+    type Vc = AosVirtualChannelConfig;
+
     fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
         false
     }
@@ -91,10 +93,16 @@ impl Plained for Aos {
 /// A lookup that holds no TC channel, on a physical channel of `max_frame_len` octets.
 struct NoTcChannels(TcPhysical);
 
-impl aldis_tc::VcLookup for NoTcChannels {
+impl aldis_core::lookup::PhysicalLookup for NoTcChannels {
+    type Physical = TcPhysical;
+
     fn physical_channel(&self) -> TcPhysical {
         self.0
     }
+}
+
+impl aldis_core::lookup::ChannelLookup<TcSpacecraftId, TcVcId> for NoTcChannels {
+    type Vc = aldis_tc::VcConfig;
 
     fn has_spacecraft(&self, _: TcSpacecraftId) -> bool {
         false
@@ -103,6 +111,10 @@ impl aldis_tc::VcLookup for NoTcChannels {
     fn vc(&self, _: TcSpacecraftId, _: TcVcId) -> Option<aldis_tc::VcConfig> {
         None
     }
+}
+
+impl aldis_core::lookup::MapLookup<TcSpacecraftId, TcVcId, aldis_tc::TcMapId> for NoTcChannels {
+    type Map = MapConfig;
 
     fn map(&self, _: TcSpacecraftId, _: TcVcId, _: aldis_tc::TcMapId) -> Option<MapConfig> {
         None
@@ -123,10 +135,16 @@ impl Plained for Tc {
 /// A lookup that holds no USLP channel.
 struct NoUslpChannels(UslpPhysical);
 
-impl aldis_uslp::VcLookup for NoUslpChannels {
+impl aldis_core::lookup::PhysicalLookup for NoUslpChannels {
+    type Physical = UslpPhysical;
+
     fn physical_channel(&self) -> UslpPhysical {
         self.0
     }
+}
+
+impl aldis_core::lookup::ChannelLookup<UslpSpacecraftId, UslpVcId> for NoUslpChannels {
+    type Vc = aldis_uslp::VcConfig;
 
     fn has_spacecraft(&self, _: UslpSpacecraftId) -> bool {
         false
@@ -135,6 +153,10 @@ impl aldis_uslp::VcLookup for NoUslpChannels {
     fn vc(&self, _: UslpSpacecraftId, _: UslpVcId) -> Option<aldis_uslp::VcConfig> {
         None
     }
+}
+
+impl aldis_core::lookup::MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for NoUslpChannels {
+    type Map = aldis_uslp::MapConfig;
 
     fn map(&self, _: UslpSpacecraftId, _: UslpVcId, _: UslpMapId) -> Option<aldis_uslp::MapConfig> {
         None

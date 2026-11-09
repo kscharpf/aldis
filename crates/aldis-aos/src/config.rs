@@ -20,6 +20,7 @@
 
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
+use aldis_core::lookup::ChannelLookup;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
@@ -309,19 +310,18 @@ pub(crate) fn unknown_channel<L: VcLookup + ?Sized>(vcs: &L, scid: SpacecraftId<
     Error::new(ErrorKind::UnknownChannel).with_field(unknown_channel_field(vcs, scid))
 }
 
-/// Looks up the managed parameters of the virtual channels a frame may belong to (M2 plan D14;
-/// AOS-010, GEN-060).
+/// The lookup of the virtual channels a frame may belong to (AOS-010, GEN-060, API-040).
 ///
-/// [`VcTable`] implements it. Another implementation must answer consistently: a virtual
-/// channel that [`vc`](Self::vc) finds belongs to a Spacecraft ID that
-/// [`has_spacecraft`](Self::has_spacecraft) accepts, and has the VCID it was asked for.
-pub trait VcLookup {
-    /// Whether `scid` is a valid Spacecraft ID of the physical channel (732.0 §4.3.6.3,
-    /// Table 5-1), so that an OID frame of that SCID is accepted.
-    fn has_spacecraft(&self, scid: SpacecraftId<10>) -> bool;
-    /// The virtual channel (`scid`, `vcid`), or `None` if it is not valid (732.0 §4.3.5.4,
-    /// Table 5-2). Never a virtual channel for VCID 63.
-    fn vc(&self, scid: SpacecraftId<10>, vcid: VcId<6>) -> Option<AosVirtualChannelConfig>;
+/// An [`aldis_core::lookup::ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is an
+/// [`AosVirtualChannelConfig`] (M2 plan D14). A bound alias, implemented for every such lookup; implement `ChannelLookup`. [`VcTable`]
+/// implements it. Another implementation must answer consistently: a virtual channel that
+/// `vc` finds belongs to a Spacecraft ID that `has_spacecraft` accepts, and has the VCID it was
+/// asked for; `vc` never finds a virtual channel for VCID 63 (732.0 Table 5-2, Table 5-3).
+pub trait VcLookup: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> {}
+
+impl<T: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized> VcLookup
+    for T
+{
 }
 
 /// The virtual channels of one physical channel, with room for `N` of them (732.0 §5; GEN-011,
@@ -488,7 +488,9 @@ fn check_vc(pc: &AosPhysicalChannelConfig, vc: &AosVirtualChannelConfig) -> Resu
     Ok(())
 }
 
-impl<const N: usize> VcLookup for VcTable<N> {
+impl<const N: usize> ChannelLookup<SpacecraftId<10>, VcId<6>> for VcTable<N> {
+    type Vc = AosVirtualChannelConfig;
+
     fn has_spacecraft(&self, scid: SpacecraftId<10>) -> bool {
         has(&self.vcs, scid)
     }
@@ -505,11 +507,11 @@ pub(crate) mod tests {
     use std::vec::Vec;
 
     use super::{
-        AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, VcLookup,
-        VcTable,
+        AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, VcTable,
     };
     use crate::field;
     use aldis_core::ids::{SpacecraftId, VcId};
+    use aldis_core::lookup::ChannelLookup;
     use aldis_core::security::SecurityLayout;
     use aldis_core::{Error, ErrorDetail, ErrorKind};
 
