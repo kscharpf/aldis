@@ -6,6 +6,8 @@ use std::fmt;
 use aldis::spp::SpacePacket;
 use serde_json::{Map, Value, json};
 
+use crate::micros::Micros;
+
 /// Which node a record belongs to (§7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NodeId {
@@ -150,7 +152,7 @@ pub enum Record {
     /// An application generated a packet.
     PacketOut {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Node.
         node: NodeId,
         /// APID.
@@ -161,7 +163,7 @@ pub enum Record {
     /// A fault is applied to a unit.
     Fault {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Direction.
         dir: Dir,
         /// Unit index in that direction.
@@ -174,7 +176,7 @@ pub enum Record {
     /// A node sent a link unit.
     UnitSent {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Direction.
         dir: Dir,
         /// Unit index in that direction.
@@ -185,7 +187,7 @@ pub enum Record {
     /// A unit arrived.
     UnitDelivered {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Direction.
         dir: Dir,
         /// Unit index in that direction.
@@ -196,7 +198,7 @@ pub enum Record {
     /// A packet was delivered to an application.
     PacketIn {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Node.
         node: NodeId,
         /// APID.
@@ -207,7 +209,7 @@ pub enum Record {
     /// A node raised an application event.
     AppEvent {
         /// Instant, µs.
-        t_us: u64,
+        t_us: Micros,
         /// Node.
         node: NodeId,
         /// Code of §7.4.
@@ -237,7 +239,7 @@ fn line(v: &Value) -> String {
 impl Record {
     /// The record's instant.
     #[must_use]
-    pub const fn t_us(&self) -> u64 {
+    pub const fn t_us(&self) -> Micros {
         match self {
             Record::PacketOut { t_us, .. }
             | Record::Fault { t_us, .. }

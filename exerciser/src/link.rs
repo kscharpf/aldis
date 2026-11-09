@@ -26,10 +26,10 @@ use aldis_link::protocol::{
     Uslp, UslpParams,
 };
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, DiscardReason, FRAME_RECEIVER_MAX_ACTIONS,
-    FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverActions, ReceiverInput,
-    ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc,
-    VcEntry,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, DeliveryService, DiscardReason,
+    FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
+    ReceiverActions, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc,
+    UslpChannel, UslpVc, VcEntry,
 };
 use aldis_uslp::Upid;
 
@@ -525,7 +525,7 @@ fn receivers(t: &mut Tally) {
         FrameReceiverConfig::<Tm, 4>::new(
             bb(LEN),
             bb(false),
-            TmChannel::new(Service::Vc, Service::Mc),
+            TmChannel::new(DeliveryService::Vc, DeliveryService::Mc),
             &[VcEntry::new(vcid, vc)],
         )
     });
@@ -535,7 +535,10 @@ fn receivers(t: &mut Tally) {
     };
     t.check(config.frame_len() == LEN && !config.fecf() && !config.raw_frames());
     t.check(config.area_len() == LEN && config.vcs().count() == 1);
-    t.check(config.channel().ocf() == Service::Vc && config.channel().fsh() == Service::Mc);
+    t.check(
+        config.channel().ocf() == DeliveryService::Vc
+            && config.channel().fsh() == DeliveryService::Mc,
+    );
     let mut tm = FrameReceiver::<Tm, 4>::new(config);
     // VC 1, OCF flag, Secondary Header flag, the FHP 0, then the header 0x01 0xAA, the data, the
     // OCF.
@@ -665,7 +668,7 @@ fn receiver_uslp(t: &mut Tally) {
         FrameReceiverConfig::<Uslp, 4>::new(
             bb(LEN),
             bb(false),
-            UslpChannel::new(bb(2), Service::Mc),
+            UslpChannel::new(bb(2), DeliveryService::Mc),
             &[
                 VcEntry::new(one, UslpVc::new(maps, bb(false), bb(true))),
                 VcEntry::new(two, UslpVc::new(maps, bb(true), bb(false))),
@@ -710,7 +713,7 @@ fn receiver_uslp(t: &mut Tally) {
             Some(ReceiverOutput::FrameDiscarded { map: Some(_), .. })
         )
     }));
-    t.check(uslp_config.channel().ocf() == Service::Mc && uslp_config.vcs().count() == 2);
+    t.check(uslp_config.channel().ocf() == DeliveryService::Mc && uslp_config.vcs().count() == 2);
     t.check(uslp.status().count_discontinuities.get() == 1);
     t.check(uslp_config.vcs().any(|e| {
         let p = e.params();

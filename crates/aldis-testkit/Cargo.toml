@@ -16,7 +16,7 @@ serde_json = "1.0.154"
 # Shared property-test strategies (features `strategies*`, VER-054, M2 D6). The codec crates are
 # normal dependencies of this tooling crate (RS-017), without default features, and without the
 # `time` feature of aldis-spp: features enabled here would be enabled in every test build of the
-# crates that dev-depend on this one (GEN-006). One feature per codec crate, so that a crate's
+# crates that dev-depend on this one (GEN-002). One feature per codec crate, so that a crate's
 # tests link only the crates they test: aldis-core's coverage would otherwise count the code that
 # its macros expand to in the other crates (VER-024).
 aldis-core = { path = "../aldis-core", default-features = false, optional = true }

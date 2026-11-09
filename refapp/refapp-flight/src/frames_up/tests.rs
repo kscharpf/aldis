@@ -279,7 +279,7 @@ fn a_frame_for_another_map_is_rejected_and_not_counted() {
     // req: APP-139, APP-041, TC-021, TC-022
     // The strict codec refuses the MAP ID at validation, so FARM-1 does not count the frame and
     // `unknown_map` (111) is not raised. The Blue Book reads otherwise (232.0 §4.4.3.3,
-    // §4.4.9.3.3): OI-91.
+    // §4.4.9.3.3): OI-98.
     let mut run = Run::new();
     run.deliver(
         1_010_000,

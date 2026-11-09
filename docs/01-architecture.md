@@ -109,14 +109,14 @@ The goal of GEN-001 to GEN-003 is to **keep the certification surface minimal**.
 
 | Configuration | Features | Intended targets |
 |---|---|---|
-| **Bare metal (default)** | none: `no_std`, no `alloc` | Cortex-M/R, RISC-V, LEON (where Rust supports it) |
-| **RTOS with heap** | `alloc` | Adds owned/growable convenience types only. Engines remain fixed-capacity. |
-| **Hosted** | `std` (implies `alloc`) | Linux/macOS/Windows ground systems; adds `std::error::Error` impls, reference transport adapters (framework) |
+| **Bare metal and hosted** | none: `no_std`, no `alloc`, in every configuration | Cortex-M/R, RISC-V, LEON (where Rust supports it); Linux/macOS/Windows ground systems link the same crates, and the code around them uses `std` |
+
+Layers 0–2 have no `alloc` or `std` feature (GEN-006 withdrawn): no API of theirs depends on either, and `Error` implements `core::error::Error` (RS-011). Reference transport adapters (framework, deferred) bring their own features.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
 | GEN-005 | All crates SHALL build with **no features enabled** for a `no_std` target with no global allocator. | — | A |
-| GEN-006 | The `alloc` and `std` features SHALL be strictly additive. Enabling them SHALL NOT change the behavior or wire output of any existing API. | — | T/V |
+| GEN-006 | Withdrawn: Layers 0–2 have no `alloc` or `std` feature, so there is nothing to keep additive (maintainer decision, 2026-11-08; GEN-005 and GEN-010 keep the crates `no_std` without a heap). | — | — |
 | GEN-007 | Behavior SHALL be identical across targets of different endianness and pointer width. | — | V |
 | GEN-008 | A facade feature for a codec, together with `link` or `cop1`, SHALL make that standard's engines available. | — | T |
 
