@@ -19,6 +19,7 @@
 //! | [`container`] | Fixed-capacity vector | GEN-010…GEN-012 |
 //! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
+//! | [`lookup`] | `ChannelLookup`, `MapLookup`, `PhysicalLookup` | GEN-060, API-040 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //!
@@ -39,6 +40,7 @@ pub mod field;
 pub mod finishing;
 pub mod ids;
 pub mod layout;
+pub mod lookup;
 pub mod mode;
 pub mod ocf;
 pub mod oid;

@@ -13,7 +13,8 @@
 //! that only the engines use (data field content, blocking, segmentation, repetitions, CLCW
 //! reporting rate, the multiplexing schemes) are not kept here.
 
-use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
+use aldis_core::layout::{FECF_LEN, LayoutSpec};
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
@@ -225,48 +226,49 @@ impl MapConfig {
     }
 }
 
-/// Looks up the managed parameters of the channels a frame may belong to (M2 plan D14;
-/// GEN-060, TC-021, TC-022).
+/// The lookup of the channels a frame may belong to (GEN-060, TC-021, TC-022).
 ///
-/// [`VcTable`] implements it. Another implementation must answer consistently: a VCID that
-/// [`vc`](Self::vc) finds belongs to a Spacecraft ID that
-/// [`has_spacecraft`](Self::has_spacecraft) accepts.
-pub trait VcLookup {
-    /// The Physical Channel (232.0 Table 5-1).
-    fn physical_channel(&self) -> PhysicalChannelConfig;
-    /// Whether `spacecraft_id` is a valid Spacecraft ID of the Physical Channel, so that the
-    /// frame has an expected Master Channel Identifier (232.0 §4.4.9.3.3 b, Table 5-1).
-    fn has_spacecraft(&self, spacecraft_id: TcSpacecraftId) -> bool;
-    /// The Virtual Channel (`spacecraft_id`, `vc_id`), or `None` if it is not valid (232.0
-    /// §4.4.7.3; TC-022).
-    fn vc(&self, spacecraft_id: TcSpacecraftId, vc_id: TcVcId) -> Option<VcConfig>;
-    /// The MAP (`spacecraft_id`, `vc_id`, `map_id`), or `None` if it is not valid (232.0
-    /// §4.4.3.3; TC-022).
-    fn map(
-        &self,
-        spacecraft_id: TcSpacecraftId,
-        vc_id: TcVcId,
-        map_id: TcMapId,
-    ) -> Option<MapConfig>;
+/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is a [`VcConfig`], a
+/// [`MapLookup`] whose MAP is a [`MapConfig`], and a [`PhysicalLookup`] of the Physical Channel
+/// (232.0 Table 5-1; M2 plan D14).
+///
+/// A bound alias, implemented for every such lookup; implement the three traits. [`VcTable`]
+/// implements them. Another implementation must answer consistently: a VCID that `vc` finds
+/// belongs to a Spacecraft ID that `has_spacecraft` accepts (232.0 §4.4.9.3.3 b, §4.4.7.3,
+/// §4.4.3.3).
+pub trait VcLookup:
+    ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+    + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+    + PhysicalLookup<Physical = PhysicalChannelConfig>
+{
 }
 
-/// `InvalidConfig` (`frame_data_field`) unless a frame of `limit` octets with a header of
-/// `secondary_len` and the SDLS lengths of `security` has a data field (CMN-041).
-fn check_room(
+impl<
+    T: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> VcLookup for T
+{
+}
+
+/// The longest frame of a Virtual Channel or MAP: `limit` octets (at most the Physical
+/// Channel's) with a secondary slot of `secondary_len` and the SDLS lengths of `security`
+/// (CMN-041).
+fn longest_frame(
     physical: &PhysicalChannelConfig,
     limit: usize,
     secondary_len: usize,
     security: SecurityLayout,
-) -> Result<()> {
-    FrameLayout::compute(&LayoutSpec {
+) -> LayoutSpec {
+    LayoutSpec {
         frame_len: limit.min(physical.max_frame_len),
         primary_header_len: PRIMARY_HEADER_LEN,
         secondary_len,
         security,
         ocf: false,
         fecf: physical.fecf,
-    })
-    .map(|_| ())
+    }
 }
 
 /// The channels of one Physical Channel, with room for `V` Virtual Channels and `M` MAPs
@@ -316,7 +318,7 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
             } else {
                 0
             };
-            check_room(&physical, vc.max_frame_len, secondary, vc.security())?;
+            longest_frame(&physical, vc.max_frame_len, secondary, vc.security()).check_room(0)?;
             let slot = table
                 .vcs
                 .get_mut(i)
@@ -334,12 +336,13 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
             {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAP_ID));
             }
-            check_room(
+            longest_frame(
                 &physical,
                 vc.max_frame_len,
                 SEGMENT_HEADER_LEN,
                 map.security,
-            )?;
+            )
+            .check_room(0)?;
             let slot = table
                 .maps
                 .get_mut(i)
@@ -366,10 +369,16 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     }
 }
 
-impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
+impl<const V: usize, const M: usize> PhysicalLookup for VcTable<V, M> {
+    type Physical = PhysicalChannelConfig;
+
     fn physical_channel(&self) -> PhysicalChannelConfig {
         self.physical
     }
+}
+
+impl<const V: usize, const M: usize> ChannelLookup<TcSpacecraftId, TcVcId> for VcTable<V, M> {
+    type Vc = VcConfig;
 
     fn has_spacecraft(&self, spacecraft_id: TcSpacecraftId) -> bool {
         self.vcs().any(|vc| vc.spacecraft_id == spacecraft_id)
@@ -380,6 +389,10 @@ impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
             .find(|vc| vc.spacecraft_id == spacecraft_id && vc.vc_id == vc_id)
             .copied()
     }
+}
+
+impl<const V: usize, const M: usize> MapLookup<TcSpacecraftId, TcVcId, TcMapId> for VcTable<V, M> {
+    type Map = MapConfig;
 
     fn map(
         &self,
@@ -396,10 +409,11 @@ impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
-    use super::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcLookup, VcTable};
+    use super::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcTable};
     use crate::field;
     use crate::header::{TcMapId, TcSpacecraftId, TcVcId};
     use aldis_core::ErrorKind;
+    use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
     use aldis_core::security::SecurityLayout;
 
     pub(crate) fn scid(n: u16) -> TcSpacecraftId {

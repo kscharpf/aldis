@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(count, withdrawn.len());
         assert_eq!(v1.len() + deferred + count, spec.requirements.len());
         // No milestone scope contains a withdrawn ID, even one its exit table names.
-        for scope in ["m0", "m1", "m2", "m3", "m4", "m5"] {
+        for scope in ["m0", "m1", "m2", "m3", "m4", "m5", "m6"] {
             if let Ok(ids) = scope_ids(&spec, scope) {
                 assert!(withdrawn.iter().all(|w| !ids.contains(*w)), "{scope}");
             }

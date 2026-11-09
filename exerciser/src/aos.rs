@@ -8,11 +8,11 @@ use aldis_aos::{
     AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
     AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu,
     DataFieldContent, DataUnit, FrameCountCycle, Mpdu, OID_VCID, PacketPointer, PduHeader,
-    VcFrameCount, VcLookup as _, VcTable, encode, encode_oid as encode_oid_frame,
-    encode_oid_galois,
+    VcFrameCount, VcTable, encode, encode_oid as encode_oid_frame, encode_oid_galois,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
+use aldis_core::lookup::ChannelLookup as _;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
