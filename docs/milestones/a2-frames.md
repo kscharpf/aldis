@@ -140,7 +140,7 @@ A2 is complete when every item below is green on `main`. Requirements of the sce
 | Link-engine parameters | APP-136 | |
 | Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | |
 | Harness rules at frame level | APP-141 | |
-| Frame-level events | APP-138, APP-139, APP-131 (frames) | |
+| Frame-level events | APP-138, APP-139, APP-143, APP-131 (frames) | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
