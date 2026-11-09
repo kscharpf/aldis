@@ -413,7 +413,6 @@ impl FlightNode {
 /// The failure of an engine in a slot, which the sizes of §4.1 rule out, so that it is driven by
 /// breaking the mirror of `held` from inside the module (no hook in the production code).
 #[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
 mod slot_failure_tests {
     extern crate std;
 
