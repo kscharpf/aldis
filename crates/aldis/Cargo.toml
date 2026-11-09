@@ -39,33 +39,6 @@ uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
-alloc = [
-    "aldis-core?/alloc",
-    "aldis-time?/alloc",
-    "aldis-spp?/alloc",
-    "aldis-epp?/alloc",
-    "aldis-tm?/alloc",
-    "aldis-tc?/alloc",
-    "aldis-aos?/alloc",
-    "aldis-uslp?/alloc",
-    "aldis-sync?/alloc",
-    "aldis-link?/alloc",
-    "aldis-cop1?/alloc",
-]
-std = [
-    "alloc",
-    "aldis-core?/std",
-    "aldis-time?/std",
-    "aldis-spp?/std",
-    "aldis-epp?/std",
-    "aldis-tm?/std",
-    "aldis-tc?/std",
-    "aldis-aos?/std",
-    "aldis-uslp?/std",
-    "aldis-sync?/std",
-    "aldis-link?/std",
-    "aldis-cop1?/std",
-]
 full = [
     "core",
     "time",

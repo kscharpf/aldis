@@ -22,11 +22,11 @@ Every pull request also: changes one track's directories ([roadmap](../08-roadma
 A crate *has code* once its `src/` declares a function. In the change that gives it code:
 
 - [ ] Layer assigned in `LAYERS` of `xtask/src/layers.rs` and in [01-architecture.md](../01-architecture.md) §2; dependencies only on lower layers (GEN-001…004, `cargo xtask layers`, **(ci)**).
-- [ ] `alloc` and `std` gate only the crate-root `extern crate` lines (GEN-006, verify check `features`). The coverage gate (VER-024) and the `features` check take every Layer 0–2 crate with code and need no edit.
+- [ ] The crate has no `alloc` or `std` feature and no `extern crate alloc`/`std` outside `#[cfg(test)]`. The coverage gate (VER-024) and the `features` check take every Layer 0–2 crate with code and need no edit.
 - [ ] In the `-p` list of the nightly `mutants` job, `.github/workflows/nightly.yml` (VER-025) **(consistency)**; survivors triaged in [mutants-triage.md](../verification/mutants-triage.md) before the release.
 - [ ] An exerciser dependency in `exerciser/Cargo.toml`, a module calling its API, and a vector group in `exerciser/build.rs` and `Group` (`exerciser/src/vectors.rs`) (VER-010) **(consistency)** for the dependency and the group.
 - [ ] A `README.md` in the crate, linked from the root `README.md` **(consistency)**, and the crate named in the root `README.md` status.
-- [ ] A facade feature in `crates/aldis/Cargo.toml` that enables it, its `alloc` and `std` forwarded, and the feature in `full` **(consistency)**; the facade docs list it (RS-015).
+- [ ] A facade feature in `crates/aldis/Cargo.toml` that enables it and the feature in `full` **(consistency)**; the facade docs list it (RS-015).
 - [ ] Fuzz crate dependency in `fuzz/Cargo.toml` when it gets a target (below).
 - [ ] The records of VER-010 and VER-025 in [`docs/verification/records/`](../verification/records/) name the crate, and the crate lists of the `coverage` and `features` checks include it.
 

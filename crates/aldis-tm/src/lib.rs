@@ -18,19 +18,13 @@
 //!
 //! # Features
 //!
-//! None by default. `alloc` and `std` are strictly additive: they change no behaviour and no
-//! wire output (GEN-005, GEN-006).
+//! None by default (GEN-005).
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020,
 //! GEN-070).
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "std")]
-extern crate std;
 
 pub mod anomaly;
 pub mod config;

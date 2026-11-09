@@ -21,7 +21,6 @@
 //! | `sync` | `aldis::sync` (`aldis-sync`): ASM attach, pseudo-randomizer, ASM search engine | 131.0 §9, §10 | SYNC-001…SYNC-020 |
 //! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-082 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
-//! | `alloc`, `std` | The same feature of every enabled crate; strictly additive | — | GEN-006 |
 //! | `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` with `link` or `cop1` | The same feature of `aldis-link`, and of `aldis-cop1` for `uslp`: the engines of that standard | — | GEN-008 |
 //! | `full` | Every crate above and `spp-time`; the engine features follow from the codec features | — | — |
 //!
