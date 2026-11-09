@@ -1,5 +1,6 @@
 //! Scheduler, link model, and golden traces (docs/reference-application.md §6, §7; A0 WP-2).
 
+use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
 use refapp_harness::scenario::{
     Call, Case, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario,
@@ -14,7 +15,7 @@ fn case(level: Level, end_us: u64) -> Case {
     Case {
         id: "test".to_owned(),
         level,
-        end_us,
+        end_us: Micros::new(end_us),
         trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
         ops: vec![],
@@ -108,7 +109,7 @@ fn packet_level_delay_and_tie_order() {
         &mut ground,
     )
     .unwrap();
-    let delay = scenario.link.one_way_delay_us;
+    let delay = scenario.link.one_way_delay_us.get();
     let expected = vec![
         // t = 0: ground steps before flight (§6.2).
         Record::UnitSent {
@@ -190,8 +191,8 @@ fn deadlines_wake_nodes() {
 fn frame_level_slots() {
     // req: APP-071, APP-090
     let scenario = Scenario::load().unwrap();
-    let frame = scenario.link.frame_slot_us.get();
-    let uplink = scenario.link.uplink_slot_us.get();
+    let frame = scenario.link.frame_slot_us.get().get();
+    let uplink = scenario.link.uplink_slot_us.get().get();
     let mut flight = Scripted(
         |_t: u64, _d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
             if tx {
@@ -292,7 +293,7 @@ where
 
 const fn noop_at(at_us: u64) -> OpsEntry {
     OpsEntry::Command {
-        at_us,
+        at_us: Micros::new(at_us),
         execution: Execution::Immediate {},
         call: Call::Noop {},
         extra_octets: None,
@@ -344,7 +345,13 @@ fn scripted_faults_reproduce_a_hand_written_trace() {
         fault(Direction::Up, 0, Fault::Drop {}),
         fault(Direction::Down, 0, Fault::Drop {}),
         fault(Direction::Down, 1, Fault::Duplicate {}),
-        fault(Direction::Down, 2, Fault::Delay { delay_us: 500_000 }),
+        fault(
+            Direction::Down,
+            2,
+            Fault::Delay {
+                delay_us: Micros::new(500_000),
+            },
+        ),
         fault(Direction::Down, 3, Fault::Truncate { octets: 1 }),
     ];
     // The flight node sends [i, 0xAA] at i seconds, i = 0 to 4.
@@ -368,7 +375,7 @@ fn scripted_faults_reproduce_a_hand_written_trace() {
         },
     );
     let records = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
-    let delay = scenario.link.one_way_delay_us;
+    let delay = scenario.link.one_way_delay_us.get();
     let sent = |t_us: u64, dir: Dir, index: u64, octets: &[u8]| Record::UnitSent {
         t_us,
         dir,
@@ -442,7 +449,7 @@ fn a_delay_reorders_units() {
         Direction::Down,
         0,
         Fault::Delay {
-            delay_us: 1_000_000,
+            delay_us: Micros::new(1_000_000),
         },
     )];
     let mut flight = Scripted(

@@ -6,12 +6,16 @@
 //!
 //! | Module | Contents | Requirements |
 //! |---|---|---|
+//! | [`frame`] | Strict decoding of a link unit as a TM or TC frame | APP-086 |
+//! | [`micros`] | Microseconds of simulated time | APP-107 |
 //! | [`ranged`] | Integer with a closed range for parser and schema | APP-107 |
 //! | [`scenario`] | Scenario file model, JSON Schema, generated constants | APP-107 |
 //! | [`sim`] | Scheduler and link model | APP-070…APP-074 |
 //! | [`trace`] | Golden-trace writer, canonical-form check, comparator | APP-080…APP-085 |
 #![forbid(unsafe_code)]
 
+pub mod frame;
+pub mod micros;
 pub mod ranged;
 pub mod scenario;
 pub mod sim;

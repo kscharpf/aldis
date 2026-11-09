@@ -30,7 +30,13 @@
     "release_deadline_realtime_us": 250000,
     "release_deadline_payload_us": 1000000,
     "max_packet_length": 512,
-    "idle_pattern": 0
+    "idle_pattern": 0,
+    "packet_version": 0,
+    "priority_realtime": 1,
+    "priority_payload": 2,
+    "ocf_initial": 16777216,
+    "deliver_incomplete_packets": false,
+    "deliver_idle_packets": false
   },
   "tc": {
     "max_frame_length": 128,
@@ -39,7 +45,11 @@
     "map_commands": 0,
     "map_table_upload": 1,
     "max_fdu_length": 121,
-    "max_packet_length": 512
+    "max_packet_length": 512,
+    "packet_version": 0,
+    "segment_header": true,
+    "map_commands_services": {"blocking": true, "segmentation": false},
+    "map_table_upload_services": {"blocking": false, "segmentation": true}
   },
   "cop1": {
     "k": 4,
@@ -47,7 +57,11 @@
     "t1_initial_us": 1000000,
     "transmission_limit": 3,
     "timeout_type": 0,
-    "farm_buffer_depth": 2
+    "farm_buffer_depth": 2,
+    "farm_status_field": 0,
+    "farm_initial_vr": 0,
+    "fop_repetitions_type_a": 1,
+    "fop_repetitions_control": 1
   },
   "cases": [
     {
