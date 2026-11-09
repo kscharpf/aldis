@@ -1016,7 +1016,11 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "OCF_INITIAL",
                 "u32",
-                format!("{:#010x}", tm.ocf_initial),
+                format!(
+                    "{:#06x}_{:04x}",
+                    tm.ocf_initial >> 16,
+                    tm.ocf_initial & 0xFFFF
+                ),
                 "Initial value of the OCF slot (APP-136).",
             ),
             (

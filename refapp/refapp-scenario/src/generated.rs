@@ -99,7 +99,7 @@ pub mod tm {
     pub const PRIORITY_PAYLOAD: u8 = 2;
 
     /// Initial value of the OCF slot (APP-136).
-    pub const OCF_INITIAL: u32 = 0x01000000;
+    pub const OCF_INITIAL: u32 = 0x0100_0000;
 
     /// The extractor delivers incomplete packets (APP-136).
     pub const DELIVER_INCOMPLETE_PACKETS: bool = false;
