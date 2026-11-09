@@ -157,10 +157,10 @@ impl FrameDownlink {
             Err(e) => {
                 // A frame that failed the FECF is counted by the receiver (LNK-080); the
                 // discard it returns is not an event.
-                if e.kind() == ErrorKind::CrcMismatch {
-                    if let Err(refused) = self.discard_for_crc() {
-                        return reject(out, refused.kind());
-                    }
+                if e.kind() == ErrorKind::CrcMismatch
+                    && let Err(refused) = self.discard_for_crc()
+                {
+                    return reject(out, refused.kind());
                 }
                 return reject(out, e.kind());
             }
