@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-aldis = { workspace = true, features = ["core", "time", "spp-time"] }
+aldis = { workspace = true, features = ["core", "time", "spp-time", "epp", "link", "cop1", "tc"] }
 refapp-scenario = { workspace = true }
 
 # The flight lint set, restriction lints included: the ground node parses untrusted downlink
