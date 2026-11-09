@@ -116,7 +116,7 @@ clean_one() {
                             "closed PR #$pr has its head ${head_oid:0:8} outside origin/main)"
                         return 1
                     fi
-                    closed=head
+                    closed=landed
                     ;;
             esac
         fi

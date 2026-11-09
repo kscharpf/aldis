@@ -10,7 +10,8 @@
 # branch), and is kept when a commit is not;
 # a closed non-train PR whose head commit is on main is cleaned (also a stacked one, whose base is
 # another branch), and is kept when its head is not on main, or when its local branch has a newer
-# commit (both refs kept, with the reason); a closed train is kept, both refs, when only the remote has a unique commit; the closed-PR filter
+# commit (both refs kept, with the reason); a closed train is kept, both refs, when only the
+# remote has a unique commit; the closed-PR filter
 # drops merged PRs (a closed listing with a merged and an unmerged PR picks the unmerged one; one
 # with only a merged PR is kept);
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
@@ -161,9 +162,10 @@ case "$st" in
     closed)
         head="$(awk -v b="$b" '$1 == b { print $2 }' "$STUB_HEADS")"
         if in_list "$STUB_CLOSED"; then
-            json="[{\"number\":43,\"mergedAt\":null,\"headRefOid\":\"$head\",\"baseRefName\":\"main\"}]"
+            json="[{\"number\":43,\"mergedAt\":null,\"headRefOid\":\"$head\"}]"
         elif in_list "$STUB_STACKED"; then
-            json="[{\"number\":47,\"mergedAt\":null,\"headRefOid\":\"$head\",\"baseRefName\":\"closed-stacked-parent\"}]"
+            # Its base is another branch (closed-stacked-parent); the script does not read it.
+            json="[{\"number\":47,\"mergedAt\":null,\"headRefOid\":\"$head\"}]"
         elif in_list "$STUB_BOTH"; then
             json='[{"number":44,"mergedAt":"2026-11-01T00:00:00Z"},{"number":45,"mergedAt":null}]'
         elif in_list "$STUB_ONLYMERGED"; then
@@ -191,7 +193,8 @@ onlymerged="train/closed-onlymerged"
 out="" rc=0
 run() {
     out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" STUB_CLOSED="$closed" \
-        STUB_BOTH="$both" STUB_ONLYMERGED="$onlymerged" STUB_STACKED="$stacked" STUB_HEADS="$heads" \
+        STUB_BOTH="$both" STUB_ONLYMERGED="$onlymerged" STUB_STACKED="$stacked" \
+        STUB_HEADS="$heads" \
         "$script" "$@" 2>&1)"
     rc=$?
     [ -z "${DEBUG:-}" ] || printf '%s\n' "$out"
@@ -300,7 +303,8 @@ done
 
 echo "# a closed non-train PR whose head is on main, dry run then apply"
 run closed-head-ok
-expect "dry run names the PR and the head" said "PR #43 closed, head $(git -C "$repo" rev-parse --short=8 origin/closed-head-ok) on origin/main"
+short="$(git -C "$repo" rev-parse --short=8 origin/closed-head-ok)"
+expect "dry run names the PR and the head" said "PR #43 closed, head $short on origin/main"
 expect "dry run: the remote branch stays" remote_has closed-head-ok
 run --apply closed-head-ok
 expect "the worktree is removed" test ! -d "$work/wt-head-ok"
