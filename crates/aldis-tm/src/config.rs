@@ -342,14 +342,22 @@ pub fn security_layout<L: VcLookup + ?Sized>(
     scid: SpacecraftId<10>,
     vcid: VcId<3>,
 ) -> Result<SecurityLayout> {
-    if let Some(layout) = vcs.vc(scid, vcid) {
-        Ok(layout)
-    } else if vcs.has_spacecraft(scid) {
-        Err(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))
-    } else if let Some(expected) = vcs.sole_spacecraft() {
-        Err(unknown_scid(scid, expected))
-    } else {
-        Err(Error::new(ErrorKind::UnknownChannel).with_field(field::SPACECRAFT_ID))
+    vcs.vc(scid, vcid)
+        .ok_or_else(|| unknown_channel(vcs.has_spacecraft(scid), vcs.sole_spacecraft(), scid))
+}
+
+/// `UnknownChannel` for a frame of `scid` whose virtual channel is not configured: (`vc_id`) if
+/// the lookup `has_spacecraft`, else (`spacecraft_id`), with the `sole` Spacecraft ID as the
+/// expected value if the lookup has one.
+fn unknown_channel(
+    has_spacecraft: bool,
+    sole: Option<SpacecraftId<10>>,
+    scid: SpacecraftId<10>,
+) -> Error {
+    match (has_spacecraft, sole) {
+        (true, _) => Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
+        (false, Some(expected)) => unknown_scid(scid, expected),
+        (false, None) => Error::new(ErrorKind::UnknownChannel).with_field(field::SPACECRAFT_ID),
     }
 }
 
@@ -405,6 +413,8 @@ impl ChannelLookup<SpacecraftId<10>, VcId<3>> for NoSdls {
 mod tests {
     extern crate std;
     use std::vec::Vec;
+
+    use aldis_core::lookup::ChannelLookup;
 
     use super::{
         DataFieldContent, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
@@ -567,6 +577,7 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
+        assert!(NoSdls.has_spacecraft(scid(1023)));
         assert_eq!(
             security_layout(&NoSdls, scid(1023), vcid(7)),
             Ok(SecurityLayout::NONE)
