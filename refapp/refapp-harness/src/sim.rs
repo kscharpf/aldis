@@ -8,7 +8,7 @@
 
 use refapp_scenario::{Apid, Delivered, Instant, Node, Output, StepInput};
 
-use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, OpsEntry, Scenario};
+use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, Scenario};
 use crate::trace::{Dir, FaultKind, Header, NodeId, Record};
 
 /// One output of a node step, in output order.
@@ -143,9 +143,9 @@ pub fn records(
         node: ground,
         deadline: None,
         tx_dir: Dir::Up,
-        slot_us: link.uplink_slot_us.get(),
+        slot_us: link.uplink_slot_us.get().get(),
         next_index: 0,
-        ops_us: case.ops.iter().map(OpsEntry::at_us).collect(),
+        ops_us: case.ops.iter().map(|e| e.at_us().get()).collect(),
         ops_done: 0,
     };
     let mut flight = Side {
@@ -153,7 +153,7 @@ pub fn records(
         node: flight,
         deadline: None,
         tx_dir: Dir::Down,
-        slot_us: link.frame_slot_us.get(),
+        slot_us: link.frame_slot_us.get().get(),
         next_index: 0,
         ops_us: Vec::new(),
         ops_done: 0,
@@ -175,7 +175,7 @@ pub fn records(
         ));
     }
     let mut t = 0;
-    while t < case.end_us {
+    while t < case.end_us.get() {
         let (to_ground, to_flight) = deliver(&mut world, t);
         // Steps 2 and 3 of §6.2: the ground node, then the flight node.
         step(&mut world, &mut ground, t, &to_ground)?;
@@ -191,7 +191,10 @@ pub fn records(
         .flatten()
         .min();
         if case.level == Level::Frames {
-            for period in [link.frame_slot_us.get(), link.uplink_slot_us.get()] {
+            for period in [
+                link.frame_slot_us.get().get(),
+                link.uplink_slot_us.get().get(),
+            ] {
                 next = next.into_iter().chain(next_slot(t, period)).min();
             }
         }
@@ -349,8 +352,8 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
                 (FaultKind::Duplicate, vec![])
             }
             Fault::Delay { delay_us } => {
-                extra_delay = extra_delay.saturating_add(delay_us);
-                (FaultKind::Delay, vec![delay_us])
+                extra_delay = extra_delay.saturating_add(delay_us.get());
+                (FaultKind::Delay, vec![delay_us.get()])
             }
             Fault::Truncate { octets: n } => {
                 let keep = usize::try_from(n)
@@ -393,7 +396,7 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
     }
     if !dropped {
         let at = t
-            .saturating_add(world.link.one_way_delay_us)
+            .saturating_add(world.link.one_way_delay_us.get())
             .saturating_add(extra_delay);
         for copy in 0..copies {
             world.in_flight.push(Arrival {

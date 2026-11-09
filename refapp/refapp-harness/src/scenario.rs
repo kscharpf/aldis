@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::micros::Micros;
 use crate::ranged::{EvenRanged, Ranged};
 use refapp_scenario::{Crc16, Duration, TableId, TableLength};
 use schemars::JsonSchema;
@@ -62,11 +63,11 @@ pub struct Time {
 #[serde(deny_unknown_fields)]
 pub struct Link {
     /// One-way delay, both directions, µs.
-    pub one_way_delay_us: u64,
+    pub one_way_delay_us: Micros,
     /// Downlink frame slot period, µs (A2 on).
-    pub frame_slot_us: Ranged<u64, 1, 18_446_744_073_709_551_615>,
+    pub frame_slot_us: Ranged<Micros, 1, 18_446_744_073_709_551_615>,
     /// Uplink slot period, µs (A2 on).
-    pub uplink_slot_us: Ranged<u64, 1, 18_446_744_073_709_551_615>,
+    pub uplink_slot_us: Ranged<Micros, 1, 18_446_744_073_709_551_615>,
 }
 
 /// APIDs (§3.1, APP-020).
@@ -102,9 +103,9 @@ pub struct Tm {
     /// VC of OID frames.
     pub vcid_idle: Ranged<u8, 0, 7>,
     /// Release deadline of the real-time VC, µs.
-    pub release_deadline_realtime_us: u64,
+    pub release_deadline_realtime_us: Micros,
     /// Release deadline of the payload VC, µs.
-    pub release_deadline_payload_us: u64,
+    pub release_deadline_payload_us: Micros,
     /// Maximum packet length, octets.
     pub max_packet_length: u16,
     /// Idle Packet data octet.
@@ -202,7 +203,7 @@ pub struct Cop1 {
     /// FARM sliding window width W.
     pub w: EvenRanged<u8, 2, 254>,
     /// `T1_Initial`, µs.
-    pub t1_initial_us: u64,
+    pub t1_initial_us: Micros,
     /// `Transmission_Limit`.
     pub transmission_limit: Ranged<u8, 1, 255>,
     /// `Timeout_Type` (0 or 1).
@@ -239,7 +240,7 @@ pub struct Case {
     /// Link level.
     pub level: Level,
     /// End instant, exclusive, µs.
-    pub end_us: u64,
+    pub end_us: Micros,
     /// Version of the case's golden trace (§7.5, APP-087).
     pub trace_version: Ranged<u32, 1, 4_294_967_295>,
     /// Requirement IDs the case verifies, sorted (§7.2).
@@ -264,7 +265,7 @@ pub enum OpsEntry {
     /// A command packet on the commands APID (§3.3.5).
     Command {
         /// Release instant, µs: the ground node outputs the packet then (§6.2).
-        at_us: u64,
+        at_us: Micros,
         /// Execution mode and time.
         execution: Execution,
         /// Function and arguments.
@@ -278,7 +279,7 @@ pub enum OpsEntry {
     /// `(3 · i + 1) mod 256`.
     TableUpload {
         /// Release instant, µs.
-        at_us: u64,
+        at_us: Micros,
         /// Table ID.
         table_id: Ranged<u8, { TableId::MIN as u64 }, { TableId::MAX as u64 }>,
         /// Table length, octets.
@@ -287,7 +288,7 @@ pub enum OpsEntry {
     /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
     Fop1Directive {
         /// Release instant, µs.
-        at_us: u64,
+        at_us: Micros,
         /// The directive; A3 adds the others it needs (APP-002).
         directive: Fop1Directive,
     },
@@ -312,7 +313,7 @@ impl OpsEntry {
                 execution: match execution {
                     Execution::Immediate {} => node::Execution::Immediate,
                     Execution::TimeTagged { exec_us } => node::Execution::TimeTagged {
-                        after_t0: Duration::from_micros(exec_us),
+                        after_t0: Duration::from_micros(exec_us.get()),
                     },
                 },
                 call: match call {
@@ -346,7 +347,7 @@ impl OpsEntry {
 
     /// The release instant, µs (§6.5).
     #[must_use]
-    pub const fn at_us(&self) -> u64 {
+    pub const fn at_us(&self) -> Micros {
         match self {
             OpsEntry::Command { at_us, .. }
             | OpsEntry::TableUpload { at_us, .. }
@@ -364,7 +365,7 @@ pub enum Execution {
     /// Executes at the on-board time T0 + `exec_us`, a multiple of the frame slot (APP-061).
     TimeTagged {
         /// Execution instant, µs after T0.
-        exec_us: u64,
+        exec_us: Micros,
     },
 }
 
@@ -508,7 +509,7 @@ pub enum Fault {
     /// The unit arrives `delay_us` later than normal.
     Delay {
         /// Extra delay, µs.
-        delay_us: u64,
+        delay_us: Micros,
     },
     /// One bit is inverted; frame levels only, where the FECF catches it.
     Flip {
@@ -598,9 +599,9 @@ impl Scenario {
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us.get();
         let mut uplink = Uplink::new(self);
-        let mut previous = 0;
+        let mut previous = Micros::default();
         // Execution times of the time-tagged commands the flight node holds (§2.3).
-        let mut queue: Vec<u64> = Vec::new();
+        let mut queue: Vec<Micros> = Vec::new();
         for (i, entry) in c.ops.iter().enumerate() {
             let at_us = match entry {
                 OpsEntry::Command {
@@ -673,10 +674,10 @@ const QUEUE_CAPACITY: usize = 8;
 /// level (APP-141). `queue` holds the execution times of the commands the flight node still
 /// has queued.
 fn check_tagged(
-    queue: &mut Vec<u64>,
-    arrival: u64,
-    exec_us: u64,
-    slot: u64,
+    queue: &mut Vec<Micros>,
+    arrival: Micros,
+    exec_us: Micros,
+    slot: Micros,
     level: Level,
 ) -> Result<(), String> {
     if !exec_us.is_multiple_of(slot) {
@@ -706,14 +707,14 @@ fn check_tagged(
 /// release order and finds when each command arrives, to follow the queue of the flight node
 /// (APP-141); the trace has the arrivals as they happen.
 struct Uplink {
-    slot_us: u64,
-    delay_us: u64,
+    slot_us: Micros,
+    delay_us: Micros,
     /// Packet octets one frame carries.
     max_data: u64,
     /// First uplink slot with no frame data unit assigned.
-    free_slot: u64,
+    free_slot: Micros,
     /// The data unit still open for blocking: release instant, length, arrival instant.
-    open: Option<(u64, u64, u64)>,
+    open: Option<(Micros, u64, Micros)>,
 }
 
 /// Octets of a table-upload packet before the table (§3.3.6): header 6, ID 1, length 2.
@@ -727,19 +728,18 @@ impl Uplink {
             // The Segment Header, when the VC has one, takes one octet of the frame data unit
             // (§4.2); the range of `max_fdu_length` leaves at least one more.
             max_data: u64::from(s.tc.max_fdu_length.get()) - u64::from(s.tc.segment_header),
-            free_slot: 0,
+            free_slot: Micros::default(),
             open: None,
         }
     }
 
     /// First uplink slot at or after `release` that is free.
-    fn slot_for(&self, release: u64) -> u64 {
-        let due = release.div_ceil(self.slot_us).saturating_mul(self.slot_us);
-        due.max(self.free_slot)
+    fn slot_for(&self, release: Micros) -> Micros {
+        release.next_multiple_of(self.slot_us).max(self.free_slot)
     }
 
     /// A command packet of `length` octets released at `release`: its arrival instant.
-    fn command(&mut self, release: u64, length: u64) -> u64 {
+    fn command(&mut self, release: Micros, length: u64) -> Micros {
         if let Some((at, used, arrival)) = self.open.as_mut()
             && *at == release
             && used.saturating_add(length) <= self.max_data
@@ -755,12 +755,12 @@ impl Uplink {
     }
 
     /// A table upload of `length` table octets released at `release`.
-    fn table_upload(&mut self, release: u64, length: u16) {
+    fn table_upload(&mut self, release: Micros, length: u16) {
         self.open = None;
         let packet = u64::from(length).saturating_add(TABLE_PACKET_OVERHEAD);
         let frames = packet.div_ceil(self.max_data);
         let slot = self.slot_for(release);
-        self.free_slot = slot.saturating_add(frames.saturating_mul(self.slot_us));
+        self.free_slot = slot.saturating_add(Micros::times(self.slot_us, frames));
     }
 }
 
@@ -926,19 +926,19 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "ONE_WAY_DELAY_US",
                 "u64",
-                n(s.link.one_way_delay_us),
+                n(s.link.one_way_delay_us.get()),
                 "One-way delay, both directions, µs (APP-072).",
             ),
             (
                 "FRAME_SLOT_US",
                 "u64",
-                n(s.link.frame_slot_us.get()),
+                n(s.link.frame_slot_us.get().get()),
                 "Downlink frame slot period, µs (APP-071).",
             ),
             (
                 "UPLINK_SLOT_US",
                 "u64",
-                n(s.link.uplink_slot_us.get()),
+                n(s.link.uplink_slot_us.get().get()),
                 "Uplink slot period, µs (APP-071).",
             ),
         ],
@@ -1011,13 +1011,13 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "RELEASE_DEADLINE_REALTIME_US",
                 "u64",
-                n(tm.release_deadline_realtime_us),
+                n(tm.release_deadline_realtime_us.get()),
                 "Release deadline of the real-time VC, µs (APP-033).",
             ),
             (
                 "RELEASE_DEADLINE_PAYLOAD_US",
                 "u64",
-                n(tm.release_deadline_payload_us),
+                n(tm.release_deadline_payload_us.get()),
                 "Release deadline of the payload VC, µs (APP-033).",
             ),
             (
@@ -1181,7 +1181,7 @@ pub fn rust_constants(s: &Scenario) -> String {
             (
                 "T1_INITIAL_US",
                 "u64",
-                n(c.t1_initial_us),
+                n(c.t1_initial_us.get()),
                 "`T1_Initial`, µs.",
             ),
             (
@@ -1274,7 +1274,7 @@ pub fn generate(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Call, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario,
+        Call, Direction, Execution, Fault, FaultEntry, Level, Micros, OpsEntry, Scenario,
         is_requirement_id, literal,
     };
     use crate::ranged::Ranged;
@@ -1442,7 +1442,7 @@ mod tests {
         let mut s = ok.clone();
         // An immediate command that arrives off the 125 000 µs grid.
         s.cases[3].ops[0] = OpsEntry::Command {
-            at_us: 100_000,
+            at_us: Micros::new(100_000),
             execution: Execution::Immediate {},
             call: Call::Noop {},
             extra_octets: None,
@@ -1451,8 +1451,10 @@ mod tests {
         // An execution time off the grid.
         let mut s = ok.clone();
         s.cases[1].ops[0] = OpsEntry::Command {
-            at_us: 1_000_000,
-            execution: Execution::TimeTagged { exec_us: 6_000_001 },
+            at_us: Micros::new(1_000_000),
+            execution: Execution::TimeTagged {
+                exec_us: Micros::new(6_000_001),
+            },
             call: Call::Noop {},
             extra_octets: None,
         };
@@ -1462,7 +1464,7 @@ mod tests {
         s.cases[3].ops.swap(0, 1);
         assert!(rejects(&s, "must not decrease"));
         let mut s = ok.clone();
-        s.cases[3].end_us = 10_000_000;
+        s.cases[3].end_us = Micros::new(10_000_000);
         assert!(rejects(&s, "end instant"));
         // A bit flip needs a FECF.
         let mut s = ok;
@@ -1486,7 +1488,7 @@ mod tests {
 
     fn command(at_us: u64, execution: Execution, call: Call) -> OpsEntry {
         OpsEntry::Command {
-            at_us,
+            at_us: Micros::new(at_us),
             execution,
             call,
             extra_octets: None,
@@ -1497,7 +1499,9 @@ mod tests {
     fn rejected_at_delivery_commands_arrive_on_the_grid() {
         // req: APP-128
         // Reason 2: a time tag before the arrival, released off the grid.
-        let tagged = Execution::TimeTagged { exec_us: 3_000_000 };
+        let tagged = Execution::TimeTagged {
+            exec_us: Micros::new(3_000_000),
+        };
         let s = rejects_with(3, command(3_600_000, tagged, Call::Noop {}));
         assert!(rejects(&s, "rejected at delivery"));
         // The same command on the grid is fine.
@@ -1511,7 +1515,7 @@ mod tests {
         s.cases[3].ops[17] = command(
             10_115_001,
             Execution::TimeTagged {
-                exec_us: 20_000_000,
+                exec_us: Micros::new(20_000_000),
             },
             Call::Noop {},
         );
@@ -1666,7 +1670,7 @@ mod tests {
         // req: APP-017
         // req: APP-126
         let table = |length| OpsEntry::TableUpload {
-            at_us: 5_115_000,
+            at_us: Micros::new(5_115_000),
             table_id: Ranged::new(1).unwrap(),
             length,
         };
@@ -1714,13 +1718,15 @@ mod tests {
     #[test]
     fn frame_level_cases_hold_no_command_that_acts_at_delivery() {
         // req: APP-141
-        let tagged = |exec_us| Execution::TimeTagged { exec_us };
+        let tagged = |exec_us: u64| Execution::TimeTagged {
+            exec_us: Micros::new(exec_us),
+        };
         // Time-tagged commands that queue: accepted, whatever the release instant.
         let ok = frames_with(vec![
             command(1_000_000, tagged(7_000_000), Call::Noop {}),
             command(1_000_000, tagged(7_000_000), Call::Noop {}),
             OpsEntry::TableUpload {
-                at_us: 2_000_000,
+                at_us: Micros::new(2_000_000),
                 table_id: Ranged::new(1).unwrap(),
                 length: Ranged::new(300).unwrap(),
             },
@@ -1742,8 +1748,8 @@ mod tests {
             .unwrap();
         // The table upload delays the command released behind it: three slots from 2.0 s
         // leave the command at the slot 2.75 s, delivered at 2.76 s.
-        let upload = |at_us| OpsEntry::TableUpload {
-            at_us,
+        let upload = |at_us: u64| OpsEntry::TableUpload {
+            at_us: Micros::new(at_us),
             table_id: Ranged::new(1).unwrap(),
             length: Ranged::new(300).unwrap(),
         };

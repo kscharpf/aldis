@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 
 use refapp_harness::frame::decode_frame;
+use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
 use refapp_harness::scenario::{Case, Direction, Fault, FaultEntry, Level, Scenario};
 use refapp_harness::sim;
@@ -14,7 +15,7 @@ fn case(end_us: u64, faults: Vec<FaultEntry>) -> Case {
     Case {
         id: "test".to_owned(),
         level: Level::Frames,
-        end_us,
+        end_us: Micros::new(end_us),
         trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
         ops: vec![],
@@ -52,9 +53,9 @@ const fn unit(index: u8) -> [u8; 4] {
 fn a_node_pair_with_every_fault_kind_reproduces_a_hand_written_trace() {
     // req: APP-071, APP-075, APP-090
     let scenario = Scenario::load().unwrap();
-    assert_eq!(scenario.link.frame_slot_us.get(), 125_000);
-    assert_eq!(scenario.link.uplink_slot_us.get(), 250_000);
-    assert_eq!(scenario.link.one_way_delay_us, 10_000);
+    assert_eq!(scenario.link.frame_slot_us.get().get(), 125_000);
+    assert_eq!(scenario.link.uplink_slot_us.get().get(), 250_000);
+    assert_eq!(scenario.link.one_way_delay_us.get(), 10_000);
     let down = RefCell::new(Vec::new());
     let up = RefCell::new(Vec::new());
     let mut slot = 0u8;
@@ -86,7 +87,13 @@ fn a_node_pair_with_every_fault_kind_reproduces_a_hand_written_trace() {
         ),
         fault(Direction::Down, 0, Fault::Drop {}),
         fault(Direction::Down, 1, Fault::Duplicate {}),
-        fault(Direction::Down, 2, Fault::Delay { delay_us: 30_000 }),
+        fault(
+            Direction::Down,
+            2,
+            Fault::Delay {
+                delay_us: Micros::new(30_000),
+            },
+        ),
         fault(
             Direction::Down,
             3,
