@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Remove the worktree and branches of named branches whose pull request has merged. Dry run
-# unless --apply.
+# Remove the worktree and branches of named branches whose pull request has merged, or whose
+# closed train pull request left no commit outside origin/main. Dry run unless --apply.
 #
 # Usage: scripts/cleanup-merged [--apply] <branch>...
 #
 # A branch is cleaned only when all hold; otherwise the script says which does not and keeps it:
-#   - a merged pull request has it as its head branch;
-#   - its tip is an ancestor of origin/main (never of the local main, which may be stale);
+#   - a merged pull request has it as its head branch, and its tip is an ancestor of origin/main
+#     (never of the local main, which may be stale); or
+#   - it matches train/*, a closed pull request that did not merge has it as its head branch, and
+#     `git log --no-merges origin/main..<branch>` is empty (a rebuilt train: coordinator.md,
+#     "Failure"), for the local branch and for the remote branch alike;
 #   - its worktree, if it has one, is clean and is not the main checkout. A clean worktree locked
 #     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)`, with an
 #     optional ` start <time>` after the pid) is unlocked first; a lock with any other reason
 #     fails the removal.
 # Then: the worktree is removed, the local branch deleted (-D: the ancestry test is the proof
-# it is merged), and the remote branch deleted if it still exists and is an ancestor of
-# origin/main. Bulk cleanup of leftovers is scripts/prune-agent-branches.
+# it is merged), and the remote branch deleted if it still exists and meets the same test as the
+# local branch (an ancestor of origin/main; for a closed train, no commit outside origin/main).
+# Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
 usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
@@ -67,8 +71,13 @@ act() { # act <description> <command...>
     fi
 }
 
+# Whether ref $1 has no non-merge commit outside origin/main.
+no_unique_commits() {
+    [ -z "$(g log --no-merges --format=%h "origin/main..$1")" ]
+}
+
 clean_one() {
-    local b="$1" pr wt local_branch=0 remote_branch=0
+    local b="$1" pr wt local_branch=0 remote_branch=0 closed=0
     if g show-ref --verify --quiet "refs/heads/$b"; then local_branch=1; fi
     if g show-ref --verify --quiet "refs/remotes/origin/$b"; then remote_branch=1; fi
     if [ "$local_branch" -eq 0 ] && [ "$remote_branch" -eq 0 ]; then
@@ -79,17 +88,36 @@ clean_one() {
     pr="$(gh pr list --head "$b" --state merged --json number --jq '.[0].number // empty')" \
         || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
     if [ -z "$pr" ]; then
+        case "$b" in
+            train/*)
+                pr="$(gh pr list --head "$b" --state closed --json number,mergedAt \
+                    --jq 'map(select((.mergedAt // "") == "")) | .[0].number // empty')" \
+                    || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
+                [ -z "$pr" ] || closed=1
+                ;;
+        esac
+    fi
+    if [ -z "$pr" ]; then
         echo "$b: KEEP (no merged pull request has it as its head branch)"
         return 1
     fi
 
-    if [ "$local_branch" -eq 1 ] && ! g merge-base --is-ancestor "refs/heads/$b" origin/main; then
-        echo "$b: KEEP (PR #$pr merged, but the tip is not an ancestor of origin/main:" \
-            "commits after the merge, or a squash merge)"
-        return 1
+    if [ "$closed" -eq 1 ]; then
+        if [ "$local_branch" -eq 1 ] && ! no_unique_commits "refs/heads/$b"; then
+            echo "$b: KEEP (PR #$pr closed, but the branch has a non-merge commit" \
+                "outside origin/main)"
+            return 1
+        fi
+        echo "$b: PR #$pr closed train, no commits outside origin/main"
+    else
+        if [ "$local_branch" -eq 1 ] \
+            && ! g merge-base --is-ancestor "refs/heads/$b" origin/main; then
+            echo "$b: KEEP (PR #$pr merged, but the tip is not an ancestor of origin/main:" \
+                "commits after the merge, or a squash merge)"
+            return 1
+        fi
+        echo "$b: PR #$pr merged"
     fi
-
-    echo "$b: PR #$pr merged"
     wt="$(worktree_of "$b")"
     if [ -n "$wt" ]; then
         if [ "$wt" = "$main_checkout" ]; then
@@ -109,7 +137,15 @@ clean_one() {
         act "local branch $b" g branch -D "$b" || return 1
     fi
     if [ "$remote_branch" -eq 1 ]; then
-        if g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
+        if [ "$closed" -eq 1 ]; then
+            if no_unique_commits "refs/remotes/origin/$b"; then
+                echo "  origin/$b has no commits outside origin/main"
+                act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
+            else
+                echo "  KEEP: origin/$b has a non-merge commit outside origin/main"
+                return 1
+            fi
+        elif g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
             act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
         else
             echo "  KEEP: origin/$b is not an ancestor of origin/main"

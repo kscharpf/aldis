@@ -6,6 +6,8 @@
 # Cases: a dry run changes nothing; a merged branch is cleaned (worktree, local branch, remote
 # branch); the branch whose remote is already gone is cleaned; each of these is kept with its
 # reason: a dirty worktree, commits after the merge, no merged pull request, the main checkout;
+# a closed train whose non-merge commits are all on main is cleaned (worktree, local and remote
+# branch), and is kept when a commit is not, and a closed non-train PR is kept;
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
 # ` start <time>`) is unlocked and
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
@@ -45,6 +47,31 @@ for b in merged-clean merged-dirty merged-after not-merged-pr merged-remote-gone
 done
 git -C "$repo" push -q origin main
 
+# Closed trains: a train branch carries the constituents' commits and train merge commits. In
+# train/closed-ok the constituent reached main by its own merge; train/closed-new has a commit main
+# lacks. closed-other is a closed non-train PR with the same shape as closed-ok.
+git -C "$repo" checkout -q -b train/closed-ok main
+echo c1 >"$repo/c1.txt"; git -C "$repo" add c1.txt; git -C "$repo" commit -q -m c1
+git -C "$repo" checkout -q main
+git -C "$repo" merge -q --no-ff train/closed-ok -m "merge c1"
+git -C "$repo" checkout -q -b train/closed-new main
+echo c2 >"$repo/c2.txt"; git -C "$repo" add c2.txt; git -C "$repo" commit -q -m c2
+git -C "$repo" checkout -q main
+git -C "$repo" checkout -q -b closed-other main
+echo c3 >"$repo/c3.txt"; git -C "$repo" add c3.txt; git -C "$repo" commit -q -m c3
+git -C "$repo" checkout -q main
+git -C "$repo" merge -q --no-ff closed-other -m "merge c3"
+# A train merge commit (no conflict) on top of each train branch: not an ancestor of origin/main.
+for b in train/closed-ok train/closed-new; do
+    git -C "$repo" checkout -q "$b"
+    git -C "$repo" merge -q --no-ff main -m "train merge"
+    git -C "$repo" checkout -q main
+    git -C "$repo" push -q origin "$b"
+done
+git -C "$repo" push -q origin closed-other
+git -C "$repo" push -q origin main
+git -C "$repo" worktree add -q "$work/wt-closed-ok" train/closed-ok
+
 # merged-after: a commit on the branch after the merge, which origin/main lacks.
 git -C "$repo" checkout -q merged-after
 echo more >"$repo/more.txt"
@@ -72,22 +99,29 @@ git -C "$repo" push -q origin --delete merged-remote-gone
 mkdir "$work/bin"
 cat >"$work/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# Stub of `gh pr list --head <branch> --state merged ...`: 42 for the branches in $STUB_MERGED.
-b=""
+# Stub of `gh pr list --head <branch> --state merged|closed ...`: 42 for the branches in
+# $STUB_MERGED (merged), 43 for those in $STUB_CLOSED (closed, not merged).
+b="" st=""
 while [ $# -gt 0 ]; do
     [ "$1" = --head ] && b="$2"
+    [ "$1" = --state ] && st="$2"
     shift
 done
-case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac
+case "$st" in
+    merged) case " $STUB_MERGED " in *" $b "*) echo 42 ;; esac ;;
+    closed) case " $STUB_CLOSED " in *" $b "*) echo 43 ;; esac ;;
+esac
 EOF
 chmod +x "$work/bin/gh"
 
 merged="merged-claude merged-claude-dirty merged-claude-nostart merged-foreign"
 merged="$merged merged-clean merged-dirty merged-after"
 merged="$merged merged-remote-gone merged-locked main"
+closed="train/closed-ok train/closed-new closed-other"
 out="" rc=0
 run() {
-    out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" "$script" "$@" 2>&1)"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" STUB_MERGED="$merged" STUB_CLOSED="$closed" \
+        "$script" "$@" 2>&1)"
     rc=$?
     [ -z "${DEBUG:-}" ] || printf '%s\n' "$out"
 }
@@ -169,6 +203,27 @@ run --apply merged-foreign
 expect "is not unlocked" dir_has "$work/wt-foreign"
 expect "and fails" status_is 1
 expect "and its branch stays" local_has merged-foreign
+
+echo "# a closed train with a commit outside main, and a closed non-train PR"
+run --apply train/closed-new closed-other
+expect "a non-merge commit outside main is kept" said "non-merge commit outside origin/main"
+expect "a closed non-train PR is kept" said "closed-other: KEEP (no merged pull request"
+expect "exit status 1" status_is 1
+expect "train/closed-new: the local branch stays" local_has train/closed-new
+expect "train/closed-new: the remote branch stays" remote_has train/closed-new
+expect "closed-other: the local branch stays" local_has closed-other
+expect "closed-other: the remote branch stays" remote_has closed-other
+
+echo "# a closed train, dry run then apply"
+run train/closed-ok
+expect "dry run names the closed PR" said "PR #43 closed train, no commits outside origin/main"
+expect "dry run: the remote branch stays" remote_has train/closed-ok
+run --apply train/closed-ok
+expect "the worktree is removed" test ! -d "$work/wt-closed-ok"
+expect_not "the local branch is deleted" local_has train/closed-ok
+expect_not "the remote branch is deleted" remote_has train/closed-ok
+expect "the output says the remote has no unique commits" said "has no commits outside origin/main"
+expect "exit status 0" status_is 0
 
 if [ "$failures" -eq 0 ]; then
     echo "cleanup-merged: every case holds"
