@@ -9,7 +9,7 @@
 use refapp_scenario::{Apid, Delivered, Instant, Node, Output, StepInput};
 
 use crate::micros::Micros;
-use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, Scenario};
+use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, OpsEntry, Scenario};
 use crate::trace::{Dir, FaultKind, Header, NodeId, Record};
 
 /// One output of a node step, in output order.
@@ -150,7 +150,7 @@ pub fn records(
         tx_dir: Dir::Up,
         slot_us: link.uplink_slot_us.get(),
         next_index: 0,
-        ops_us: case.ops.iter().map(|e| e.at_us()).collect(),
+        ops_us: case.ops.iter().map(OpsEntry::at_us).collect(),
         ops_done: 0,
     };
     let mut flight = Side {
