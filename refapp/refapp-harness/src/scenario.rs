@@ -128,8 +128,9 @@ pub struct Tm {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Tc {
-    /// Maximum transfer frame length, octets.
-    pub max_frame_length: Ranged<u16, 0, 1024>,
+    /// Maximum transfer frame length, octets: at least the primary header (5) and a data field
+    /// of two octets (232.0 §4.1.2, §4.1.3.1.2), at most 1024 (Table 5-1).
+    pub max_frame_length: Ranged<u16, 7, 1024>,
     /// FECF present.
     pub fecf: bool,
     /// The uplink VC.
@@ -139,8 +140,8 @@ pub struct Tc {
     /// MAP of the table upload.
     pub map_table_upload: Ranged<u8, 0, 63>,
     /// Maximum frame data unit length, octets: at least the Segment Header and one octet of
-    /// data, at most the longest frame (1024) less the primary header (5) (232.0 §4.1.2,
-    /// Table 5-3, Table 5-4).
+    /// data, at most the longest frame (1024) less the primary header (5) (232.0 §4.1.3.1.2,
+    /// Table 5-4).
     pub max_fdu_length: Ranged<u16, 2, 1019>,
     /// Maximum packet length, octets.
     pub max_packet_length: u16,
@@ -193,6 +194,38 @@ pub struct MapServices {
     /// Segmentation permitted.
     pub segmentation: bool,
 }
+
+impl Tc {
+    /// The relation between the lengths: the data field (`max_fdu_length`) and the frame around it
+    /// (232.0 §4.1.3.1.2, §4.1.1: a 5-octet primary header, the FECF of 2 octets if present).
+    fn check(&self) -> Result<(), String> {
+        let fecf = if self.fecf { FECF_LEN } else { 0 };
+        let fdu = u64::from(self.max_fdu_length.get());
+        let longest = DATA_FIELD_MAX - fecf;
+        if fdu > longest {
+            return Err(format!(
+                "tc.max_fdu_length {fdu} is above {longest}, the longest data field \
+                 (232.0 §4.1.3.1.2)"
+            ));
+        }
+        let frame = TC_HEADER_LEN + fdu + fecf;
+        let max = u64::from(self.max_frame_length.get());
+        if frame > max {
+            return Err(format!(
+                "tc.max_fdu_length {fdu} needs a frame of {frame} octets, above \
+                 tc.max_frame_length {max}"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Octets of the TC primary header (232.0 §4.1.2).
+const TC_HEADER_LEN: u64 = 5;
+/// Octets of the FECF (232.0 §4.1.4).
+const FECF_LEN: u64 = 2;
+/// Longest Transfer Frame Data Field without the FECF (232.0 §4.1.3.1.2).
+const DATA_FIELD_MAX: u64 = 1019;
 
 /// COP-1 parameters (§4.2, APP-044).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
@@ -565,6 +598,7 @@ impl Scenario {
                 self.scenario
             ));
         }
+        self.tc.check()?;
         let mut ids = BTreeSet::new();
         for c in &self.cases {
             if !ids.insert(c.id.as_str()) {
@@ -1338,7 +1372,7 @@ mod tests {
         ("/tm/vcid_realtime", 0, 7),
         ("/tm/vcid_payload", 0, 7),
         ("/tm/vcid_idle", 0, 7),
-        ("/tc/max_frame_length", 0, 1024),
+        ("/tc/max_frame_length", 7, 1024),
         ("/tc/vcid", 0, 63),
         ("/tc/map_commands", 0, 63),
         ("/tc/map_table_upload", 0, 63),
@@ -1388,6 +1422,15 @@ mod tests {
                     for case in doc["cases"].as_array_mut().unwrap() {
                         case.as_object_mut().unwrap().remove("ops");
                     }
+                }
+                // The lengths of the TC frame relate to each other (232.0 §4.1.3.1.2); this
+                // test is of the range, so the other length gives the field room.
+                if pointer == "/tc/max_frame_length" {
+                    doc["tc"]["max_fdu_length"] = 2.into();
+                    doc["tc"]["fecf"] = false.into();
+                } else if pointer == "/tc/max_fdu_length" {
+                    doc["tc"]["max_frame_length"] = 1024.into();
+                    doc["tc"]["fecf"] = false.into();
                 }
                 let r = Scenario::parse(&doc.to_string());
                 assert!(r.is_ok(), "{pointer} = {v}: {:?}", r.err());
@@ -1794,5 +1837,30 @@ mod tests {
         assert!(ClcwWord::new(0x2100_0000).is_err());
         let bad = super::SCENARIO_JSON.replace("16777216", "2164260864");
         assert!(Scenario::parse(&bad).is_err());
+    }
+
+    #[test]
+    fn the_data_field_fits_the_frame() {
+        // req: APP-107
+        let ok = Scenario::load().unwrap();
+        ok.check().unwrap();
+        // With the FECF the data field is at most 1017 octets (232.0 §4.1.3.1.2); the frame
+        // length is raised so that only this limit applies.
+        let mut s = ok.clone();
+        s.tc.max_frame_length = Ranged::new(1024).unwrap();
+        s.tc.max_fdu_length = Ranged::new(1017).unwrap();
+        s.check().unwrap();
+        s.tc.max_fdu_length = Ranged::new(1018).unwrap();
+        assert!(rejects(&s, "longest data field"));
+        // Without the FECF 1019 is allowed.
+        s.tc.fecf = false;
+        s.tc.max_fdu_length = Ranged::new(1019).unwrap();
+        s.check().unwrap();
+        // The header, the data field and the FECF must fit the maximum frame length.
+        let mut s = ok;
+        s.tc.max_fdu_length = Ranged::new(122).unwrap();
+        assert!(rejects(&s, "tc.max_frame_length"));
+        s.tc.fecf = false;
+        s.check().unwrap();
     }
 }

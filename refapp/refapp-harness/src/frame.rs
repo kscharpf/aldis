@@ -78,7 +78,7 @@ pub fn decode_frame(
             };
             let physical =
                 PhysicalChannelConfig::new(max, tc.fecf).map_err(|e| id_err("channel", &e))?;
-            // MAPs exist only on a VC with a Segment Header (232.0 §4.1.3.2.2.1.2). Blocking
+            // MAPs exist only on a VC with a Segment Header (232.0 §4.1.3.2.1.4, Table 5-3). Blocking
             // and segmentation are parameters of the segmenter and reassembler, not of the
             // frame codec.
             let (header, maps) = if tc.segment_header {
