@@ -88,6 +88,24 @@ pub mod tm {
 
     /// Idle Packet data octet (APP-033).
     pub const IDLE_PATTERN: u8 = 0;
+
+    /// Valid Packet Version Number (APP-136).
+    pub const PACKET_VERSION: u8 = 0;
+
+    /// Multiplexing priority of the real-time VC (APP-136).
+    pub const PRIORITY_REALTIME: u8 = 1;
+
+    /// Multiplexing priority of the payload VC (APP-136).
+    pub const PRIORITY_PAYLOAD: u8 = 2;
+
+    /// Initial value of the OCF slot (APP-136).
+    pub const OCF_INITIAL: u32 = 0x01000000;
+
+    /// The extractor delivers incomplete packets (APP-136).
+    pub const DELIVER_INCOMPLETE_PACKETS: bool = false;
+
+    /// The extractor delivers Idle Packets (APP-136).
+    pub const DELIVER_IDLE_PACKETS: bool = false;
 }
 
 /// TC uplink (§4.2).
@@ -112,6 +130,24 @@ pub mod tc {
 
     /// Maximum packet length, octets (APP-041).
     pub const MAX_PACKET_LENGTH: u16 = 512;
+
+    /// Valid Packet Version Number (APP-136).
+    pub const PACKET_VERSION: u8 = 0;
+
+    /// The uplink VC carries a Segment Header (APP-136).
+    pub const SEGMENT_HEADER: bool = true;
+
+    /// MAP 0 permits blocking (APP-136).
+    pub const MAP_COMMANDS_BLOCKING: bool = true;
+
+    /// MAP 0 permits segmentation (APP-136).
+    pub const MAP_COMMANDS_SEGMENTATION: bool = false;
+
+    /// MAP 1 permits blocking (APP-136).
+    pub const MAP_TABLE_UPLOAD_BLOCKING: bool = false;
+
+    /// MAP 1 permits segmentation (APP-136).
+    pub const MAP_TABLE_UPLOAD_SEGMENTATION: bool = true;
 }
 
 /// COP-1 parameters (§4.2, APP-044).
@@ -133,4 +169,16 @@ pub mod cop1 {
 
     /// FARM-1 internal buffer depth (COP-032).
     pub const FARM_BUFFER_DEPTH: u8 = 2;
+
+    /// Status Field of the CLCW (APP-136).
+    pub const FARM_STATUS_FIELD: u8 = 0;
+
+    /// Initial V(R) of FARM-1 (APP-136).
+    pub const FARM_INITIAL_VR: u8 = 0;
+
+    /// Repetitions of a Type-A frame (APP-136).
+    pub const FOP_REPETITIONS_TYPE_A: u8 = 1;
+
+    /// Repetitions of a control command (APP-136).
+    pub const FOP_REPETITIONS_CONTROL: u8 = 1;
 }

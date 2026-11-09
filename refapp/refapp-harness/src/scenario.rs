@@ -109,6 +109,18 @@ pub struct Tm {
     pub max_packet_length: u16,
     /// Idle Packet data octet.
     pub idle_pattern: u8,
+    /// Valid Packet Version Number of the packets on every VC (§4.4.3).
+    pub packet_version: Ranged<u8, 0, 7>,
+    /// Multiplexing priority of the real-time VC; 1 is served first (§4.4.3, LNK-031).
+    pub priority_realtime: Ranged<u8, 1, 255>,
+    /// Multiplexing priority of the payload VC (§4.4.3, LNK-031).
+    pub priority_payload: Ranged<u8, 1, 255>,
+    /// Initial value of the OCF slot, as the four octets of the CLCW (§4.4.1, LNK-033).
+    pub ocf_initial: u32,
+    /// Whether the extractor delivers incomplete packets (§4.4.3).
+    pub deliver_incomplete_packets: bool,
+    /// Whether the extractor delivers Idle Packets (§4.4.3, LNK-063).
+    pub deliver_idle_packets: bool,
 }
 
 /// TC uplink (§4.2, APP-040…APP-042).
@@ -129,6 +141,18 @@ pub struct Tc {
     pub max_fdu_length: Ranged<u16, 0, 1019>,
     /// Maximum packet length, octets.
     pub max_packet_length: u16,
+    /// Valid Packet Version Number of the packets on the uplink VC (§4.4.3).
+    pub packet_version: Ranged<u8, 0, 7>,
+    /// Whether the uplink VC carries a Segment Header (§4.4.3).
+    pub segment_header: bool,
+    /// Whether MAP 0 permits blocking (§4.4.3).
+    pub map_commands_blocking: bool,
+    /// Whether MAP 0 permits segmentation (§4.4.3).
+    pub map_commands_segmentation: bool,
+    /// Whether MAP 1 permits blocking (§4.4.3).
+    pub map_table_upload_blocking: bool,
+    /// Whether MAP 1 permits segmentation (§4.4.3).
+    pub map_table_upload_segmentation: bool,
 }
 
 /// COP-1 parameters (§4.2, APP-044).
@@ -147,6 +171,14 @@ pub struct Cop1 {
     pub timeout_type: Ranged<u8, 0, 1>,
     /// FARM-1 internal buffer depth (COP-032).
     pub farm_buffer_depth: Ranged<u8, 1, 255>,
+    /// Status Field of the CLCW (§4.4.3).
+    pub farm_status_field: Ranged<u8, 0, 7>,
+    /// Initial V(R) of FARM-1 (§4.4.3).
+    pub farm_initial_vr: u8,
+    /// Repetitions of a Type-A frame (§4.4.3).
+    pub fop_repetitions_type_a: Ranged<u8, 1, 255>,
+    /// Repetitions of a control command (§4.4.3).
+    pub fop_repetitions_control: Ranged<u8, 1, 255>,
 }
 
 /// Link level of a case (§1, §6.1).
@@ -330,6 +362,20 @@ pub enum Call {
     },
 }
 
+impl Call {
+    /// Octets of the command packet with `extra` octets after the arguments (§3.3.5).
+    #[must_use]
+    pub const fn packet_length(&self, extra: u8) -> u64 {
+        let base: u64 = match self {
+            Call::Noop {} | Call::Unknown { .. } => 14,
+            Call::DumpMemory { .. } => 20,
+            Call::ActivateTable { .. } => 17,
+            Call::SetPayloadMode { .. } => 15,
+        };
+        base + extra as u64
+    }
+}
+
 /// A function code that no function has: any octet but `0x01`…`0x04` (§3.3.5, RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -510,38 +556,53 @@ impl Scenario {
         Ok(())
     }
 
-    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128).
+    /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128, APP-141).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us.get();
-        let delay = self.link.one_way_delay_us;
+        let mut uplink = Uplink::new(self);
         let mut previous = 0;
         // Execution times of the time-tagged commands the flight node holds (§2.3).
         let mut queue: Vec<u64> = Vec::new();
         for (i, entry) in c.ops.iter().enumerate() {
             let at_us = match entry {
                 OpsEntry::Command {
-                    at_us, execution, ..
+                    at_us,
+                    execution,
+                    call,
+                    extra_octets,
                 } => {
-                    let arrival = at_us.saturating_add(delay);
-                    let on_grid = arrival.is_multiple_of(slot);
+                    let arrival = match c.level {
+                        Level::Packets => at_us.saturating_add(self.link.one_way_delay_us),
+                        Level::Frames => {
+                            uplink.command(*at_us, call.packet_length(extra_octets.unwrap_or(0)))
+                        }
+                    };
                     match execution {
-                        Execution::Immediate {} if !on_grid => {
+                        Execution::Immediate {} if c.level == Level::Frames => {
+                            return Err(format!(
+                                "ops[{i}]: an immediate command acts at its delivery, off the \
+                                 {slot} µs grid at a frame level (APP-141)"
+                            ));
+                        }
+                        Execution::Immediate {} if !arrival.is_multiple_of(slot) => {
                             return Err(format!(
                                 "ops[{i}]: an immediate command must arrive on a multiple of \
                                  {slot} µs (APP-128)"
                             ));
                         }
+                        Execution::Immediate {} => {}
                         Execution::TimeTagged { exec_us } => {
-                            check_tagged(&mut queue, arrival, *exec_us, slot)
+                            check_tagged(&mut queue, arrival, *exec_us, slot, c.level)
                                 .map_err(|e| format!("ops[{i}]: {e}"))?;
                         }
-                        Execution::Immediate {} => {}
                     }
                     *at_us
                 }
-                OpsEntry::TableUpload { at_us, .. } | OpsEntry::Fop1Directive { at_us, .. } => {
+                OpsEntry::TableUpload { at_us, length, .. } => {
+                    uplink.table_upload(*at_us, length.get());
                     *at_us
                 }
+                OpsEntry::Fop1Directive { at_us, .. } => *at_us,
             };
             if at_us < previous {
                 return Err(format!("ops[{i}]: release instants must not decrease"));
@@ -570,9 +631,16 @@ const QUEUE_CAPACITY: usize = 8;
 
 /// A time-tagged command arriving at `arrival`: its execution time is on the grid (APP-061),
 /// and one that the flight node rejects at delivery (§2.3: a time tag before the arrival, or a
-/// full queue) arrives on the grid too (APP-128). `queue` holds the execution times of the
-/// commands the flight node still has queued.
-fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> Result<(), String> {
+/// full queue) arrives on the grid too at the packet level (APP-128) and is refused at a frame
+/// level (APP-141). `queue` holds the execution times of the commands the flight node still
+/// has queued.
+fn check_tagged(
+    queue: &mut Vec<u64>,
+    arrival: u64,
+    exec_us: u64,
+    slot: u64,
+    level: Level,
+) -> Result<(), String> {
     if !exec_us.is_multiple_of(slot) {
         return Err(format!(
             "execution time must be a multiple of {slot} µs (APP-061)"
@@ -581,12 +649,82 @@ fn check_tagged(queue: &mut Vec<u64>, arrival: u64, exec_us: u64, slot: u64) -> 
     queue.retain(|e| *e >= arrival);
     if exec_us >= arrival && queue.len() < QUEUE_CAPACITY {
         queue.push(exec_us);
+    } else if level == Level::Frames {
+        return Err(
+            "a command rejected at delivery has an effect off the grid at a frame level (APP-141)"
+                .to_owned(),
+        );
     } else if !arrival.is_multiple_of(slot) {
         return Err(format!(
             "a command rejected at delivery must arrive on a multiple of {slot} µs (APP-128)"
         ));
     }
     Ok(())
+}
+
+/// The uplink of a frame-level case as far as the script fixes it (§4.2): the segmenter sends
+/// one frame at each uplink slot, the commands released at one instant share a frame data unit
+/// (APP-042), and a table upload takes consecutive slots. The model serves the entries in
+/// release order and finds when each command arrives, to follow the queue of the flight node
+/// (APP-141); the trace has the arrivals as they happen.
+struct Uplink {
+    slot_us: u64,
+    delay_us: u64,
+    /// Packet octets one frame carries.
+    max_data: u64,
+    /// First uplink slot with no frame data unit assigned.
+    free_slot: u64,
+    /// The data unit still open for blocking: release instant, length, arrival instant.
+    open: Option<(u64, u64, u64)>,
+}
+
+/// Octets of a table-upload packet before the table (§3.3.6): header 6, ID 1, length 2.
+const TABLE_PACKET_OVERHEAD: u64 = 9;
+
+impl Uplink {
+    fn new(s: &Scenario) -> Self {
+        Uplink {
+            slot_us: s.link.uplink_slot_us.get(),
+            delay_us: s.link.one_way_delay_us,
+            // The Segment Header takes one octet of the frame data unit (§4.2).
+            max_data: u64::from(s.tc.max_fdu_length.get())
+                .saturating_sub(1)
+                .max(1),
+            free_slot: 0,
+            open: None,
+        }
+    }
+
+    /// First uplink slot at or after `release` that is free.
+    fn slot_for(&self, release: u64) -> u64 {
+        let due = release.div_ceil(self.slot_us).saturating_mul(self.slot_us);
+        due.max(self.free_slot)
+    }
+
+    /// A command packet of `length` octets released at `release`: its arrival instant.
+    fn command(&mut self, release: u64, length: u64) -> u64 {
+        if let Some((at, used, arrival)) = self.open.as_mut()
+            && *at == release
+            && used.saturating_add(length) <= self.max_data
+        {
+            *used = used.saturating_add(length);
+            return *arrival;
+        }
+        let slot = self.slot_for(release);
+        self.free_slot = slot.saturating_add(self.slot_us);
+        let arrival = slot.saturating_add(self.delay_us);
+        self.open = Some((release, length, arrival));
+        arrival
+    }
+
+    /// A table upload of `length` table octets released at `release`.
+    fn table_upload(&mut self, release: u64, length: u16) {
+        self.open = None;
+        let packet = u64::from(length).saturating_add(TABLE_PACKET_OVERHEAD);
+        let frames = packet.div_ceil(self.max_data);
+        let slot = self.slot_for(release);
+        self.free_slot = slot.saturating_add(frames.saturating_mul(self.slot_us));
+    }
 }
 
 /// The entries of the scripts of `text`, each parsed on its own. serde reports an error inside
@@ -857,6 +995,42 @@ pub fn rust_constants(s: &Scenario) -> String {
                 n(tm.idle_pattern.into()),
                 "Idle Packet data octet (APP-033).",
             ),
+            (
+                "PACKET_VERSION",
+                "u8",
+                n(tm.packet_version.get().into()),
+                "Valid Packet Version Number (APP-136).",
+            ),
+            (
+                "PRIORITY_REALTIME",
+                "u8",
+                n(tm.priority_realtime.get().into()),
+                "Multiplexing priority of the real-time VC (APP-136).",
+            ),
+            (
+                "PRIORITY_PAYLOAD",
+                "u8",
+                n(tm.priority_payload.get().into()),
+                "Multiplexing priority of the payload VC (APP-136).",
+            ),
+            (
+                "OCF_INITIAL",
+                "u32",
+                format!("{:#010x}", tm.ocf_initial),
+                "Initial value of the OCF slot (APP-136).",
+            ),
+            (
+                "DELIVER_INCOMPLETE_PACKETS",
+                "bool",
+                tm.deliver_incomplete_packets.to_string(),
+                "The extractor delivers incomplete packets (APP-136).",
+            ),
+            (
+                "DELIVER_IDLE_PACKETS",
+                "bool",
+                tm.deliver_idle_packets.to_string(),
+                "The extractor delivers Idle Packets (APP-136).",
+            ),
         ],
     );
     let tc = &s.tc;
@@ -907,6 +1081,42 @@ pub fn rust_constants(s: &Scenario) -> String {
                 n(tc.max_packet_length.into()),
                 "Maximum packet length, octets (APP-041).",
             ),
+            (
+                "PACKET_VERSION",
+                "u8",
+                n(tc.packet_version.get().into()),
+                "Valid Packet Version Number (APP-136).",
+            ),
+            (
+                "SEGMENT_HEADER",
+                "bool",
+                tc.segment_header.to_string(),
+                "The uplink VC carries a Segment Header (APP-136).",
+            ),
+            (
+                "MAP_COMMANDS_BLOCKING",
+                "bool",
+                tc.map_commands_blocking.to_string(),
+                "MAP 0 permits blocking (APP-136).",
+            ),
+            (
+                "MAP_COMMANDS_SEGMENTATION",
+                "bool",
+                tc.map_commands_segmentation.to_string(),
+                "MAP 0 permits segmentation (APP-136).",
+            ),
+            (
+                "MAP_TABLE_UPLOAD_BLOCKING",
+                "bool",
+                tc.map_table_upload_blocking.to_string(),
+                "MAP 1 permits blocking (APP-136).",
+            ),
+            (
+                "MAP_TABLE_UPLOAD_SEGMENTATION",
+                "bool",
+                tc.map_table_upload_segmentation.to_string(),
+                "MAP 1 permits segmentation (APP-136).",
+            ),
         ],
     );
     let c = &s.cop1;
@@ -950,6 +1160,30 @@ pub fn rust_constants(s: &Scenario) -> String {
                 "u8",
                 n(c.farm_buffer_depth.get().into()),
                 "FARM-1 internal buffer depth (COP-032).",
+            ),
+            (
+                "FARM_STATUS_FIELD",
+                "u8",
+                n(c.farm_status_field.get().into()),
+                "Status Field of the CLCW (APP-136).",
+            ),
+            (
+                "FARM_INITIAL_VR",
+                "u8",
+                n(c.farm_initial_vr.into()),
+                "Initial V(R) of FARM-1 (APP-136).",
+            ),
+            (
+                "FOP_REPETITIONS_TYPE_A",
+                "u8",
+                n(c.fop_repetitions_type_a.get().into()),
+                "Repetitions of a Type-A frame (APP-136).",
+            ),
+            (
+                "FOP_REPETITIONS_CONTROL",
+                "u8",
+                n(c.fop_repetitions_control.get().into()),
+                "Repetitions of a control command (APP-136).",
             ),
         ],
     );
@@ -999,8 +1233,8 @@ pub fn generate(check: bool) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Call, Direction, Execution, Fault, FaultEntry, OpsEntry, Scenario, is_requirement_id,
-        literal,
+        Call, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario,
+        is_requirement_id, literal,
     };
     use crate::ranged::Ranged;
 
@@ -1426,5 +1660,79 @@ mod tests {
             fault(r#"{"dir":"up","index":0,"fault":{"kind":"flip","octet":3,"bit":7}}"#).is_ok()
         );
         assert!(fault(r#"{"dir":"up","index":0,"fault":{"kind":"drop","octet":3}}"#).is_err());
+    }
+    /// A frame-level case with the ops script `ops`, a copy of `a1-rejects` otherwise.
+    fn frames_with(ops: Vec<OpsEntry>) -> Scenario {
+        let mut s = Scenario::load().unwrap();
+        s.cases[3].level = Level::Frames;
+        s.cases[3].ops = ops;
+        s.cases[3].faults.clear();
+        s
+    }
+
+    #[test]
+    fn frame_level_cases_hold_no_command_that_acts_at_delivery() {
+        // req: APP-141
+        let tagged = |exec_us| Execution::TimeTagged { exec_us };
+        // Time-tagged commands that queue: accepted, whatever the release instant.
+        let ok = frames_with(vec![
+            command(1_000_000, tagged(7_000_000), Call::Noop {}),
+            command(1_000_000, tagged(7_000_000), Call::Noop {}),
+            OpsEntry::TableUpload {
+                at_us: 2_000_000,
+                table_id: Ranged::new(1).unwrap(),
+                length: Ranged::new(300).unwrap(),
+            },
+            command(3_000_001, tagged(9_000_000), Call::Noop {}),
+        ]);
+        ok.check().unwrap();
+        // An immediate command, on the grid or not.
+        for at_us in [115_000, 100_000] {
+            let s = frames_with(vec![command(at_us, Execution::Immediate {}, Call::Noop {})]);
+            assert!(rejects(&s, "APP-141"), "{at_us}");
+        }
+        // A time tag before the arrival (reason 2): released at 4.0 s, sent at the slot
+        // 4.0 s, delivered at 4.01 s.
+        let s = frames_with(vec![command(4_000_000, tagged(4_000_000), Call::Noop {})]);
+        assert!(rejects(&s, "APP-141"));
+        // The same time tag one slot later is queued.
+        frames_with(vec![command(4_000_000, tagged(4_125_000), Call::Noop {})])
+            .check()
+            .unwrap();
+        // The table upload delays the command released behind it: three slots from 2.0 s
+        // leave the command at the slot 2.75 s, delivered at 2.76 s.
+        let upload = |at_us| OpsEntry::TableUpload {
+            at_us,
+            table_id: Ranged::new(1).unwrap(),
+            length: Ranged::new(300).unwrap(),
+        };
+        let s = frames_with(vec![
+            upload(2_000_000),
+            command(2_000_000, tagged(2_750_000), Call::Noop {}),
+        ]);
+        assert!(rejects(&s, "APP-141"));
+        frames_with(vec![
+            upload(2_000_000),
+            command(2_000_000, tagged(2_875_000), Call::Noop {}),
+        ])
+        .check()
+        .unwrap();
+        // A full queue (reason 4): nine commands that wait for the same execution time.
+        let nine = (0..9)
+            .map(|k| command(250_000 * (k + 1), tagged(9_000_000), Call::Noop {}))
+            .collect();
+        assert!(rejects(&frames_with(nine), "APP-141"));
+    }
+
+    #[test]
+    fn packet_level_rules_are_unchanged_by_the_frame_level_rule() {
+        // req: APP-128
+        // An immediate command that arrives on the grid is accepted at packet level.
+        let mut s = Scenario::load().unwrap();
+        s.cases[3].ops[0] = command(115_000, Execution::Immediate {}, Call::Noop {});
+        s.check().unwrap();
+        // The same release instant is refused at frame level (the frame arrives off the grid).
+        s.cases[3].level = Level::Frames;
+        assert!(rejects(&s, "APP-141"));
     }
 }

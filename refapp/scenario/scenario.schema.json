@@ -258,6 +258,41 @@
           "format": "uint8",
           "minimum": 0,
           "maximum": 255
+        },
+        "packet_version": {
+          "description": "Valid Packet Version Number of the packets on every VC (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "priority_realtime": {
+          "description": "Multiplexing priority of the real-time VC; 1 is served first (§4.4.3, LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "priority_payload": {
+          "description": "Multiplexing priority of the payload VC (§4.4.3, LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "ocf_initial": {
+          "description": "Initial value of the OCF slot, as the four octets of the CLCW (§4.4.1, LNK-033).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "deliver_incomplete_packets": {
+          "description": "Whether the extractor delivers incomplete packets (§4.4.3).",
+          "type": "boolean"
+        },
+        "deliver_idle_packets": {
+          "description": "Whether the extractor delivers Idle Packets (§4.4.3, LNK-063).",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -270,7 +305,13 @@
         "release_deadline_realtime_us",
         "release_deadline_payload_us",
         "max_packet_length",
-        "idle_pattern"
+        "idle_pattern",
+        "packet_version",
+        "priority_realtime",
+        "priority_payload",
+        "ocf_initial",
+        "deliver_incomplete_packets",
+        "deliver_idle_packets"
       ]
     },
     "Tc": {
@@ -322,6 +363,33 @@
           "format": "uint16",
           "minimum": 0,
           "maximum": 65535
+        },
+        "packet_version": {
+          "description": "Valid Packet Version Number of the packets on the uplink VC (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "segment_header": {
+          "description": "Whether the uplink VC carries a Segment Header (§4.4.3).",
+          "type": "boolean"
+        },
+        "map_commands_blocking": {
+          "description": "Whether MAP 0 permits blocking (§4.4.3).",
+          "type": "boolean"
+        },
+        "map_commands_segmentation": {
+          "description": "Whether MAP 0 permits segmentation (§4.4.3).",
+          "type": "boolean"
+        },
+        "map_table_upload_blocking": {
+          "description": "Whether MAP 1 permits blocking (§4.4.3).",
+          "type": "boolean"
+        },
+        "map_table_upload_segmentation": {
+          "description": "Whether MAP 1 permits segmentation (§4.4.3).",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -332,7 +400,13 @@
         "map_commands",
         "map_table_upload",
         "max_fdu_length",
-        "max_packet_length"
+        "max_packet_length",
+        "packet_version",
+        "segment_header",
+        "map_commands_blocking",
+        "map_commands_segmentation",
+        "map_table_upload_blocking",
+        "map_table_upload_segmentation"
       ]
     },
     "Cop1": {
@@ -380,6 +454,34 @@
           "format": "uint8",
           "minimum": 1,
           "maximum": 255
+        },
+        "farm_status_field": {
+          "description": "Status Field of the CLCW (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "farm_initial_vr": {
+          "description": "Initial V(R) of FARM-1 (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "fop_repetitions_type_a": {
+          "description": "Repetitions of a Type-A frame (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "fop_repetitions_control": {
+          "description": "Repetitions of a control command (§4.4.3).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
         }
       },
       "additionalProperties": false,
@@ -389,7 +491,11 @@
         "t1_initial_us",
         "transmission_limit",
         "timeout_type",
-        "farm_buffer_depth"
+        "farm_buffer_depth",
+        "farm_status_field",
+        "farm_initial_vr",
+        "fop_repetitions_type_a",
+        "fop_repetitions_control"
       ]
     },
     "Case": {

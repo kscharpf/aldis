@@ -3,8 +3,8 @@
 //! The harness owns simulated time and the link (APP-070). It advances to the earliest of the
 //! slots, link arrivals, and node deadlines, and processes each instant in the order of §6.2
 //! (APP-073). It wakes the ground node at the release instants of the ops script (APP-073) and
-//! applies the fault script to the units by (direction, index) (APP-075). `flip` needs frames
-//! and is refused until A2.
+//! applies the fault script to the units by (direction, index) (APP-075); `flip` is valid at
+//! the frame level only (the scenario loader and the run both refuse it at packet level).
 
 use refapp_scenario::{Apid, Delivered, Instant, Node, Output, StepInput};
 
@@ -358,10 +358,29 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
                 octets.truncate(keep);
                 (FaultKind::Truncate, vec![u64::from(n)])
             }
-            Fault::Flip { .. } => {
+            Fault::Flip { .. } if world.level == Level::Packets => {
                 return Err(format!(
-                    "faults[{i}]: `flip` is not applied before the frame levels of A2"
+                    "faults[{i}]: `flip` needs a FECF, so frame level only (§6.3)"
                 ));
+            }
+            Fault::Flip { octet, bit } => {
+                // The octet is addressed in the unit as delivered so far (after a `truncate`
+                // that precedes it in the script); one that is not there is a script mistake.
+                let unit_len = octets.len();
+                let byte = usize::try_from(octet)
+                    .ok()
+                    .and_then(|o| octets.get_mut(o))
+                    .ok_or_else(|| {
+                        format!(
+                            "faults[{i}]: `flip` of octet {octet} in a unit of {unit_len} octet(s)"
+                        )
+                    })?;
+                // Bit 0 is the most significant (GEN-050).
+                *byte ^= 0x80 >> bit.get();
+                (
+                    FaultKind::Flip,
+                    vec![u64::from(octet), u64::from(bit.get())],
+                )
             }
         };
         world.records.push(Record::Fault {
