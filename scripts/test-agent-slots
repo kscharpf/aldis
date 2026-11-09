@@ -5,8 +5,9 @@
 # Cases: no agents is 0 and exit 0; a locked worktree whose pid is alive counts; one whose pid
 # is dead, an unlocked worktree, and a lock that is not an agent's do not count; a recent
 # transcript counts and an old one does not; a transcript outranks a lock of the same id; the
-# limit (AGENT_SLOTS_MAX) gives exit 1 when reached and 0 below; --list names each agent; a bad
-# argument is exit 2.
+# sibling project is not counted, a worktree's transcript directory is; a transcript ending in
+# the handback result is finished; the limit (AGENT_SLOTS_MAX) gives exit 1 when reached and 0
+# below; --list names each agent; a bad argument is exit 2.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -74,6 +75,30 @@ transcript a1 4000
 out="$(run)"
 contains "$out" "agents: 1 of 4"
 check "a transcript outranks the lock of the same id" $?
+
+# A sibling project whose encoded path shares the prefix is not this checkout's.
+d="$CLAUDE_HOME/projects/$enc-other/sess/subagents"
+mkdir -p "$d"
+: >"$d/agent-s1.jsonl"
+out="$(run --list)"
+{ contains "$out" "agents: 1 of 4" && ! contains "$out" "s1"; }
+check "a sibling project's transcript (path sharing the prefix) is not counted" $?
+# A worktree's transcript directory (`$enc--claude-worktrees-x`) is counted.
+d="$CLAUDE_HOME/projects/$enc--claude-worktrees-x/sess/subagents"
+mkdir -p "$d"
+: >"$d/agent-w1.jsonl"
+out="$(run --list)"
+{ contains "$out" "agents: 2 of 4" && contains "$out" "w1 transcript"; }
+check "a worktree's transcript directory is counted" $?
+# A finished agent (last record is the SubagentHandback result) is not counted.
+msg='Report delivered to your caller.'
+printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"%s"}]}}\n' \
+    "$msg" >"$CLAUDE_HOME/projects/$enc/sess/subagents/agent-f1.jsonl"
+out="$(run --list)"
+{ contains "$out" "agents: 2 of 4" && ! contains "$out" "f1"; }
+check "a recent transcript ending in the handback result is finished, not counted" $?
+rm "$CLAUDE_HOME/projects/$enc-other/sess/subagents/agent-s1.jsonl" \
+    "$CLAUDE_HOME/projects/$enc--claude-worktrees-x/sess/subagents/agent-w1.jsonl"
 
 transcript c1 1
 transcript c2 1

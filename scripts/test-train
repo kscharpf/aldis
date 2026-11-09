@@ -10,7 +10,7 @@
 # and leaves no branch or worktree, so that a real run with the same PRs follows it;
 # a further train of the day takes the next number; --rebuild --without drops a PR, opens the
 # new train, and closes the old one; another open train PR refuses a real build (but not
-# --dry-run or the --rebuild of that PR) unless --allow-open-train is given.
+# --dry-run, or the --rebuild of that PR while it is open) unless --allow-open-train is given.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -59,7 +59,11 @@ for ((i = 0; i < ${#args[@]}; i++)); do
 done
 case "$1 $2" in
 "pr view") jq -r "$filter" "$STUB/pr-$3.json" ;;
-"pr list") jq -r "$filter" "$STUB/all-prs.json" ;;
+"pr list") # --state open lists only the open PRs, as gh does
+    case " $* " in
+    *" --state open "*) jq -c '[.[] | select(.state == "OPEN")]' "$STUB/all-prs.json" ;;
+    *) cat "$STUB/all-prs.json" ;;
+    esac | jq -r "$filter" ;;
 "pr create")
     [ ! -e "$STUB/create-fails" ] || exit 1
     echo "https://github.test/o/r/pull/99"
@@ -282,6 +286,12 @@ out="$(run --allow-open-train 12)"
 status=$?
 { [ "$status" -eq 0 ] && remote_has "train/$today-3"; }
 check "--allow-open-train builds despite an open train PR" $?
+echo '[{"number":99,"headRefName":"train/rebuilt","state":"OPEN"}]' >"$STUB/all-prs.json"
+: >"$STUB/calls"
+out="$(run --rebuild 99 --without 11)"
+status=$?
+{ [ "$status" -eq 0 ] && grep -Fq "pr close 99" "$STUB/calls"; }
+check "--rebuild of the open train is allowed while that train is open" $?
 echo '[]' >"$STUB/all-prs.json"
 
 run >/dev/null

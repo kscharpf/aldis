@@ -89,8 +89,8 @@ g() { git -C "$main_checkout" "$@"; }
 g fetch --quiet origin
 
 if [ "$dry" -eq 0 ] && [ "$allow_open" -eq 0 ]; then
-    open_trains="$(gh pr list --state open --limit 200 --json number,headRefName,state \
-        --jq "[.[] | select(.state == \"OPEN\" and (.headRefName | startswith(\"train/\"))
+    open_trains="$(gh pr list --state open --limit 200 --json number,headRefName \
+        --jq "[.[] | select((.headRefName | startswith(\"train/\"))
             and (.number | tostring) != \"${rebuild:-0}\") | \"#\" + (.number | tostring)]
             | join(\" \")")" || { echo "gh could not list the open pull requests" >&2; exit 2; }
     [ -z "$open_trains" ] || {

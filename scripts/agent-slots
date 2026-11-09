@@ -11,7 +11,13 @@
 # How agents are found (two sources, one count per agent id):
 # 1. Transcripts: Claude Code writes every subagent, with or without a worktree, to
 #    $CLAUDE_HOME/projects/<checkout path with / and . as ->*/<session>/subagents/agent-<id>.jsonl
-#    An agent counts as live when its transcript changed within the window. This covers
+#    An agent counts as live when its transcript changed within the window and its last record
+#    is not the result of SubagentHandback ("Report delivered to your caller."), which ends
+#    every agent that reports that way at once. An agent that ends otherwise (a reviewer or
+#    fork that finishes with plain text) keeps counting until its transcript is older than the
+#    window, so the count can run high for up to 5 minutes after such agents finish (the
+#    coordinator once waited about 4 minutes at 4 of 4 with two agents done); lower
+#    AGENT_SLOTS_WINDOW only with that in mind. This covers
 #    reviewers and forks, which have no worktree. A command that runs silent for longer than
 #    the window (a long `cargo xtask check` in the background) hides its agent: the count is a
 #    lower bound, so the coordinator adds the agents it knows are running and are not listed.
@@ -20,7 +26,8 @@
 #    coordinator's session, not of the agent, so a live pid proves only the session; the lock
 #    outlives the agent. A locked worktree with a live pid counts only when no transcript of
 #    that id is found (the transcript then decides). Agents dispatched without isolation leave
-#    no lock: today's worktrees are created by hand, so the lock source finds none.
+#    no lock: today's worktrees are created by hand, so the lock source finds no locked
+#    worktree on this machine today; it is kept for when worktrees are locked.
 set -euo pipefail
 
 list=0
@@ -40,6 +47,7 @@ num='^[0-9]+$'
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" ||
     { echo "agent-slots: not in a git repository" >&2; exit 2; }
 now="$(date +%s)"
+done_marker="Report delivered to your caller."
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
 
 seen=" " # agent ids already counted or judged, space-separated (bash 3.2: no assoc arrays)
@@ -47,13 +55,18 @@ lines=()
 
 # Source 1: transcripts changed within the window.
 enc="${main_checkout//[\/.]/-}"
-for f in "$claude_home"/projects/"$enc"*/*/subagents/agent-*.jsonl; do
+# The checkout's own directory and its worktrees' (`$enc--claude-worktrees-*`), not a sibling
+# project whose path only shares the prefix (`$enc-other`).
+for f in "$claude_home"/projects/"$enc"/*/subagents/agent-*.jsonl \
+    "$claude_home"/projects/"$enc"--*/*/subagents/agent-*.jsonl; do
     [ -e "$f" ] || continue
     id="$(basename "$f" .jsonl)"
     id="${id#agent-}"
     age=$((now - $(mtime "$f")))
     seen="$seen$id "
     [ "$age" -le "$window" ] || continue
+    # A finished agent: its last record is the result of SubagentHandback.
+    tail -n 1 "$f" | grep -Fq "$done_marker" && continue
     lines+=("$id transcript ${age}s $f")
 done
 
