@@ -73,7 +73,9 @@ act() { # act <description> <command...>
     fi
 }
 
-# Whether ref $1 has no non-merge commit outside origin/main.
+# Whether ref $1 has no non-merge commit outside origin/main. The test reads the local
+# origin/main ref, which the script fetched at its start (`g fetch --prune origin`); a stale ref
+# can only keep a branch, never delete one wrongly.
 no_unique_commits() {
     [ -z "$(g log --no-merges --format=%h "origin/main..$1")" ]
 }
