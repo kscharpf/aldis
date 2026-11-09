@@ -27,18 +27,12 @@
 //!   `TimeHeaderLayout`, whose Time Code Field is decoded with `aldis-time` (133.0 §4.1.4.2.2,
 //!   SPP-008). Without it a secondary header is opaque octets (133.0 §4.1.4.2.1, SPP-007), and
 //!   the crate does not depend on `aldis-time`.
-//! - `alloc`, `std`: strictly additive; they change no behaviour and no wire output (GEN-006).
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020,
 //! GEN-070).
 #![no_std]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "std")]
-extern crate std;
 
 pub mod anomaly;
 pub mod config;

@@ -8,9 +8,6 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(feature = "std")]
-extern crate std;
-
 #[cfg(test)]
 extern crate self as aldis_cop1;
 

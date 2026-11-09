@@ -32,7 +32,7 @@ use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, qos,
     unsupported_protocol,
 };
-use crate::link_gen::{engine_in_place, range, variant_payload};
+use crate::link_common::{engine_in_place, range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 

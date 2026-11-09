@@ -13,8 +13,6 @@ publish = false
 aldis-core = { path = "../aldis-core", default-features = false }
 
 [features]
-alloc = ["aldis-core/alloc"]
-std = ["alloc", "aldis-core/std"]
 
 [lints]
 workspace = true
