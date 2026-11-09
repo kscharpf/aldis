@@ -144,8 +144,8 @@ impl FrameDownlink {
         })
     }
 
-    /// The CLCW of the last frame decoded, `None` before a frame or if its OCF is not a valid
-    /// CLCW.
+    /// The CLCW of the last frame decoded, initially the CLCW of `OCF_INITIAL`; `None` if the OCF
+    /// of the last frame is not a valid CLCW.
     pub(crate) const fn clcw(&self) -> Option<Clcw> {
         self.clcw
     }
@@ -158,7 +158,9 @@ impl FrameDownlink {
                 // A frame that failed the FECF is counted by the receiver (LNK-080); the
                 // discard it returns is not an event.
                 if e.kind() == ErrorKind::CrcMismatch {
-                    self.discard_for_crc();
+                    if let Err(refused) = self.discard_for_crc() {
+                        return reject(out, refused.kind());
+                    }
                 }
                 return reject(out, e.kind());
             }
@@ -228,16 +230,21 @@ impl FrameDownlink {
             .into_plain(NoSecurity)
     }
 
-    /// Tells the receiver that the caller discarded a frame for its FECF (LNK-080). Its refusal
-    /// cannot happen for this input, and it has no event.
-    fn discard_for_crc(&mut self) {
-        let _ = self.receiver.step(
-            ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
-            &mut self.area,
-        );
+    /// Tells the receiver that the caller discarded a frame for its FECF (LNK-080). The
+    /// `FrameDiscarded` action it returns has no event (APP-138).
+    ///
+    /// # Errors
+    /// The receiver's refusal of the input.
+    fn discard_for_crc(&mut self) -> Result<(), Error> {
+        self.receiver
+            .step(
+                ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
+                &mut self.area,
+            )
+            .map(|_| ())
     }
 
-    /// Reports a change of the OCF word and keeps it as a CLCW (§4.4.1, D2).
+    /// Reports a change of the OCF word and keeps it as a CLCW (§4.4.1; D2 of the plan: not given to FOP-1).
     fn observe(&mut self, ocf: Ocf, out: &mut dyn Output) {
         let word = u32::from_be_bytes(ocf.to_octets());
         self.clcw = match ocf {
@@ -284,6 +291,8 @@ impl Extraction {
             tm::VCID_REALTIME => &mut self.realtime,
             tm::VCID_PAYLOAD => &mut self.payload,
             _ => {
+                // A data frame on the OID VC: the VC carries OID frames only (§4.1), so the
+                // receiver delivers the field and the node discards it (APP-138).
                 out.app_event(FRAME_DISCARDED, &[LAYER_RECEIVER, REASON_NOT_SERVED]);
                 return Ok(());
             }

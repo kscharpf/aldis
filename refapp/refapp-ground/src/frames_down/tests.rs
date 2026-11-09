@@ -221,7 +221,8 @@ fn an_oid_frame_gives_no_packet_and_no_event() {
 
 #[test]
 fn a_changed_ocf_is_one_clcw_changed_before_the_packets() {
-    // req: APP-138, APP-134, D2
+    // req: APP-138, APP-134
+    // D2 of the plan: the CLCW is reported, not given to FOP-1.
     let hk = packet(HK, 0, 32);
     let counter_one = [0x01, 0x00, 0x02, 0x00];
     let mut n = node();
@@ -394,7 +395,7 @@ fn a_packet_with_a_bad_pvn_is_an_extraction_error_before_the_next_packets() {
 
 #[test]
 fn a_data_frame_of_the_idle_vc_is_discarded_as_not_served() {
-    // req: APP-138, LNK-050
+    // req: APP-138
     let hk = packet(HK, 0, 32);
     let outs = deliver(
         &mut node(),

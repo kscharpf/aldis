@@ -7,7 +7,7 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
-//! | [`frames_down`] | Downlink frames: strict TM decoding, `FrameReceiver`, `PacketExtractor`, CLCW, frame events | APP-036, APP-133, APP-138 |
+//! | [`frames_down`] | Downlink frames: strict TM decoding, `FrameReceiver`, `PacketExtractor`, CLCW, frame events | APP-036, APP-138 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
@@ -88,8 +88,8 @@ impl GroundNode {
         })
     }
 
-    /// The CLCW of the last downlink frame accepted (D2: reported, not given to FOP-1); `None`
-    /// at the packet level, before a frame, or if the OCF is not a valid CLCW.
+    /// The CLCW of the last downlink frame accepted (D2: reported, not given to FOP-1), initially
+    /// the initial CLCW of §4.4.1; `None` at the packet level or if that OCF is not a valid CLCW.
     #[must_use]
     pub fn last_clcw(&self) -> Option<aldis::tc::Clcw> {
         self.downlink.as_ref().and_then(FrameDownlink::clcw)
