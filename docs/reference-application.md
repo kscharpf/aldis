@@ -354,7 +354,7 @@ The engines of `aldis-link` and `aldis-cop1` take the values below. The file `re
 | `PacketGenerator`, `PacketExtractor`, `MapReassembler` | Valid Packet Version Numbers | {`000`} on VC 0, 1, and 7 and on the TC VC | 132.0 Table 5-4; 232.0 Table 5-5; 133.0 §4.1.3.2.2 |
 | `PacketGenerator` | Idle policy; idle packet kind | `Oid` (OI-11); Space Packet Idle Packet | LNK-014, LNK-013 |
 | `ChannelMux` | VC roles | VC 0 and VC 1 carry Packets; VC 7 is the VC of the OID frames (also configured for Packets) | 132.0 §4.1.4.6.3 |
-| `ChannelMux` | Multiplexing policy; priorities | `FixedPriority`; VC 0 priority 1, VC 1 priority 2 (unique); VC 7 none | LNK-031, §4.1 |
+| `ChannelMux` | Multiplexing policy; priorities | `FixedPriority`; VC 0 rank 1, VC 1 rank 2 (unique; rank 1 is served first); VC 7 none. The engine's `vc_priority` serves the *highest* value (LNK-031), so a node passes the rank inverted (the flight node: 255 less the rank) | LNK-031, §4.1 |
 | `ChannelMux`, `FrameReceiver` (TM) | OCF and Secondary Header | MC_OCF present, MC_FSH absent, VC_OCF and VC_FSH absent; so the data field is 211 octets (223 − 6 − 4 − 2) | 132.0 Tables 5-2, 5-3 |
 | `ChannelMux` | Initial value of the OCF slot | `01 00 00 00` (§4.4.1) | LNK-033 |
 | `PacketExtractor` | Incomplete packets delivered; Idle Packets delivered | no; no | 132.0 Table 5-4; LNK-063 |

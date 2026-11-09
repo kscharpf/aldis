@@ -8,6 +8,8 @@
 //! **A1 WP-3b:** the command handler with its time-tag queue, the table store, and the memory
 //! dump (APP-012, APP-013, APP-016, APP-017, APP-024); the node ignores ops-script entries,
 //! which only the ground node uses.
+//! **A2 WP-3a:** the downlink at frame level ([`frames_down`]): generators, multiplexer, OCF, and
+//! TM frames, selected by [`FlightNode::new_frames`] (APP-030…APP-035, APP-090, APP-132).
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -15,6 +17,7 @@ pub mod command;
 pub mod downlink;
 pub mod dump;
 pub mod event;
+pub mod frames_down;
 pub mod layout;
 pub mod queue;
 pub mod schedule;
@@ -28,6 +31,7 @@ use refapp_scenario::{Instant, Node, Output, StepInput};
 pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
 pub use event::Event;
+use frames_down::FrameDownlink;
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
 use queue::TimeTagQueue;
@@ -38,6 +42,8 @@ use table::TableStore;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FlightNode {
     downlink: Downlink,
+    /// The frame level of the downlink; none at the packet level of A1 (§6.1).
+    frames: Option<FrameDownlink>,
     status: Status,
     /// Time-tagged commands waiting for their execution time (§2.3).
     queue: TimeTagQueue,
@@ -89,9 +95,16 @@ impl FlightNode {
 
     /// Sends an unsegmented packet of `stream`; a failure is counted, never panics.
     fn send(&mut self, stream: Stream, now: Instant, user_data: &[u8], out: &mut dyn Output) {
-        let sent = self
-            .downlink
-            .send(stream, SequenceFlags::Unsegmented, now, user_data, out);
+        let (sent, refused) = {
+            let mut tap = FlightNode::tap(self.frames.as_mut(), stream, now, out);
+            let sent =
+                self.downlink
+                    .send(stream, SequenceFlags::Unsegmented, now, user_data, &mut tap);
+            (sent, tap.refused())
+        };
+        if let Some(kind) = refused {
+            self.frame_refused(kind, out);
+        }
         if let Err(e) = sent {
             self.build_failed(e.kind(), out);
         }
@@ -138,6 +151,7 @@ impl FlightNode {
             Periodic::PAYLOAD.at(self.payload_slot),
             queued,
             dump,
+            self.frames.as_ref().and_then(FrameDownlink::next_deadline),
         ]
         .into_iter()
         .flatten()
@@ -153,6 +167,8 @@ impl Node for FlightNode {
         self.dump_segments(input.now, out);
         self.housekeeping(input.now, out);
         self.payload(input.now, out);
+        // §2.1 step 6 (A2 on): the frame of the slot.
+        self.downlink_frame(input.tx_slot, input.now, out);
         self.next_deadline()
     }
 }
@@ -475,3 +491,5 @@ pub(crate) mod tests {
 
 #[cfg(test)]
 mod command_tests;
+#[cfg(test)]
+mod frames_down_tests;
