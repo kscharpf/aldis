@@ -478,7 +478,7 @@ fn check_room(
 /// `docs/standards/uslp-frame.md` §2.1 (RS-020).
 ///
 /// On a fixed-length Physical Channel, VCID 63 of each Spacecraft ID that has a VC is valid
-/// without an entry (Table 5-2 note 2): [`VcLookup::vc`] gives it a fixed-length VC with the
+/// without an entry (Table 5-2 note 2): [`ChannelLookup::vc`] gives it a fixed-length VC with the
 /// defaults of [`VcParams::new`]. An entry for VCID 63 sets its other parameters, and
 /// [`vcs`](Self::vcs) lists only entries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
