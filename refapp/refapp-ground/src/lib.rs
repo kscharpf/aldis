@@ -8,6 +8,7 @@
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
 //! | [`frames_down`] | Downlink frames: strict TM decoding, `FrameReceiver`, `PacketExtractor`, CLCW, frame events | APP-036, APP-138 |
+//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 `RequestBd`, TC frame | APP-040…APP-043, APP-071, APP-090, APP-133, APP-143; LNK-040…LNK-043; COP-010; TC-008 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
@@ -19,16 +20,20 @@ use core::fmt;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
 pub mod frames_down;
+mod frames_up;
 pub mod ops;
 pub mod telemetry;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_uplink;
 
 pub use ops::{Call, Execution, OpsEntry, ScriptError};
 pub use telemetry::TimeStamp;
 
 use frames_down::FrameDownlink;
+use frames_up::Uplink;
 use ops::Script;
 use telemetry::Telemetry;
 
@@ -59,6 +64,8 @@ pub struct GroundNode {
     telemetry: Telemetry,
     /// The frame-level downlink, from A2 on; `None` at the packet level (A1).
     downlink: Option<FrameDownlink>,
+    /// The uplink at frame level (A2 on); `None` at packet level (A1).
+    uplink: Option<Uplink>,
 }
 
 impl GroundNode {
@@ -72,18 +79,21 @@ impl GroundNode {
             script: Script::new(script).map_err(GroundError::Script)?,
             telemetry: Telemetry::new(),
             downlink: None,
+            uplink: None,
         })
     }
 
-    /// As [`new`](Self::new), for a case at the frame level: the delivered units are TM frames
-    /// (A2, APP-036).
+    /// As [`new`](Self::new), for a case at the frame level (A2): the delivered units are TM
+    /// frames (APP-036), the ops-script packets go to the `MapSegmenter` and not out, and in a
+    /// step with `tx_slot` one FDU goes out as a Type-BD frame through FOP-1 (APP-133).
     ///
     /// # Errors
-    /// As [`new`](Self::new), and [`GroundError::Setup`] if the TM parameters of the scenario do
-    /// not form a configuration.
+    /// As [`new`](Self::new), and [`GroundError::Setup`] if a scenario value is out of range for
+    /// the engines.
     pub fn new_frames(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
         Ok(GroundNode {
             downlink: Some(FrameDownlink::new()?),
+            uplink: Some(Uplink::new().map_err(GroundError::Setup)?),
             ..GroundNode::new(script)?
         })
     }
@@ -93,6 +103,12 @@ impl GroundNode {
     #[must_use]
     pub fn last_clcw(&self) -> Option<aldis::tc::Clcw> {
         self.downlink.as_ref().and_then(FrameDownlink::clcw)
+    }
+
+    /// Uplink inputs the segmenter or FOP-1 refused; zero when the script fits their capacities.
+    #[must_use]
+    pub fn uplink_refused(&self) -> u32 {
+        self.uplink.as_ref().map_or(0, Uplink::refused)
     }
 
     /// The time stamp of the last telemetry packet that was accepted; the node does not correct
@@ -116,8 +132,18 @@ impl Node for GroundNode {
             // sends nothing at this link level (a FOP-1 directive, APP-019) has no packet.
             if let Some(built) = self.script.packet(usize::from(index)) {
                 out.packet_out(built.apid, &built.octets);
-                out.unit(&built.octets);
+                match &mut self.uplink {
+                    Some(uplink) => uplink.submit(built.apid, &built.octets, input.now, out),
+                    None => out.unit(&built.octets),
+                }
             }
+        }
+        // Step 3 of §2.2: the frame is the last output of the step (APP-133).
+        if input.tx_slot
+            && let Some(uplink) = &mut self.uplink
+            && let Some(frame) = uplink.slot(input.now, out)
+        {
+            out.unit(&frame);
         }
         None
     }
