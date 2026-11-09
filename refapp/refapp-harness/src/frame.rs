@@ -26,8 +26,9 @@ pub struct DecodedFrame {
 ///
 /// A unit of a [`Level::Packets`] case is a Space Packet ([`crate::trace::decode_strict`]).
 ///
-/// The frame must carry the Spacecraft ID of the scenario (APP-026), and a TM frame must fill
-/// the configured frame length.
+/// The frame must carry the Spacecraft ID of the scenario (APP-026). A TM frame must have
+/// exactly the configured frame length; a TC frame is checked only against the maximum frame
+/// length (its Frame Length field gives its length, TC-007).
 ///
 /// # Errors
 /// If `level` is [`Level::Packets`], the managed parameters of the scenario do not form a
@@ -77,14 +78,20 @@ pub fn decode_frame(
             };
             let physical =
                 PhysicalChannelConfig::new(max, tc.fecf).map_err(|e| id_err("channel", &e))?;
-            let vc = VcConfig::new(scid_t, vc_t, max, SegmentHeaderUse::Present)
-                .map_err(|e| id_err("VC", &e))?;
-            let table: VcTable<1, 2> = VcTable::new(
-                physical,
-                &[vc],
-                &[map(tc.map_commands.get())?, map(tc.map_table_upload.get())?],
-            )
-            .map_err(|e| id_err("channels", &e))?;
+            // MAPs exist only on a VC with a Segment Header (232.0 §4.1.3.2.2.1.2). Blocking
+            // and segmentation are parameters of the segmenter and reassembler, not of the
+            // frame codec.
+            let (header, maps) = if tc.segment_header {
+                (
+                    SegmentHeaderUse::Present,
+                    vec![map(tc.map_commands.get())?, map(tc.map_table_upload.get())?],
+                )
+            } else {
+                (SegmentHeaderUse::Absent(SecurityLayout::NONE), Vec::new())
+            };
+            let vc = VcConfig::new(scid_t, vc_t, max, header).map_err(|e| id_err("VC", &e))?;
+            let table: VcTable<1, 2> =
+                VcTable::new(physical, &[vc], &maps).map_err(|e| id_err("channels", &e))?;
             let frame = TcFrame::decode(octets, &table as &dyn VcLookup)
                 .map_err(|e| format!("not a strict TC frame: {e:?}"))?;
             if frame.spacecraft_id() != scid_t {

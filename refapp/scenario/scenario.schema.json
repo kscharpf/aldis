@@ -282,9 +282,7 @@
         },
         "ocf_initial": {
           "description": "Initial value of the OCF slot, as the four octets of the CLCW (§4.4.1, LNK-033).",
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0
+          "$ref": "#/$defs/ClcwWord"
         },
         "deliver_incomplete_packets": {
           "description": "Whether the extractor delivers incomplete packets (§4.4.3).",
@@ -313,6 +311,12 @@
         "deliver_incomplete_packets",
         "deliver_idle_packets"
       ]
+    },
+    "ClcwWord": {
+      "description": "The four octets of a CLCW as a word, valid by 232.0 §4.2.1: Control Word Type 0, version 00,\nand the Reserved Spares zero (TC-030, TC-031, RS-020). Checked with the strict codec.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
     },
     "Tc": {
       "description": "TC uplink (§4.2, APP-040…APP-042).",
@@ -351,10 +355,10 @@
           "maximum": 63
         },
         "max_fdu_length": {
-          "description": "Maximum frame data unit length, octets.",
+          "description": "Maximum frame data unit length, octets: at least the Segment Header and one octet of\ndata, at most the longest frame (1024) less the primary header (5) (232.0 §4.1.2,\nTable 5-3, Table 5-4).",
           "type": "integer",
           "format": "uint16",
-          "minimum": 0,
+          "minimum": 2,
           "maximum": 1019
         },
         "max_packet_length": {

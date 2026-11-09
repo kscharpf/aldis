@@ -256,3 +256,13 @@ fn frames_decode_by_direction_with_the_strict_codecs() {
     // A unit of a packet-level case is no frame.
     assert!(decode_frame(&s, Level::Packets, Dir::Down, &tm).is_err());
 }
+
+#[test]
+fn a_tc_vc_without_a_segment_header_decodes_without_maps() {
+    // req: APP-086
+    let mut s = Scenario::load().unwrap();
+    s.tc.segment_header = false;
+    let d = decode_frame(&s, Level::Frames, Dir::Up, &tc_frame(&[0x1A; 9])).unwrap();
+    // The Segment Header octet is data now.
+    assert_eq!((d.vcid, d.data.len()), (0, 10));
+}

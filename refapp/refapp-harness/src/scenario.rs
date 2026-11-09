@@ -116,7 +116,7 @@ pub struct Tm {
     /// Multiplexing priority of the payload VC (§4.4.3, LNK-031).
     pub priority_payload: Ranged<u8, 1, 255>,
     /// Initial value of the OCF slot, as the four octets of the CLCW (§4.4.1, LNK-033).
-    pub ocf_initial: u32,
+    pub ocf_initial: ClcwWord,
     /// Whether the extractor delivers incomplete packets (§4.4.3).
     pub deliver_incomplete_packets: bool,
     /// Whether the extractor delivers Idle Packets (§4.4.3, LNK-063).
@@ -137,8 +137,10 @@ pub struct Tc {
     pub map_commands: Ranged<u8, 0, 63>,
     /// MAP of the table upload.
     pub map_table_upload: Ranged<u8, 0, 63>,
-    /// Maximum frame data unit length, octets.
-    pub max_fdu_length: Ranged<u16, 0, 1019>,
+    /// Maximum frame data unit length, octets: at least the Segment Header and one octet of
+    /// data, at most the longest frame (1024) less the primary header (5) (232.0 §4.1.2,
+    /// Table 5-3, Table 5-4).
+    pub max_fdu_length: Ranged<u16, 2, 1019>,
     /// Maximum packet length, octets.
     pub max_packet_length: u16,
     /// Valid Packet Version Number of the packets on the uplink VC (§4.4.3).
@@ -149,6 +151,36 @@ pub struct Tc {
     pub map_commands_services: MapServices,
     /// Blocking and segmentation of MAP 1 (§4.4.3).
     pub map_table_upload_services: MapServices,
+}
+
+/// The four octets of a CLCW as a word, valid by 232.0 §4.2.1: Control Word Type 0, version 00,
+/// and the Reserved Spares zero (TC-030, TC-031, RS-020). Checked with the strict codec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(transparent)]
+pub struct ClcwWord(u32);
+
+impl ClcwWord {
+    /// The word `word`.
+    ///
+    /// # Errors
+    /// If the strict CLCW decoder rejects its octets.
+    pub fn new(word: u32) -> Result<Self, String> {
+        aldis::tc::Clcw::decode(word.to_be_bytes())
+            .map(|_| ClcwWord(word))
+            .map_err(|e| format!("{word:#010x} is not a CLCW: {e:?}"))
+    }
+
+    /// The word.
+    #[must_use]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ClcwWord {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(u32::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
 }
 
 /// What a MAP permits (232.0 Table 5-4, §4.4.3).
@@ -692,10 +724,9 @@ impl Uplink {
         Uplink {
             slot_us: s.link.uplink_slot_us.get(),
             delay_us: s.link.one_way_delay_us,
-            // The Segment Header takes one octet of the frame data unit (§4.2).
-            max_data: u64::from(s.tc.max_fdu_length.get())
-                .saturating_sub(1)
-                .max(1),
+            // The Segment Header, when the VC has one, takes one octet of the frame data unit
+            // (§4.2); the range of `max_fdu_length` leaves at least one more.
+            max_data: u64::from(s.tc.max_fdu_length.get()) - u64::from(s.tc.segment_header),
             free_slot: 0,
             open: None,
         }
@@ -1024,8 +1055,8 @@ pub fn rust_constants(s: &Scenario) -> String {
                 "u32",
                 format!(
                     "{:#06x}_{:04x}",
-                    tm.ocf_initial >> 16,
-                    tm.ocf_initial & 0xFFFF
+                    tm.ocf_initial.get() >> 16,
+                    tm.ocf_initial.get() & 0xFFFF
                 ),
                 "Initial value of the OCF slot (APP-136).",
             ),
@@ -1311,7 +1342,7 @@ mod tests {
         ("/tc/vcid", 0, 63),
         ("/tc/map_commands", 0, 63),
         ("/tc/map_table_upload", 0, 63),
-        ("/tc/max_fdu_length", 0, 1019),
+        ("/tc/max_fdu_length", 2, 1019),
         ("/cop1/k", 1, 255),
         ("/cop1/w", 2, 254),
         ("/cop1/transmission_limit", 1, 255),
@@ -1744,5 +1775,18 @@ mod tests {
         // The same release instant is refused at frame level (the frame arrives off the grid).
         s.cases[3].level = Level::Frames;
         assert!(rejects(&s, "APP-141"));
+    }
+
+    #[test]
+    fn the_initial_ocf_is_a_clcw() {
+        // req: APP-136
+        use super::ClcwWord;
+        assert_eq!(ClcwWord::new(0x0100_0000).unwrap().get(), 0x0100_0000);
+        // Control Word Type 1 is not a CLCW (232.0 §4.2.1.2).
+        assert!(ClcwWord::new(0x8100_0000).is_err());
+        // A version other than 00.
+        assert!(ClcwWord::new(0x2100_0000).is_err());
+        let bad = super::SCENARIO_JSON.replace("16777216", "2164260864");
+        assert!(Scenario::parse(&bad).is_err());
     }
 }
