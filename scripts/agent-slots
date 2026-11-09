@@ -11,16 +11,18 @@
 # How agents are found (two sources, one count per agent id):
 # 1. Transcripts: Claude Code writes every subagent, with or without a worktree, to
 #    $CLAUDE_HOME/projects/<checkout path with / and . as ->*/<session>/subagents/agent-<id>.jsonl
-#    An agent counts as live when its transcript changed within the window and its last record
-#    is not the result of SubagentHandback ("Report delivered to your caller."), which ends
-#    every agent that reports that way at once. An agent that ends otherwise (a reviewer or
-#    fork that finishes with plain text) keeps counting until its transcript is older than the
-#    window, so the count can run high for up to 5 minutes after such agents finish (the
-#    coordinator once waited about 4 minutes at 4 of 4 with two agents done); lower
-#    AGENT_SLOTS_WINDOW only with that in mind. This covers
+#    An agent counts as live when its transcript changed within the window and its last line is
+#    not exactly the result of SubagentHandback (a user record holding one tool_result whose
+#    text is {"success":true,"message":"Report delivered to your caller."}, checked with jq),
+#    which ends every agent that reports that way at once. A last line that is not valid JSON,
+#    or that only quotes the text, counts as live: a miscount must run high, never low.
+#    An agent that ends otherwise (a reviewer or fork that finishes with plain text) keeps
+#    counting until its transcript is older than the window, so the count can run high for up
+#    to 5 minutes after such agents finish (the coordinator once waited about 4 minutes at 4 of
+#    4 with two agents done); lower AGENT_SLOTS_WINDOW only with that in mind. This covers
 #    reviewers and forks, which have no worktree. A command that runs silent for longer than
-#    the window (a long `cargo xtask check` in the background) hides its agent: the count is a
-#    lower bound, so the coordinator adds the agents it knows are running and are not listed.
+#    the window (a long `cargo xtask check` in the background) hides its agent: the count can
+#    also run low, so the coordinator adds the agents it knows are running and are not listed.
 # 2. Locked worktrees: Claude Code locks the worktree of an agent with the reason `claude agent
 #    agent-<id> (pid N)` (same pattern as scripts/prune-agent-branches). N is the pid of the
 #    coordinator's session, not of the agent, so a live pid proves only the session; the lock
@@ -47,7 +49,16 @@ num='^[0-9]+$'
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" ||
     { echo "agent-slots: not in a git repository" >&2; exit 2; }
 now="$(date +%s)"
-done_marker="Report delivered to your caller."
+# The exact last record of a finished agent, as Claude Code writes the result of SubagentHandback:
+# a user record whose one content item is a tool_result holding one text item that is this JSON.
+# jq filter, true only for that record.
+done_filter='
+    .type == "user" and (.message.content | type == "array" and length == 1)
+    and (.message.content[0]
+        | .type == "tool_result" and (.content | type == "array" and length == 1)
+        and (.content[0] | .type == "text"
+            and ((.text | fromjson? // null)
+                == {success: true, message: "Report delivered to your caller."})))'
 mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
 
 seen=" " # agent ids already counted or judged, space-separated (bash 3.2: no assoc arrays)
@@ -65,8 +76,10 @@ for f in "$claude_home"/projects/"$enc"/*/subagents/agent-*.jsonl \
     age=$((now - $(mtime "$f")))
     seen="$seen$id "
     [ "$age" -le "$window" ] || continue
-    # A finished agent: its last record is the result of SubagentHandback.
-    tail -n 1 "$f" | grep -Fq "$done_marker" && continue
+    # A finished agent: its last line parses as JSON and is exactly the result of SubagentHandback.
+    # Anything else (a quote of the text, a malformed or partly written line) counts as live.
+    # (jq prints nothing for an empty or malformed line, and exits 0 on empty input.)
+    [ "$(tail -n 1 "$f" | jq -r "$done_filter" 2>/dev/null)" = true ] && continue
     lines+=("$id transcript ${age}s $f")
 done
 
