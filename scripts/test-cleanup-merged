@@ -10,8 +10,9 @@
 # branch), and is kept when a commit is not;
 # a closed non-train PR whose head commit is on main is cleaned (also a stacked one, whose base is
 # another branch), and is kept when its head is not on main, or when its local branch has a newer
-# commit (both refs kept, with the reason); a closed train is kept, both refs, when only the
-# remote has a unique commit; the closed-PR filter
+# commit, or when only its remote branch has a commit main lacks (both refs kept, with the
+# reason), and with its own reason when GitHub gives no head commit; a closed train is kept, both
+# refs, when only the remote has a unique commit; the closed-PR filter
 # drops merged PRs (a closed listing with a merged and an unmerged PR picks the unmerged one; one
 # with only a merged PR is kept);
 # a worktree locked by Claude Code (reason `claude agent agent-<id> (pid N)`, with or without
@@ -96,7 +97,7 @@ git -C "$repo" push -q origin main
 # Closed non-train PRs. closed-head-ok: the head landed on main by a merge. closed-head-no: the
 # head is not on main. closed-head-newer: the head is on main, the local branch has one more
 # commit. closed-stacked-child sits on closed-stacked-parent (its PR's base); both heads landed.
-for b in closed-head-ok closed-head-newer closed-stacked-parent; do
+for b in closed-head-ok closed-head-newer closed-head-remote-new closed-stacked-parent; do
     branch "$b"
 done
 git -C "$repo" checkout -q -b closed-stacked-child closed-stacked-parent
@@ -104,13 +105,20 @@ echo sc >"$repo/sc.txt"; git -C "$repo" add sc.txt; git -C "$repo" commit -q -m 
 git -C "$repo" push -q -u origin closed-stacked-child
 git -C "$repo" checkout -q main
 branch closed-head-no
-for b in closed-head-ok closed-head-newer closed-stacked-child; do
+for b in closed-head-ok closed-head-newer closed-head-remote-new closed-stacked-child; do
     git -C "$repo" merge -q --no-ff "$b" -m "merge $b"
 done
 git -C "$repo" push -q origin main
 git -C "$repo" checkout -q closed-head-newer
 echo newer >"$repo/newer.txt"; git -C "$repo" add newer.txt; git -C "$repo" commit -q -m newer
 git -C "$repo" checkout -q main
+# closed-head-remote-new: the head is on main, the local tip is that head, origin has one more.
+rhead="$(git -C "$repo" rev-parse closed-head-remote-new)"
+git -C "$repo" checkout -q closed-head-remote-new
+echo rnew >"$repo/rnew.txt"; git -C "$repo" add rnew.txt; git -C "$repo" commit -q -m rnew
+git -C "$repo" push -q origin closed-head-remote-new
+git -C "$repo" checkout -q main
+git -C "$repo" branch -q -f closed-head-remote-new "$rhead"
 git -C "$repo" worktree add -q "$work/wt-head-ok" closed-head-ok
 git -C "$repo" worktree add -q "$work/wt-closed-ok" train/closed-ok
 
@@ -180,7 +188,7 @@ merged="merged-claude merged-claude-dirty merged-claude-nostart merged-foreign"
 merged="$merged merged-clean merged-dirty merged-after"
 merged="$merged merged-remote-gone merged-locked main"
 closed="train/closed-ok train/closed-new closed-other train/closed-remote-new"
-closed="$closed closed-head-ok closed-head-no closed-head-newer"
+closed="$closed closed-head-ok closed-head-no closed-head-newer closed-head-remote-new"
 stacked="closed-stacked-child"
 # The head of each closed non-train PR (closed-head-no: a tip not on main). closed-other has
 # none (an empty headRefOid): kept.
@@ -188,6 +196,7 @@ heads="$work/heads"
 for b in closed-head-ok closed-head-newer closed-stacked-child closed-head-no; do
     echo "$b $(git -C "$repo" rev-parse "origin/$b")" >>"$heads"
 done
+echo "closed-head-remote-new $rhead" >>"$heads"
 both="train/closed-both"
 onlymerged="train/closed-onlymerged"
 out="" rc=0
@@ -300,6 +309,19 @@ for b in closed-head-no closed-head-newer; do
     expect "$b: the local branch stays" local_has "$b"
     expect "$b: the remote branch stays" remote_has "$b"
 done
+
+echo "# a closed non-train PR whose head is on main, but whose remote has a newer commit"
+run --apply closed-head-remote-new
+expect "the remote is named" said "origin/closed-head-remote-new is not an ancestor of origin/main"
+expect "both refs are kept" said "both refs kept"
+expect "exit status 1" status_is 1
+expect "the local branch stays" local_has closed-head-remote-new
+expect "the remote branch stays" remote_has closed-head-remote-new
+
+echo "# a closed non-train PR for which GitHub reports no head commit"
+run closed-other
+expect "the message says so" said "GitHub reported no head commit for closed PR #43"
+expect "exit status 1" status_is 1
 
 echo "# a closed non-train PR whose head is on main, dry run then apply"
 run closed-head-ok
