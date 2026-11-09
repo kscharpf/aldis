@@ -276,15 +276,22 @@ fn a_frame_for_another_vc_is_rejected_and_not_counted() {
 
 #[test]
 fn a_frame_for_another_map_is_rejected_and_not_counted() {
-    // req: APP-139, APP-041, TC-021
+    // req: APP-139, APP-041, TC-021, TC-022
+    // The strict codec refuses the MAP ID at validation, so FARM-1 does not count the frame and
+    // `unknown_map` (111) is not raised. The Blue Book reads otherwise (232.0 §4.4.3.3,
+    // §4.4.9.3.3): OI-91.
     let mut run = Run::new();
     run.deliver(
         1_010_000,
         &[bd_frame(0, SequenceFlags::Unsegmented, 5, &noop(0))],
     );
-    let events = run.app_events();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].0, APP_FRAME_REJECTED);
+    assert_eq!(
+        run.app_events(),
+        [(
+            APP_FRAME_REJECTED,
+            std::vec![code(ErrorKind::UnknownChannel)]
+        )]
+    );
     assert_eq!(run.ocf_word(), 0x0100_0000);
 }
 

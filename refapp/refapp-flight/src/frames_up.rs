@@ -52,15 +52,25 @@ const LAYER_RECEIVER: u64 = 1;
 /// Layer of `frame_discarded` for FARM-1 (§7.4).
 const LAYER_FARM1: u64 = 2;
 
+/// `value` as a `usize`, for the sizes below: `From` is not `const`.
+#[expect(
+    clippy::as_conversions,
+    reason = "u16 to usize is lossless, and `usize::from` is not a const fn"
+)]
+const fn widen(value: u16) -> usize {
+    value as usize
+}
+
 /// Capacity of a MAP's assembly buffer: the Maximum Packet Length of the uplink, 512 octets
-/// (§4.2; `generated::tc::MAX_PACKET_LENGTH`, which the reassembler checks against it).
-const ASSEMBLY: usize = 512;
-/// The output area of the `MapReassembler`: the SDU held (at most one octet short of the
-/// maximum) plus the user data of one frame (LNK-075).
-const REASSEMBLY_AREA: usize = ASSEMBLY + 128;
+/// (§4.2; `generated::tc::MAX_PACKET_LENGTH`), so a change of the scenario changes the build.
+const ASSEMBLY: usize = widen(tc::MAX_PACKET_LENGTH);
 /// The output area of the receiver and of FARM-1: one frame of at most the maximum length
 /// (API-062; `generated::tc::MAX_FRAME_LENGTH`).
-const FRAME_AREA: usize = 128;
+const FRAME_AREA: usize = widen(tc::MAX_FRAME_LENGTH);
+/// The output area of the `MapReassembler` (LNK-075): the SDU held, at most `ASSEMBLY - 1`
+/// octets, plus the user data of one frame, which is shorter than `FRAME_AREA` (the bound of the
+/// whole frame, used here as the bound of its data field).
+const REASSEMBLY_AREA: usize = ASSEMBLY.saturating_add(FRAME_AREA);
 
 /// The uplink receive chain of the flight node: one VC with MAPs 0 and 1 (§4.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,8 +163,9 @@ impl FrameUplink {
         let validated = match validate_frame(octets, &self.table) {
             Ok(validated) => validated,
             Err(rejection) => {
-                // The FECF failure is the caller's discard (LNK-080); FARM-1 sees an invalid
-                // frame (E9, 232.0 §4.4.9.3.1), which changes nothing in Bypass.
+                // The FECF failure is the caller's discard (LNK-080). A rejected frame (232.0
+                // §4.4.9.3.2) is FARM-1's event E9, which discards it and changes nothing in
+                // any state (232.1 Table 6-1).
                 let fecf = rejection.reason() == Reason::FecfMismatch;
                 self.reject_frame(now, fecf, rejection.error().kind(), out);
                 return;
@@ -211,14 +222,20 @@ impl FrameUplink {
         if fecf {
             // Counts the discard in the receiver's status; the action carries nothing more.
             let mut none = [0_u8; 0];
-            let _ = self.receiver.step(
+            let told = self.receiver.step(
                 ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
                 &mut none,
             );
+            // Neither step writes an octet or fails with these inputs; an error would leave the
+            // engine out of step with the node, so it is raised like every engine error.
+            if let Err(e) = told {
+                out.app_event(APP_FRAME_REJECTED, &[u64::from(e.kind().code())]);
+            }
         }
         let mut none = [0_u8; 0];
-        if let Ok((farm, _)) = self.farm.step(Farm1Input::InvalidFrame, now, &mut none) {
-            self.farm = farm;
+        match self.farm.step(Farm1Input::InvalidFrame, now, &mut none) {
+            Ok((farm, _)) => self.farm = farm,
+            Err(e) => out.app_event(APP_FRAME_REJECTED, &[u64::from(e.kind().code())]),
         }
     }
 
