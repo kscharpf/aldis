@@ -449,6 +449,16 @@ impl EncapsulationHeader {
         })
     }
 
+    /// The Packet Length field value of a packet of `total` octets (133.1 §4.1.2.8).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`packet_len`) above `u32::MAX` (GEN-041).
+    pub(crate) fn packet_len_of(total: usize) -> Result<u32> {
+        u32::try_from(total).map_err(|_| {
+            Error::out_of_range(field::PACKET_LEN, u64::from(u32::MAX), len_u64(total))
+        })
+    }
+
     /// The same header with Packet Length `packet_len` (no checks; for the two-phase writer).
     pub(crate) const fn with_packet_len(self, packet_len: u32) -> EncapsulationHeader {
         EncapsulationHeader { packet_len, ..self }
@@ -674,6 +684,22 @@ mod tests {
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::EPI_EXTENSION))
+        );
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn a_total_length_beyond_the_field_is_an_error_not_a_clamped_length() {
+        // req: GEN-041, EPP-008
+        assert_eq!(
+            EncapsulationHeader::packet_len_of(0x1_0000_0000)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::OutOfRange
+        );
+        assert_eq!(
+            EncapsulationHeader::packet_len_of(0xFFFF_FFFF).unwrap(),
+            u32::MAX
         );
     }
 
