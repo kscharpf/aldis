@@ -7,7 +7,7 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
-//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 `RequestBd`, TC frame | APP-040…APP-043, APP-071, APP-133 |
+//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 `RequestBd`, TC frame | APP-040…APP-043, APP-071, APP-090, APP-133, APP-143; LNK-040…LNK-043; COP-010; TC-008 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
@@ -113,7 +113,7 @@ impl Node for GroundNode {
             if let Some(built) = self.script.packet(usize::from(index)) {
                 out.packet_out(built.apid, &built.octets);
                 match &mut self.uplink {
-                    Some(uplink) => uplink.submit(built.apid, &built.octets, input.now),
+                    Some(uplink) => uplink.submit(built.apid, &built.octets, input.now, out),
                     None => out.unit(&built.octets),
                 }
             }
@@ -121,7 +121,7 @@ impl Node for GroundNode {
         // Step 3 of §2.2: the frame is the last output of the step (APP-133).
         if input.tx_slot
             && let Some(uplink) = &mut self.uplink
-            && let Some(frame) = uplink.slot(input.now)
+            && let Some(frame) = uplink.slot(input.now, out)
         {
             out.unit(&frame);
         }

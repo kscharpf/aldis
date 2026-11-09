@@ -21,6 +21,7 @@ use refapp_scenario::{
 enum Rec {
     Unit(Vec<u8>),
     PacketOut(u16, Vec<u8>),
+    Event(u16, Vec<u64>),
 }
 
 #[derive(Default)]
@@ -34,7 +35,9 @@ impl Output for Recorder {
         self.0.push(Rec::PacketOut(apid.get(), octets.to_vec()));
     }
     fn packet_in(&mut self, _: Apid, _: &[u8]) {}
-    fn app_event(&mut self, _: u16, _: &[u64]) {}
+    fn app_event(&mut self, code: u16, args: &[u64]) {
+        self.0.push(Rec::Event(code, args.to_vec()));
+    }
 }
 
 const UPLINK_SLOT_US: u64 = 250_000;
@@ -108,7 +111,7 @@ fn frames(steps: &[(u64, Vec<Rec>)]) -> Vec<(u64, Vec<u8>)> {
         .flat_map(|(t, recs)| {
             recs.iter().filter_map(move |r| match r {
                 Rec::Unit(u) => Some((*t, u.clone())),
-                Rec::PacketOut(..) => None,
+                Rec::PacketOut(..) | Rec::Event(..) => None,
             })
         })
         .collect()
@@ -226,7 +229,7 @@ fn the_table_upload_takes_three_frames_without_interleaving() {
         .flat_map(|(_, r)| r)
         .find_map(|r| match r {
             Rec::PacketOut(129, p) => Some(p.clone()),
-            Rec::Unit(_) | Rec::PacketOut(..) => None,
+            Rec::Unit(_) | Rec::PacketOut(..) | Rec::Event(..) => None,
         })
         .unwrap();
     assert_eq!(packet.len(), 309);
@@ -267,7 +270,7 @@ fn a_packet_is_output_once_and_goes_to_the_segmenter_not_out() {
             .flat_map(|(t, r)| {
                 r.iter().filter_map(move |r| match r {
                     Rec::PacketOut(a, p) => Some((*t, *a, p.clone())),
-                    Rec::Unit(_) => None,
+                    Rec::Unit(_) | Rec::Event(..) => None,
                 })
             })
             .collect()
@@ -305,4 +308,58 @@ fn one_frame_per_uplink_slot_and_none_without_a_slot_or_an_fdu() {
     assert_eq!(step(500_000, &[], true), 1);
     assert_eq!(step(750_000, &[], true), 1);
     assert_eq!(step(1_000_000, &[], true), 0);
+}
+
+/// The application events of a step, as `(code, args)`.
+fn events(recs: &[Rec]) -> Vec<(u16, Vec<u64>)> {
+    recs.iter()
+        .filter_map(|r| match r {
+            Rec::Event(c, a) => Some((*c, a.clone())),
+            Rec::Unit(_) | Rec::PacketOut(..) => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_submit_the_segmenter_refuses_raises_uplink_refused() {
+    // req: APP-143
+    // Four table uploads at one instant do not fit the segmenter's queue: the fourth is refused
+    // (`WouldBlock`, code 12 of the catalogue) on MAP 1, and its frame never goes out.
+    let upload = || OpsEntry::TableUpload {
+        table_id: TableId::new(1).unwrap(),
+        length: TableLength::new(300).unwrap(),
+    };
+    let script = [upload(), upload(), upload(), upload()];
+    let at = [1_000_000; 4];
+    let mut node = GroundNode::new(&script)
+        .unwrap()
+        .with_frame_uplink()
+        .unwrap();
+    let steps = run(&mut node, &at, 1_000_000);
+    let (_, recs) = steps.last().unwrap();
+    let ev = events(recs);
+    assert_eq!(ev.len(), 1, "{ev:?}");
+    assert_eq!((ev[0].0, ev[0].1[0], ev[0].1[2]), (114, 1, 1));
+    assert_eq!(node.uplink_refused(), 1);
+    // The event comes before the frame, which is the last output of the step.
+    assert!(matches!(recs.last(), Some(Rec::Unit(_))));
+    assert_eq!(frames(&steps).len(), 1);
+}
+
+#[test]
+fn an_input_fop1_refuses_raises_uplink_refused_and_no_frame_goes_out() {
+    // req: APP-143, APP-071
+    let mut uplink = crate::frames_up::Uplink::new().unwrap();
+    let mut out = Recorder::default();
+    // An empty FDU is refused by FOP-1 (`InvalidField`, code 6): stage 3, no MAP.
+    assert_eq!(
+        uplink.request_bd(0, &[], Instant::from_micros(0), &mut out),
+        None
+    );
+    assert_eq!(events(&out.0), [(114, vec![3, 6, 0])]);
+    assert_eq!(uplink.refused(), 1);
+    // The slot after it, with an empty segmenter, outputs nothing and raises nothing.
+    let mut out = Recorder::default();
+    assert_eq!(uplink.slot(Instant::from_micros(250_000), &mut out), None);
+    assert_eq!(out.0, []);
 }

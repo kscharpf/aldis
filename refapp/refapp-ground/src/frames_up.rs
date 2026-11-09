@@ -2,8 +2,8 @@
 //! (A2 WP-4b).
 //!
 //! Specification: `docs/reference-application.md` §2.2 (order within an instant), §4.2, §4.4.4
-//! (uplink frames); APP-040…APP-043, APP-071, APP-090, APP-133; LNK-040…LNK-043; COP-010,
-//! TC-008.
+//! (uplink frames), §7.4 (`uplink_refused`); APP-040…APP-043, APP-071, APP-090, APP-133,
+//! APP-143; LNK-040…LNK-043; COP-010, TC-008.
 //!
 //! The ops-script packets are submitted to the segmenter when they are released: commands on
 //! MAP 0, the table upload on MAP 1. In a step with `tx_slot`, [`Uplink::slot`] asks the
@@ -27,19 +27,28 @@ use aldis::link::segmenter::{
     MapEntry, MapSegmenter, MapSegmenterConfig, MapService, SegmenterInput, SegmenterOutput,
     TcSegmenterParams,
 };
-use refapp_scenario::Apid;
 use refapp_scenario::generated::{apid, cop1, tc};
+use refapp_scenario::{Apid, Output};
 
 /// Capacity of the segmenter's queue, octets: the longest packet (512) with its entry, and the
 /// packets of one instant besides.
 const QUEUE: usize = 1024;
-/// Entries of the `Sent_Queue` of FOP-1: K. Type-BD frames never enter it, so K bounds nothing
-/// here (D2).
+/// Entries of the `Sent_Queue` of FOP-1. It must equal `cop1::K`, which `Uplink::new` checks;
+/// Type-BD frames never enter the queue (D2).
 const SENT: usize = 4;
 /// Octets of a frame, the capacity of FOP-1's master copies and of the output areas.
 const FRAME: usize = 128;
 /// Octets of an FDU (Segment Header included).
 const FDU: usize = 121;
+
+/// Application event `uplink_refused` (§7.4, APP-143).
+const UPLINK_REFUSED: u16 = 114;
+/// Stage of the event: a submit to the segmenter.
+const STAGE_SUBMIT: u64 = 1;
+/// Stage of the event: the request for the next FDU.
+const STAGE_NEXT_FDU: u64 = 2;
+/// Stage of the event: an input of FOP-1.
+const STAGE_FOP1: u64 = 3;
 /// Actions of one FOP-1 input (COP-006).
 const ACTIONS: usize = fop1_max_actions(SENT);
 
@@ -149,23 +158,25 @@ impl Uplink {
         self.refused
     }
 
-    /// Hands a packet of the script to the segmenter (APP-042). A packet of another APID, or one
-    /// the queue cannot take whole, is counted in [`refused`](Self::refused).
-    pub(crate) fn submit(&mut self, apid: Apid, packet: &[u8], now: Instant) {
+    /// Hands a packet of the script to the segmenter (APP-042). A packet the segmenter refuses,
+    /// of another APID or one the queue cannot take whole, is counted in
+    /// [`refused`](Self::refused) and raises `uplink_refused` (APP-143).
+    pub(crate) fn submit(&mut self, apid: Apid, packet: &[u8], now: Instant, out: &mut dyn Output) {
         let Some(map) = map_of(apid) else {
-            self.refused = self.refused.saturating_add(1);
+            self.refuse(out, STAGE_SUBMIT, Error::new(ErrorKind::UnknownChannel), 0);
             return;
         };
         let mut unused = [0_u8; 0];
         let input = SegmenterInput::SubmitPacket { map, packet };
-        if self.segmenter.step(input, now, &mut unused).is_err() {
-            self.refused = self.refused.saturating_add(1);
+        if let Err(error) = self.segmenter.step(input, now, &mut unused) {
+            self.refuse(out, STAGE_SUBMIT, error, u64::from(map.get()));
         }
     }
 
     /// One uplink slot: the next FDU as a Type-BD frame, or `None` if the segmenter holds none
-    /// (APP-071, APP-133).
-    pub(crate) fn slot(&mut self, now: Instant) -> Option<Vec<u8>> {
+    /// or an engine refused an input, which raises `uplink_refused` (APP-071, APP-133,
+    /// APP-143).
+    pub(crate) fn slot(&mut self, now: Instant, out: &mut dyn Output) -> Option<Vec<u8>> {
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
         let mut area = [0_u8; FDU];
@@ -173,47 +184,71 @@ impl Uplink {
             handle,
             qos: Qos::Expedited,
         };
-        let Ok(actions) = self.segmenter.step(request, now, &mut area) else {
-            self.refused = self.refused.saturating_add(1);
-            return None;
+        let actions = match self.segmenter.step(request, now, &mut area) {
+            Ok(actions) => actions,
+            Err(error) => {
+                self.refuse(out, STAGE_NEXT_FDU, error, 0);
+                return None;
+            }
         };
-        let SegmenterOutput::Fdu(fdu) = actions.iter().next().copied()? else {
-            return None;
-        };
+        let fdu = actions.iter().find_map(|action| match action {
+            SegmenterOutput::Fdu(fdu) => Some(*fdu),
+            SegmenterOutput::Discarded { .. } => None,
+        })?;
         let Some(octets) = fdu.fdu.slice(&area) else {
-            self.refused = self.refused.saturating_add(1);
+            self.refuse(out, STAGE_NEXT_FDU, Error::new(ErrorKind::OutOfRange), 0);
             return None;
         };
-        self.request_bd(handle, octets, now)
+        self.request_bd(handle, octets, now, out)
     }
 
     /// FOP-1 `RequestBd` for `fdu` and the response of the lower procedures that frees the
     /// Bypass Out flag (232.1 §5.1.6): returns the frame FOP-1 transmits.
-    fn request_bd(&mut self, handle: u32, fdu: &[u8], now: Instant) -> Option<Vec<u8>> {
-        let frame = self.fop_step(Fop1Input::RequestBd { handle, fdu }, now)?;
+    pub(crate) fn request_bd(
+        &mut self,
+        handle: u32,
+        fdu: &[u8],
+        now: Instant,
+        out: &mut dyn Output,
+    ) -> Option<Vec<u8>> {
         let done = Fop1Input::TransmitDone {
             kind: FrameKind::Bd,
             accepted: true,
         };
-        self.fop_step(done, now);
-        Some(frame)
+        let sent = self
+            .fop_step(Fop1Input::RequestBd { handle, fdu }, now)
+            .and_then(|frame| frame.ok_or(Error::new(ErrorKind::InvalidState)))
+            .and_then(|frame| self.fop_step(done, now).map(|_| frame));
+        match sent {
+            Ok(frame) => Some(frame),
+            Err(error) => {
+                self.refuse(out, STAGE_FOP1, error, 0);
+                None
+            }
+        }
     }
 
     /// One FOP-1 input; returns the frame its Transmit action holds, if any.
-    fn fop_step(&mut self, input: Fop1Input<'_>, now: Instant) -> Option<Vec<u8>> {
+    fn fop_step(&mut self, input: Fop1Input<'_>, now: Instant) -> Result<Option<Vec<u8>>, Error> {
         let mut out = [0_u8; FRAME];
-        let Ok(decision) = self.fop.decide(&self.store, input, now, &mut out) else {
-            self.refused = self.refused.saturating_add(1);
-            return None;
-        };
+        let decision = self.fop.decide(&self.store, input, now, &mut out)?;
         let actions = self.fop.commit(&mut self.store, decision);
-        actions.iter().find_map(|action| match action {
+        Ok(actions.iter().find_map(|action| match action {
             Fop1Output::Transmit { frame, .. } => frame.slice(&out).map(<[u8]>::to_vec),
             Fop1Output::Abort
             | Fop1Output::Transfer(_)
             | Fop1Output::Directive(_)
             | Fop1Output::Alert(_)
             | Fop1Output::Suspend => None,
-        })
+        }))
+    }
+
+    /// Counts a refusal and raises `uplink_refused` (§7.4, APP-143).
+    fn refuse(&mut self, out: &mut dyn Output, stage: u64, error: Error, map: u64) {
+        self.refused = self.refused.saturating_add(1);
+        out.app_event(
+            UPLINK_REFUSED,
+            &[stage, u64::from(error.kind().code()), map],
+        );
     }
 }
