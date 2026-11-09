@@ -18,9 +18,9 @@ use aldis_core::ids::{MapId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DiscardReason,
-    FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
-    ReceiverInput, ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc,
+    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
+    DiscardReason, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet,
+    ReceiveProtocol, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc,
     UslpChannel, UslpVc, VcEntry,
 };
 mod support;
@@ -177,7 +177,7 @@ fn vc<const B: u32>(n: u8) -> VcId<B> {
     VcId::<B>::new(n).unwrap()
 }
 
-fn tm_config(ocf: Service, fsh: Service) -> FrameReceiverConfig<Tm, 8> {
+fn tm_config(ocf: DeliveryService, fsh: DeliveryService) -> FrameReceiverConfig<Tm, 8> {
     FrameReceiverConfig::new(
         LEN,
         false,
@@ -195,7 +195,7 @@ fn tm_config(ocf: Service, fsh: Service) -> FrameReceiverConfig<Tm, 8> {
 }
 
 fn tm() -> TmRx {
-    TmRx::new(tm_config(Service::Vc, Service::Vc))
+    TmRx::new(tm_config(DeliveryService::Vc, DeliveryService::Vc))
 }
 
 fn aos_config(fhec: bool) -> FrameReceiverConfig<Aos, 8> {
@@ -228,7 +228,7 @@ fn uslp_config() -> FrameReceiverConfig<Uslp, 8> {
     FrameReceiverConfig::new(
         LEN,
         false,
-        UslpChannel::new(2, Service::Mc),
+        UslpChannel::new(2, DeliveryService::Mc),
         &[
             VcEntry::new(vc(1), UslpVc::new(maps(&[0, 2]), false, true)),
             VcEntry::new(vc(2), UslpVc::new(maps(&[0]), true, true)),
@@ -319,7 +319,7 @@ fn the_worst_case_of_each_protocol_returns_exactly_the_bound() {
     let config = FrameReceiverConfig::<Tm, 8>::new(
         LEN,
         false,
-        TmChannel::new(Service::Vc, Service::Vc),
+        TmChannel::new(DeliveryService::Vc, DeliveryService::Vc),
         &[VcEntry::new(
             vc(0),
             TmVc::new(TmContent::Packets, true, Some(2)).unwrap(),
@@ -765,7 +765,7 @@ fn a_channel_without_an_insert_zone_delivers_none() {
     assert!(matches!(out[..], [ReceiverOutput::DataField { .. }]));
     assert!(config.with_raw_frames(true).is_err());
     // Only a protocol with an Insert Zone has an offset for a raw frame.
-    let tm_channel = TmChannel::new(Service::None, Service::None);
+    let tm_channel = TmChannel::new(DeliveryService::None, DeliveryService::None);
     for e in [
         Tm::raw_insert_zone_offset(&tm_channel, &[]).unwrap_err(),
         Tc::raw_insert_zone_offset(&TcChannel, &[]).unwrap_err(),
@@ -774,7 +774,10 @@ fn a_channel_without_an_insert_zone_delivers_none() {
     }
     assert!(!Tm::variable_length(&tm_channel) && Tc::variable_length(&TcChannel));
     assert_eq!(
-        Tm::insert_zone_len(&TmChannel::new(Service::None, Service::None)),
+        Tm::insert_zone_len(&TmChannel::new(
+            DeliveryService::None,
+            DeliveryService::None
+        )),
         0
     );
     assert_eq!(Tc::insert_zone_len(&TcChannel), 0);
@@ -846,7 +849,7 @@ fn a_truncated_uslp_frame_is_not_served() {
     let config = FrameReceiverConfig::<Uslp, 4>::new(
         LEN,
         false,
-        UslpChannel::variable(Service::Mc),
+        UslpChannel::variable(DeliveryService::Mc),
         &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
     )
     .unwrap();
@@ -886,7 +889,7 @@ fn variable_length_uslp_frames_are_routed_by_their_own_length() {
     let config = FrameReceiverConfig::<Uslp, 4>::new(
         LEN,
         false,
-        UslpChannel::variable(Service::Mc),
+        UslpChannel::variable(DeliveryService::Mc),
         &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
     )
     .unwrap();
@@ -959,7 +962,7 @@ fn the_replay_flag_is_passed_on_every_delivered_part() {
 #[test]
 fn the_ocf_is_classified_and_delivered_for_its_scope() {
     // req: LNK-053
-    let mut rx = TmRx::new(tm_config(Service::Mc, Service::None));
+    let mut rx = TmRx::new(tm_config(DeliveryService::Mc, DeliveryService::None));
     let out = feed(&mut rx, &tm_frame(5, 0, 0, 0, true, &[1, 9], Some(REPORT2)));
     // The FSH is not delivered (no service); the OCF is a Type-2 Report of the master channel.
     assert!(matches!(
@@ -1141,7 +1144,7 @@ fn counters_count_and_persist_across_a_reconfiguration() {
     let other = FrameReceiverConfig::<Tm, 8>::new(
         LEN,
         false,
-        TmChannel::new(Service::None, Service::None),
+        TmChannel::new(DeliveryService::None, DeliveryService::None),
         &[VcEntry::new(
             vc(4),
             TmVc::new(TmContent::Vca, false, None).unwrap(),
@@ -1163,7 +1166,7 @@ fn counters_count_and_persist_across_a_reconfiguration() {
 fn a_configuration_is_checked_where_it_is_built() {
     // req: API-040, RS-020, LNK-079
     let tm_vc = TmVc::new(TmContent::Vca, false, None).unwrap();
-    let channel = TmChannel::new(Service::None, Service::None);
+    let channel = TmChannel::new(DeliveryService::None, DeliveryService::None);
     let one = [VcEntry::<Tm>::new(vc(1), tm_vc)];
     let e = FrameReceiverConfig::<Tm, 8>::new(7, true, channel, &one).unwrap_err();
     assert_eq!(
@@ -1206,7 +1209,7 @@ fn a_configuration_is_checked_where_it_is_built() {
         (TmContent::Packets, true, Some(64))
     );
     // Raw frames need an Insert Zone.
-    let e = tm_config(Service::Vc, Service::Vc)
+    let e = tm_config(DeliveryService::Vc, DeliveryService::Vc)
         .with_raw_frames(true)
         .unwrap_err();
     assert_eq!(
@@ -1214,7 +1217,7 @@ fn a_configuration_is_checked_where_it_is_built() {
         (ErrorKind::InvalidConfig, Some(field::RAW_FRAMES))
     );
     assert!(
-        tm_config(Service::Vc, Service::Vc)
+        tm_config(DeliveryService::Vc, DeliveryService::Vc)
             .with_raw_frames(false)
             .is_ok()
     );
@@ -1233,10 +1236,16 @@ fn a_configuration_is_checked_where_it_is_built() {
         (entry.params().content(), entry.params().ocf()),
         (AosContent::Packets, true)
     );
-    let channel = TmChannel::new(Service::Mc, Service::Vc);
-    assert_eq!((channel.ocf(), channel.fsh()), (Service::Mc, Service::Vc));
-    let channel = UslpChannel::new(3, Service::Vc);
-    assert_eq!((channel.insert_zone_len(), channel.ocf()), (3, Service::Vc));
+    let channel = TmChannel::new(DeliveryService::Mc, DeliveryService::Vc);
+    assert_eq!(
+        (channel.ocf(), channel.fsh()),
+        (DeliveryService::Mc, DeliveryService::Vc)
+    );
+    let channel = UslpChannel::new(3, DeliveryService::Vc);
+    assert_eq!(
+        (channel.insert_zone_len(), channel.ocf()),
+        (3, DeliveryService::Vc)
+    );
     let p = UslpVc::new(MapSet::new(&[MapId::<4>::new(2).unwrap()]), true, false);
     assert!(p.cop() && !p.served() && p.maps().contains(MapId::<4>::new(2).unwrap()));
     assert!(!p.maps().contains(MapId::<4>::new(3).unwrap()));
@@ -1275,7 +1284,7 @@ fn a_frame_too_short_for_its_parts_is_refused_by_the_configuration() {
         FrameReceiverConfig::<Uslp, 8>::new(
             len,
             fecf,
-            UslpChannel::new(0, Service::None),
+            UslpChannel::new(0, DeliveryService::None),
             &[VcEntry::new(
                 vc(1),
                 UslpVc::new(MapSet::default(), false, true),

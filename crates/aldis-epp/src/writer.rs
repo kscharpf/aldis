@@ -97,6 +97,7 @@ impl<'b> EncapsulationWriter<'b> {
     pub fn data_mut(&mut self) -> &mut [u8] {
         let start = self.header.header_len().octets();
         let end = start.saturating_add(self.max_data_len);
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get_mut(start..end).unwrap_or_default()
     }
 
@@ -121,9 +122,10 @@ impl<'b> EncapsulationWriter<'b> {
                 return Err(invalid(field::EPI));
             }
         }
-        // Fits: `begin` checked the header against `max_data_len` ≥ `data_len`.
+        // `begin` checked the header against `max_data_len` ≥ `data_len`, so the total fits the
+        // field; `packet_len_of` keeps the conversion an error, not a clamp.
         let total = self.header.header_len().octets().saturating_add(data_len);
-        let packet_len = u32::try_from(total).unwrap_or(u32::MAX);
+        let packet_len = EncapsulationHeader::packet_len_of(total)?;
         self.header.with_packet_len(packet_len).write_to(self.out);
         Ok(total)
     }
