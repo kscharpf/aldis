@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Count the live subagents on this machine against the limit of 4 (docs/process/coordinator.md,
+# "Dispatch").
+#
+# Usage: scripts/agent-slots [--list]
+# Prints `agents: <n> of <max>`; --list also prints one line per agent: id, source, age in s,
+# and the worktree (lock source) or transcript path. Exit status: 0 when fewer than the limit
+# are running, 1 when the limit is reached, 2 on an error.
+# Environment: AGENT_SLOTS_MAX (the limit, default 4), AGENT_SLOTS_WINDOW (seconds, default
+# 300), CLAUDE_HOME (default ~/.claude).
+# How agents are found (two sources, one count per agent id):
+# 1. Transcripts: Claude Code writes every subagent, with or without a worktree, to
+#    $CLAUDE_HOME/projects/<checkout path with / and . as ->*/<session>/subagents/agent-<id>.jsonl
+#    An agent counts as live when its transcript changed within the window. This covers
+#    reviewers and forks, which have no worktree. A command that runs silent for longer than
+#    the window (a long `cargo xtask check` in the background) hides its agent: the count is a
+#    lower bound, so the coordinator adds the agents it knows are running and are not listed.
+# 2. Locked worktrees: Claude Code locks the worktree of an agent with the reason `claude agent
+#    agent-<id> (pid N)` (same pattern as scripts/prune-agent-branches). N is the pid of the
+#    coordinator's session, not of the agent, so a live pid proves only the session; the lock
+#    outlives the agent. A locked worktree with a live pid counts only when no transcript of
+#    that id is found (the transcript then decides). Agents dispatched without isolation leave
+#    no lock: today's worktrees are created by hand, so the lock source finds none.
+set -euo pipefail
+
+list=0
+case "${1:-}" in
+"") ;;
+--list) list=1 ;;
+*) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; exit 2 ;;
+esac
+
+max="${AGENT_SLOTS_MAX:-4}"
+window="${AGENT_SLOTS_WINDOW:-300}"
+claude_home="${CLAUDE_HOME:-$HOME/.claude}"
+num='^[0-9]+$'
+[[ $max =~ $num && $window =~ $num ]] ||
+    { echo "agent-slots: bad limit or window" >&2; exit 2; }
+
+main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")" ||
+    { echo "agent-slots: not in a git repository" >&2; exit 2; }
+now="$(date +%s)"
+mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+
+seen=" " # agent ids already counted or judged, space-separated (bash 3.2: no assoc arrays)
+lines=()
+
+# Source 1: transcripts changed within the window.
+enc="${main_checkout//[\/.]/-}"
+for f in "$claude_home"/projects/"$enc"*/*/subagents/agent-*.jsonl; do
+    [ -e "$f" ] || continue
+    id="$(basename "$f" .jsonl)"
+    id="${id#agent-}"
+    age=$((now - $(mtime "$f")))
+    seen="$seen$id "
+    [ "$age" -le "$window" ] || continue
+    lines+=("$id transcript ${age}s $f")
+done
+
+lock_re="^claude agent agent-([0-9a-f]+) \\(pid ([0-9]+)( start [^)]*)?\\)\$"
+# Source 2: locked worktrees of a live session whose agent has no transcript.
+wt=""
+while IFS= read -r line; do
+    case "$line" in
+    "worktree "*) wt="${line#worktree }" ;;
+    "locked "*)
+        reason="${line#locked }"
+        if [[ $reason =~ $lock_re ]]; then
+            id="${BASH_REMATCH[1]}"
+            case "$seen" in *" $id "*) continue ;; esac
+            kill -0 "${BASH_REMATCH[2]}" 2>/dev/null || continue
+            seen="$seen$id "
+            lines+=("$id lock - $wt")
+        fi
+        ;;
+    esac
+done < <(git -C "$main_checkout" worktree list --porcelain)
+
+count="${#lines[@]}"
+echo "agents: $count of $max"
+if [ "$list" -eq 1 ]; then
+    for ((i = 0; i < count; i++)); do echo "  ${lines[i]}"; done
+fi
+[ "$count" -lt "$max" ]

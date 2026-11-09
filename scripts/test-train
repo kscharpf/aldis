@@ -9,7 +9,8 @@
 # pushes nothing; a closed PR, a draft, and a train PR cannot ride; --dry-run pushes nothing
 # and leaves no branch or worktree, so that a real run with the same PRs follows it;
 # a further train of the day takes the next number; --rebuild --without drops a PR, opens the
-# new train, and closes the old one.
+# new train, and closes the old one; another open train PR refuses a real build (but not
+# --dry-run or the --rebuild of that PR) unless --allow-open-train is given.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -268,6 +269,20 @@ git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep
 check "--rebuild leaves the dropped PR out" $?
 grep -Fq "pr close 99" "$STUB/calls" && contains "$(cat "$STUB/close-comment")" "without #11"
 check "--rebuild closes the old train PR" $?
+
+echo '[{"number":50,"headRefName":"train/other","state":"OPEN"}]' >"$STUB/all-prs.json"
+out="$(run 12)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#50 is open" && ! remote_has "train/$today-3"; }
+check "another open train PR refuses a build" $?
+out="$(run --dry-run 12)"
+status=$?
+check "--dry-run is not refused by an open train PR" "$status"
+out="$(run --allow-open-train 12)"
+status=$?
+{ [ "$status" -eq 0 ] && remote_has "train/$today-3"; }
+check "--allow-open-train builds despite an open train PR" $?
+echo '[]' >"$STUB/all-prs.json"
 
 run >/dev/null
 t [ $? -eq 2 ]
