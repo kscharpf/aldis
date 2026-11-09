@@ -220,11 +220,10 @@ impl FrameUplink {
         &mut self,
         now: CoreInstant,
         fecf: bool,
-        kind: ErrorKind,
+        mut kind: ErrorKind,
         out: &mut dyn Output,
     ) {
         let mut none = [0_u8; 0];
-        let mut kind = kind;
         if fecf
             && let Err(e) = self.receiver.step(
                 ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
