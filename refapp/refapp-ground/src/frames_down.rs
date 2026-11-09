@@ -17,8 +17,8 @@ use aldis::link::extractor::{
 };
 use aldis::link::protocol::{Tm, TmParams};
 use aldis::link::receiver::{
-    CallerDiscardReason, ChannelScope, DiscardReason, FrameReceiver, FrameReceiverConfig,
-    ReceiverInput, ReceiverOutput, Service, TmChannel, TmContent, TmVc, VcEntry,
+    CallerDiscardReason, ChannelScope, DeliveryService, DiscardReason, FrameReceiver,
+    FrameReceiverConfig, ReceiverInput, ReceiverOutput, TmChannel, TmContent, TmVc, VcEntry,
 };
 use aldis::tc::Clcw;
 use aldis::tm::{
@@ -130,7 +130,7 @@ impl FrameDownlink {
         let receiver = FrameReceiver::new(FrameReceiverConfig::<Tm, VC_CAPACITY>::new(
             frame_len,
             tm::FECF,
-            TmChannel::new(Service::Mc, Service::None),
+            TmChannel::new(DeliveryService::Mc, DeliveryService::None),
             &[entry(realtime)?, entry(payload)?, entry(idle)?],
         )?);
         let ocf_word = tm::OCF_INITIAL;
