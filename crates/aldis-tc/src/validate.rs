@@ -4,8 +4,8 @@
 //! as the Frame Delimiting and Fill Removal Procedure delimits them
 //! ([`delimit`](crate::delimit)), together with the checks of the decoder and the discard
 //! rule for an invalid VCID (§4.4.7.3). A MAP ID the channels do not hold passes: the MAP
-//! Demultiplexing Function discards the FDU after FARM-1 (§4.4.3.3, §4.4.5). It runs the same code as
-//! [`TcFrame::decode`] for both Type-A and Type-B frames, before any FARM-1 processing
+//! Demultiplexing Function discards the FDU after FARM-1 (§4.4.3.3, §4.4.5). It runs the same
+//! code as [`TcFrame::decode`] for both Type-A and Type-B frames, before any FARM-1 processing
 //! (§4.4.9.3.1; TC-023), and reports each failure with a [`Reason`] whose numeric code is
 //! stable (`docs/standards/tc-frame.md` §4).
 
@@ -168,8 +168,15 @@ impl<'a> Deref for ValidatedTcFrame<'a> {
 /// type flags, the Reserved Spare, the VCID, and the Frame Length against the channel's limits;
 /// (d) the Frame Length against `frame.len()`; (e) the FECF; then the room left by the MAP's
 /// Security Header and Trailer, and the Control Command of a Type-C frame. A MAP ID the
-/// channels do not hold is not checked: the frame is read with no SDLS fields. Type-A and Type-B frames are checked alike (TC-023). A frame that passes is
-/// returned as a [`ValidatedTcFrame`].
+/// channels do not hold is not checked: the frame is read with no SDLS fields. Type-A and
+/// Type-B frames are checked alike (TC-023). A frame that passes is returned as a
+/// [`ValidatedTcFrame`].
+///
+/// On a Virtual Channel whose MAPs use SDLS, a frame of an unknown MAP passes with no Security
+/// Header or Trailer (`SecurityLayout::NONE`), so a caller that takes the validated frame
+/// directly sees those octets as data. Route the frame through the MAP reassembler, which
+/// discards the FDU of an unknown MAP (§4.4.3.3; TC-022, OI-98), or check
+/// `segment_header()` against the configured MAPs.
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
