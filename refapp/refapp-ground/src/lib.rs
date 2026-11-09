@@ -7,6 +7,7 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
+//! | [`frames_down`] | Downlink frames: strict TM decoding, `FrameReceiver`, `PacketExtractor`, CLCW, frame events | APP-036, APP-133, APP-138 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
@@ -17,6 +18,7 @@ use core::fmt;
 
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
+pub mod frames_down;
 pub mod ops;
 pub mod telemetry;
 
@@ -26,6 +28,7 @@ mod tests;
 pub use ops::{Call, Execution, OpsEntry, ScriptError};
 pub use telemetry::TimeStamp;
 
+use frames_down::FrameDownlink;
 use ops::Script;
 use telemetry::Telemetry;
 
@@ -54,6 +57,8 @@ impl core::error::Error for GroundError {}
 pub struct GroundNode {
     script: Script,
     telemetry: Telemetry,
+    /// The frame-level downlink, from A2 on; `None` at the packet level (A1).
+    downlink: Option<FrameDownlink>,
 }
 
 impl GroundNode {
@@ -66,7 +71,28 @@ impl GroundNode {
         Ok(GroundNode {
             script: Script::new(script).map_err(GroundError::Script)?,
             telemetry: Telemetry::new(),
+            downlink: None,
         })
+    }
+
+    /// As [`new`](Self::new), for a case at the frame level: the delivered units are TM frames
+    /// (A2, APP-036).
+    ///
+    /// # Errors
+    /// As [`new`](Self::new), and [`GroundError::Setup`] if the TM parameters of the scenario do
+    /// not form a configuration.
+    pub fn new_frames(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
+        Ok(GroundNode {
+            downlink: Some(FrameDownlink::new()?),
+            ..GroundNode::new(script)?
+        })
+    }
+
+    /// The CLCW of the last downlink frame accepted (D2: reported, not given to FOP-1); `None`
+    /// at the packet level, before a frame, or if the OCF is not a valid CLCW.
+    #[must_use]
+    pub fn last_clcw(&self) -> Option<aldis::tc::Clcw> {
+        self.downlink.as_ref().and_then(FrameDownlink::clcw)
     }
 
     /// The time stamp of the last telemetry packet that was accepted; the node does not correct
@@ -80,7 +106,10 @@ impl GroundNode {
 impl Node for GroundNode {
     fn step(&mut self, input: &StepInput<'_>, out: &mut dyn Output) -> Option<Instant> {
         for unit in input.delivered {
-            self.telemetry.receive(unit, out);
+            match &mut self.downlink {
+                Some(downlink) => downlink.receive(unit, &mut self.telemetry, out),
+                None => self.telemetry.receive(unit, out),
+            }
         }
         for &index in input.ops {
             // The harness passes indices of the script the node was made with. An entry that
