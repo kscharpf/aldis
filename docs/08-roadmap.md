@@ -4,13 +4,13 @@ v1 is built in two active tracks against one specification (Track C, native C++,
 
 | Track | Purpose | Milestones | Directories it owns |
 |---|---|---|---|
-| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ engine-handle wrapper | M0–M5 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
+| **R — Rust reference** | The reference implementation and the recommended choice: Rust crates, the C ABI over them (`aldis-ffi`), and the C++ engine-handle wrapper | M0–M6 (§1) | `crates/`, `fuzz/`, `exerciser/`, `crosscheck/`, the generated C header |
 | **A — Reference application** | An end-to-end flight↔ground application that uses only the public APIs, grown one milestone at a time. It gives API feedback before v1 freezes and is the integrators' starting point | A0–A6 (§3) | `refapp/` |
 | **C — Native C++ (Phase 3)** | Retired from v1 and deferred to roadmap Phase 3 (archived at tag `c0-archive`) | C0–C5 (§2) | — |
 
 §4 shows how the tracks overlap, §5 defines the releases, and §6 the rules that let separate contributors or agents work on the tracks at the same time.
 
-## 1. Track R — Rust reference (M0–M5)
+## 1. Track R — Rust reference (M0–M6)
 
 Every milestone defines the **C ABI for what it adds**: a codec milestone adds its codecs' functions to `aldis.h`, and an engine milestone adds its engines' handles.
 
@@ -22,6 +22,7 @@ Every milestone defines the **C ABI for what it adds**: a codec milestone adds i
 | **M3 COP-1** | `aldis-cop1` FOP-1 + FARM-1, state tables as data, closed-loop tests; protocol states as closed enums whose transition functions are generated from, or checked against, the state tables, and the engines' lifecycles as typestates (RS-021); a decision on hardening the engines' long-lived state against single-event upsets beyond GEN-015 ([hardware assumptions](hardware-assumptions.md) §4); FOP-1/FARM-1 handles in the C ABI, with the capacities configuration (CABI-030) | M2 | One vector per table cell; two-person table review recorded. **Released** as `v0.4.0-m3` (2026-10-31, [plan §4](milestones/m3-cop1.md)) |
 | **M4 Link engines** | `aldis-link` generators, mux, receiver, extractor, segmenter/reassembler, CLTU packer, each with its C ABI handle ([plan](milestones/m4-link-engines.md)) | M3 | LNK requirements traced; property tests for FHP placement and reassembly. **Complete** (2026-11-04, [plan §4](milestones/m4-link-engines.md)); the release `v0.5.0-m4` is the maintainer's |
 | **M5 C ABI completion** ([plan](milestones/m5-c-abi-completion.md)) | CADUs and the TM randomizer (OI-12): a new Layer 1 crate for ASM attach and search and the TM pseudo-randomizer (131.0 §9–10), with its C ABI; C test harness with sanitizers and Miri (VER-026), header compile checks (VER-050), ABI versioning (CABI-060), and the header-only C++ wrapper `aldis.hpp` of the engine handles (CABI-072) | M4 | All CABI requirements traced; codec vectors pass via the C ABI, engine-scenario vectors also via `aldis.hpp`. **Complete** (2026-11-06, [plan §4](milestones/m5-c-abi-completion.md)); the release `v0.6.0-m5` is the maintainer's |
+| **M6 Crate architecture simplification** ([plan](milestones/m6-architecture.md)) | One checking pipeline in `aldis-core` (channel lookup, `check`, generic proof types, generic frame stream), one frame-format trait per codec that the mux and FOP-1 use, one frame writer, and a generic C ABI over the engines (`InPlace`, one dispatcher); each protocol fact stated once, no wire behaviour changed | M5 | Phases 1–3 merged; `cargo xtask trace` unchanged in requirement coverage. **Planned** |
 
 Layer 3 (`aldis-framework`) is not part of v1: it has no crate in the workspace (removed 2026-11-08, maintainer decision), and it will be Rust-only. The framework is deferred work: see the "later" row of §7.
 
