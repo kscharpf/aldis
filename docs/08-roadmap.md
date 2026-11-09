@@ -66,16 +66,16 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 | 3 | M3 | |
 | 4 | M4 | A2 (entry gate M4, D3) |
 | 5 | M5 | A3 |
-| 6 | v1.0 release (M5 exited) | A4 |
+| 6 | M6 | A4 |
 | 7 | | A5 |
-| 8 | | A6 |
+| 8 | v1.0 release (M6 and A6 exited) | A6 |
 
 ## 5. Releases
 
 | Release | Contents | Gate |
 |---|---|---|
 | `v0.N.0-mN` | Rust crates after milestone MN (as today) | MN exit |
-| **v1.0** | Rust crates, C ABI, `aldis.hpp`; docs, trace matrix, coverage waivers, stack-usage tables, changelog | M5 and A6 exited; all v1 R-track requirements verified (the FW requirements are later). The `CHANGELOG.md` sections of 0.5.0-m4 and 0.6.0-m5 are written first ([#294](https://github.com/kscharpf/aldis/issues/294)) |
+| **v1.0** | Rust crates, C ABI, `aldis.hpp`; docs, trace matrix, coverage waivers, stack-usage tables, changelog | M6 and A6 exited; all v1 R-track requirements verified (the FW requirements are later). The `CHANGELOG.md` sections of 0.5.0-m4 and 0.6.0-m5 are written first ([#294](https://github.com/kscharpf/aldis/issues/294)) |
 
 A milestones do not cut releases. Their exit is recorded in their milestone plans.
 
