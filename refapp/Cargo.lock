@@ -6,21 +6,12 @@ version = 4
 name = "aldis"
 version = "0.4.0"
 dependencies = [
- "aldis-cop1",
  "aldis-core",
  "aldis-link",
  "aldis-spp",
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
-]
-
-[[package]]
-name = "aldis-cop1"
-version = "0.4.0"
-dependencies = [
- "aldis-core",
- "aldis-tc",
 ]
 
 [[package]]

@@ -27,7 +27,6 @@ use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::layout::OCF_LEN;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result, field};
-use aldis::link::common::Qos;
 use aldis::link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig,
     ChannelMuxHead, Cop, FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput,
@@ -41,10 +40,10 @@ use crate::abi::{self, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
 use crate::handle::{self, Storage};
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aldis_link_qos, aos_params,
-    protocol, unsupported_protocol,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol, qos,
+    unsupported_protocol,
 };
-use crate::link_gen::{engine_in_place, range, variant_payload};
+use crate::link_common::{engine_in_place, range, variant_payload};
 use crate::link_rx::{aldis_link_content, aldis_link_scope};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -496,13 +495,6 @@ fn policy(value: u32) -> Result<MuxPolicy> {
     })
 }
 
-fn qos(value: u32) -> Result<Qos> {
-    Ok(match parse::<aldis_link_qos>(value)? {
-        aldis_link_qos::ALDIS_LINK_QOS_SEQUENCE_CONTROLLED => Qos::SequenceControlled,
-        aldis_link_qos::ALDIS_LINK_QOS_EXPEDITED => Qos::Expedited,
-    })
-}
-
 /// The AOS edition of the configuration `c` (AOS-001).
 ///
 /// # Errors
@@ -725,7 +717,7 @@ unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
             let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
             engine_in_place!(Mx<Tm>, ChannelMuxHead<Tm, V>, B, p, h);
             // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
             // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Tm>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
@@ -734,7 +726,7 @@ unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
             let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
             engine_in_place!(Mx<Aos>, ChannelMuxHead<Aos, V>, B, p, h);
             // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
             // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Aos>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }
@@ -743,7 +735,7 @@ unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
             let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
             engine_in_place!(Mx<Uslp>, ChannelMuxHead<Uslp, V>, B, p, h);
             // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_gen.rs) puts the buffers within the engine, so `p` is valid for writes of one
+            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
             // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
             unsafe { fill_insert(p.byte_add(Mx::<Uslp>::BUFFERS_OFFSET).cast::<u8>(), idle) };
         }

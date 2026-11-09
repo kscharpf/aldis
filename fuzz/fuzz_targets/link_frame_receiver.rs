@@ -15,9 +15,9 @@ use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, VcId};
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
-    AosChannel, AosContent, AosVc, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig,
-    MapSet, ReceiverInput, ReceiverOutput, Service, TcChannel, TcVc, TmChannel, TmContent, TmVc,
-    UslpChannel, UslpVc, VcEntry,
+    AosChannel, AosContent, AosVc, DeliveryService, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver,
+    FrameReceiverConfig, MapSet, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel,
+    TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use libfuzzer_sys::fuzz_target;
 use support::Plained;
@@ -33,7 +33,7 @@ fn tm() -> FrameReceiver<Tm, 8> {
         FrameReceiverConfig::new(
             LEN,
             false,
-            TmChannel::new(Service::Vc, Service::Vc),
+            TmChannel::new(DeliveryService::Vc, DeliveryService::Vc),
             &[
                 VcEntry::new(vc(0), TmVc::new(TmContent::Packets, false, None).unwrap()),
                 VcEntry::new(vc(1), TmVc::new(TmContent::Vca, false, None).unwrap()),
@@ -76,7 +76,7 @@ fn uslp() -> FrameReceiver<Uslp, 8> {
         FrameReceiverConfig::new(
             LEN,
             false,
-            UslpChannel::new(2, Service::Mc),
+            UslpChannel::new(2, DeliveryService::Mc),
             &[
                 VcEntry::new(vc(1), UslpVc::new(maps(&[0, 2]), false, true)),
                 VcEntry::new(vc(2), UslpVc::new(maps(&[0]), true, true)),

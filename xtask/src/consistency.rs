@@ -7,7 +7,7 @@
 //!
 //! **Crates.** A library crate of Layers 0–2 *has code* when a non-comment line of its `src/`
 //! declares a function (`fn `); the skeletons declare modules only. Every crate with code is in
-//! the coverage gate and the `features` check ([`crate::layers::gated`], VER-024, GEN-006),
+//! the coverage gate and the `features` check ([`crate::layers::gated`], VER-024),
 //! which derive their crates from that set. The same set must appear in the `-p` list of the
 //! nightly `mutants` job (`.github/workflows/nightly.yml`, VER-025), and the exerciser (`exerciser/Cargo.toml` dependencies, VER-010), and each crate other than
 //! `aldis-core`, whose vectors the exerciser names one by one, has a vector group in
@@ -17,7 +17,7 @@
 //! reported crate is exercised too, with its `ffi` group (`mod ffi;` in `exerciser/src/main.rs`,
 //! run by `exerciser/src/exercise.rs`; M2 plan D16). Every workspace crate under `crates/`
 //! has a `README.md` linked from the root `README.md`, and every layered crate has a facade
-//! feature in `crates/aldis` that enables it, forwards `alloc` and `std`, and is part of `full`.
+//! feature in `crates/aldis` that enables it, and is part of `full`.
 //!
 //! **Fuzz targets.** The `[[bin]]` targets of `fuzz/Cargo.toml` and the matrix of the nightly
 //! `fuzz` job are the same set (VER-022). Every `fuzz/fuzz_targets/*.rs` is the `path` of a
@@ -444,13 +444,6 @@ fn packaging_problems(c: &Crates, layered: &BTreeSet<String>) -> Vec<String> {
             p.push(format!(
                 "{n}: the facade feature `full` does not enable `{short}`"
             ));
-        }
-        for f in ["alloc", "std"] {
-            if !feature(f).is_some_and(|e| e.contains(&format!("{n}?/{f}"))) {
-                p.push(format!(
-                    "{n}: the facade feature `{f}` does not forward `{n}?/{f}`"
-                ));
-            }
         }
     }
     p
@@ -1185,17 +1178,11 @@ mod tests {
             ("aldis-tm", 1),
             ("aldis-link", 2),
         ];
-        let mut facade = vec![
-            ("full".to_owned(), Vec::new()),
-            ("alloc".to_owned(), Vec::new()),
-            ("std".to_owned(), Vec::new()),
-        ];
+        let mut facade = vec![("full".to_owned(), Vec::new())];
         for (n, _) in layered {
             let short = n.strip_prefix("aldis-").unwrap();
             facade.push((short.to_owned(), vec![format!("dep:{n}")]));
             facade[0].1.push(short.to_owned());
-            facade[1].1.push(format!("{n}?/alloc"));
-            facade[2].1.push(format!("{n}?/std"));
         }
         let members: Vec<&str> = layered.iter().map(|(n, _)| *n).collect();
         Crates {
@@ -1221,13 +1208,13 @@ mod tests {
 
     #[test]
     fn consistent_crates_pass() {
-        // req: VER-024, VER-025, VER-010, GEN-006
+        // req: VER-024, VER-025, VER-010
         assert_eq!(crate_problems(&consistent()), Vec::<String>::new());
     }
 
     #[test]
     fn a_crate_missing_from_one_registration_is_reported() {
-        // req: VER-024, VER-025, VER-010, GEN-006
+        // req: VER-024, VER-025, VER-010
         // An M1 crate dropped from each list in turn is caught as well.
         for list in 0..2 {
             let mut c = consistent();

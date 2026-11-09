@@ -325,7 +325,7 @@ graph TD
 | `record:GEN-010` | Fixed capacities, and builds with no allocator | GEN-010, GEN-012 |
 | `check:no-std-thumbv7em-none-eabihf`; `check:no-std-armv7r-none-eabihf`; `check:no-std-riscv32imac-unknown-none-elf`; `check:no-std-riscv64gc-unknown-none-elf`; `check:no-std-thumbv7em-none-eabihf` | The facade with every feature and the C ABI library build for bare metal without `alloc` | GEN-005, GEN-010 |
 | `record:CABI-004` | The shipped static library imports no allocator | CABI-004 |
-| `check:features`; `check:features` | `alloc` and `std` add no API and change no result | GEN-006 |
+| `check:features` | The codec features of the facade reach the engines | GEN-008 |
 
 ### AC-4.2 The stack of every entry point is bounded and within its budget
 

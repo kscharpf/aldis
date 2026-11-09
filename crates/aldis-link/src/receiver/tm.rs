@@ -5,8 +5,8 @@ use aldis_core::ids::VcId;
 use aldis_core::{Error, ErrorKind, Result, field};
 
 use super::{
-    ChannelScope, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, Service, header,
-    lay_out, ocf_of, spec, vc_of,
+    ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
+    header, lay_out, ocf_of, spec, vc_of,
 };
 use crate::protocol::Tm;
 
@@ -21,8 +21,8 @@ const MAX_FSH_LEN: usize = 64;
 /// Secondary Header are delivered (132.0 §3.5–3.9; LNK-053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TmChannel {
-    ocf: Service,
-    fsh: Service,
+    ocf: DeliveryService,
+    fsh: DeliveryService,
 }
 
 impl TmChannel {
@@ -30,7 +30,7 @@ impl TmChannel {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(ocf: Service, fsh: Service) -> TmChannel {
+    pub const fn new(ocf: DeliveryService, fsh: DeliveryService) -> TmChannel {
         TmChannel { ocf, fsh }
     }
 
@@ -38,7 +38,7 @@ impl TmChannel {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn ocf(&self) -> Service {
+    pub const fn ocf(&self) -> DeliveryService {
         self.ocf
     }
 
@@ -46,7 +46,7 @@ impl TmChannel {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn fsh(&self) -> Service {
+    pub const fn fsh(&self) -> DeliveryService {
         self.fsh
     }
 }
@@ -200,8 +200,9 @@ impl ReceiveProtocol for Tm {
         cx.count_mc(u64::from(mc), 8)?;
         let Some(p) = params else {
             // An unknown VC: the master channel services only.
-            let mc_only =
-                |service: Service| (service == Service::Mc).then_some(ChannelScope::MasterChannel);
+            let mc_only = |service: DeliveryService| {
+                (service == DeliveryService::Mc).then_some(ChannelScope::MasterChannel)
+            };
             cx.deliver_fsh(mc_only(channel.fsh), fsh)?;
             cx.deliver_ocf(mc_only(channel.ocf), ocf, None)?;
             return cx.discard(DiscardReason::UnknownChannel, Some(vc), None);
