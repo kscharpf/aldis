@@ -9,7 +9,7 @@
 //! dump (APP-012, APP-013, APP-016, APP-017, APP-024); the node ignores ops-script entries,
 //! which only the ground node uses.
 //! **A2 WP-3a:** the downlink at frame level ([`frames_down`]): generators, multiplexer, OCF, and
-//! TM frames, selected by [`FlightNode::new_frames`] (APP-030…APP-035, APP-090, APP-132).
+//! TM frames, selected by [`FlightNode::new_frames`], which also selects the uplink at frame level (APP-030…APP-035, APP-090, APP-132).
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -18,6 +18,7 @@ pub mod downlink;
 pub mod dump;
 pub mod event;
 pub mod frames_down;
+pub mod frames_up;
 pub mod layout;
 pub mod queue;
 pub mod schedule;
@@ -25,13 +26,16 @@ pub mod table;
 
 mod handler;
 
+use aldis::core::Result;
 use aldis::spp::SequenceFlags;
+use aldis::tc::Clcw;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
 pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
 pub use event::Event;
 use frames_down::FrameDownlink;
+pub use frames_up::FrameUplink;
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
 use queue::TimeTagQueue;
@@ -59,6 +63,8 @@ pub struct FlightNode {
     payload_number: u32,
     /// Packets that could not be built; 0 in a correctly configured run.
     build_failures: u32,
+    /// The uplink at frame level (A2 on), `None` at packet level.
+    uplink: Option<FrameUplink>,
 }
 
 impl FlightNode {
@@ -66,6 +72,29 @@ impl FlightNode {
     #[must_use]
     pub fn new() -> FlightNode {
         FlightNode::default()
+    }
+
+    /// A flight node at frame level (A2 on, §6.1): the downlink unit is the TM frame, one at every
+    /// step with `tx_slot` (APP-090, APP-132), and the uplink units are TC frames (APP-139), each
+    /// through the receiver, FARM-1, and the MAP reassembler before the command handler
+    /// (APP-040…APP-043). [`FlightNode::new`] is the packet level of A1.
+    ///
+    /// # Errors
+    /// `InvalidConfig` if the scenario values are no valid engine configuration, which the
+    /// generated constants rule out.
+    pub fn new_frames() -> Result<FlightNode> {
+        Ok(FlightNode {
+            frames: Some(FrameDownlink::new()?),
+            uplink: Some(FrameUplink::new()?),
+            ..FlightNode::default()
+        })
+    }
+
+    /// The CLCW FARM-1 reports now, for the OCF of the downlink (§4.4.1, APP-134); `None` at
+    /// packet level, which has no FARM-1. The downlink converts it with `Clcw::to_ocf`.
+    #[must_use]
+    pub fn clcw(&self) -> Option<Clcw> {
+        self.uplink.as_ref().map(FrameUplink::clcw)
     }
 
     /// The status housekeeping reports (§3.3.1).

@@ -11,10 +11,9 @@
 //! packet's VC instead of out, through [`Tap`]; the frame is the only unit the node outputs
 //! (APP-090).
 //!
-//! **Input of the CLCW (for the uplink, WP-3b).** [`FlightNode::set_clcw`](crate::FlightNode::set_clcw)
-//! takes the CLCW that the OCF of the next frames carries; it is `01 00 00 00`
-//! (`generated::tm::OCF_INITIAL`) until the uplink sets one. The uplink calls it with
-//! `Farm1::clcw` after the frames delivered in step 1 (§4.4.1, APP-134).
+//! **The CLCW.** At each slot the OCF takes `Farm1::clcw` of the node's uplink, after the frames
+//! delivered in step 1 (§4.4.1, APP-134); it is `01 00 00 00` (`generated::tm::OCF_INITIAL`) until
+//! FARM-1 changes it.
 
 use aldis::core::crc::write_fecf;
 use aldis::core::engine::Actions;
@@ -30,7 +29,6 @@ use aldis::link::mux::{
 };
 use aldis::link::policy::MuxPolicy;
 use aldis::link::protocol::{Tm, TmParams};
-use aldis::tc::Clcw;
 use refapp_scenario::generated::{SPACECRAFT_ID, tm};
 use refapp_scenario::{Duration, Instant, Output};
 
@@ -333,27 +331,6 @@ impl Output for Tap<'_> {
 }
 
 impl FlightNode {
-    /// A flight node whose downlink unit is the TM frame (A2, §6.1): one frame at every step with
-    /// `tx_slot` and none otherwise (APP-090). [`FlightNode::new`] is the packet level of A1.
-    ///
-    /// # Errors
-    /// The engines' configuration errors, which the scenario's values rule out.
-    pub fn new_frames() -> Result<FlightNode> {
-        Ok(FlightNode {
-            frames: Some(FrameDownlink::new()?),
-            ..FlightNode::default()
-        })
-    }
-
-    /// Sets the CLCW that the OCF of the next downlink frames carries (APP-031, APP-134). The
-    /// uplink calls it with `Farm1::clcw` after the frames delivered at the instant (§4.4.1). A
-    /// node at packet level has no OCF and ignores it.
-    pub const fn set_clcw(&mut self, clcw: &Clcw) {
-        if let Some(frames) = self.frames.as_mut() {
-            frames.ocf = clcw.to_octets();
-        }
-    }
-
     /// The tap for a packet of `stream` generated at `at`.
     pub(crate) fn tap<'a>(
         frames: Option<&'a mut FrameDownlink>,
@@ -403,6 +380,11 @@ impl FlightNode {
     pub(crate) fn downlink_frame(&mut self, tx_slot: bool, now: Instant, out: &mut dyn Output) {
         if !tx_slot {
             return;
+        }
+        // The OCF takes FARM-1's CLCW after the step-1 deliveries (§4.4.1, APP-134).
+        let clcw = self.clcw();
+        if let (Some(frames), Some(clcw)) = (self.frames.as_mut(), clcw) {
+            frames.ocf = clcw.to_octets();
         }
         if let Some(Err(e)) = self.frames.as_mut().map(|f| f.slot(now, out)) {
             self.slot_failed(e.kind(), out);

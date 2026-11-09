@@ -8,10 +8,11 @@ use std::vec::Vec;
 use aldis::core::crc::verify_fecf;
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SpacePacketWriter, SppConfig};
-use aldis::tc::{Clcw, FarmBCounter};
+use aldis::tc::SequenceFlags as TcFlags;
 use refapp_scenario::generated::{SPACECRAFT_ID, apid, time, tm};
 use refapp_scenario::{Delivered, Instant, Node, StepInput};
 
+use crate::frames_up::tests::bd_frame;
 use crate::tests::{At, Out, Rec};
 use crate::{FlightNode, PayloadMode};
 
@@ -41,10 +42,10 @@ fn command(seq: u16, function: u8, at: u64, args: &[u8]) -> Vec<u8> {
 }
 
 /// The commands of the nominal timeline (§2.4) that the downlink sees, delivered at their release
-/// instants as packets (the uplink at frame level is WP-3b's). The table upload is left out: the
+/// instants as Type-BD frames of the uplink (§4.2). The table upload is left out: the
 /// `ACTIVATE_TABLE` is then rejected with `TABLE_REJECTED`, an event packet of the same size.
 fn nominal_commands() -> Vec<(u64, Vec<u8>)> {
-    std::vec![
+    let packets = std::vec![
         (1_000_000, command(0, 1, 6_000_000, &[])),
         (3_000_000, command(1, 3, 10_000_000, &[1, 0x0C, 0x4F])),
         (
@@ -54,7 +55,11 @@ fn nominal_commands() -> Vec<(u64, Vec<u8>)> {
         (5_000_000, command(3, 4, 20_000_000, &[0])),
         (5_000_000, command(4, 1, 20_000_000, &[])),
         (6_000_000, command(5, 4, 24_000_000, &[1])),
-    ]
+    ];
+    packets
+        .into_iter()
+        .map(|(at, packet)| (at, bd_frame(0, TcFlags::Unsegmented, 0, &packet)))
+        .collect()
 }
 
 /// A node at frame level with the output of every step.
@@ -408,7 +413,10 @@ fn oid_frames_use_vc_7_and_the_generator_that_is_never_restarted() {
 #[test]
 fn the_ocf_is_the_initial_clcw_in_every_frame_oid_frames_included() {
     // req: APP-031, APP-134
-    let frames = nominal().frames();
+    // No uplink frame is delivered, so FARM-1 reports the initial word.
+    let mut run = Run::new();
+    run.run(&[]);
+    let frames = run.frames();
     assert!(
         frames
             .iter()
@@ -418,15 +426,15 @@ fn the_ocf_is_the_initial_clcw_in_every_frame_oid_frames_included() {
 }
 
 #[test]
-fn the_clcw_set_by_the_uplink_is_in_the_next_frame_and_stays() {
+fn the_clcw_after_an_uplink_frame_is_in_the_next_downlink_frame_and_stays() {
     // req: APP-134, APP-043
     let mut run = Run::new();
     run.step(0, true, &[]);
-    let mut clcw = Clcw::decode(tm::OCF_INITIAL.to_be_bytes()).unwrap();
-    clcw.farm_b_counter = FarmBCounter::new(1).unwrap();
-    run.node.set_clcw(&clcw);
-    // An OID frame and a data frame both carry it.
-    run.step(SLOT, true, &[]);
+    // A Type-BD frame delivered at the slot is accepted in step 1, so FARM-B counter 1 is in the
+    // frame of the same slot (§4.4.1).
+    let noop = command(0, 1, 6_000_000, &[]);
+    let uplink = bd_frame(0, TcFlags::Unsegmented, 0, &noop);
+    run.step(SLOT, true, &[uplink]);
     run.step(2 * SLOT, true, &[]);
     let frames = run.frames();
     let ocfs: Vec<[u8; 4]> = frames.iter().map(|f| Frame { octets: f }.ocf()).collect();
@@ -487,7 +495,6 @@ fn a_packet_node_still_outputs_its_packets_as_units() {
     };
     node.step(&input, &mut At(0, &mut rec));
     assert!(matches!(rec.0.last(), Some((_, Out::Unit(u))) if u.len() == 44));
-    node.set_clcw(&Clcw::decode(tm::OCF_INITIAL.to_be_bytes()).unwrap());
     assert_eq!(node.status().payload_mode, PayloadMode::On);
 }
 
