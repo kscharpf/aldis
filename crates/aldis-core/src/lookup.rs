@@ -20,10 +20,12 @@ pub trait ChannelLookup<S, V> {
     type Vc;
 
     /// Whether `scid` is a valid Spacecraft ID of the physical channel, so that a frame of it
-    /// has an expected Master Channel Identifier.
+    /// has an expected Master Channel Identifier (TM 132.0 §5.2 Table 5-2; AOS 732.0 §4.3.6.3,
+    /// Table 5-1; TC 232.0 §4.4.9.3.3 b, Table 5-1; USLP 732.1 §4.3.11.3.4 b).
     fn has_spacecraft(&self, scid: S) -> bool;
 
-    /// The virtual channel (`scid`, `vcid`), or `None` if it is not valid.
+    /// The virtual channel (`scid`, `vcid`), or `None` if it is not valid (TM 132.0 §5.2; AOS
+    /// 732.0 §4.3.5.4, Table 5-2; TC 232.0 §4.4.7.3; USLP 732.1 §4.3.11.3.4 c).
     fn vc(&self, scid: S, vcid: V) -> Option<Self::Vc>;
 
     /// The one Spacecraft ID this lookup is configured for, if it has exactly one; an error
@@ -38,7 +40,8 @@ pub trait MapLookup<S, V, M>: ChannelLookup<S, V> {
     /// What a MAP carries for the decoder.
     type Map;
 
-    /// The MAP (`scid`, `vcid`, `map_id`), or `None` if it is not valid.
+    /// The MAP (`scid`, `vcid`, `map_id`), or `None` if it is not valid (TC 232.0 §4.4.3.3,
+    /// Table 5-4; USLP 732.1 Table 5-4).
     fn map(&self, scid: S, vcid: V, map_id: M) -> Option<Self::Map>;
 }
 
@@ -47,12 +50,12 @@ pub trait PhysicalLookup {
     /// The configuration of the Physical Channel.
     type Physical;
 
-    /// The Physical Channel.
+    /// The Physical Channel (TC 232.0 Table 5-1; USLP 732.1 Table 5-1).
     fn physical_channel(&self) -> Self::Physical;
 }
 
 /// A physical channel that carries several master channels: the first lookup that accepts the
-/// Spacecraft ID answers (132.0 §6.6).
+/// Spacecraft ID answers (GEN-060; the clauses of each standard are on the alias of its codec crate).
 impl<S: Copy, V, T: ChannelLookup<S, V>> ChannelLookup<S, V> for [T] {
     type Vc = T::Vc;
 
