@@ -4,6 +4,7 @@
 use core::fmt::Write as _;
 use core::hint::black_box as bb;
 
+use aldis_core::lookup::{ChannelLookup as _, MapLookup as _, PhysicalLookup as _};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
@@ -13,8 +14,8 @@ use aldis_uslp::{
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
     TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
-    UslpSpacecraftId, UslpVcId, VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen,
-    encode, encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, encode,
+    encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
     validate_frame_lenient,
 };
 

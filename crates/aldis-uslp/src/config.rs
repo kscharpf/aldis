@@ -16,6 +16,7 @@
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 
 use aldis_core::layout::{FrameLayout, LayoutSpec};
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
@@ -413,32 +414,30 @@ impl MapConfig {
     }
 }
 
-/// Looks up the managed parameters of the channels a frame may belong to (M2 plan D14;
-/// GEN-060, USLP-014, USLP-015).
+/// The lookup of the channels a frame may belong to (GEN-060, USLP-014, USLP-015).
 ///
-/// [`VcTable`] implements it. Another implementation must answer consistently: a VC that
-/// [`vc`](Self::vc) finds belongs to a Spacecraft ID that
-/// [`has_spacecraft`](Self::has_spacecraft) accepts, and obeys the rules [`VcTable::new`]
-/// checks.
-pub trait VcLookup {
-    /// The Physical Channel (732.1 Table 5-1).
-    fn physical_channel(&self) -> PhysicalChannelConfig;
-    /// Whether `spacecraft_id` names a Master Channel of the Physical Channel, so that the
-    /// frame has an expected MCID (732.1 §4.3.11.3.4 b).
-    fn has_spacecraft(&self, spacecraft_id: UslpSpacecraftId) -> bool;
-    /// The VC (`spacecraft_id`, `vc_id`), or `None` if it is not valid (§4.3.11.3.4 c).
-    ///
-    /// [`VcTable`] answers VCID 63 of a known Spacecraft ID on a fixed-length Physical Channel
-    /// even when it was not given: the value "all ones" is always valid there (Table 5-2 note
-    /// 2).
-    fn vc(&self, spacecraft_id: UslpSpacecraftId, vc_id: UslpVcId) -> Option<VcConfig>;
-    /// The MAP (`spacecraft_id`, `vc_id`, `map_id`), or `None` if it is not valid.
-    fn map(
-        &self,
-        spacecraft_id: UslpSpacecraftId,
-        vc_id: UslpVcId,
-        map_id: UslpMapId,
-    ) -> Option<MapConfig>;
+/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is a [`VcConfig`], a
+/// [`MapLookup`] whose MAP is a [`MapConfig`], and a [`PhysicalLookup`] of the Physical Channel
+/// (732.1 Table 5-1; M2 plan D14).
+///
+/// A bound alias, implemented for every such lookup; implement the three traits. [`VcTable`]
+/// implements them. Another implementation must answer consistently: a VC that `vc` finds
+/// belongs to a Spacecraft ID that `has_spacecraft` accepts (732.1 §4.3.11.3.4 b, c), and obeys
+/// the rules [`VcTable::new`] checks.
+pub trait VcLookup:
+    ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+    + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+    + PhysicalLookup<Physical = PhysicalChannelConfig>
+{
+}
+
+impl<
+    T: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> VcLookup for T
+{
 }
 
 /// The layout of a non-truncated frame of `spec`, the Insert Zone in the secondary slot and the
@@ -458,7 +457,7 @@ fn check_room(
     vc: &VcConfig,
     security: SecurityLayout,
 ) -> Result<()> {
-    let spec = LayoutSpec {
+    LayoutSpec {
         frame_len: physical.frame_len,
         primary_header_len: PRIMARY_HEADER_LEN.saturating_add(vc.longest_vcf_count()),
         secondary_len: physical.insert_zone_len,
@@ -468,9 +467,8 @@ fn check_room(
             OcfUse::Allowed | OcfUse::Required => true,
         },
         fecf: physical.fecf,
-    };
-    frame_layout(&spec, vc.fixed_tfdz()).ok_or(bad(field::FRAME_DATA_FIELD))?;
-    Ok(())
+    }
+    .check_room(crate::tfdf::header_len(vc.fixed_tfdz()))
 }
 
 /// The channels of one Physical Channel, with room for `V` Virtual Channels and `M` MAPs
@@ -613,10 +611,16 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     }
 }
 
-impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
+impl<const V: usize, const M: usize> PhysicalLookup for VcTable<V, M> {
+    type Physical = PhysicalChannelConfig;
+
     fn physical_channel(&self) -> PhysicalChannelConfig {
         self.physical
     }
+}
+
+impl<const V: usize, const M: usize> ChannelLookup<UslpSpacecraftId, UslpVcId> for VcTable<V, M> {
+    type Vc = VcConfig;
 
     fn has_spacecraft(&self, spacecraft_id: UslpSpacecraftId) -> bool {
         self.vcs().any(|vc| vc.spacecraft_id == spacecraft_id)
@@ -636,6 +640,12 @@ impl<const V: usize, const M: usize> VcLookup for VcTable<V, M> {
             })
         })
     }
+}
+
+impl<const V: usize, const M: usize> MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId>
+    for VcTable<V, M>
+{
+    type Map = MapConfig;
 
     fn map(
         &self,
@@ -664,10 +674,11 @@ pub(crate) const fn frame_security(vc: &VcConfig, map: Option<&MapConfig>) -> Se
 pub(crate) mod tests {
     use super::{
         MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType,
-        TruncatedFrameLen, VcConfig, VcLookup, VcParams, VcTable, frame_security,
+        TruncatedFrameLen, VcConfig, VcParams, VcTable, frame_security,
     };
     use crate::field;
     use crate::header::{UslpMapId, UslpSpacecraftId, UslpVcId, VcfCountLen};
+    use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
     use aldis_core::security::SecurityLayout;
     use aldis_core::{Error, ErrorKind, FieldId};
 

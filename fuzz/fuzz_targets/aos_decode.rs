@@ -10,10 +10,11 @@
 use aldis_aos::{
     AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
     AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu, CorrectedSymbols,
-    DataFieldContent, DataUnit, Mpdu, PacketPointer, PduHeader, VcLookup, VcTable, encode,
+    DataFieldContent, DataUnit, Mpdu, PacketPointer, PduHeader, VcTable, encode,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
+use aldis_core::lookup::ChannelLookup as _;
 use aldis_core::security::SecurityLayout;
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;

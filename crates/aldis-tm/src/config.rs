@@ -14,6 +14,7 @@
 
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
+use aldis_core::lookup::ChannelLookup;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, Result};
 
@@ -320,36 +321,55 @@ impl TmMasterChannelConfig {
     }
 }
 
-/// Finds the Security Header and Trailer lengths of a frame's virtual channel, which a decoder
-/// needs to place the data field (132.0 §6.3, Table 6-1; API-070, M2 plan D14).
+/// The lookup of the Security Header and Trailer lengths of a frame's virtual channel (API-070).
 ///
-/// Implemented by [`TmMasterChannelConfig`], by a slice of them for a physical channel that
-/// carries several master channels, and by [`NoSdls`] for a channel on which no VC uses SDLS.
-pub trait VcLookup {
-    /// The security layout of virtual channel `vcid` of spacecraft `scid` (API-070).
-    ///
-    /// # Errors
-    /// `UnknownChannel` (`spacecraft_id` or `vc_id`) if the channel is not configured.
-    fn security_layout(&self, scid: SpacecraftId<10>, vcid: VcId<3>) -> Result<SecurityLayout>;
-}
+/// A decoder needs them to place the data field (132.0 §6.3, Table 6-1; M2 plan D14). A
+/// [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is its [`SecurityLayout`].
+/// A bound alias, implemented for every such lookup; implement `ChannelLookup`. Implemented by
+/// [`TmMasterChannelConfig`], by a slice of them for a physical channel that carries several
+/// master channels, and by [`NoSdls`] for a channel on which no VC uses SDLS.
+pub trait VcLookup: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> {}
 
-impl VcLookup for TmMasterChannelConfig {
-    fn security_layout(&self, scid: SpacecraftId<10>, vcid: VcId<3>) -> Result<SecurityLayout> {
-        if scid != self.scid {
-            return Err(unknown_scid(scid, self.scid));
-        }
-        self.vc(vcid)
-            .map(TmVirtualChannelConfig::security)
-            .ok_or(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))
+impl<T: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized> VcLookup for T {}
+
+/// The security layout of virtual channel `vcid` of spacecraft `scid` (API-070).
+///
+/// # Errors
+/// `UnknownChannel` (`spacecraft_id`, with the expected value if the lookup has one Spacecraft
+/// ID) if `scid` is not configured; (`vc_id`) if the channel is not.
+pub fn security_layout<L: VcLookup + ?Sized>(
+    vcs: &L,
+    scid: SpacecraftId<10>,
+    vcid: VcId<3>,
+) -> Result<SecurityLayout> {
+    if let Some(layout) = vcs.vc(scid, vcid) {
+        Ok(layout)
+    } else if vcs.has_spacecraft(scid) {
+        Err(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))
+    } else if let Some(expected) = vcs.sole_spacecraft() {
+        Err(unknown_scid(scid, expected))
+    } else {
+        Err(Error::new(ErrorKind::UnknownChannel).with_field(field::SPACECRAFT_ID))
     }
 }
 
-impl VcLookup for [TmMasterChannelConfig] {
-    fn security_layout(&self, scid: SpacecraftId<10>, vcid: VcId<3>) -> Result<SecurityLayout> {
-        self.iter()
-            .find(|mc| mc.scid == scid)
-            .ok_or(Error::new(ErrorKind::UnknownChannel).with_field(field::SPACECRAFT_ID))?
-            .security_layout(scid, vcid)
+impl ChannelLookup<SpacecraftId<10>, VcId<3>> for TmMasterChannelConfig {
+    type Vc = SecurityLayout;
+
+    fn has_spacecraft(&self, scid: SpacecraftId<10>) -> bool {
+        scid == self.scid
+    }
+
+    fn vc(&self, scid: SpacecraftId<10>, vcid: VcId<3>) -> Option<SecurityLayout> {
+        if self.has_spacecraft(scid) {
+            TmMasterChannelConfig::vc(self, vcid).map(TmVirtualChannelConfig::security)
+        } else {
+            None
+        }
+    }
+
+    fn sole_spacecraft(&self) -> Option<SpacecraftId<10>> {
+        Some(self.scid)
     }
 }
 
@@ -368,9 +388,15 @@ pub(crate) fn unknown_scid(found: SpacecraftId<10>, expected: SpacecraftId<10>) 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct NoSdls;
 
-impl VcLookup for NoSdls {
-    fn security_layout(&self, _: SpacecraftId<10>, _: VcId<3>) -> Result<SecurityLayout> {
-        Ok(SecurityLayout::NONE)
+impl ChannelLookup<SpacecraftId<10>, VcId<3>> for NoSdls {
+    type Vc = SecurityLayout;
+
+    fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
+        true
+    }
+
+    fn vc(&self, _: SpacecraftId<10>, _: VcId<3>) -> Option<SecurityLayout> {
+        Some(SecurityLayout::NONE)
     }
 }
 
@@ -382,7 +408,7 @@ mod tests {
 
     use super::{
         DataFieldContent, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
-        TmVirtualChannelConfig, VcLookup,
+        TmVirtualChannelConfig, security_layout,
     };
     use crate::field;
     use crate::header::FshLen;
@@ -516,8 +542,8 @@ mod tests {
                 .unwrap()
         };
         let one = mc(7);
-        assert_eq!(one.security_layout(scid(7), vcid(2)), Ok(sec));
-        let e = one.security_layout(scid(8), vcid(2)).unwrap_err();
+        assert_eq!(security_layout(&one, scid(7), vcid(2)), Ok(sec));
+        let e = security_layout(&one, scid(8), vcid(2)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -529,20 +555,20 @@ mod tests {
                 }
             )
         );
-        let e = one.security_layout(scid(7), vcid(3)).unwrap_err();
+        let e = security_layout(&one, scid(7), vcid(3)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::UnknownChannel, Some(field::VC_ID))
         );
         let many = [mc(7), mc(9)];
-        assert_eq!(many[..].security_layout(scid(9), vcid(2)), Ok(sec));
-        let e = many[..].security_layout(scid(8), vcid(2)).unwrap_err();
+        assert_eq!(security_layout(&many[..], scid(9), vcid(2)), Ok(sec));
+        let e = security_layout(&many[..], scid(8), vcid(2)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
         assert_eq!(
-            NoSdls.security_layout(scid(1023), vcid(7)),
+            security_layout(&NoSdls, scid(1023), vcid(7)),
             Ok(SecurityLayout::NONE)
         );
     }

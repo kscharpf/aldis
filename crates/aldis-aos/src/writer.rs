@@ -731,13 +731,14 @@ mod tests {
     };
     use crate::bpdu::{BitstreamPointer, ValidBitCount};
     use crate::config::tests::{pc, scid, starts_at, vc, vcid};
-    use crate::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcLookup, VcTable};
+    use crate::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcTable};
     use crate::field;
     use crate::header::{FrameCountCycle, OID_VCID, VcFrameCount};
     use crate::mpdu::PacketPointer;
     use crate::view::{AosFrame, DataUnit};
     use aldis_core::crc::syndrome;
     use aldis_core::ids::{SpacecraftId, VcId};
+    use aldis_core::lookup::ChannelLookup;
     use aldis_core::ocf::Ocf;
     use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
     use aldis_core::security::{
@@ -1101,7 +1102,9 @@ mod tests {
     /// might.
     struct Any(AosVirtualChannelConfig);
 
-    impl VcLookup for Any {
+    impl ChannelLookup<SpacecraftId<10>, VcId<6>> for Any {
+        type Vc = AosVirtualChannelConfig;
+
         fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
             true
         }
