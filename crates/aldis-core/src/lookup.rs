@@ -20,7 +20,7 @@ pub trait ChannelLookup<S, V> {
     type Vc;
 
     /// Whether `scid` is a valid Spacecraft ID of the physical channel, so that a frame of it
-    /// has an expected Master Channel Identifier (TM 132.0 §5.2 Table 5-2; AOS 732.0 §4.3.6.3,
+    /// has an expected Master Channel Identifier (TM 132.0 §4.3.6.3, Table 5-1; AOS 732.0 §4.3.6.3,
     /// Table 5-1; TC 232.0 §4.4.9.3.3 b, Table 5-1; USLP 732.1 §4.3.11.3.4 b).
     fn has_spacecraft(&self, scid: S) -> bool;
 
