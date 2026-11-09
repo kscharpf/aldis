@@ -8,6 +8,7 @@
 
 use refapp_scenario::{Apid, Delivered, Instant, Node, Output, StepInput};
 
+use crate::micros::Micros;
 use crate::scenario::{Case, Direction, Fault, FaultEntry, Level, Link, Scenario};
 use crate::trace::{Dir, FaultKind, Header, NodeId, Record};
 
@@ -41,8 +42,8 @@ impl Output for Recorder {
 /// A unit on its way through the link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Arrival {
-    at: u64,
-    sent_at: u64,
+    at: Micros,
+    sent_at: Micros,
     dir: Dir,
     index: u64,
     copy: u8,
@@ -51,7 +52,7 @@ struct Arrival {
 
 impl Arrival {
     /// Arrival instant, then the tie order of §6.2 step 1.
-    const fn order(&self) -> (u64, u64, Dir, u64, u8) {
+    const fn order(&self) -> (Micros, Micros, Dir, u64, u8) {
         (self.at, self.sent_at, self.dir, self.index, self.copy)
     }
 }
@@ -60,21 +61,21 @@ impl Arrival {
 struct Side<'n> {
     id: NodeId,
     node: &'n mut dyn Node,
-    deadline: Option<u64>,
+    deadline: Option<Micros>,
     /// Direction of the units this node sends.
     tx_dir: Dir,
     /// Slot period of that direction (A2 on).
-    slot_us: u64,
+    slot_us: Micros,
     next_index: u64,
     /// Release instants of the ops script this node receives (ground only).
-    ops_us: Vec<u64>,
+    ops_us: Vec<Micros>,
     /// Entries of `ops_us` already passed to the node.
     ops_done: usize,
 }
 
 impl Side<'_> {
     /// Release instant of the first ops entry not yet passed.
-    fn next_op(&self) -> Option<u64> {
+    fn next_op(&self) -> Option<Micros> {
         self.ops_us.get(self.ops_done).copied()
     }
 }
@@ -98,8 +99,12 @@ const fn dir_of(d: Direction) -> Dir {
 }
 
 /// Next multiple of `period` strictly after `t`.
-fn next_slot(t: u64, period: u64) -> Option<u64> {
-    t.checked_div(period)?.checked_add(1)?.checked_mul(period)
+fn next_slot(t: Micros, period: Micros) -> Option<Micros> {
+    let (t, period) = (t.get(), period.get());
+    t.checked_div(period)?
+        .checked_add(1)?
+        .checked_mul(period)
+        .map(Micros::new)
 }
 
 /// Runs a case with the given nodes and returns the trace (§7).
@@ -143,9 +148,9 @@ pub fn records(
         node: ground,
         deadline: None,
         tx_dir: Dir::Up,
-        slot_us: link.uplink_slot_us.get().get(),
+        slot_us: link.uplink_slot_us.get(),
         next_index: 0,
-        ops_us: case.ops.iter().map(|e| e.at_us().get()).collect(),
+        ops_us: case.ops.iter().map(|e| e.at_us()).collect(),
         ops_done: 0,
     };
     let mut flight = Side {
@@ -153,7 +158,7 @@ pub fn records(
         node: flight,
         deadline: None,
         tx_dir: Dir::Down,
-        slot_us: link.frame_slot_us.get().get(),
+        slot_us: link.frame_slot_us.get(),
         next_index: 0,
         ops_us: Vec::new(),
         ops_done: 0,
@@ -174,8 +179,8 @@ pub fn records(
             i + 1
         ));
     }
-    let mut t = 0;
-    while t < case.end_us.get() {
+    let mut t = Micros::default();
+    while t < case.end_us {
         let (to_ground, to_flight) = deliver(&mut world, t);
         // Steps 2 and 3 of §6.2: the ground node, then the flight node.
         step(&mut world, &mut ground, t, &to_ground)?;
@@ -191,10 +196,7 @@ pub fn records(
         .flatten()
         .min();
         if case.level == Level::Frames {
-            for period in [
-                link.frame_slot_us.get().get(),
-                link.uplink_slot_us.get().get(),
-            ] {
+            for period in [link.frame_slot_us.get(), link.uplink_slot_us.get()] {
                 next = next.into_iter().chain(next_slot(t, period)).min();
             }
         }
@@ -215,7 +217,7 @@ pub fn records(
 
 /// Step 1 of §6.2: delivers the arrivals due at `t`, in tie order. Returns the units for the
 /// ground node and for the flight node.
-fn deliver(world: &mut World<'_>, t: u64) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
+fn deliver(world: &mut World<'_>, t: Micros) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
     world.in_flight.sort_by_key(Arrival::order);
     let due = world.in_flight.iter().take_while(|a| a.at == t).count();
     let mut to_ground = Vec::new();
@@ -239,12 +241,12 @@ fn deliver(world: &mut World<'_>, t: u64) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
 fn step(
     world: &mut World<'_>,
     side: &mut Side<'_>,
-    t: u64,
+    t: Micros,
     delivered: &[Vec<u8>],
 ) -> Result<(), String> {
     let slot = match world.level {
         Level::Packets => true,
-        Level::Frames => t.checked_rem(side.slot_us) == Some(0),
+        Level::Frames => t.is_multiple_of(side.slot_us),
     };
     let ops_from = side.ops_done;
     // bound: each pass takes one entry of the script, and `ops_done` stops at its length.
@@ -255,7 +257,7 @@ fn step(
         .map(u16::try_from)
         .collect::<Result<Vec<u16>, _>>()
         .map_err(|_| "ops script has more than 65 536 entries".to_owned())?;
-    let due = t == 0
+    let due = t == Micros::default()
         || !delivered.is_empty()
         || !ops.is_empty()
         || slot
@@ -265,13 +267,13 @@ fn step(
     }
     let units: Vec<&[u8]> = delivered.iter().map(Vec::as_slice).collect();
     let input = StepInput {
-        now: Instant::from_micros(t),
+        now: Instant::from_micros(t.get()),
         delivered: Delivered::new(&units),
         ops: &ops,
         tx_slot: slot,
     };
     let mut out = Recorder::default();
-    let deadline = side.node.step(&input, &mut out).map(Instant::as_micros);
+    let deadline = side.node.step(&input, &mut out).map(|i| Micros::new(i.as_micros()));
     let name = side.id.as_str();
     if let Some(d) = deadline.filter(|d| *d <= t) {
         return Err(format!(
@@ -330,11 +332,11 @@ fn step(
 
 /// Sends a unit into the link: records the faults scripted for it (before its `unit_sent`,
 /// §7.3) and queues the arrivals they leave (§6.3).
-fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> Result<(), String> {
+fn send(world: &mut World<'_>, dir: Dir, index: u64, t: Micros, octets: &[u8]) -> Result<(), String> {
     let mut octets = octets.to_vec();
     let mut dropped = false;
     let mut copies = 1u8;
-    let mut extra_delay = 0u64;
+    let mut extra_delay = Micros::default();
     for (i, f) in world.faults.iter().enumerate() {
         if dir_of(f.dir) != dir || f.index != index {
             continue;
@@ -352,7 +354,7 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
                 (FaultKind::Duplicate, vec![])
             }
             Fault::Delay { delay_us } => {
-                extra_delay = extra_delay.saturating_add(delay_us.get());
+                extra_delay = extra_delay.saturating_add(delay_us);
                 (FaultKind::Delay, vec![delay_us.get()])
             }
             Fault::Truncate { octets: n } => {
@@ -395,8 +397,7 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
         });
     }
     if !dropped {
-        let at = t
-            .saturating_add(world.link.one_way_delay_us.get())
+        let at = t.saturating_add(world.link.one_way_delay_us)
             .saturating_add(extra_delay);
         for copy in 0..copies {
             world.in_flight.push(Arrival {
@@ -415,13 +416,15 @@ fn send(world: &mut World<'_>, dir: Dir, index: u64, t: u64, octets: &[u8]) -> R
 #[cfg(test)]
 mod tests {
     use super::next_slot;
+    use crate::micros::Micros;
 
     #[test]
     fn slots() {
         // req: APP-071
-        assert_eq!(next_slot(0, 125_000), Some(125_000));
-        assert_eq!(next_slot(124_999, 125_000), Some(125_000));
-        assert_eq!(next_slot(125_000, 125_000), Some(250_000));
-        assert_eq!(next_slot(1, 0), None);
+        let slot = Micros::new(125_000);
+        assert_eq!(next_slot(Micros::new(0), slot), Some(slot));
+        assert_eq!(next_slot(Micros::new(124_999), slot), Some(slot));
+        assert_eq!(next_slot(slot, slot), Some(Micros::new(250_000)));
+        assert_eq!(next_slot(Micros::new(1), Micros::default()), None);
     }
 }
