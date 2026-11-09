@@ -139,13 +139,14 @@ A2 is complete when every item below is green on `main`. Requirements of the sce
 | Order, sampling, and deadlines at frame level | APP-132, APP-133, APP-134, APP-135 | |
 | Link-engine parameters | APP-136 | |
 | Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | |
+| Harness rules at frame level | APP-141 | |
 | Frame-level events | APP-138, APP-139, APP-131 (frames) | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
 | Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS entry gate updated | |
 
-The IDs of WP-1 (APP-132 to APP-140) joined the table in its pull request.
+The IDs of WP-1 (APP-132 to APP-140) joined the table in its pull request; APP-141 (no immediate or delivery-rejected command at frame level, maintainer decision of 2026-11-08, [#374](https://github.com/kscharpf/aldis/issues/374)) joined it in the WP-2 pull request.
 
 ## 5. Risks
 

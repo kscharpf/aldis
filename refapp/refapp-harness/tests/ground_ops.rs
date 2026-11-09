@@ -40,7 +40,7 @@ fn every_a1_case_releases_its_script_at_its_instants() {
         assert_eq!(released.len(), case.ops.len(), "{id}: one packet per entry");
         for (line, entry) in released.iter().zip(&case.ops) {
             assert!(
-                line.starts_with(&format!("{{\"t_us\":{},", entry.at_us())),
+                line.starts_with(&format!("{{\"t_us\":{},", entry.at_us().get())),
                 "{id}: {line}"
             );
         }
