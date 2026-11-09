@@ -538,7 +538,7 @@ fn a_packet_a_generator_cannot_take_raises_downlink_refused_and_is_counted() {
         .filter(|(_, o)| matches!(o, Out::Packet(a, _) if *a == apid::HOUSEKEEPING))
         .count();
     assert_eq!(built, 30);
-    assert!(run.frames().is_empty());
+    assert_eq!(run.frames().len(), 0);
 }
 
 #[test]
