@@ -18,6 +18,7 @@ use refapp_scenario::{Delivered, Instant, Node, StepInput};
 
 use super::APP_FRAME_REJECTED;
 use super::APP_SEQUENCE_VIOLATION;
+use super::APP_UNKNOWN_MAP;
 use crate::FlightNode;
 use crate::tests::{At, Out, Rec};
 
@@ -275,24 +276,19 @@ fn a_frame_for_another_vc_is_rejected_and_not_counted() {
 }
 
 #[test]
-fn a_frame_for_another_map_is_rejected_and_not_counted() {
-    // req: APP-139, APP-041, TC-021, TC-022
-    // The strict codec refuses the MAP ID at validation, so FARM-1 does not count the frame and
-    // `unknown_map` (111) is not raised. The Blue Book reads otherwise (232.0 §4.4.3.3,
-    // §4.4.9.3.3): OI-98.
+fn a_frame_for_another_map_is_counted_and_raises_unknown_map() {
+    // req: APP-139, APP-041, APP-043, LNK-070, TC-022
+    // The Frame Validation Checks do not look at the Segment Header (232.0 §4.4.9.3.3), so the
+    // frame passes and FARM-1 accepts it and counts it (232.1 Table 6-1 E6); the MAP
+    // Demultiplexing Function then discards its FDU (232.0 §4.4.3.3, §4.4.5): OI-98.
     let mut run = Run::new();
     run.deliver(
         1_010_000,
         &[bd_frame(0, SequenceFlags::Unsegmented, 5, &noop(0))],
     );
-    assert_eq!(
-        run.app_events(),
-        [(
-            APP_FRAME_REJECTED,
-            std::vec![code(ErrorKind::UnknownChannel)]
-        )]
-    );
-    assert_eq!(run.ocf_word(), 0x0100_0000);
+    assert_eq!(run.app_events(), [(APP_UNKNOWN_MAP, std::vec![5])]);
+    // The FARM-B Counter (CLCW bits 17 and 18 counted from the least significant bit) is 1.
+    assert_eq!(run.ocf_word(), 0x0100_0200);
 }
 
 #[test]
