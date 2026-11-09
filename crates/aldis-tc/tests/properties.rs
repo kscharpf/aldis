@@ -24,10 +24,7 @@ const REGRESSIONS: &str = concat!(
 
 /// Whether the reason is a channel the configuration does not hold (TC-022).
 const fn unknown_channel(reason: Reason) -> bool {
-    matches!(
-        reason,
-        Reason::UnexpectedSpacecraft | Reason::InvalidVcid | Reason::InvalidMapId
-    )
+    matches!(reason, Reason::UnexpectedSpacecraft | Reason::InvalidVcid)
 }
 
 proptest! {

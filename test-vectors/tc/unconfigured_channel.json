@@ -240,6 +240,130 @@
         "consumed": 10,
         "anomalies": []
       }
+    },
+    {
+      "id": "tc-open-val-001",
+      "requirements": [
+        "TC-021",
+        "TC-022",
+        "TC-023"
+      ],
+      "description": "MAP 7 on VC 2 is not configured: the frame passes the Frame Validation Checks, strict (232.0 §4.4.9.3.3 checks the header and the FECF); the MAP Demultiplexing Function discards its FDU after FARM-1 (§4.4.3.3, §4.4.5)",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155080900C70102F0F7",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 10
+      }
+    },
+    {
+      "id": "tc-open-val-002",
+      "requirements": [
+        "TC-021",
+        "TC-022",
+        "TC-023"
+      ],
+      "description": "MAP 7 on VC 2 is not configured: the frame passes the Frame Validation Checks, lenient (232.0 §4.4.9.3.3 checks the header and the FECF); the MAP Demultiplexing Function discards its FDU after FARM-1 (§4.4.3.3, §4.4.5)",
+      "operation": "validate",
+      "mode": "lenient",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": true,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          },
+          {
+            "scid": 341,
+            "vcid": 3,
+            "max_frame_len": 1024,
+            "segment_header": false,
+            "security_header_len": 4,
+            "security_trailer_len": 2
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9,
+            "security_header_len": 3,
+            "security_trailer_len": 1
+          }
+        ]
+      },
+      "input_hex": "0155080900C70102F0F7",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 10
+      }
     }
   ]
 }

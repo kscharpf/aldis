@@ -53,8 +53,6 @@ pub enum DiscardReason {
     LengthMismatch,
     /// 9, check (e): FECF does not match recomputed CRC (§4.1.4.3; TC-006).
     FecfMismatch,
-    /// 10: MAP ID of the Segment Header is not valid on the VC (§4.4.3.3; TC-022).
-    InvalidMapId,
     /// 11, strict mode only: Type-C data field is not a recognized command (§4.1.3.3.4; TC-005).
     ReservedControlCommand,
 }
@@ -62,7 +60,7 @@ pub enum DiscardReason {
 impl DiscardReason {
     /// Stable numeric code for C ABI and telemetry classification.
     ///
-    /// Codes 1–11 match the CCSDS Frame Validation Check reasons; 20 is Fill, 21 is `TruncatedFrame`, and 22 is `LeftoverFill`.
+    /// Codes 1–9 and 11 match the CCSDS Frame Validation Check reasons (10 is retired); 20 is Fill, 21 is `TruncatedFrame`, and 22 is `LeftoverFill`.
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -75,7 +73,6 @@ impl DiscardReason {
             DiscardReason::FrameTooShort => 7,
             DiscardReason::LengthMismatch => 8,
             DiscardReason::FecfMismatch => 9,
-            DiscardReason::InvalidMapId => 10,
             DiscardReason::ReservedControlCommand => 11,
             DiscardReason::Fill => 20,
             DiscardReason::TruncatedFrame { .. } => 21,
@@ -96,7 +93,6 @@ impl DiscardReason {
             DiscardReason::FrameTooShort => Some(Reason::FrameTooShort),
             DiscardReason::LengthMismatch => Some(Reason::LengthMismatch),
             DiscardReason::FecfMismatch => Some(Reason::FecfMismatch),
-            DiscardReason::InvalidMapId => Some(Reason::InvalidMapId),
             DiscardReason::ReservedControlCommand => Some(Reason::ReservedControlCommand),
             DiscardReason::TruncatedFrame { .. }
             | DiscardReason::Fill
@@ -117,7 +113,6 @@ impl From<Reason> for DiscardReason {
             Reason::FrameTooShort => DiscardReason::FrameTooShort,
             Reason::LengthMismatch => DiscardReason::LengthMismatch,
             Reason::FecfMismatch => DiscardReason::FecfMismatch,
-            Reason::InvalidMapId => DiscardReason::InvalidMapId,
             Reason::ReservedControlCommand => DiscardReason::ReservedControlCommand,
         }
     }
@@ -621,7 +616,6 @@ mod tests {
                 Some(Reason::LengthMismatch),
             ),
             (DiscardReason::FecfMismatch, 9, Some(Reason::FecfMismatch)),
-            (DiscardReason::InvalidMapId, 10, Some(Reason::InvalidMapId)),
             (
                 DiscardReason::ReservedControlCommand,
                 11,

@@ -3,8 +3,9 @@
 //! [`validate_frame`] applies the checks of 232.0 §4.4.9.3.3 a–e to the octets of one frame,
 //! as the Frame Delimiting and Fill Removal Procedure delimits them
 //! ([`delimit`](crate::delimit)), together with the checks of the decoder and the discard
-//! rules for an invalid VCID and MAP ID (§4.4.7.3, §4.4.3.3). It runs the same code as
-//! [`TcFrame::decode`] for both Type-A and Type-B frames, before any FARM-1 processing
+//! rule for an invalid VCID (§4.4.7.3). A MAP ID the channels do not hold passes: the MAP
+//! Demultiplexing Function discards the FDU after FARM-1 (§4.4.3.3, §4.4.5). It runs the same
+//! code as [`TcFrame::decode`] for both Type-A and Type-B frames, before any FARM-1 processing
 //! (§4.4.9.3.1; TC-023), and reports each failure with a [`Reason`] whose numeric code is
 //! stable (`docs/standards/tc-frame.md` §4).
 
@@ -42,8 +43,6 @@ pub enum Reason {
     LengthMismatch,
     /// 9, check (e): the FECF does not match the recomputed CRC (§4.1.4.3; TC-006).
     FecfMismatch,
-    /// 10: the MAP ID is not valid on the Virtual Channel (§4.4.3.3; TC-022).
-    InvalidMapId,
     /// 11, strict mode only: a Type-C data field that is neither Unlock nor Set V(R)
     /// (§4.1.3.3.4; TC-005).
     ReservedControlCommand,
@@ -51,7 +50,7 @@ pub enum Reason {
 
 impl Reason {
     /// Every reason, in code order.
-    pub const ALL: [Reason; 11] = [
+    pub const ALL: [Reason; 10] = [
         Reason::UnexpectedVersion,
         Reason::UnexpectedSpacecraft,
         Reason::ReservedFlags,
@@ -61,11 +60,13 @@ impl Reason {
         Reason::FrameTooShort,
         Reason::LengthMismatch,
         Reason::FecfMismatch,
-        Reason::InvalidMapId,
         Reason::ReservedControlCommand,
     ];
 
-    /// The stable numeric code, 1–11 (`docs/standards/tc-frame.md` §4; M2 plan D14).
+    /// The stable numeric code, 1–9 and 11 (`docs/standards/tc-frame.md` §4; M2 plan D14). Code
+    /// 10 was `InvalidMapId`: a MAP ID the channels do not hold is discarded by the MAP
+    /// Demultiplexing Function, not by the Frame Validation Checks, and the code is never
+    /// reused.
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
@@ -78,7 +79,6 @@ impl Reason {
             Reason::FrameTooShort => 7,
             Reason::LengthMismatch => 8,
             Reason::FecfMismatch => 9,
-            Reason::InvalidMapId => 10,
             Reason::ReservedControlCommand => 11,
         }
     }
@@ -166,10 +166,17 @@ impl<'a> Deref for ValidatedTcFrame<'a> {
 ///
 /// The checks run in the order of [`Reason`]: (a) version; (b) Spacecraft ID; (c) the frame
 /// type flags, the Reserved Spare, the VCID, and the Frame Length against the channel's limits;
-/// (d) the Frame Length against `frame.len()`; (e) the FECF; then the MAP ID of a Segment
-/// Header, the room left by the MAP's Security Header and Trailer, and the Control Command of a
-/// Type-C frame. Type-A and Type-B frames are checked alike (TC-023). A frame that passes is
-/// returned as a [`ValidatedTcFrame`].
+/// (d) the Frame Length against `frame.len()`; (e) the FECF; then the room left by the MAP's
+/// Security Header and Trailer, and the Control Command of a Type-C frame. A MAP ID the
+/// channels do not hold is not checked: the frame is read with no SDLS fields. Type-A and
+/// Type-B frames are checked alike (TC-023). A frame that passes is returned as a
+/// [`ValidatedTcFrame`].
+///
+/// On a Virtual Channel whose MAPs use SDLS, a frame of an unknown MAP passes with no Security
+/// Header or Trailer (`SecurityLayout::NONE`), so a caller that takes the validated frame
+/// directly sees those octets as data. Route the frame through the MAP reassembler, which
+/// discards the FDU of an unknown MAP (§4.4.3.3; TC-022, OI-98), or check
+/// `segment_header()` against the configured MAPs.
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
@@ -220,12 +227,14 @@ mod tests {
     #[test]
     fn reason_codes_are_stable() {
         // req: TC-021, TC-022
-        for (i, r) in Reason::ALL.into_iter().enumerate() {
-            let code = u8::try_from(i + 1).unwrap();
+        let codes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11];
+        for (r, code) in Reason::ALL.into_iter().zip(codes) {
             assert_eq!(r.code(), code);
             assert_eq!(Reason::from_code(code), Some(r));
         }
+        // Code 10 was `InvalidMapId`, retired: the MAP Demultiplexing Function discards the FDU.
         assert_eq!(Reason::from_code(0), None);
+        assert_eq!(Reason::from_code(10), None);
         assert_eq!(Reason::from_code(12), None);
     }
 
