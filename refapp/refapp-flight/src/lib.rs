@@ -15,6 +15,7 @@ pub mod command;
 pub mod downlink;
 pub mod dump;
 pub mod event;
+pub mod frames_up;
 pub mod layout;
 pub mod queue;
 pub mod schedule;
@@ -22,12 +23,15 @@ pub mod table;
 
 mod handler;
 
+use aldis::core::Result;
 use aldis::spp::SequenceFlags;
+use aldis::tc::Clcw;
 use refapp_scenario::{Instant, Node, Output, StepInput};
 
 pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
 pub use event::Event;
+pub use frames_up::FrameUplink;
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
 use queue::TimeTagQueue;
@@ -53,6 +57,8 @@ pub struct FlightNode {
     payload_number: u32,
     /// Packets that could not be built; 0 in a correctly configured run.
     build_failures: u32,
+    /// The uplink at frame level (A2 on), `None` at packet level.
+    uplink: Option<FrameUplink>,
 }
 
 impl FlightNode {
@@ -60,6 +66,24 @@ impl FlightNode {
     #[must_use]
     pub fn new() -> FlightNode {
         FlightNode::default()
+    }
+
+    /// A flight node whose uplink units are TC frames (A2 on, §4.2, APP-139): each goes through
+    /// the receiver, FARM-1, and the MAP reassembler before the command handler (APP-040…APP-043).
+    ///
+    /// # Errors
+    /// `InvalidConfig` if the scenario values are no valid engine configuration, which the
+    /// generated constants rule out.
+    pub fn with_frame_uplink(mut self) -> Result<FlightNode> {
+        self.uplink = Some(FrameUplink::new()?);
+        Ok(self)
+    }
+
+    /// The CLCW FARM-1 reports now, for the OCF of the downlink (§4.4.1, APP-134); `None` at
+    /// packet level, which has no FARM-1. The downlink converts it with `Clcw::to_ocf`.
+    #[must_use]
+    pub fn clcw(&self) -> Option<Clcw> {
+        self.uplink.as_ref().map(FrameUplink::clcw)
     }
 
     /// The status housekeeping reports (§3.3.1).
