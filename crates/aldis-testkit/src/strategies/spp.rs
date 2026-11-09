@@ -5,7 +5,7 @@
 //! the decoder's boundaries.
 //!
 //! The `time` feature of `aldis-spp` is not enabled here: enabling it from this dev-only crate
-//! would enable it in every test build of `aldis-spp` (GEN-002).
+//! would enable it in every test build of `aldis-spp` (Cargo unifies features).
 
 use aldis_core::ids::{Apid, PacketVersion, SeqCount};
 use aldis_spp::{

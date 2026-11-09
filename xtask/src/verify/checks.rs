@@ -424,8 +424,7 @@ fn rust() -> Vec<Check> {
             RUST_TEST_INPUTS,
             check("test-macos", Host::MacOs, false, 23, TEST),
         ),
-        // Every crate's tests pass with no default features (GEN-005); the facade reaches the engines
-        // (GEN-008).
+        // Each crate's tests pass on its base feature sets; the facade reaches the engines (GEN-008).
         grouped(
             Group::Host,
             check("features", c, false, 145, "cargo xtask features\n"),

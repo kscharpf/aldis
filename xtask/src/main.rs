@@ -115,7 +115,7 @@ commands:
                                xtask/stack-budgets.toml, the call graph complete; writes
                                target/spec/stack-<target>.md (VER-011, GEN-022; tooling nightly)
   features                     every crate's tests pass on its base feature sets with no default
-                               features (GEN-005), and the facade's codec features reach the
+                               features, and the facade's codec features reach the
                                engines without `full` (GEN-008)
   coverage [-p <crate>]...     100 % region/function/line/branch gate for the crates of Layers
                                0-2 (VER-024; tooling nightly + cargo-llvm-cov >= 0.9); -p

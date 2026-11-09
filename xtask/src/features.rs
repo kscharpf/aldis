@@ -1,4 +1,4 @@
-//! `xtask features`: the feature sets of the crates build and pass their tests (GEN-005), and the
+//! `xtask features`: the feature sets of the crates build and pass their tests (test hygiene, no requirement), and the
 //! facade's codec features reach the engines (GEN-008).
 //!
 //! For every crate in [`crates`] the command runs the crate's tests, among them the shared vector
@@ -43,8 +43,8 @@ fn passed_tests(stdout: &str) -> Vec<String> {
     out
 }
 
-/// Runs the tests of `krate` with exactly `features`; the passing tests, or `None` on failure.
-fn run_tests(krate: &str, features: &str) -> Result<Option<Vec<String>>, String> {
+/// Runs the tests of `krate` with exactly `features`; whether they all passed.
+fn run_tests(krate: &str, features: &str) -> Result<bool, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let mut cmd = Command::new(cargo);
     cmd.args(["test", "-p", krate, "--no-default-features"]);
@@ -59,9 +59,9 @@ fn run_tests(krate: &str, features: &str) -> Result<Option<Vec<String>>, String>
     if !out.status.success() {
         print!("{stdout}");
         eprint!("{}", String::from_utf8_lossy(&out.stderr));
-        return Ok(None);
+        return Ok(false);
     }
-    Ok(Some(passed_tests(&stdout)))
+    Ok(true)
 }
 
 fn label(features: &str) -> String {
@@ -124,15 +124,11 @@ fn check_facade_engines() -> Result<usize, String> {
 
 /// Runs the tests of `krate` on `base` alone.
 fn check_tests(krate: &str, base: &str) -> Result<usize, String> {
-    let Some(passed) = run_tests(krate, base)? else {
-        println!("error: GEN-005 {krate}: tests fail with {}", label(base));
+    if !run_tests(krate, base)? {
+        println!("error: {krate}: tests fail with {}", label(base));
         return Ok(1);
-    };
-    println!(
-        "features {krate}: {} tests pass with {}",
-        passed.len(),
-        label(base)
-    );
+    }
+    println!("features {krate}: the tests pass with {}", label(base));
     Ok(0)
 }
 
@@ -142,7 +138,7 @@ mod tests {
 
     #[test]
     fn passing_tests_are_collected() {
-        // req: GEN-005
+        // req: GEN-008
         let out = "running 2 tests\ntest b ... ok\ntest a::x ... ok\ntest c ... FAILED\n\n\
                    test result: ok. 2 passed\n";
         assert_eq!(passed_tests(out), ["a::x", "b"]);
