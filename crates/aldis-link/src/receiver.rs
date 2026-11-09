@@ -92,7 +92,7 @@ pub type ReceiverActions<P> = Actions<ReceiverOutput<P>, FRAME_RECEIVER_MAX_ACTI
 /// The `ocf_service` and `fsh_service` parameters of the master channel (132.0 §3.5–3.9, 732.1
 /// §3.11.2.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Service {
+pub enum DeliveryService {
     /// The part is not delivered.
     None,
     /// The part is delivered for the virtual channel of the frame (`VC_OCF`, `VC_FSH`).
@@ -101,14 +101,14 @@ pub enum Service {
     Mc,
 }
 
-impl Service {
+impl DeliveryService {
     /// The scope the part is delivered for, given the VC of the frame; `None` if it is not
     /// delivered.
     const fn scope<V: Copy>(self, vc: V) -> Option<ChannelScope<V>> {
         match self {
-            Service::None => None,
-            Service::Vc => Some(ChannelScope::VirtualChannel(vc)),
-            Service::Mc => Some(ChannelScope::MasterChannel),
+            DeliveryService::None => None,
+            DeliveryService::Vc => Some(ChannelScope::VirtualChannel(vc)),
+            DeliveryService::Mc => Some(ChannelScope::MasterChannel),
         }
     }
 }

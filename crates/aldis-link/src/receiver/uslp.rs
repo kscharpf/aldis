@@ -7,8 +7,8 @@ use aldis_core::ids::{MapId, VcId};
 use aldis_core::{Error, ErrorKind, Result, field};
 
 use super::{
-    ChannelScope, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, Service, header,
-    lay_out, ocf_of, spec, vc_of,
+    ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
+    header, lay_out, ocf_of, spec, vc_of,
 };
 use crate::protocol::Uslp;
 
@@ -21,7 +21,7 @@ const OID_VC: u8 = 63;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UslpChannel {
     insert_zone_len: usize,
-    ocf: Service,
+    ocf: DeliveryService,
     variable: bool,
 }
 
@@ -29,7 +29,7 @@ impl UslpChannel {
     /// The channel with an Insert Zone of `insert_zone_len` octets (0 for none) whose OCF is
     /// delivered by `ocf` (732.1 §3.11.2.4).
     #[must_use]
-    pub const fn new(insert_zone_len: usize, ocf: Service) -> UslpChannel {
+    pub const fn new(insert_zone_len: usize, ocf: DeliveryService) -> UslpChannel {
         UslpChannel {
             insert_zone_len,
             ocf,
@@ -40,7 +40,7 @@ impl UslpChannel {
     /// A variable-length channel, whose frames are of any length up to the configured maximum
     /// and have no Insert Zone (732.1 §4.1.2.7, §4.1.3.2). Its OCF is delivered by `ocf`.
     #[must_use]
-    pub const fn variable(ocf: Service) -> UslpChannel {
+    pub const fn variable(ocf: DeliveryService) -> UslpChannel {
         UslpChannel {
             insert_zone_len: 0,
             ocf,
@@ -68,7 +68,7 @@ impl UslpChannel {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn ocf(&self) -> Service {
+    pub const fn ocf(&self) -> DeliveryService {
         self.ocf
     }
 }

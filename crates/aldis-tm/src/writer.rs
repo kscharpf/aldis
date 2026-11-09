@@ -373,6 +373,7 @@ impl<'b> TmFrameWriter<'b, Protected> {
     pub fn finalize(self) -> TmFrameWriter<'b, Finalized> {
         let fecf = self.layout.fecf();
         if !fecf.is_empty() {
+            // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
             let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
             write_at(self.frame, fecf.start, &crc.to_be_bytes());
         }
@@ -396,6 +397,7 @@ impl<'b> TmFrameWriter<'b, Finalized> {
     /// The octets of the finalized frame, for transmission (RS-023).
     #[must_use]
     pub fn octets(&self) -> &[u8] {
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.frame
             .get(..self.layout.frame_len())
             .unwrap_or_default()
@@ -406,6 +408,7 @@ impl<'b> TmFrameWriter<'b, Finalized> {
     #[must_use]
     pub fn into_octets(self) -> &'b [u8] {
         let len = self.layout.frame_len();
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.frame.get(..len).unwrap_or_default()
     }
 }
