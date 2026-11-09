@@ -2,7 +2,7 @@
 //! TV-012). Every case's outputs must match exactly; unknown operations fail.
 //!
 //! Without the `time` feature, every file runs except `secondary_header_time`, whose layouts
-//! need it; `cargo xtask features` runs the suite with and without it (GEN-006).
+//! need it; `cargo xtask features` runs the suite with and without it (GEN-005).
 #![expect(
     clippy::unwrap_used,
     clippy::panic,

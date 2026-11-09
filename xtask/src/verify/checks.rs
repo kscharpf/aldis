@@ -424,7 +424,8 @@ fn rust() -> Vec<Check> {
             RUST_TEST_INPUTS,
             check("test-macos", Host::MacOs, false, 23, TEST),
         ),
-        // The alloc and std features are additive (GEN-006).
+        // Every crate's tests pass with no default features (GEN-005); the facade reaches the engines
+        // (GEN-008).
         grouped(
             Group::Host,
             check("features", c, false, 145, "cargo xtask features\n"),

@@ -114,9 +114,9 @@ commands:
                                bare-metal target (or those named) within the budgets of
                                xtask/stack-budgets.toml, the call graph complete; writes
                                target/spec/stack-<target>.md (VER-011, GEN-022; tooling nightly)
-  features                     `alloc` and `std` are additive: no API gated on them, and every
-                               test passes alike without them, with `alloc`, and with `std`
-                               (GEN-006)
+  features                     every crate's tests pass on its base feature sets with no default
+                               features (GEN-005), and the facade's codec features reach the
+                               engines without `full` (GEN-008)
   coverage [-p <crate>]...     100 % region/function/line/branch gate for the crates of Layers
                                0-2 (VER-024; tooling nightly + cargo-llvm-cov >= 0.9); -p
                                runs only the named crates; `check --full` lowers waivers above
