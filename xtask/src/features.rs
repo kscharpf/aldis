@@ -1,5 +1,5 @@
-//! `xtask features`: the feature sets of the crates build and pass their tests (test hygiene, no requirement), and the
-//! facade's codec features reach the engines (GEN-008).
+//! `xtask features`: the feature sets of the crates build and pass their tests (test hygiene, no
+//! requirement), and the facade's codec features reach the engines (GEN-008).
 //!
 //! For every crate in [`crates`] the command runs the crate's tests, among them the shared vector
 //! suite run by the exact-match runner of `aldis-testkit` (TV-012), with `--no-default-features`
