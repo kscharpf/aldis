@@ -1,7 +1,7 @@
 # Milestone 5 — C ABI completion
 
 **Goal:** the last milestone of track R for v1. A new Layer 1 crate for CADUs and the TM pseudo-randomizer (ASM attach and search, 131.0 §9–10; OI-12), with its C ABI; a C test harness run under AddressSanitizer and UBSan, and the C ABI under Miri (VER-026); header compile checks across C and C++ standards and compilers (VER-050); the header-only C++20 wrapper `aldis.hpp` of the engine handles (CABI-072); and every v1 requirement of track R traced. Verified to the project standard: 100 % coverage, bare-metal panic-freedom, fuzzing, mutation testing, worst-case stack measurement, and hazard analysis.
-**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M4](m4-link-engines.md) (`v0.5.0-m4`) · **Release:** `v0.6.0-m5`; v1.0 follows when M5 and A6 have exited (roadmap §5)
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M4](m4-link-engines.md) (`v0.5.0-m4`) · **Release:** `v0.6.0-m5`; v1.0 follows when M6 and A6 have exited (roadmap §5)
 
 **Status: exit criteria (§4) met; the release `v0.6.0-m5` is the maintainer's.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-05). Entry gate: M4 (roadmap §1), met by `v0.5.0-m4`.
 

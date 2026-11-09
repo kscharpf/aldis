@@ -33,39 +33,12 @@ epp = ["dep:aldis-epp", "aldis-link?/epp"]
 # `aldis-spp/time`, without `full`.
 spp-time = ["spp", "time", "aldis-spp/time"]
 tm = ["dep:aldis-tm", "aldis-link?/tm"]
-tc = ["dep:aldis-tc", "aldis-link?/tc", "aldis-cop1?/tc"]
+tc = ["dep:aldis-tc", "aldis-link?/tc"]
 aos = ["dep:aldis-aos", "aldis-link?/aos"]
 uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
-alloc = [
-    "aldis-core?/alloc",
-    "aldis-time?/alloc",
-    "aldis-spp?/alloc",
-    "aldis-epp?/alloc",
-    "aldis-tm?/alloc",
-    "aldis-tc?/alloc",
-    "aldis-aos?/alloc",
-    "aldis-uslp?/alloc",
-    "aldis-sync?/alloc",
-    "aldis-link?/alloc",
-    "aldis-cop1?/alloc",
-]
-std = [
-    "alloc",
-    "aldis-core?/std",
-    "aldis-time?/std",
-    "aldis-spp?/std",
-    "aldis-epp?/std",
-    "aldis-tm?/std",
-    "aldis-tc?/std",
-    "aldis-aos?/std",
-    "aldis-uslp?/std",
-    "aldis-sync?/std",
-    "aldis-link?/std",
-    "aldis-cop1?/std",
-]
 full = [
     "core",
     "time",
