@@ -25,31 +25,12 @@ tm = ["dep:aldis-tm"]
 tc = ["dep:aldis-tc"]
 aos = ["dep:aldis-aos"]
 uslp = ["dep:aldis-uslp"]
-alloc = [
-    "aldis-core/alloc",
-    "aldis-spp?/alloc",
-    "aldis-epp?/alloc",
-    "aldis-tm?/alloc",
-    "aldis-tc?/alloc",
-    "aldis-aos?/alloc",
-    "aldis-uslp?/alloc",
-]
-std = [
-    "alloc",
-    "aldis-core/std",
-    "aldis-spp?/std",
-    "aldis-epp?/std",
-    "aldis-tm?/std",
-    "aldis-tc?/std",
-    "aldis-aos?/std",
-    "aldis-uslp?/std",
-]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
-aldis-cop1 = { path = "../aldis-cop1", default-features = false, features = ["tc", "uslp"] }
+aldis-cop1 = { path = "../aldis-cop1", default-features = false, features = ["uslp"] }
 aldis-testkit = { path = "../aldis-testkit", features = ["strategies"] }
 serde_json = "1.0.154"
 

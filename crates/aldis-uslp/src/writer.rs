@@ -106,12 +106,22 @@ enum Purpose {
 
 /// The fixed fields of an OID frame's TFDF Header for a TFDZ of `tfdz_len` octets (§4.1.4.1.9;
 /// USLP-009).
-fn oid_tfdf(tfdz_len: usize) -> TfdfHeader {
-    let last = u16::try_from(tfdz_len.saturating_sub(1)).unwrap_or(u16::MAX);
-    TfdfHeader {
+///
+/// # Errors
+/// `OutOfRange` (`frame_data_field`) for a TFDZ the 16-bit pointer cannot reach, more than
+/// 65 536 octets; the frame length limit of the configuration keeps a plan below it.
+fn oid_tfdf(tfdz_len: usize) -> Result<TfdfHeader> {
+    let last = u16::try_from(tfdz_len.saturating_sub(1)).map_err(|_| {
+        Error::out_of_range(
+            field::FRAME_DATA_FIELD,
+            u64::from(u16::MAX).saturating_add(1),
+            len_u64(tfdz_len),
+        )
+    })?;
+    Ok(TfdfHeader {
         rule: TfdzRule::SduStart(LastValidOctet::from_raw(last)),
         upid: Upid::OnlyIdleData,
-    }
+    })
 }
 
 /// The VC of `fields`, checked: the SCID and VCID configured, and VCID 63 exactly for OID
@@ -252,7 +262,7 @@ impl Plan {
         };
         let (layout, tfdz_len) = reserve(&physical, &vc, base, tfdz_len)?;
         let tfdf = if oid {
-            oid_tfdf(tfdz_len)
+            oid_tfdf(tfdz_len)?
         } else {
             content.tfdf
         };
@@ -378,7 +388,7 @@ fn oid_frame<L: VcLookup + ?Sized>(
     fill: impl FnOnce(&mut [u8]),
 ) -> Result<usize> {
     let content = FrameContent {
-        tfdf: oid_tfdf(1),
+        tfdf: oid_tfdf(1)?,
         insert_zone,
         ocf,
     };
@@ -781,6 +791,7 @@ impl<'b> UslpFrameWriter<'b, Finalized> {
     /// The octets of the finalized frame, for transmission (RS-023).
     #[must_use]
     pub fn octets(&self) -> &[u8] {
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get(..self.total).unwrap_or_default()
     }
 
@@ -789,6 +800,7 @@ impl<'b> UslpFrameWriter<'b, Finalized> {
     #[must_use]
     pub fn into_octets(self) -> &'b [u8] {
         let total = self.total;
+        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
         self.out.get(..total).unwrap_or_default()
     }
 }
@@ -799,7 +811,7 @@ mod tests {
     extern crate std;
     use super::{
         FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,
-        encode_truncated, slot,
+        encode_truncated, oid_tfdf, slot,
     };
     use crate::config::tests::{fixed, mapid, plain_variable, scid, variable, vcid};
     use crate::field;
@@ -1492,6 +1504,21 @@ mod tests {
         assert_eq!(
             slot(&mut buf, 2..5).err().map(|e| e.kind()),
             Some(ErrorKind::InternalError)
+        );
+    }
+
+    #[test]
+    fn an_oid_tfdz_beyond_the_pointer_is_an_error_not_a_clamped_pointer() {
+        // req: USLP-009, GEN-041
+        let longest = oid_tfdf(65_536).unwrap();
+        assert_eq!(
+            longest.rule,
+            TfdzRule::SduStart(LastValidOctet::from_raw(u16::MAX))
+        );
+        let e = oid_tfdf(65_537).unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::OutOfRange, Some(field::FRAME_DATA_FIELD))
         );
     }
 }

@@ -35,7 +35,7 @@ pub(crate) fn has_code(text: &str) -> bool {
 }
 
 /// The crates of Layers 0-2 whose `src/` declares a function, in `LAYERS` order: the crates
-/// the coverage gate (VER-024), the `features` check (GEN-006), the nightly mutation run
+/// the coverage gate (VER-024), the `features` check (GEN-005), the nightly mutation run
 /// (VER-025), and the exerciser (VER-010) cover. A skeleton joins when it gets code, with no
 /// list to edit.
 pub fn gated() -> Result<Vec<&'static str>, String> {

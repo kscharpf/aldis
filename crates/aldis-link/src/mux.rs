@@ -393,12 +393,15 @@ pub trait MuxProtocol: Protocol {
     fn header_len(channel: &Self::Channel, vc: Option<&Self::VcParams>, bypass: bool) -> usize;
     /// Writes the primary header into `header`, which holds [`header_len`](Self::header_len)
     /// octets (LNK-032, LNK-082).
+    ///
+    /// # Errors
+    /// `InternalError` for a frame length the header cannot hold; `check_channel` rules it out.
     fn write_header(
         channel: &Self::Channel,
         vc: Option<&Self::VcParams>,
         fields: &FrameFields,
         header: &mut [u8],
-    );
+    ) -> Result<()>;
     /// The octets of an OID frame's data field that the protocol sets before the OID generator
     /// output: the TFDF Header of USLP (LNK-030).
     const OID_DATA_HEADER: usize;
@@ -1252,7 +1255,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             pick.vc.as_ref().map(|v| &v.params),
             fields,
             header,
-        );
+        )?;
         let secondary = frame
             .get_mut(layout.secondary())
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1493,7 +1496,7 @@ mod tm_impl {
             vc: Option<&TmVc>,
             f: &FrameFields,
             header: &mut [u8],
-        ) {
+        ) -> Result<()> {
             let [s_hi, s_lo] = channel.scid.get().to_be_bytes();
             let vca = !f.oid && vc.is_some_and(|v| v.role == TmRole::Vca);
             let pointer = if f.oid {
@@ -1516,6 +1519,7 @@ mod tm_impl {
             for (d, s) in header.iter_mut().zip(octets) {
                 *d = s;
             }
+            Ok(())
         }
 
         fn write_oid_data_header(_: usize, _: &mut [u8]) {}
@@ -1686,7 +1690,7 @@ mod aos_impl {
             _: Option<&AosVc>,
             f: &FrameFields,
             header: &mut [u8],
-        ) {
+        ) -> Result<()> {
             // The SCID: its low 8 bits in the first two octets, the two most significant of the
             // 10 in bits 42–43 of Issue 5 (732.0 §4.1.2.2.3, §4.1.2.5.4; AOS-002).
             let [s_hi, scid8] = channel.scid.get().to_be_bytes();
@@ -1713,6 +1717,7 @@ mod aos_impl {
             for (d, s) in header.iter_mut().zip(octets) {
                 *d = s;
             }
+            Ok(())
         }
 
         fn write_oid_data_header(_: usize, _: &mut [u8]) {}
@@ -1916,7 +1921,7 @@ mod uslp_impl {
             vc: Option<&UslpVc>,
             f: &FrameFields,
             header: &mut [u8],
-        ) {
+        ) -> Result<()> {
             let count_len = vc.map_or(channel.oid_vcf_len, |v| v.count_len(f.bypass));
             let map = vc.map_or(0, |v| v.map.get());
             // TFVN `1100`, SCID, Source-or-Destination, VCID, MAP ID, End of Primary Header
@@ -1926,8 +1931,11 @@ mod uslp_impl {
                 | (u32::from(channel.source_or_destination.bit()) << 11)
                 | (u32::from(f.vc & 0x3F) << 5)
                 | (u32::from(map & 0x0F) << 1);
+            // The Frame Length field holds the length less one (732.1 §4.1.2.7). `check_channel` holds
+            // the frame length to `MAX_FRAME_LEN`, so the conversion cannot fail; if it does, it is
+            // an error, not a clamped length.
             let [l0, l1] = u16::try_from(f.frame_len.saturating_sub(1))
-                .unwrap_or(u16::MAX)
+                .map_err(|_| Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))?
                 .to_be_bytes();
             let flags = (u8::from(f.bypass) << 7)
                 | (u8::from(f.protocol_control) << 6)
@@ -1943,6 +1951,7 @@ mod uslp_impl {
             {
                 *d = *s;
             }
+            Ok(())
         }
 
         fn write_oid_data_header(data_len: usize, header: &mut [u8]) {
