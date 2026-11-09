@@ -78,7 +78,14 @@ pub fn gen_scenario() -> Result<usize, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let status = Command::new(cargo)
         .current_dir(repo::root().join("refapp"))
-        .args(["run", "-p", "refapp-harness", "--locked", "--", "gen-scenario"])
+        .args([
+            "run",
+            "-p",
+            "refapp-harness",
+            "--locked",
+            "--",
+            "gen-scenario",
+        ])
         .status()
         .map_err(|e| format!("gen-scenario: {e}"))?;
     if status.success() {
