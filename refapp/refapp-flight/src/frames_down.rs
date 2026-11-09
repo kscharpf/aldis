@@ -448,7 +448,11 @@ mod slot_failure_tests {
         frames.held[1] = false;
         frames.submit(1, &PACKET, later).unwrap();
         let mut failed = Rec::default();
-        node.downlink_frame(true, Instant::from_micros(80_000_000), &mut At(1, &mut failed));
+        node.downlink_frame(
+            true,
+            Instant::from_micros(80_000_000),
+            &mut At(1, &mut failed),
+        );
         let code = u64::from(aldis::core::ErrorKind::WouldBlock.code());
         assert_eq!(failed.0, [(1, Out::Event(113, std::vec![code]))]);
         assert_eq!(node.build_failures(), 1);
