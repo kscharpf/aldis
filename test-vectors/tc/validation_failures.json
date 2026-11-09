@@ -915,6 +915,10 @@
         "reason_code": 10,
         "error_kind": "UnknownChannel",
         "error_field": 3
+      },
+      "superseded": {
+        "by": "tc-open-val-001",
+        "reason": "Unknown-MAP OI of #396 (maintainer decision 2026-11-09): 232.0 §4.4.9.3.3 lists no check of the Segment Header, so a frame of an unconfigured MAP ID passes the Frame Validation Checks; the MAP Demultiplexing Function discards its FDU after FARM-1 (§4.4.3.3, §4.4.5). The reason InvalidMapId (code 10) no longer exists."
       }
     },
     {

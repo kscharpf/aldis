@@ -52,7 +52,7 @@ const FECF_OCTETS: usize = 2;
 
 /// The validation reasons and their stable codes, as `docs/standards/tc-frame.md` §4.1 lists
 /// them (M2 plan D14; TC-021, TC-022).
-const REASONS: [(u8, &str); 11] = [
+const REASONS: [(u8, &str); 10] = [
     (1, "UnexpectedVersion"),
     (2, "UnexpectedSpacecraft"),
     (3, "ReservedFlags"),
@@ -62,7 +62,6 @@ const REASONS: [(u8, &str); 11] = [
     (7, "FrameTooShort"),
     (8, "LengthMismatch"),
     (9, "FecfMismatch"),
-    (10, "InvalidMapId"),
     (11, "ReservedControlCommand"),
 ];
 

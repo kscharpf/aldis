@@ -86,7 +86,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 Err(r) => assert!(
                     matches!(
                         r.reason(),
-                        Reason::UnexpectedSpacecraft | Reason::InvalidVcid | Reason::InvalidMapId
+                        Reason::UnexpectedSpacecraft | Reason::InvalidVcid
                     ) && r.error().kind() == ErrorKind::UnknownChannel,
                     "{r:?}"
                 ),
