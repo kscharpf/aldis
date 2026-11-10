@@ -1018,14 +1018,14 @@ mod tc_impl {
             if user.is_empty() {
                 return Err(no_data);
             }
-            let unit = match SequenceFlags::from_bits(segment::Flags::get_u8(&[header])) {
+            let unit = match SequenceFlags::from_bits(super::segment::Flags::get_u8(&[header])) {
                 SequenceFlags::First => Unit::First(user),
                 SequenceFlags::Continuing => Unit::Continuing(user),
                 SequenceFlags::Last => Unit::Last(user),
                 SequenceFlags::Unsegmented => Unit::Whole(user),
             };
             Ok(Parsed {
-                map: segment::MapId::get_u8(&[header]),
+                map: super::segment::MapId::get_u8(&[header]),
                 gap: false,
                 fixed_length: false,
                 unit,
@@ -1066,7 +1066,7 @@ mod uslp_impl {
             let map = meta.map.get();
             let (gap, rule) = (
                 meta.gap,
-                ConstructionRule::from_bits(tfdf::Rule::get_u8(&[first])),
+                ConstructionRule::from_bits(super::tfdf::Rule::get_u8(&[first])),
             );
             let parsed = |fixed_length, unit| Parsed {
                 map,

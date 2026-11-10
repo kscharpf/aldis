@@ -78,9 +78,10 @@ pub enum Framing {
     Stream,
 }
 
-/// What a MAP of the segmenter carries (232.0 §5.3 Table 5-3; 732.1 §5.4 Table 5-4): a
-/// [`MapService`] plus what only the segmenter has, the TC MAP that carries either and the release
-/// deadline of a stream (OI-96).
+/// What a MAP of the segmenter carries (232.0 §5.3 Table 5-3; 732.1 §5.4 Table 5-4).
+///
+/// A [`MapService`] plus what only the segmenter has, the TC MAP that carries either and the
+/// release deadline of a stream (OI-96).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmenterService {
     /// Packets and SDUs alike: a TC MAP (the Segment Header does not say which), or a TC VC
