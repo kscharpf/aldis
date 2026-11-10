@@ -40,8 +40,6 @@ pub trait AccessProtocol: Protocol {
     /// MAP, and `QoS` for USLP.
     type Params: Copy + Debug + Eq;
 
-    /// The octets of the data field before the SDU octets: the TFDF Header of USLP.
-    const HEADER_LEN: usize;
     /// Whether an SDU may span fields (USLP): the others carry one SDU of exactly the field.
     const SPANNING: bool;
 
@@ -49,7 +47,7 @@ pub trait AccessProtocol: Protocol {
     fn max_zone_len(params: &Self::Params) -> usize;
     /// The MAP and `QoS` the fields are sent on (USLP).
     fn route(params: &Self::Params) -> Option<Route>;
-    /// Writes the data field header into `header`, `HEADER_LEN` octets: rule `001`, or `010`
+    /// Writes the data field header into `header`, `SDU_HEADER_LEN` octets: rule `001`, or `010`
     /// for a `continuation`, with the raw Last Valid Octet Pointer `pointer` (LNK-020).
     fn write_header(params: &Self::Params, continuation: bool, pointer: u16, header: &mut [u8]);
 }
@@ -79,7 +77,7 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     ///
     /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub fn new(vc: P::Vc, params: P::Params, field_len: usize) -> Result<AccessGeneratorConfig<P>> {
-        let zone = field_len.saturating_sub(P::HEADER_LEN);
+        let zone = field_len.saturating_sub(P::SDU_HEADER_LEN);
         // The queue holds the length of an SDU in 16 bits, so a zone above 65 535 octets could
         // take an SDU it cannot count (LNK-020: unchanged).
         if zone == 0 || zone > P::max_zone_len(&params).min(MAX_SDU) {
@@ -123,7 +121,7 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
 
     /// The octets of the zone: the data field without its header.
     const fn zone_len(&self) -> usize {
-        self.field_len.saturating_sub(P::HEADER_LEN)
+        self.field_len.saturating_sub(P::SDU_HEADER_LEN)
     }
 
     /// The VC (the MAP for USLP) the generator serves.
@@ -447,7 +445,7 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
             LVO_SDU_CONTINUES
         };
         let (header, zone) = area
-            .split_at_mut_checked(P::HEADER_LEN)
+            .split_at_mut_checked(P::SDU_HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         P::write_header(
             &self.head.config.params,
@@ -507,7 +505,6 @@ mod tm_impl {
 
     impl AccessProtocol for Tm {
         type Params = ();
-        const HEADER_LEN: usize = 0;
         const SPANNING: bool = false;
 
         fn max_zone_len(&(): &()) -> usize {
@@ -529,7 +526,6 @@ mod aos_impl {
 
     impl AccessProtocol for Aos {
         type Params = ();
-        const HEADER_LEN: usize = 0;
         const SPANNING: bool = false;
 
         fn max_zone_len(&(): &()) -> usize {
@@ -553,7 +549,6 @@ mod uslp_impl {
 
     impl AccessProtocol for Uslp {
         type Params = UslpParams;
-        const HEADER_LEN: usize = 3;
         const SPANNING: bool = true;
 
         fn max_zone_len(_: &UslpParams) -> usize {

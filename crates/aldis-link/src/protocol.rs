@@ -1,9 +1,11 @@
 //! The protocol trait of the link engines (LNK-001, D3 of the M4 plan).
 //!
 //! An engine is generic over a [`Protocol`] and has one implementation for each protocol it
-//! serves: [`Tm`], [`Tc`], [`Aos`], and [`Uslp`]. An engine instance serves exactly one protocol;
-//! the differences between the protocols are the associated constants and functions of the trait
-//! and the protocol's parameters, not runtime checks of frames (LNK-001).
+//! serves: [`Tm`], [`Tc`], [`Aos`], and [`Uslp`], the frame formats of the codecs (features
+//! `tm`, `tc`, `aos`, `uslp`). An engine instance serves exactly one protocol; the geometry of the
+//! frames is the codec's [`FrameFormat`], and the other differences between the protocols are the
+//! associated constants and functions of the trait and the protocol's parameters, not runtime
+//! checks of frames (LNK-001).
 //!
 //! [`PacketProtocol`] adds what the `PacketGenerator` and the `PacketExtractor` need: where the
 //! First Header Pointer is, what its values mean, and the data field header that carries it
@@ -12,7 +14,7 @@
 use core::fmt::Debug;
 
 use aldis_core::ids::{MapId, VcId};
-use aldis_core::{Error, Result};
+use aldis_core::{Error, FrameFormat, Result};
 
 use crate::common::{IdlePacketKind, Qos};
 
@@ -30,7 +32,10 @@ pub enum LinkProtocol {
 }
 
 /// A frame protocol, as a type parameter of an engine (LNK-001, D3 of the M4 plan).
-pub trait Protocol: Copy + Debug + Eq + 'static {
+///
+/// It is the [`FrameFormat`] of its codec, which carries the geometry of the frames, with the
+/// identifier width and the id of the protocol.
+pub trait Protocol: FrameFormat {
     /// The protocol this type stands for.
     const ID: LinkProtocol;
 
@@ -39,37 +44,41 @@ pub trait Protocol: Copy + Debug + Eq + 'static {
     type Vc: Copy + Debug + Eq + TryFrom<u8, Error = Error> + Into<u8>;
 }
 
-/// The TM protocol (LNK-001).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Tm;
+/// The TM protocol (LNK-001): the frame format of `aldis-tm`.
+#[cfg(feature = "tm")]
+pub use aldis_tm::TmFormat as Tm;
 
-/// The TC protocol (LNK-001).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Tc;
+/// The TC protocol (LNK-001): the frame format of `aldis-tc`.
+#[cfg(feature = "tc")]
+pub use aldis_tc::TcFormat as Tc;
 
-/// The AOS protocol (LNK-001).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Aos;
+/// The AOS protocol (LNK-001): the frame format of `aldis-aos`.
+#[cfg(feature = "aos")]
+pub use aldis_aos::AosFormat as Aos;
 
-/// The USLP protocol (LNK-001).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Uslp;
+/// The USLP protocol (LNK-001): the frame format of `aldis-uslp`.
+#[cfg(feature = "uslp")]
+pub use aldis_uslp::UslpFormat as Uslp;
 
+#[cfg(feature = "tm")]
 impl Protocol for Tm {
     const ID: LinkProtocol = LinkProtocol::Tm;
     type Vc = VcId<3>;
 }
 
+#[cfg(feature = "tc")]
 impl Protocol for Tc {
     const ID: LinkProtocol = LinkProtocol::Tc;
     type Vc = VcId<6>;
 }
 
+#[cfg(feature = "aos")]
 impl Protocol for Aos {
     const ID: LinkProtocol = LinkProtocol::Aos;
     type Vc = VcId<6>;
 }
 
+#[cfg(feature = "uslp")]
 impl Protocol for Uslp {
     const ID: LinkProtocol = LinkProtocol::Uslp;
     type Vc = VcId<6>;
@@ -123,10 +132,6 @@ pub trait PacketProtocol: Protocol {
     /// AOS edition, the USLP UPID, MAP, and `QoS`. Plain data (API-041).
     type Params: Copy + Debug + Eq;
 
-    /// The octets of the data field before the packet zone: the `M_PDU` header (AOS) or the TFDF
-    /// header with its pointer (USLP); TM carries the pointer in the frame header (LNK-011).
-    const HEADER_LEN: usize;
-
     /// Whether the extractor delimits an Encapsulation Idle Packet whatever the valid-PVN set,
     /// because the sender fills a fixed-length TFDZ with one (USLP rule `000`, 732.1
     /// §4.1.4.3.4; LNK-063).
@@ -151,7 +156,7 @@ pub trait PacketProtocol: Protocol {
     fn encode_pointer(params: &Self::Params, pointer: Pointer) -> Result<u16>;
 
     /// Writes the data field header for the raw pointer `raw` into `header`, which holds
-    /// [`HEADER_LEN`](Self::HEADER_LEN) octets; writes nothing for TM.
+    /// [`PACKET_HEADER_LEN`](FrameFormat::PACKET_HEADER_LEN) octets; writes nothing for TM.
     fn write_header(params: &Self::Params, raw: u16, header: &mut [u8]);
 
     /// Reads a data field: the pointer and the packet zone (LNK-060, LNK-064). `header_pointer`
@@ -187,7 +192,6 @@ mod tm_impl {
 
     impl PacketProtocol for Tm {
         type Params = TmParams;
-        const HEADER_LEN: usize = 0;
         const DELIMITS_IDLE_EIP: bool = false;
         const IDLE_KIND: Option<IdlePacketKind> = None;
         const IDLE_FIELD: IdleField = IdleField::Packets;
@@ -258,7 +262,6 @@ mod aos_impl {
 
     impl PacketProtocol for Aos {
         type Params = AosParams;
-        const HEADER_LEN: usize = aldis_aos::mpdu::MPDU_HEADER_LEN;
         const DELIMITS_IDLE_EIP: bool = false;
         const IDLE_KIND: Option<IdlePacketKind> = None;
         const IDLE_FIELD: IdleField = IdleField::Pattern;
@@ -387,7 +390,6 @@ mod uslp_impl {
 
     impl PacketProtocol for Uslp {
         type Params = UslpParams;
-        const HEADER_LEN: usize = 3;
         const DELIMITS_IDLE_EIP: bool = true;
         const IDLE_KIND: Option<IdlePacketKind> = Some(IdlePacketKind::Encapsulation);
         const IDLE_FIELD: IdleField = IdleField::Packets;

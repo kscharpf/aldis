@@ -388,11 +388,17 @@ pub trait MuxProtocol: Protocol {
         frame_len: usize,
         vcs: &[Option<VcConfig<Self>>],
     ) -> Result<()>;
-    /// The octets of the primary header of a frame of the VC (`None`: the OID frame of a
-    /// protocol whose OID VC is not configured), the FHEC and the VCF Count included.
-    fn header_len(channel: &Self::Channel, vc: Option<&Self::VcParams>, bypass: bool) -> usize;
-    /// Writes the primary header into `header`, which holds [`header_len`](Self::header_len)
-    /// octets (LNK-032, LNK-082).
+    /// The managed parameter that lengthens the primary header of a frame of the VC (`None`: the
+    /// OID frame of a protocol whose OID VC is not configured): the FHEC of AOS, the VCF Count
+    /// Length of USLP. The header holds
+    /// [`primary_header_len`](aldis_core::FrameFormat::primary_header_len) of it octets.
+    fn header_extension(
+        channel: &Self::Channel,
+        vc: Option<&Self::VcParams>,
+        bypass: bool,
+    ) -> Self::HeaderExtension;
+    /// Writes the primary header into `header`, which holds the octets of
+    /// [`header_extension`](Self::header_extension) (LNK-032, LNK-082).
     ///
     /// # Errors
     /// `InternalError` for a frame length the header cannot hold; `check_channel` rules it out.
@@ -402,11 +408,9 @@ pub trait MuxProtocol: Protocol {
         fields: &FrameFields,
         header: &mut [u8],
     ) -> Result<()>;
-    /// The octets of an OID frame's data field that the protocol sets before the OID generator
-    /// output: the TFDF Header of USLP (LNK-030).
-    const OID_DATA_HEADER: usize;
-    /// Writes the data header of an OID frame into `header`, `OID_DATA_HEADER` octets, for a
-    /// data field of `data_len` octets (LNK-030).
+    /// Writes the data header of an OID frame into `header`, `SDU_HEADER_LEN` octets (the TFDF
+    /// Header of USLP, [`SDU_HEADER_LEN`](aldis_core::FrameFormat::SDU_HEADER_LEN)), for a data field of `data_len` octets
+    /// (LNK-030).
     fn write_oid_data_header(data_len: usize, header: &mut [u8]);
 }
 
@@ -597,7 +601,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
                 return Err(bad(field::FRAME_LEN));
             }
         }
-        if self.data_len(self.oid_vc().map(|(_, v)| v), P::OID_BYPASS) <= P::OID_DATA_HEADER {
+        if self.data_len(self.oid_vc().map(|(_, v)| v), P::OID_BYPASS) <= P::SDU_HEADER_LEN {
             return Err(bad(field::FRAME_LEN));
         }
         Ok(self)
@@ -643,7 +647,11 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     fn spec(&self, vc: Option<&VcConfig<P>>, bypass: bool) -> LayoutSpec {
         LayoutSpec {
             frame_len: self.frame_len,
-            primary_header_len: P::header_len(&self.channel, vc.map(|v| &v.params), bypass),
+            primary_header_len: P::primary_header_len(&P::header_extension(
+                &self.channel,
+                vc.map(|v| &v.params),
+                bypass,
+            )),
             secondary_len: self.secondary_len(vc),
             security: vc.map_or(SecurityLayout::NONE, |v| v.security),
             ocf: self.has_ocf(vc),
@@ -1281,7 +1289,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .ok_or(Error::new(ErrorKind::InternalError))?;
         if fields.oid {
             let (head, zone) = data
-                .split_at_mut_checked(P::OID_DATA_HEADER)
+                .split_at_mut_checked(P::SDU_HEADER_LEN)
                 .ok_or(Error::new(ErrorKind::InternalError))?;
             P::write_oid_data_header(layout.data().len(), head);
             self.head.oid.fill(zone);
@@ -1416,7 +1424,6 @@ mod tm_impl {
         const INSERT_ZONE: bool = false;
         const MC_COUNT: bool = true;
         const OID_BYPASS: bool = false;
-        const OID_DATA_HEADER: usize = 0;
 
         fn oid_vcid(channel: &TmChannel) -> u8 {
             channel.oid_vc.get()
@@ -1487,9 +1494,7 @@ mod tm_impl {
             }
         }
 
-        fn header_len(_: &TmChannel, _: Option<&TmVc>, _: bool) -> usize {
-            aldis_tm::header::PRIMARY_HEADER_LEN
-        }
+        fn header_extension(_: &TmChannel, _: Option<&TmVc>, _: bool) {}
 
         fn write_header(
             channel: &TmChannel,
@@ -1627,7 +1632,6 @@ mod aos_impl {
         const INSERT_ZONE: bool = true;
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = false;
-        const OID_DATA_HEADER: usize = 0;
 
         fn oid_vcid(_: &AosChannel) -> u8 {
             aldis_aos::OID_VCID.get()
@@ -1677,12 +1681,8 @@ mod aos_impl {
             }
         }
 
-        fn header_len(channel: &AosChannel, _: Option<&AosVc>, _: bool) -> usize {
-            if channel.fhec {
-                aldis_aos::header::PRIMARY_HEADER_LEN.saturating_add(aldis_aos::header::FHEC_LEN)
-            } else {
-                aldis_aos::header::PRIMARY_HEADER_LEN
-            }
+        fn header_extension(channel: &AosChannel, _: Option<&AosVc>, _: bool) -> bool {
+            channel.fhec
         }
 
         fn write_header(
@@ -1731,7 +1731,7 @@ pub use aos_impl::{AosChannel, AosVc};
 mod uslp_impl {
     use aldis_core::ids::{MapId, SpacecraftId};
     use aldis_core::layout::OCF_LEN;
-    use aldis_core::{Error, ErrorKind, Result, field};
+    use aldis_core::{Error, ErrorKind, FrameFormat, Result, field};
     use aldis_uslp::{
         LastValidOctet, SourceOrDestination, TfdfHeader, TfdzRule, Upid, VcfCountLen,
     };
@@ -1855,7 +1855,6 @@ mod uslp_impl {
         const INSERT_ZONE: bool = true;
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = true;
-        const OID_DATA_HEADER: usize = 3;
 
         fn oid_vcid(_: &UslpChannel) -> u8 {
             aldis_uslp::OID_VCID
@@ -1911,9 +1910,12 @@ mod uslp_impl {
             }
         }
 
-        fn header_len(channel: &UslpChannel, vc: Option<&UslpVc>, bypass: bool) -> usize {
-            let count = vc.map_or(channel.oid_vcf_len, |v| v.count_len(bypass));
-            aldis_uslp::PRIMARY_HEADER_LEN.saturating_add(count.octets())
+        fn header_extension(
+            channel: &UslpChannel,
+            vc: Option<&UslpVc>,
+            bypass: bool,
+        ) -> VcfCountLen {
+            vc.map_or(channel.oid_vcf_len, |v| v.count_len(bypass))
         }
 
         fn write_header(
@@ -1958,7 +1960,7 @@ mod uslp_impl {
             // Rule `001`, UPID "Only Idle Data", and the Last Valid Octet Pointer at the last
             // octet of the TFDZ (732.1 §4.1.4.1.9–11; LNK-030).
             let [.., a, b] = data_len
-                .saturating_sub(Uslp::OID_DATA_HEADER.saturating_add(1))
+                .saturating_sub(Uslp::SDU_HEADER_LEN.saturating_add(1))
                 .to_be_bytes();
             let tfdf = TfdfHeader {
                 rule: TfdzRule::SduStart(LastValidOctet::from_raw(u16::from_be_bytes([a, b]))),

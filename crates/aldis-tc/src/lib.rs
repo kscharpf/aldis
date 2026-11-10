@@ -15,6 +15,7 @@
 //! | `security` | `SecuritySlices` for `TcFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 232.0 Cor. 1 §6.5.2 | RS-023, API-070, API-074 |
 //! | [`checked`] | Frame Validation Checks: `check_frame` (strict, lenient) returning a `Checked<TcFrame>`, `Reason` | 232.0 §4.4.9.3, §4.4.7.3, §4.4.3.3 | TC-021…TC-023, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 232.0 §4.1, §4.2, §5 | API-082, GEN-041 |
+//! | [`format`] | `TcFormat`: the `FrameFormat` geometry (Primary Header, data field header lengths) the link engines are generic over | 232.0 §4.1 | LNK-001, GEN-003 |
 //!
 //! The Frame Length field holds the frame length minus one (232.0 §4.1.2.7); the API works in
 //! total lengths and converts at the wire (GEN-053).
@@ -36,6 +37,7 @@ pub mod config;
 pub mod control;
 pub mod delimit;
 pub mod field;
+pub mod format;
 pub mod header;
 mod security;
 pub mod stream;
@@ -48,6 +50,7 @@ pub use clcw::{Clcw, ClcwStatus, CopInEffect, FarmBCounter};
 pub use config::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcTable};
 pub use control::{ControlCommand, ControlOctets};
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
+pub use format::TcFormat;
 pub use header::{
     FrameFields, FrameType, MAX_FRAME_LEN, MIN_FRAME_LEN, PRIMARY_HEADER_LEN, SEGMENT_HEADER_LEN,
     SegmentHeader, SequenceFlags, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId,

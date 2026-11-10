@@ -16,6 +16,7 @@
 //! | `security` | `SecuritySlices` for `UslpFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | [`checked`] | USLP Frame Validation Checks: `check_frame` (strict and lenient) returning a `Checked<UslpFrame>`, `Reason` | 732.1 §4.3.11.3 | USLP-014, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.1 §4.1, §5 | API-082, GEN-041 |
+//! | [`format`] | `UslpFormat`: the `FrameFormat` geometry (Primary Header, data field header lengths) the link engines are generic over | 732.1 §4.1 | LNK-001, GEN-003 |
 //!
 //! The Frame Length field holds the frame length minus one (732.1 §4.1.2.7); the API works in
 //! total lengths and converts at the wire (GEN-053). The OCF is returned as an
@@ -39,6 +40,7 @@ pub mod checked;
 pub mod config;
 pub mod delimit;
 pub mod field;
+pub mod format;
 pub mod header;
 mod security;
 pub mod stream;
@@ -55,6 +57,7 @@ pub use config::{
     VcConfig, VcParams, VcTable,
 };
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
+pub use format::UslpFormat;
 pub use header::{
     ChannelFields, FrameKind, MAX_FRAME_LEN, OID_VCID, PRIMARY_HEADER_LEN, SourceOrDestination,
     TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
@@ -62,8 +65,8 @@ pub use header::{
 };
 pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, UslpIntake};
 pub use tfdf::{
-    ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
-    TfdzRule,
+    ConstructionRule, FIXED_TFDF_HEADER_LEN, FirstHeaderPointer, LastValidOctet, POINTER_NONE,
+    TfdfHeader, TfdzOffset, TfdzRule,
 };
 pub use truncated::UslpTruncatedFrame;
 pub use upid::{UnassignedUpid, Upid};

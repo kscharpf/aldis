@@ -99,6 +99,7 @@ required-features = ["spp", "epp", "tc", "uslp"]
 
 [[test]]
 name = "cltu_packer"
+required-features = ["tc", "uslp"]
 
 [[test]]
 name = "map_roundtrip"

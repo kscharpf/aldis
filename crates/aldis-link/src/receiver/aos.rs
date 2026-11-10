@@ -2,8 +2,8 @@
 //! OI-70, OI-77, OI-78).
 
 use aldis_aos::{BitstreamPointer, Bpdu};
-use aldis_core::Result;
 use aldis_core::ids::VcId;
+use aldis_core::{FrameFormat, Result};
 
 use super::{
     ChannelScope, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, header, lay_out,
@@ -12,9 +12,7 @@ use super::{
 use crate::protocol::Aos;
 
 /// The octets of the AOS Primary Header without the FHEC (732.0 §4.1.2).
-const PRIMARY_HEADER_LEN: usize = 6;
-/// The octets of the Frame Header Error Control (732.0 §4.1.2.7).
-const FHEC_LEN: usize = 2;
+const PRIMARY_HEADER_LEN: usize = Aos::PRIMARY_HEADER_LEN;
 /// The VCID of an OID frame, all ones (732.0 §4.1.2.3.3, §4.1.4.1.5.1).
 const OID_VC: u8 = 63;
 
@@ -54,12 +52,8 @@ impl AosChannel {
         self.fhec
     }
 
-    const fn header_len(&self) -> usize {
-        if self.fhec {
-            PRIMARY_HEADER_LEN + FHEC_LEN
-        } else {
-            PRIMARY_HEADER_LEN
-        }
+    fn header_len(&self) -> usize {
+        Aos::primary_header_len(&self.fhec)
     }
 }
 

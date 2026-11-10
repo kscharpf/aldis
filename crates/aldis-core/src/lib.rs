@@ -25,6 +25,7 @@
 //! | [`stream`] | `FrameStream`, `LenientFrameStream`, `IntakeItem`, the `Delimiter` of a protocol | TC-020, USLP-016, API-016 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
+//! | [`format`] | `FrameFormat`: the geometry of a codec's frames | LNK-001, GEN-003 |
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020, GEN-070).
 #![no_std]
@@ -42,6 +43,7 @@ pub mod engine;
 pub mod error;
 pub mod field;
 pub mod finishing;
+pub mod format;
 pub mod ids;
 pub mod layout;
 pub mod lookup;
@@ -60,6 +62,7 @@ mod proofs;
 pub use anomaly::{Anomaly, AnomalySet};
 pub use checked::{Check, CheckBytes, Checked, Rejection};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
+pub use format::FrameFormat;
 pub use mode::{DecodeMode, Lenient};
 pub use plain::{Plain, SecuritySlices};
 

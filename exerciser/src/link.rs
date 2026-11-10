@@ -324,20 +324,23 @@ fn pointers<P: PacketProtocol>(t: &mut Tally, params: P::Params, none: u16, idle
     t.check(P::encode_pointer(&params, Pointer::StartsAt(bb(usize::MAX))).is_err());
     t.check(P::max_zone_len(&params) > 1);
     let mut header = [0u8; 3];
-    if let Some(h) = header.get_mut(..P::HEADER_LEN) {
+    if let Some(h) = header.get_mut(..P::PACKET_HEADER_LEN) {
         P::write_header(&params, bb(3), h);
     }
     let mut field = [0u8; 8];
-    let zone = field.get_mut(P::HEADER_LEN..).unwrap_or_default();
+    let zone = field.get_mut(P::PACKET_HEADER_LEN..).unwrap_or_default();
     for (d, s) in zone.iter_mut().zip([9u8, 8, 7]) {
         *d = s;
     }
-    for (d, s) in field.iter_mut().zip(header.iter().take(P::HEADER_LEN)) {
+    for (d, s) in field
+        .iter_mut()
+        .zip(header.iter().take(P::PACKET_HEADER_LEN))
+    {
         *d = *s;
     }
     let parsed = P::parse(&params, Some(bb(3)), &field);
     t.check(parsed.is_ok_and(|p| p.pointer == Pointer::StartsAt(3)));
-    t.check(P::parse(&params, Some(bb(0x7FF)), &[]).is_err() || P::HEADER_LEN == 0);
+    t.check(P::parse(&params, Some(bb(0x7FF)), &[]).is_err() || P::PACKET_HEADER_LEN == 0);
     t.check(P::DELIMITS_IDLE_EIP == (P::ID == LinkProtocol::Uslp));
     t.check(matches!(
         P::IDLE_FIELD,
