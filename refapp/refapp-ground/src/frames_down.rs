@@ -9,7 +9,7 @@
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::NoSecurity;
-use aldis::core::{Check, Error, ErrorKind};
+use aldis::core::{Check, Error, ErrorKind, SecuritySlices};
 use aldis::link::common::ValidPvns;
 use aldis::link::extractor::{
     ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,

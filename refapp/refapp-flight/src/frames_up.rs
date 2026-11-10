@@ -15,7 +15,7 @@ use aldis::cop1::farm1_table::Farm1Event;
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::security::{NoSecurity, SecurityLayout};
 use aldis::core::time::Instant as CoreInstant;
-use aldis::core::{DecodeMode, Error, ErrorKind, Result};
+use aldis::core::{DecodeMode, Error, ErrorKind, Result, SecuritySlices};
 use aldis::link::protocol::Tc;
 use aldis::link::reassembler::{
     FduIn, MapReassembler, MapReassemblerConfig, ReassemblerInput, ReassemblerMap,
