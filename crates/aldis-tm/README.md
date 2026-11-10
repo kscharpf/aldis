@@ -11,6 +11,7 @@ Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It de
 Encode a frame on a virtual channel with an OCF and decode it again:
 
 ```rust
+use aldis_core::Check;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_tm::{
