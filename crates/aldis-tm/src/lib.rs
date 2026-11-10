@@ -12,6 +12,7 @@
 //! | `security` | `SecuritySlices` for `TmFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | `checked` | `TmFrame::check` (`aldis_core::Check`) against the master channel's managed parameters, returning an `aldis_core::Checked<TmFrame>` | 132.0 §5 | TM-011, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 132.0 §4.1, §5 | API-082, GEN-041 |
+//! | [`format`] | `TmFormat`: the `FrameFormat` geometry (Primary Header, data field header lengths) the link engines are generic over | 132.0 §4.1 | LNK-001, GEN-003 |
 //!
 //! The OCF is returned as an [`Ocf`](aldis_core::ocf::Ocf); a Type-1 Report (CLCW) is decoded
 //! with `aldis-tc` (CMN-011, M2 plan D7).
@@ -30,6 +31,7 @@ pub mod anomaly;
 mod checked;
 pub mod config;
 pub mod field;
+pub mod format;
 pub mod header;
 mod security;
 pub mod view;
@@ -40,6 +42,7 @@ pub use config::{
     DataFieldContent, MAX_FRAME_LEN, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
     TmVirtualChannelConfig, security_layout,
 };
+pub use format::TmFormat;
 pub use header::{
     DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
     TmPrimaryHeader,

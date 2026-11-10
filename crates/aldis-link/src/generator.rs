@@ -78,7 +78,7 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         if max_packet_len == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
-        let zone = field_len.saturating_sub(P::HEADER_LEN);
+        let zone = field_len.saturating_sub(P::PACKET_HEADER_LEN);
         let kind = P::IDLE_KIND.unwrap_or(if valid_pvns.space() && zone >= MIN_SPACE_IDLE {
             IdlePacketKind::SpacePacket
         } else {
@@ -150,7 +150,7 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
 
     /// The octets of the packet zone: the data field without its header.
     const fn zone_len(&self) -> usize {
-        self.field_len.saturating_sub(P::HEADER_LEN)
+        self.field_len.saturating_sub(P::PACKET_HEADER_LEN)
     }
 
     /// The VC (the MAP for USLP) the generator serves.
@@ -613,7 +613,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
         let (header, zone) = area
-            .split_at_mut_checked(P::HEADER_LEN)
+            .split_at_mut_checked(P::PACKET_HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let (held, completion) = zone
             .split_at_mut_checked(self.head.fill)
@@ -690,7 +690,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .get_mut(..field_len)
             .ok_or(Error::buffer_too_small(field_len))?;
         let (header, zone) = area
-            .split_at_mut_checked(P::HEADER_LEN)
+            .split_at_mut_checked(P::PACKET_HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let pointer = match P::IDLE_FIELD {
             IdleField::Packets => Pointer::StartsAt(0),
