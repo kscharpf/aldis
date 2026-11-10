@@ -119,10 +119,10 @@ Each is the maintainer's (decision rights: public API and C ABI conventions, sco
 |---|---|---|---|
 | OI-91 | `#[repr(C)]` head and buffers layout in the Rust engines | Plain Rust engines; zero-first in-place construction through an `unsafe trait InPlace` and `place<E>`, both in `aldis-ffi` | WP-3a |
 | OI-92 | Flat C config struct checked twice, and EPP and SPP `check` functions | Protocol-tagged C config (WP-3b, WP-3c); EPP and SPP return proof types (WP-1c). **Resolved (b) by the maintainer, chat, 2026-11-10;** the EPP and SPP part is implemented in WP-1c, the C config is left to WP-3b and WP-3c | WP-3b, WP-3c |
-| OI-93 | FOP-1 internal frame encoding | FOP-1 delegates frame construction to the codec's frame-format trait (`Fop1Output::Transmit` still writes frames to `out`) | WP-2b |
+| OI-93 | FOP-1 internal frame encoding | FOP-1 delegates frame construction to the codec's frame-format trait (`Fop1Output::Transmit` still writes frames to `out`). **Resolved (b) by the maintainer, chat, 2026-11-10** | WP-2b |
 | OI-94 | Retired field-code kind (field code 18) | A `retired` kind in [03 §9.1](../03-api-model.md#91-field-codes); the maintainer decides; then the pull request that implements the `retired` kind edits the field code 18 row of 03 §9.1 (crate `core`, API-061), and no other pull request does | none |
 | OI-95 | Testkit generic `ScenarioEngine` driver | Low priority; after WP-3 | none |
-| OI-96 | Duplicated small enums (COP frame kinds in several places, MAP service shapes) | Fold into WP-2b (`aldis-core` for COP frame kinds, `aldis-link` for MAP service) | WP-2b |
+| OI-96 | Duplicated small enums (COP frame kinds in several places, MAP service shapes) | Fold into WP-2b (`aldis-core` for COP frame kinds, `aldis-link` for MAP service). **Resolved (b) by the maintainer, chat, 2026-11-10** | WP-2b |
 | OI-97 | Do `aldis-link`'s codec dependencies become non-optional | Decide after WP-2c, when the dependencies are visible | WP-2e |
 
 ## 6. Risks
