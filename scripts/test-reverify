@@ -209,6 +209,10 @@ EOF
 # fail-moved (also moves main), as long as `publish-always` is not set (then the last line repeats).
 cat >"$work/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = metadata ]; then # a lockfile with conflict markers is not locked
+    [[ " $* " != *" --locked "* ]] || ! grep -q '^<<<<<<<' Cargo.lock
+    exit
+fi
 case "$2 $3" in
 "ci ") exit 0 ;;
 "verify list")
@@ -520,7 +524,7 @@ tip() { git -C "$work/origin.git" rev-parse "refs/heads/$1"; }
 cancelled_is() { [ "$(tr '\n' ' ' <"$stub/cancelled" 2>/dev/null)" = "$1" ]; }
 
 if ! command -v jq >/dev/null 2>&1; then
-    echo "skip the --cancel cases: they need jq"
+    bad "the --cancel cases need jq (not installed)"
 else
 echo "# --cancel: the PR's own in-flight run of a head behind main, and no other"
 reset ok
@@ -1110,6 +1114,41 @@ if command -v jq >/dev/null 2>&1; then
     run --all-behind
     expect "a train holding every constituent head is left alone" \
         said "no open pull request is behind origin/main"
+    echo '{"state":"OPEN"}' >"$stub/pr-61.json"
+    run --all-behind
+    expect "an unreadable constituent selects the train, with a warning" \
+        said "warning: #60: constituent #61 has no head, selecting the train"
+    expect "the unreadable constituent's train is listed" said "behind origin/main: 60"
+    touch "$stub/pr-view-fails"
+    run --all-behind
+    expect "an unreadable train body selects the train, with a warning" \
+        said "warning: #60: cannot read the body, selecting it"
+    rm "$stub/pr-view-fails"
+
+    # A constituent merge that conflicts only in Cargo.lock is resolved as scripts/train does.
+    lock() { printf '[[package]]\nname = "%s"\nversion = "1.0"\n' "$@" >"$work/other/Cargo.lock"; }
+    git -C "$work/other" checkout -q train/2026-11-08-1
+    lock x y
+    git -C "$work/other" add Cargo.lock
+    git -C "$work/other" commit -q -m "train lock"
+    git -C "$work/other" push -q origin train/2026-11-08-1 >/dev/null 2>&1
+    git -C "$work/other" checkout -q c-a
+    lock x
+    git -C "$work/other" add Cargo.lock
+    git -C "$work/other" commit -q -m "c-a lock"
+    git -C "$work/other" push -q origin c-a >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    printf '%s\n' "- #61 feat(m1/wp-1): add a" >"$stub/pr-60-body"
+    c_pr 61 c-a "feat(m1/wp-1): add a" 1
+    sha_a3="$(tip c-a)"
+    reset ok
+    run 60
+    expect "a lockfile-only constituent conflict is regenerated" \
+        said "#61: Cargo.lock regenerated with cargo metadata --offline after a lockfile conflict"
+    expect "the constituent is merged after the lockfile resolution" \
+        said "#60: merged constituent #61 (c-a ${sha_a3:0:7})"
+    expect "the train head contains the constituent head after the lockfile resolution" \
+        git -C "$work/origin.git" merge-base --is-ancestor "$sha_a3" refs/heads/train/2026-11-08-1
 fi
 
 if [ "$failures" -eq 0 ]; then

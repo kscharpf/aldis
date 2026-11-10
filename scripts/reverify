@@ -16,7 +16,8 @@
 # main, `train/*` ones unless --alone) whose head does not contain origin/main, or, for a
 # `train/*` PR, the head of an open constituent PR (`- #<n>` in its body), and reverifies them as
 # one call; with none behind it prints that and exits 0. It cannot be combined with PR numbers or
-# `--status`.
+# `--status`. A train whose body or constituent cannot be read is selected too, with a warning on
+# stderr, and then fails with the reason.
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
@@ -26,9 +27,10 @@
 # (rewritten by a rebase or force-push: add commits instead, or rebuild the train), then
 # `scripts/pr-status --train <n>` must say `READY FOR TRAIN`, and merge its head into the train
 # branch (`Merge pull request #<n> from <owner>/<branch>`, the PR title as body); merge
-# origin/main (a conflict that is only
-# open-issue table rows, both sides pure appends, is resolved by keeping both sides, see
-# resolve_oi_table; any other conflict fails); run
+# origin/main (a conflict that is only open-issue table rows, both sides pure appends, is resolved
+# by keeping both sides, see resolve_oi_table; a conflict of a constituent merge that is only in
+# lockfiles is resolved as scripts/train does, resolve_lockfiles in scripts/lib-lockfiles.sh; any
+# other conflict fails); run
 # `cargo xtask ci`; push; then, if the merged head needs no container (`cargo xtask verify list`:
 # every gating check skipped or reused, as for a stacked PR whose base has merged, VER-056), run
 # `cargo xtask verify --publish` here (no image, no engine; on macOS it also runs the host-bound
@@ -155,6 +157,8 @@ margin_s=$((15 * secs_per_min))
 export NO_COLOR=1 GH_FORCE_TTY=0 GH_NO_UPDATE_NOTIFIER=1
 
 here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$here/lib-lockfiles.sh"
 main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 state_dir="$(git rev-parse --path-format=absolute --git-common-dir)/reverify"
 mkdir -p "$state_dir"
@@ -178,13 +182,23 @@ fi
 # the train's body) has a head that the train head does not contain (or that cannot be fetched).
 behind_constituent() {
     local body c info c_state c_sha
-    body="$(gh pr view "$1" --json body --jq '.body // ""' 2>/dev/null)" || return 1
+    if ! body="$(gh pr view "$1" --json body --jq '.body // ""' 2>/dev/null)"; then
+        echo "warning: #$1: cannot read the body, selecting it" >&2
+        return 0
+    fi
     while IFS= read -r c; do
         [ -n "$c" ] || continue
         info="$(gh pr view "$c" --json state,headRefOid --jq '[.state, .headRefOid] | @tsv' \
-            2>/dev/null)" || continue
+            2>/dev/null)" || {
+            echo "warning: #$1: cannot read constituent #$c, selecting the train" >&2
+            return 0
+        }
         IFS=$'\t' read -r c_state c_sha <<<"$info"
-        [ "$c_state" = OPEN ] && [ -n "$c_sha" ] || continue
+        [ "$c_state" = OPEN ] || continue
+        [ -n "$c_sha" ] || {
+            echo "warning: #$1: constituent #$c has no head, selecting the train" >&2
+            return 0
+        }
         git -C "$main_checkout" cat-file -e "$c_sha^{commit}" 2>/dev/null ||
             git -C "$main_checkout" fetch --quiet origin "refs/pull/$c/head" 2>/dev/null || true
         git -C "$main_checkout" merge-base --is-ancestor "$c_sha" "$2" 2>/dev/null || return 0
@@ -575,7 +589,7 @@ ${c_old:0:7}, not an ancestor of ${c_sha:0:7}; rebuild with \
 scripts/train --rebuild $pr --without $c" || return 1
         fi
         c_verdict="$("$here/pr-status" --train "$c" 2>/dev/null |
-            grep -E "^#$c: (READY|NOT READY)" | tail -n 1)" || c_verdict=""
+            grep -E "^#$c: (READY|NOT READY)" | tail -n 1)"
         if [ "$c_verdict" != "#$c: READY FOR TRAIN" ]; then
             fail "#$c cannot ride a train: ${c_verdict:-no verdict from scripts/pr-status --train}"
             return 1
@@ -590,7 +604,11 @@ scripts/train --rebuild $pr --without $c" || return 1
             -m "Merge pull request #$c from $c_owner/$c_branch" -m "$c_title" "$c_sha"; then
             if resolve_oi_table "$dir"; then
                 echo "#$pr: kept both sides of an OI table conflict; check for duplicate IDs"
+            elif tmproot="$(mktemp -d "${TMPDIR:-/tmp}/reverify.XXXXXX")" &&
+                resolve_lockfiles "$dir" "$c"; then
+                rm -rf "$tmproot"
             else
+                rm -rf "${tmproot:-}"
                 git -C "$dir" merge --abort 2>/dev/null || true
                 fail "merge conflict with #$c ($c_branch); resolve by hand in $dir" || return 1
             fi
