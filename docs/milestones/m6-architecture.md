@@ -118,7 +118,7 @@ Each is the maintainer's (decision rights: public API and C ABI conventions, sco
 | OI | Question | Recommended | Blocks |
 |---|---|---|---|
 | OI-91 | `#[repr(C)]` head and buffers layout in the Rust engines | Plain Rust engines; zero-first in-place construction through an `unsafe trait InPlace` and `place<E>`, both in `aldis-ffi` | WP-3a |
-| OI-92 | Flat C config struct checked twice, and EPP and SPP `check` functions | Protocol-tagged C config (WP-3b, WP-3c); EPP and SPP return proof types (WP-1c) | WP-1c, WP-3b, WP-3c |
+| OI-92 | Flat C config struct checked twice, and EPP and SPP `check` functions | Protocol-tagged C config (WP-3b, WP-3c); EPP and SPP return proof types (WP-1c). **Resolved (b) by the maintainer, chat, 2026-11-10;** the EPP and SPP part is implemented in WP-1c, the C config is left to WP-3b and WP-3c | WP-3b, WP-3c |
 | OI-93 | FOP-1 internal frame encoding | FOP-1 delegates frame construction to the codec's frame-format trait (`Fop1Output::Transmit` still writes frames to `out`) | WP-2b |
 | OI-94 | Retired field-code kind (field code 18) | A `retired` kind in [03 §9.1](../03-api-model.md#91-field-codes); the maintainer decides; then the pull request that implements the `retired` kind edits the field code 18 row of 03 §9.1 (crate `core`, API-061), and no other pull request does | none |
 | OI-95 | Testkit generic `ScenarioEngine` driver | Low priority; after WP-3 | none |

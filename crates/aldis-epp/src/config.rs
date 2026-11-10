@@ -172,14 +172,22 @@ impl EppConfig {
     /// which encoders require (133.1 §4.2.1.1.2). An Idle Packet carries no data unit for a user
     /// (133.1 §4.1.3.1.3, §4.3.1.1.3) and always passes.
     ///
+    /// The result is a [`CheckedDataLen`], which only this function and the crate-internal length
+    /// check build (RS-020).
+    ///
     /// # Errors
     /// - `UnknownChannel` (`epi`) if the EPI is not in the valid set.
     /// - `UnknownChannel` (`epi_extension`) if the EPI is `110` and the extension is absent or
     ///   not in the valid extended set.
     /// - `OutOfRange` (`data_len`) if `data_len` is outside `min_data_len..=max_data_len`.
-    pub fn check(&self, epi: Epi, extension: Option<EpiExtension>, data_len: usize) -> Result<()> {
+    pub fn check(
+        &self,
+        epi: Epi,
+        extension: Option<EpiExtension>,
+        data_len: usize,
+    ) -> Result<CheckedDataLen> {
         if epi.is_idle() {
-            return Ok(());
+            return Ok(CheckedDataLen(data_len));
         }
         self.check_ids(epi, extension)?;
         self.check_len(data_len)
@@ -199,7 +207,7 @@ impl EppConfig {
     }
 
     /// The length part of [`check`](Self::check) for a non-idle EPI.
-    pub(crate) fn check_len(&self, data_len: usize) -> Result<()> {
+    pub(crate) fn check_len(&self, data_len: usize) -> Result<CheckedDataLen> {
         let len = len_u64(data_len);
         if len < u64::from(self.min_data_len) {
             return Err(Error::out_of_range(
@@ -215,7 +223,7 @@ impl EppConfig {
                 len,
             ));
         }
-        Ok(())
+        Ok(CheckedDataLen(data_len))
     }
 
     /// Checks the identifiers in `fields` for the sending end (133.1 §4.2.1.1.2); idle fields
@@ -238,11 +246,11 @@ impl EppConfig {
         fields: EncapsulationFields,
         data: &'a [u8],
     ) -> Result<DataUnit<'a>> {
-        self.check(fields.epi(), Some(fields.extension()), data.len())?;
+        let len = self.check(fields.epi(), Some(fields.extension()), data.len())?;
         if data.is_empty() && !fields.epi().is_idle() {
             return Err(invalid(field::EPI));
         }
-        Ok(DataUnit { fields, data })
+        Ok(DataUnit { fields, data, len })
     }
 
     /// The header for a checked data unit of `data_len` octets, without the data: for streaming
@@ -260,8 +268,27 @@ impl EppConfig {
         size: HeaderSize,
         data_len: usize,
     ) -> Result<EncapsulationHeader> {
-        self.check(fields.epi(), Some(fields.extension()), data_len)?;
+        let data_len = self
+            .check(fields.epi(), Some(fields.extension()), data_len)?
+            .get();
         EncapsulationHeader::for_data(fields, size, data_len)
+    }
+}
+
+/// A data field length that [`EppConfig::check`] accepted for the configuration's managed
+/// parameters (133.1 §5 Table 5-1, EPP-010, RS-020).
+///
+/// The field is private and only the checks in this module build one, so code that takes it
+/// (the header sizing of [`EppConfig::header`]) does not compare against the limits again. An
+/// Idle Packet's length is carried unchecked, as `check` lets it pass (133.1 §4.1.3.1.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CheckedDataLen(usize);
+
+impl CheckedDataLen {
+    /// The data field length in octets.
+    #[must_use]
+    pub const fn get(self) -> usize {
+        self.0
     }
 }
 
@@ -273,9 +300,17 @@ impl EppConfig {
 pub struct DataUnit<'a> {
     fields: EncapsulationFields,
     data: &'a [u8],
+    len: CheckedDataLen,
 }
 
 impl<'a> DataUnit<'a> {
+    /// The length of [`data`](Self::data), as the proof that the configuration accepted it
+    /// (133.1 §5 Table 5-1, EPP-010, RS-020).
+    #[must_use]
+    pub const fn data_len(&self) -> CheckedDataLen {
+        self.len
+    }
+
     /// The header fields (133.1 §4.1.2, EPP-008).
     #[must_use]
     pub const fn fields(&self) -> EncapsulationFields {
@@ -302,7 +337,7 @@ pub(crate) const ANY: EppConfig = EppConfig {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{EpiSet, EppConfig, ExtendedEpiSet, MAX_DATA_LEN};
+    use super::{CheckedDataLen, EpiSet, EppConfig, ExtendedEpiSet, MAX_DATA_LEN};
     use crate::field;
     use crate::header::{Epi, EpiExtension};
     use aldis_core::{ErrorDetail, ErrorKind};
@@ -446,8 +481,15 @@ mod tests {
             ExtendedEpiSet::EMPTY.with(EXT9),
         )
         .unwrap();
-        assert_eq!(cfg.check(Epi::IDLE, None, 100), Ok(()));
-        assert_eq!(cfg.check(Epi::EXTENDED, Some(EXT9), 3), Ok(()));
+        assert_eq!(
+            cfg.check(Epi::IDLE, None, 100).map(CheckedDataLen::get),
+            Ok(100)
+        );
+        assert_eq!(
+            cfg.check(Epi::EXTENDED, Some(EXT9), 3)
+                .map(CheckedDataLen::get),
+            Ok(3)
+        );
         let e = cfg.check(Epi::MISSION_SPECIFIC, None, 3).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),

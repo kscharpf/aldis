@@ -36,7 +36,7 @@ pub mod view;
 pub mod writer;
 
 pub use anomaly::EppAnomaly;
-pub use config::{DataUnit, EpiSet, EppConfig, ExtendedEpiSet};
+pub use config::{CheckedDataLen, DataUnit, EpiSet, EppConfig, ExtendedEpiSet};
 pub use header::{
     EncapsulationFields, EncapsulationHeader, Epi, EpiExtension, HeaderLen, HeaderSize, UserDefined,
 };
