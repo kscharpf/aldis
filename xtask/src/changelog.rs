@@ -13,8 +13,11 @@
 //! '<b>' into train/...` is resolved to its pull request by the second parent of the merge, the
 //! head of the pull request: `gh pr list --state merged --search <sha>` keeps the result whose
 //! head is that commit and not a `train/*` branch; a failure is a warning naming the merge. A
-//! merge of `main` into the train is ignored. The text of the Unreleased section is kept in the
-//! release as it stands.
+//! merge of `main` into the train is ignored. A train is read from the merge commit that merged
+//! it, so it must be merged with a merge commit, never squashed. The text of the Unreleased
+//! section is kept in the release as it stands. The tool is the coordinator's, run at a release or
+//! when the tables are due; it is no check of the gate. The title convention an author follows is
+//! in `docs/process/pr-body.md`.
 
 use std::fmt::Write as _;
 use std::process::Command;

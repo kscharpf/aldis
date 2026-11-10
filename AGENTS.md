@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rules for coding agents working on **Aldis**; read [README.md](README.md) first. This file holds what an agent must or must not do; mechanics and rationale are in [docs/](docs/README.md). The rules apply to the Rust crates and the reference application. Terms: [glossary](docs/glossary.md).
+Rules for coding agents working on **Aldis**. This file holds what an agent must or must not do; mechanics and rationale are in [docs/](docs/README.md). The rules apply to the Rust crates and the reference application. Terms: [glossary](docs/glossary.md).
 
 ## Sources of truth
 
@@ -24,13 +24,7 @@ Do not edit the State and PRs columns of a plan's work-package table (the coordi
 
 ## Independent review
 
-Protocol: [docs/process/review.md](docs/process/review.md).
-
-- Don't re-run the gate's checks; read the published record (`cargo xtask verify check <head>`), including non-gating checks (`rust-sparc-leon3`; `kani` is nightly-only).
-- Read every suppression the change adds (`#[expect]`, `coverage-waivers.toml`, [mutants-triage.md](docs/verification/mutants-triage.md)) and verify the reason holds on the smallest region.
-- Spend the review on what no check covers: the Blue Book readings (cite the clause), requirements and test/vector coverage, `unsafe` soundness, and the public API and C ABI shape.
-- **Every statement about the implementation cites `path:line`**, quoting the code where the point depends on it.
-- Report mismatches between documentation and code, or between two documents, as one batch of nits at the end.
+Reviewers follow [docs/process/review.md](docs/process/review.md), the one copy of the protocol.
 
 ## Rules no check enforces (Layers 0–2)
 
@@ -42,7 +36,7 @@ Protocol: [docs/process/review.md](docs/process/review.md).
 
 ## Checks
 
-Run `cargo xtask check --quick` after each edit, with zero warnings. For a change the gate checks with `spec` alone (documentation, workflows, `.gitignore`; [glossary](docs/glossary.md#skipped-check)), the default tier runs only the steps of the `spec` check, and `--quick` need not run after a documentation edit. The default tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Rounds, tiers, and resuming a failed run (`--from`): [agent-brief.md](docs/process/agent-brief.md) items 2 and 3; `--full` is optional. If a train's coverage check says "shrink the waiver", run `cargo xtask coverage -p <crate>` with `ALDIS_COVERAGE_SHRINK=1` and commit the result. Report which tier passed; no tier is the gate.
+Run `cargo xtask check --quick` after each edit, with zero warnings. For a change the gate checks with `spec` alone (documentation, workflows, `.gitignore`; [glossary](docs/glossary.md#skipped-check)), the default tier runs only the steps of the `spec` check, and `--quick` need not run after a documentation edit. The default tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Rounds, tiers, and resuming a failed run (`--from`): [agent-brief.md](docs/process/agent-brief.md) items 2 and 3; `--full` is optional. Report which tier passed; no tier is the gate.
 
 **Implementation agents commit and stop**, unless the brief grants the gate ([agent brief](docs/process/agent-brief.md)). The coordinator runs the merge gate and the merge trains ([coordinator.md](docs/process/coordinator.md)).
 

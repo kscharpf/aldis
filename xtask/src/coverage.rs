@@ -533,7 +533,8 @@ fn judge(
         if missed < allowed {
             println!(
                 "error: VER-024 {krate} {metric}: {allowed} waived but only {missed} missed; \
-                 shrink the waiver"
+                 shrink the waiver: run \
+                 `ALDIS_COVERAGE_SHRINK=1 cargo xtask coverage -p {krate}` and commit the result"
             );
             problems += 1;
         }
