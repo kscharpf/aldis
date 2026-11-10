@@ -628,6 +628,6 @@ mod physical_channel_tests {
         assert_eq!(PhysicalChannel::frame_len(&p), 24);
         assert!(PhysicalChannel::fecf(&p));
         assert_eq!(PhysicalChannel::insert_zone_len(&p), 0);
-        assert_eq!(PhysicalChannel::variable_length(&p), true);
+        assert!(PhysicalChannel::variable_length(&p));
     }
 }
