@@ -1439,3 +1439,27 @@ fn a_gap_and_a_discontinuity_never_come_together_for_one_counter() {
     );
     assert_eq!(out.len(), 3);
 }
+
+#[test]
+fn a_channel_reports_the_physical_channel_it_embeds() {
+    // req: LNK-078, LNK-050
+    let none = DeliveryService::None;
+    assert_eq!(
+        tm_channel(LEN, true, none, none).physical().frame_len(),
+        LEN
+    );
+    assert!(tc_channel(LEN, true).physical().fecf());
+    assert_eq!(
+        aos_channel(LEN, 3, false, true)
+            .physical()
+            .insert_zone_len(),
+        3
+    );
+    assert_eq!(
+        uslp_channel(LEN, 3, true, none)
+            .physical()
+            .insert_zone_len(),
+        3
+    );
+    assert!(uslp_variable(LEN, none).is_variable());
+}

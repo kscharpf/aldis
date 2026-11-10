@@ -364,6 +364,7 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     );
     // An OID frame needs a data field longer than the TFDF Header.
     assert_eq!(failure(uslp(&[], 8)), invalid(field::FRAME_LEN));
+    assert_eq!(failure(uslp(&[], 9)), invalid(field::FRAME_LEN));
     assert_eq!(failure(uslp(&[], 12)), invalid(field::FRAME_LEN));
     assert!(uslp(&[], 13).is_ok());
 }
@@ -424,6 +425,20 @@ fn the_configuration_reports_what_it_holds() {
     .with_insert_zone_fill(0xA5)
     .unwrap();
     assert_eq!(aos.insert_zone_len(), 3);
+    assert_eq!(aos.channel().physical().insert_zone_len(), 3);
+    // The mux builds fixed-length frames: a variable-length USLP channel is refused.
+    let variable =
+        UslpPhysicalChannelConfig::new(TransferFrameType::Variable, 32, 0, true).unwrap();
+    assert_eq!(
+        failure(UslpChannel::new(
+            variable,
+            SpacecraftId::<16>::new(1).unwrap(),
+            SourceOrDestination::Source,
+            VcfCountLen::NONE
+        )),
+        named(ErrorKind::InvalidConfig, field::TRANSFER_FRAME_TYPE)
+    );
+    assert_eq!(uslp_channel().physical().frame_len(), 32);
 }
 
 #[test]

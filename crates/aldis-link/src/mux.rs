@@ -569,7 +569,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     /// # Errors
     /// `InvalidConfig` (`insert_zone_len`) for a physical channel without an Insert Zone.
     pub fn with_insert_zone_fill(self, idle_pattern: u8) -> Result<ChannelMuxConfig<P, V>> {
-        if self.insert_zone_len() == 0 || !P::INSERT_ZONE {
+        if self.insert_zone_len() == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::INSERT_ZONE_LEN));
         }
         Ok(ChannelMuxConfig {

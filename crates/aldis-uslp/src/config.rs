@@ -1123,3 +1123,20 @@ pub(crate) mod tests {
         assert!(VcTable::<4, 4>::new(room, &[ocf], &[]).is_ok());
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::PhysicalChannelConfig::new(super::TransferFrameType::Fixed, 24, 3, true)
+            .unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 3);
+        assert_eq!(PhysicalChannel::variable_length(&p), false);
+    }
+}

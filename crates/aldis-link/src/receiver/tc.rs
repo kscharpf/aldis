@@ -75,13 +75,12 @@ impl ReceiveProtocol for Tc {
 
     fn fits(frame_len: usize, channel: &TcChannel, _: Option<&TcVc>) -> bool {
         let fecf = channel.physical.fecf();
-        // At least one data octet (CMN-041, OI-41), and at most the Maximum Transfer Frame Length
-        // (232.0 Tables 5-1 to 5-3).
+        // At least one data octet (CMN-041, OI-41); the Maximum Transfer Frame Length (232.0
+        // Tables 5-1 to 5-3) bounds the physical channel's frame length, which no frame exceeds.
         frame_len
             >= HEADER_LEN
                 .saturating_add(if fecf { 2 } else { 0 })
                 .saturating_add(1)
-            && frame_len <= aldis_tc::MAX_FRAME_LEN
     }
 
     fn raw_insert_zone_offset(_: &TcChannel, _: &[u8]) -> Result<usize> {

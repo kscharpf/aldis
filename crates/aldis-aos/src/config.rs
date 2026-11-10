@@ -853,3 +853,20 @@ pub(crate) mod tests {
         assert_eq!(t.frame_layout(scid(9), vcid(3)), None);
     }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::AosPhysicalChannelConfig::new(24, false, 3, true, super::AosEdition::Issue5)
+            .unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 3);
+        assert_eq!(PhysicalChannel::variable_length(&p), false);
+    }
+}
