@@ -168,6 +168,36 @@ mod tests {
         Two::write_oid_data_header(0, &mut []);
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct Wide;
+
+    impl FrameFormat for Wide {
+        type HeaderExtension = usize;
+        type Physical = Chan;
+        type PrimaryHeader = ();
+        const PRIMARY_HEADER_LEN: usize = 6;
+        const PACKET_HEADER_LEN: usize = 0;
+        const SDU_HEADER_LEN: usize = 0;
+
+        fn extension_len(extension: &usize) -> usize {
+            *extension
+        }
+
+        fn write_primary_header((): &(), _: &mut [u8]) -> Result<()> {
+            Ok(())
+        }
+
+        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
+    }
+
+    #[test]
+    fn primary_header_len_adds_and_saturates() {
+        // req: LNK-001
+        assert_eq!(Wide::primary_header_len(&0), 6);
+        assert_eq!(Wide::primary_header_len(&2), 8);
+        assert_eq!(Wide::primary_header_len(&usize::MAX), usize::MAX);
+    }
+
     #[test]
     fn a_header_goes_to_the_start_of_the_buffer_or_nowhere() {
         // req: LNK-001, GEN-052
@@ -178,38 +208,5 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!(e.detail(), ErrorDetail::Needed(4));
         assert_eq!(out, [1, 2, 3, 0xEE, 0xEE]);
-    }
-}
-
-#[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
-    use super::FrameFormat;
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Marker;
-
-    impl FrameFormat for Marker {
-        type HeaderExtension = usize;
-        const PRIMARY_HEADER_LEN: usize = 6;
-        const PACKET_HEADER_LEN: usize = 0;
-        const SDU_HEADER_LEN: usize = 0;
-
-        fn extension_len(extension: &usize) -> usize {
-            *extension
-        }
-    }
-
-    #[test]
-    fn primary_header_len_adds_the_extension() {
-        // req: LNK-001
-        assert_eq!(Marker::primary_header_len(&0), 6);
-        assert_eq!(Marker::primary_header_len(&2), 8);
-    }
-
-    #[test]
-    fn primary_header_len_saturates() {
-        // req: LNK-001
-        assert_eq!(Marker::primary_header_len(&usize::MAX), usize::MAX);
     }
 }
