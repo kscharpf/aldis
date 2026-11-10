@@ -21,6 +21,7 @@
 
 use std::collections::BTreeMap;
 
+use aldis_core::CopFrameKind;
 use aldis_core::bits::{get, set};
 use aldis_core::counter::ModCounter;
 use aldis_core::error::{Error, ErrorDetail, ErrorKind, FieldId};
@@ -711,4 +712,29 @@ proptest! {
             None => prop_assert!(len > whole.len()),
         }
     }
+}
+
+/// Bypass and Control Command Flags: three of the four combinations are frame kinds, each with
+/// its flags back, and Bypass `0` with Control Command `1` is reserved and has none (232.0 Table
+/// 4-1; 732.1 Table 4-1; TC-002, USLP-001).
+#[test]
+fn cop_frame_kind_has_three_flag_combinations() {
+    // restricted: CopFrameKind
+    // req: TC-002, USLP-001, VER-023
+    let mut kinds = 0;
+    for bypass in [false, true] {
+        for control in [false, true] {
+            match CopFrameKind::from_flags(bypass, control) {
+                Some(kind) => {
+                    kinds += 1;
+                    assert_eq!(
+                        (kind.bypass_flag(), kind.control_command_flag()),
+                        (bypass, control)
+                    );
+                }
+                None => assert!(!bypass && control),
+            }
+        }
+    }
+    assert_eq!(kinds, 3);
 }

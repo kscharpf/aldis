@@ -109,6 +109,160 @@ pub fn set(buf: &mut [u8], bit_offset: usize, width: u8, value: u64) -> Result<(
     Ok(())
 }
 
+/// A field of a header of `N` octets at bit `OFFSET`, `WIDTH` bits wide, addressed as [`get`](fn@get)
+/// and [`set`] do (GEN-050, GEN-051).
+///
+/// The three parameters are checked when the code is compiled: a field that is not inside its
+/// header, or not 1 to 64 bits wide, does not compile. So the operations have no error to
+/// return and no panic path, and the narrowing accessors ([`get_u8`](Self::get_u8) and the
+/// others) accept only a field that fits their type. A codec names each field of a header once
+/// as a type alias and reads and writes it through these functions. A field of a buffer of
+/// unknown length is read with [`get`](fn@get).
+///
+/// Each operation touches every octet of the header once, with no 128-bit accumulator, so the
+/// proof of a header codec stays small (OI-42, VER-059).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Field<const N: usize, const OFFSET: usize, const WIDTH: u8>;
+
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::arithmetic_side_effects,
+    reason = "the module's shifts and narrowing casts (VER-001 exception): every shift is below 8 or the width, every cast keeps at most 8 bits, and the loop counter is at most N"
+)]
+impl<const N: usize, const OFFSET: usize, const WIDTH: u8> Field<N, OFFSET, WIDTH> {
+    /// Past the header or of a width outside 1 to 64: a build error where it is used.
+    const INSIDE: () = assert!(
+        WIDTH >= 1 && WIDTH <= 64 && OFFSET + (WIDTH as usize) <= N * 8,
+        "the field is not a 1 to 64 bit field of the header"
+    );
+
+    /// The bit range `lo..hi` that octet `k` holds of the field, as the number of bits and the
+    /// shift that right-aligns them in the octet; `None` for an octet with none of it.
+    const fn part(k: usize) -> Option<(u8, u8)> {
+        let () = Self::INSIDE;
+        let start = k * 8;
+        let lo = if OFFSET > start { OFFSET } else { start };
+        let end = OFFSET + WIDTH as usize;
+        let hi = if end < start + 8 { end } else { start + 8 };
+        if hi > lo {
+            Some(((hi - lo) as u8, (start + 8 - hi) as u8))
+        } else {
+            None
+        }
+    }
+
+    /// The value of the field, right-aligned (GEN-051).
+    #[must_use]
+    pub const fn get(header: &[u8; N]) -> u64 {
+        let mut acc = 0_u64;
+        let mut rest: &[u8] = header;
+        let mut k = 0;
+        // bound: one step for each of the N octets of the header
+        while let [octet, tail @ ..] = rest {
+            if let Some((take, shift)) = Self::part(k) {
+                let bits = (*octet >> shift) & (0xFF_u8 >> (8 - take));
+                acc = (acc << take) | bits as u64;
+            }
+            rest = tail;
+            k += 1;
+        }
+        acc
+    }
+
+    /// The value of a field of at most 8 bits (GEN-051).
+    #[must_use]
+    pub const fn get_u8(header: &[u8; N]) -> u8 {
+        const { assert!(WIDTH <= 8, "the field is wider than 8 bits") };
+        Self::get(header) as u8
+    }
+
+    /// The value of a field of at most 16 bits (GEN-051).
+    #[must_use]
+    pub const fn get_u16(header: &[u8; N]) -> u16 {
+        const { assert!(WIDTH <= 16, "the field is wider than 16 bits") };
+        Self::get(header) as u16
+    }
+
+    /// The value of a field of at most 32 bits (GEN-051).
+    #[must_use]
+    pub const fn get_u32(header: &[u8; N]) -> u32 {
+        const { assert!(WIDTH <= 32, "the field is wider than 32 bits") };
+        Self::get(header) as u32
+    }
+
+    /// Whether a one-bit field is set (GEN-051).
+    #[must_use]
+    pub const fn flag(header: &[u8; N]) -> bool {
+        const { assert!(WIDTH == 1, "the field is not one bit") };
+        Self::get(header) != 0
+    }
+
+    /// Writes `value` into the field and leaves the other bits as they are; the bits of `value`
+    /// above the width are dropped, so a value type that bounds the field comes first
+    /// (GEN-051).
+    pub const fn put(header: &mut [u8; N], value: u64) {
+        let mut rest: &mut [u8] = header;
+        let mut k = 0;
+        // bound: one step for each of the N octets of the header
+        while let [octet, tail @ ..] = rest {
+            if let Some((take, shift)) = Self::part(k) {
+                let mask = 0xFF_u8 >> (8 - take);
+                // The bits of the value that lie below this octet's part of the field.
+                let below = OFFSET + WIDTH as usize - (k * 8 + 8 - shift as usize);
+                let part = ((value >> below) as u8) & mask;
+                *octet = (*octet & !(mask << shift)) | (part << shift);
+            }
+            rest = tail;
+            k += 1;
+        }
+    }
+
+    /// Writes a value of the type that bounds a field of at most 8 bits (GEN-051).
+    pub const fn put_u8(header: &mut [u8; N], value: u8) {
+        const { assert!(WIDTH <= 8, "the field is wider than 8 bits") };
+        Self::put(header, value as u64);
+    }
+
+    /// Writes a value of the type that bounds a field of at most 16 bits (GEN-051).
+    pub const fn put_u16(header: &mut [u8; N], value: u16) {
+        const { assert!(WIDTH <= 16, "the field is wider than 16 bits") };
+        Self::put(header, value as u64);
+    }
+
+    /// Writes a value of the type that bounds a field of at most 32 bits (GEN-051).
+    pub const fn put_u32(header: &mut [u8; N], value: u32) {
+        const { assert!(WIDTH <= 32, "the field is wider than 32 bits") };
+        Self::put(header, value as u64);
+    }
+
+    /// Writes a one-bit field (GEN-051).
+    pub const fn put_flag(header: &mut [u8; N], value: bool) {
+        const { assert!(WIDTH == 1, "the field is not one bit") };
+        Self::put(header, value as u64);
+    }
+}
+
+/// The unsigned big-endian integer of `octets`: the last 8 if there are more (GEN-051).
+///
+/// For a field of whole octets whose number the caller has already fixed, such as the VCF Count
+/// of a USLP header.
+#[must_use]
+#[expect(
+    clippy::as_conversions,
+    reason = "lossless widening u8 -> u64 in `const` context (VER-001 exception)"
+)]
+pub const fn be_uint(octets: &[u8]) -> u64 {
+    let mut acc = 0_u64;
+    let mut rest = octets;
+    // bound: one step for each octet of the slice
+    while let [octet, tail @ ..] = rest {
+        acc = (acc << 8) | *octet as u64;
+        rest = tail;
+    }
+    acc
+}
+
 const fn octet_err(buf_len: usize, offset: usize, width: usize) -> Error {
     if let Some(max_offset) = buf_len.checked_sub(width) {
         Error::out_of_range(field::OFFSET, as_u64(max_offset), as_u64(offset))
@@ -176,7 +330,7 @@ octet_int!(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
+    use super::{Field, get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
 
@@ -241,6 +395,73 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(get(&[], 0, 1).unwrap_err().kind(), ErrorKind::OutOfRange);
+    }
+
+    #[test]
+    fn fixed_fields_agree_with_the_checked_primitives() {
+        // req: GEN-050, GEN-051
+        type Scid = Field<6, 2, 10>;
+        type Wide = Field<9, 3, 64>;
+        type Bit = Field<2, 15, 1>;
+        let header = [0x1B, 0xCD, 0xE5, 0x07, 0xFF, 0x81];
+        assert_eq!(Scid::get(&header), get(&header, 2, 10).unwrap());
+        assert_eq!(u64::from(Scid::get_u16(&header)), Scid::get(&header));
+        let wide = [0xA5, 1, 2, 3, 4, 5, 6, 7, 0x9F];
+        assert_eq!(Wide::get(&wide), get(&wide, 3, 64).unwrap());
+        assert!(Bit::flag(&[0, 1]));
+        assert_eq!(Field::<1, 2, 5>::get_u8(&[0b0011_1100]), 0b11110);
+        assert_eq!(Field::<5, 8, 32>::get_u32(&[0, 1, 2, 3, 4]), 0x0102_0304);
+        let mut two = [0_u8; 2];
+        Bit::put_flag(&mut two, true);
+        assert_eq!(two, [0, 1]);
+        let mut three = [0_u8; 3];
+        Field::<3, 4, 8>::put_u8(&mut three, 0xAB);
+        Field::<3, 12, 12>::put_u16(&mut three, 0xCDE);
+        assert_eq!(three, [0x0A, 0xBC, 0xDE]);
+        let mut five = [0_u8; 5];
+        Field::<5, 4, 32>::put_u32(&mut five, 0x0102_0304);
+        assert_eq!(five, [0x00, 0x10, 0x20, 0x30, 0x40]);
+        macro_rules! round {
+            ($offset:literal, $width:literal) => {
+                type F = Field<6, $offset, $width>;
+                for value in [0_u64, 1, 0x2A5, 0xFFFF_FFFF_FFFF] {
+                    let value = value & (u64::MAX >> (64 - $width));
+                    let mut got = [0xA5_u8, 0x5A, 0xFF, 0x00, 0x81, 0x7E];
+                    let mut want = got;
+                    F::put(&mut got, value);
+                    set(&mut want, $offset, $width, value).unwrap();
+                    assert_eq!(got, want);
+                    assert_eq!(F::get(&got), value);
+                }
+            };
+        }
+        {
+            round!(0, 1);
+        }
+        {
+            round!(3, 7);
+        }
+        {
+            round!(5, 11);
+        }
+        {
+            round!(8, 16);
+        }
+        {
+            round!(13, 3);
+        }
+        {
+            round!(0, 48);
+        }
+        assert_eq!(super::be_uint(&[]), 0);
+        assert_eq!(super::be_uint(&[1, 2, 3]), 0x01_02_03);
+        assert_eq!(
+            super::be_uint(&[9, 1, 2, 3, 4, 5, 6, 7, 8]),
+            0x0102_0304_0506_0708
+        );
+        let mut ones = [0xFF_u8; 2];
+        Field::<2, 4, 4>::put(&mut ones, 0x1F5);
+        assert_eq!(ones, [0xF5, 0xFF], "bits above the width are dropped");
     }
 
     #[test]

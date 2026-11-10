@@ -16,7 +16,8 @@ use aldis_core::{ErrorKind, field};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh,
-    MuxInput, MuxOutput, Offer, Scope, TmChannel, TmRole, TmVc, UslpChannel, UslpVc, VcConfig,
+    MuxInput, MuxOutput, MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
+    UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
@@ -137,13 +138,35 @@ const fn named(k: ErrorKind, f: aldis_core::FieldId) -> (ErrorKind, Option<&'sta
     (k, Some(f.name()))
 }
 
-const fn offer(vc: u8, field: &[u8], pointer: Option<u16>) -> Offer<'_> {
+/// The metadata of an offer of the protocol, from the First Header Pointer a TM offer carries.
+trait FromPointer {
+    fn from_pointer(pointer: Option<u16>) -> Self;
+}
+
+impl FromPointer for TmOffer {
+    fn from_pointer(pointer: Option<u16>) -> Self {
+        TmOffer { pointer }
+    }
+}
+
+impl FromPointer for () {
+    fn from_pointer(_: Option<u16>) -> Self {}
+}
+
+impl FromPointer for UslpOffer {
+    fn from_pointer(_: Option<u16>) -> Self {
+        UslpOffer::default()
+    }
+}
+
+fn offer<P: MuxProtocol>(vc: u8, field: &[u8], pointer: Option<u16>) -> Offer<'_, P>
+where
+    P::OfferMeta: FromPointer,
+{
     Offer {
         vc,
         field,
-        pointer,
-        route: None,
-        cop: None,
+        meta: P::OfferMeta::from_pointer(pointer),
     }
 }
 
@@ -405,7 +428,8 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
     let mut out = [0; F];
     let field16 = [0x11; 16];
     let invalid = |f| named(ErrorKind::InvalidField, f);
-    let mut step = |mux: &mut TmMux, o: Offer<'_>| failure(mux.step(MuxInput::Offer(o), &mut out));
+    let mut step =
+        |mux: &mut TmMux, o: Offer<'_, Tm>| failure(mux.step(MuxInput::Offer(o), &mut out));
     // A VC not configured, a field of another length.
     assert_eq!(
         step(&mut mux, offer(5, &field16, Some(0))).0,
@@ -428,36 +452,11 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
         step(&mut mux, offer(1, &field16, Some(0x800))),
         named(ErrorKind::OutOfRange, field::FIRST_HEADER_POINTER)
     );
-    // A route and a COP-1 block belong to USLP (OI-78).
-    let route = Route {
-        map: MapId::<4>::new(0).unwrap(),
-        qos: Qos::SequenceControlled,
-    };
-    assert_eq!(
-        step(
-            &mut mux,
-            Offer {
-                route: Some(route),
-                ..offer(1, &field16, Some(0))
-            }
-        ),
-        invalid(field::MAP_ID)
-    );
-    let cop = Cop::TypeAd { vcf_count: 0 };
-    assert_eq!(
-        step(
-            &mut mux,
-            Offer {
-                cop: Some(cop),
-                ..offer(1, &field16, Some(0))
-            }
-        ),
-        invalid(field::COP_IN_EFFECT)
-    );
+    // A route and a COP-1 block belong to USLP (OI-78): a TM offer has no member for them.
     let s = mux.status();
     assert_eq!(
         (s.offers.get(), s.refused.get(), s.would_block.get()),
-        (0, 7, 0)
+        (0, 5, 0)
     );
     // The refusals changed nothing: the first valid offers are the first frames.
     assert_eq!(step_ok(&mut mux, offer(1, &field16, Some(5))), 0);
@@ -468,7 +467,7 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
     let s = mux.status();
     assert_eq!(
         (s.offers.get(), s.refused.get(), s.would_block.get()),
-        (1, 7, 1)
+        (1, 5, 1)
     );
     assert_eq!((s.slots.current(), s.slots.high_water()), (16, 16));
     let mut frame = [0; F];
@@ -482,7 +481,7 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
     );
 }
 
-fn step_ok(mux: &mut TmMux, o: Offer<'_>) -> usize {
+fn step_ok(mux: &mut TmMux, o: Offer<'_, Tm>) -> usize {
     let mut out = [0; F];
     mux.step(MuxInput::Offer(o), &mut out).unwrap().len()
 }
@@ -504,7 +503,10 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     // Without COP-1 in effect the VC takes no cop block.
     let mut mux = UslpMux::new(uslp_config(false)).unwrap();
     let with = Offer {
-        cop: Some(cop(0, false, false)),
+        meta: UslpOffer {
+            cop: Some(cop(0, false, false)),
+            ..UslpOffer::default()
+        },
         ..offer(1, &field21, None)
     };
     assert_eq!(
@@ -513,7 +515,10 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     );
     // A MAP the VC does not have (OI-78): UnknownChannel naming the MAP, state unchanged.
     let wrong_map = Offer {
-        route: Some(route(2, Qos::SequenceControlled)),
+        meta: UslpOffer {
+            route: Some(route(2, Qos::SequenceControlled)),
+            ..UslpOffer::default()
+        },
         ..offer(1, &field21, None)
     };
     assert_eq!(
@@ -522,7 +527,7 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     );
     // With COP-1 in effect.
     let mut mux = UslpMux::new(uslp_config(true)).unwrap();
-    let mut refused = |o: Offer<'_>| failure(mux.step(MuxInput::Offer(o), &mut out));
+    let mut refused = |o: Offer<'_, Uslp>| failure(mux.step(MuxInput::Offer(o), &mut out));
     // The reserved flag combination of Table 4-1 (Bypass 0, Protocol Control Command 1) cannot
     // be built, and the others are the variants.
     assert_eq!(
@@ -554,8 +559,10 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     // The route's QoS and the block's Bypass Flag must agree.
     assert_eq!(
         refused(Offer {
-            route: Some(route(3, Qos::Expedited)),
-            cop: Some(cop(0, false, false)),
+            meta: UslpOffer {
+                route: Some(route(3, Qos::Expedited)),
+                cop: Some(cop(0, false, false)),
+            },
             ..offer(1, &field21, None)
         }),
         invalid(field::QOS)
@@ -563,7 +570,10 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     // A VCF Count that the count field of a sequence-controlled frame cannot hold (2 octets).
     assert_eq!(
         refused(Offer {
-            cop: Some(cop(0x1_0000, false, false)),
+            meta: UslpOffer {
+                cop: Some(cop(0x1_0000, false, false)),
+                ..UslpOffer::default()
+            },
             ..offer(1, &field21, None)
         }),
         named(ErrorKind::OutOfRange, field::VCF_COUNT)
@@ -571,19 +581,27 @@ fn a_uslp_offer_is_checked_against_the_vc_and_its_cop() {
     // The field length follows the Bypass Flag of the block, not the VC's default QoS.
     assert_eq!(
         refused(Offer {
-            cop: Some(cop(0, true, false)),
+            meta: UslpOffer {
+                cop: Some(cop(0, true, false)),
+                ..UslpOffer::default()
+            },
             ..offer(1, &field21, None)
         }),
         named(ErrorKind::LengthMismatch, field::FIELD_LEN)
     );
     let ok = Offer {
-        cop: Some(cop(0xFFFF, false, false)),
+        meta: UslpOffer {
+            cop: Some(cop(0xFFFF, false, false)),
+            ..UslpOffer::default()
+        },
         ..offer(1, &field21, None)
     };
     assert!(mux.step(MuxInput::Offer(ok), &mut out).unwrap().is_empty());
     let ok = Offer {
-        route: Some(route(3, Qos::Expedited)),
-        cop: Some(cop(99, true, true)),
+        meta: UslpOffer {
+            route: Some(route(3, Qos::Expedited)),
+            cop: Some(cop(99, true, true)),
+        },
         ..offer(2, &field22, None)
     };
     assert!(mux.step(MuxInput::Offer(ok), &mut out).unwrap().is_empty());
@@ -867,7 +885,7 @@ proptest! {
                     let field = [vc; 16];
                     let len = if right { 16 } else { 15 };
                     let pointer = if vc == 3 { None } else { Some(0) };
-                    match mux.step(MuxInput::Offer(Offer { vc, field: &field[..len], pointer, route: None, cop: None }), &mut out) {
+                    match mux.step(MuxInput::Offer(Offer { vc, field: &field[..len], meta: TmOffer { pointer } }), &mut out) {
                         Ok(a) => prop_assert!(a.is_empty()),
                         Err(e) => prop_assert_ne!(e.kind(), ErrorKind::InternalError),
                     }
@@ -901,18 +919,21 @@ proptest! {
 #[test]
 fn the_protocols_without_cop_have_no_vcf_count_to_take() {
     // req: LNK-076, LNK-001
-    use aldis_link::mux::MuxProtocol;
+    use aldis_core::CopFrameKind;
     let tm = TmVc::new(TmRole::Packets);
     let aos = AosVc::default();
-    assert!(!Tm::vc_cop(&tm) && !Aos::vc_cop(&aos));
-    assert_eq!((Tm::vcf_max(&tm, true), Aos::vcf_max(&aos, false)), (0, 0));
-    assert!(Tm::vc_route(&tm).is_none() && Aos::vc_route(&aos).is_none());
     assert!(Tm::vc_fsh(&tm).is_none() && Aos::vc_fsh(&aos).is_none());
-    assert_eq!(Aos::check_pointer(&aos, Some(5)).unwrap(), 0);
+    let admitted = Aos::admit(&aos, &()).unwrap();
+    assert_eq!(admitted.kind, CopFrameKind::Ad);
+    assert_eq!(admitted.given_count, None);
+    let admitted = Tm::admit(&tm, &TmOffer { pointer: Some(5) }).unwrap();
     assert_eq!(
-        Uslp::check_pointer(uslp_vc(1, false).params(), Some(5)).unwrap(),
-        0
+        (admitted.kind, admitted.given_count),
+        (CopFrameKind::Ad, None)
     );
+    assert_eq!(admitted.pointer.get(), 5);
+    let admitted = Uslp::admit(uslp_vc(1, false).params(), &UslpOffer::default()).unwrap();
+    assert_eq!(admitted.kind, CopFrameKind::Ad);
 }
 
 #[test]
@@ -1137,27 +1158,37 @@ fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
 #[test]
 fn a_uslp_frame_length_beyond_the_header_field_is_an_error_not_a_clamped_length() {
     // req: LNK-032, LNK-082
-    use aldis_link::mux::{FrameFields, MuxProtocol};
-    let mut fields = FrameFields {
-        vc: 1,
+    use aldis_core::{CopFrameKind, FrameFormat};
+    use aldis_link::mux::FrameFields;
+    let mut fields = FrameFields::<Uslp> {
+        vc: VcId::<6>::new(1).unwrap(),
         oid: false,
         frame_len: aldis_uslp::MAX_FRAME_LEN,
         mc_count: 0,
         vc_count: 0,
         ocf: false,
         secondary: false,
-        pointer: 0,
-        bypass: false,
-        protocol_control: false,
+        pointer: None,
+        kind: CopFrameKind::Ad,
     };
     let vc = uslp_vc(1, false);
     let mut header = [0_u8; 16];
     // The largest legal frame fills the field: 65 536 octets is the value 0xFFFF.
-    Uslp::write_header(&uslp_channel(), Some(vc.params()), &fields, &mut header).unwrap();
+    let h = Uslp::primary_header(&uslp_channel(), Some(vc.params()), &fields).unwrap();
+    Uslp::write_primary_header(&h, &mut header).unwrap();
     assert_eq!(header[4..6], [0xFF, 0xFF]);
     fields.frame_len = aldis_uslp::MAX_FRAME_LEN + 1;
-    let e =
-        Uslp::write_header(&uslp_channel(), Some(vc.params()), &fields, &mut header).unwrap_err();
-    assert_eq!(e.kind(), ErrorKind::InternalError);
+    let e = Uslp::primary_header(&uslp_channel(), Some(vc.params()), &fields).unwrap_err();
+    assert_eq!(e.kind(), ErrorKind::OutOfRange);
     assert_eq!(e.field(), Some(field::FRAME_LEN));
+}
+
+#[test]
+fn an_offer_the_adapter_refuses_is_counted_and_returned() {
+    // req: LNK-002, LNK-076
+    let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
+    let e = aldis_core::Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID);
+    assert_eq!(mux.refuse(e), e);
+    assert_eq!(mux.status().refused.get(), 1);
+    assert_eq!(mux.status().offers.get(), 0);
 }

@@ -173,16 +173,9 @@ pub enum SuspendState {
 }
 
 /// Target frame kind for lower-procedure ready flags (CCSDS 232.1-B-2 Table 5-1, Events E41, E43,
-/// E45; COP-001, COP-010).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum FrameKind {
-    /// Type-AD Sequence-Controlled frame (Event E41).
-    Ad,
-    /// Type-BC Protocol Control frame (Event E43).
-    Bc,
-    /// Type-BD Expedited frame (Event E45).
-    Bd,
-}
+/// E45; COP-001, COP-010): Type-AD (E41), Type-BC (E43), Type-BD (E45). The enum is the
+/// [`CopFrameKind`](aldis_core::CopFrameKind) that the codecs and the link engines share.
+pub use aldis_core::CopFrameKind as FrameKind;
 
 /// Type-BC frame command payload (CCSDS 232.1-B-2 §5.2.5, Table 5-1, Events E25, E27; COP-001,
 /// COP-010).

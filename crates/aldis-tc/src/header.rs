@@ -34,45 +34,11 @@ const VERSION: u8 = 0;
 pub(crate) const UNFINISHED_VERSION: u8 = 0b11;
 
 /// The frame type set by the Bypass and Control Command Flags (232.0 §4.1.2.3, Table 4-1;
-/// TC-002).
+/// TC-002): the [`CopFrameKind`](aldis_core::CopFrameKind) every codec and engine shares.
 ///
 /// The combination Bypass Flag `0` with Control Command Flag `1` is reserved and has no
 /// variant: the decoder rejects it in both modes (TC-002).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FrameType {
-    /// `00`: Type-AD, a Frame Data Unit under the Sequence-Controlled Service.
-    Ad,
-    /// `10`: Type-BD, a Frame Data Unit under the Expedited Service.
-    Bd,
-    /// `11`: Type-BC, Control Commands (232.0 §4.1.3.3).
-    Bc,
-}
-
-impl FrameType {
-    /// The frame type of the two flags, or `None` for the reserved Bypass `0` / Control
-    /// Command `1` (232.0 Table 4-1; TC-002).
-    #[must_use]
-    pub const fn from_flags(bypass: bool, control_command: bool) -> Option<FrameType> {
-        match (bypass, control_command) {
-            (false, false) => Some(FrameType::Ad),
-            (true, false) => Some(FrameType::Bd),
-            (true, true) => Some(FrameType::Bc),
-            (false, true) => None,
-        }
-    }
-
-    /// The Bypass Flag: `true` for a Type-B frame (232.0 §4.1.2.3.1).
-    #[must_use]
-    pub const fn bypass_flag(self) -> bool {
-        !matches!(self, FrameType::Ad)
-    }
-
-    /// The Control Command Flag: `true` for a Type-C frame (232.0 §4.1.2.3.2).
-    #[must_use]
-    pub const fn control_command_flag(self) -> bool {
-        matches!(self, FrameType::Bc)
-    }
-}
+pub use aldis_core::CopFrameKind as FrameType;
 
 /// Sequence Flags of the Segment Header (232.0 §4.1.3.2.2.2, Table 4-2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -169,23 +135,19 @@ pub(crate) struct RawHeader {
 impl RawHeader {
     /// Reads the first five octets; `None` if `bytes` is shorter (232.0 §4.1.2).
     pub(crate) fn parse(bytes: &[u8]) -> Option<RawHeader> {
-        let octets = bytes.first_chunk::<PRIMARY_HEADER_LEN>().copied();
-        let [b0, b1, b2, b3, b4] = octets.unwrap_or_default();
-        let scid = u16::from_be_bytes([b0 & 0b11, b1]);
-        let count = u16::from_be_bytes([b2 & 0b11, b3]);
-        let ids = TcSpacecraftId::new(scid).zip(TcVcId::new(b2 >> 2));
-        octets
-            .zip(ids)
-            .map(|(_, (spacecraft_id, vc_id))| RawHeader {
-                version: b0 >> 6,
-                bypass: b0 & 0x20 != 0,
-                control_command: b0 & 0x10 != 0,
-                spare: (b0 >> 2) & 0b11,
-                spacecraft_id,
-                vc_id,
-                frame_len: usize::from(count).saturating_add(1),
-                sequence_number: FrameSeqNum::new(b4),
-            })
+        let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
+        let ids =
+            TcSpacecraftId::new(layout::Scid::get_u16(h)).zip(TcVcId::new(layout::Vcid::get_u8(h)));
+        ids.map(|(spacecraft_id, vc_id)| RawHeader {
+            version: layout::Version::get_u8(h),
+            bypass: layout::Bypass::flag(h),
+            control_command: layout::ControlCommand::flag(h),
+            spare: layout::Spare::get_u8(h),
+            spacecraft_id,
+            vc_id,
+            frame_len: usize::from(layout::Length::get_u16(h)).saturating_add(1),
+            sequence_number: FrameSeqNum::new(layout::Sequence::get_u8(h)),
+        })
     }
 
     /// `UnsupportedVersion` naming `frame_version` unless the version is `00` (232.0
@@ -239,18 +201,34 @@ pub(crate) fn primary_octets(
     fields: FrameFields,
     frame_len: usize,
 ) -> [u8; PRIMARY_HEADER_LEN] {
-    let flags = (u8::from(fields.frame_type.bypass_flag()) << 5)
-        | (u8::from(fields.frame_type.control_command_flag()) << 4);
-    let [s0, s1] = fields.spacecraft_id.get().to_be_bytes();
-    let count = u16::try_from(frame_len.saturating_sub(1)).unwrap_or(0) & 0x03FF;
-    let [c0, c1] = count.to_be_bytes();
-    [
-        ((version & 0b11) << 6) | flags | (s0 & 0b11),
-        s1,
-        (fields.vc_id.get() << 2) | (c0 & 0b11),
-        c1,
-        fields.sequence_number.get(),
-    ]
+    let mut h = [0_u8; PRIMARY_HEADER_LEN];
+    layout::Version::put_u8(&mut h, version);
+    layout::Bypass::put_flag(&mut h, fields.frame_type.bypass_flag());
+    layout::ControlCommand::put_flag(&mut h, fields.frame_type.control_command_flag());
+    layout::Scid::put_u16(&mut h, fields.spacecraft_id.get());
+    layout::Vcid::put_u8(&mut h, fields.vc_id.get());
+    layout::Length::put_u16(
+        &mut h,
+        u16::try_from(frame_len.saturating_sub(1)).unwrap_or(0),
+    );
+    layout::Sequence::put_u8(&mut h, fields.sequence_number.get());
+    h
+}
+
+/// The fields of the Primary Header by bit position (232.0 §4.1.2, Figure 4-1; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::PRIMARY_HEADER_LEN as N;
+
+    pub(super) type Version = Field<N, 0, 2>;
+    pub(super) type Bypass = Field<N, 2, 1>;
+    pub(super) type ControlCommand = Field<N, 3, 1>;
+    pub(super) type Spare = Field<N, 4, 2>;
+    pub(super) type Scid = Field<N, 6, 10>;
+    pub(super) type Vcid = Field<N, 16, 6>;
+    pub(super) type Length = Field<N, 22, 10>;
+    pub(super) type Sequence = Field<N, 32, 8>;
 }
 
 /// A TC frame header as plain values (232.0 §4.1.2, §4.1.3.2.2; API-014).
@@ -265,8 +243,11 @@ pub struct TcFrameHeader {
 }
 
 impl TcFrameHeader {
-    /// A header of a decoded frame; `frame_len` is 6–1024.
-    pub(crate) fn new(
+    /// The header a writer puts in a frame of `frame_len` octets, 6–1024 (232.0 §4.1.2; TC-001,
+    /// GEN-053): the version `00` and the spare `00` (GEN-052). The caller has fitted the frame
+    /// to its channel.
+    #[must_use]
+    pub fn new(
         fields: FrameFields,
         frame_len: usize,
         segment_header: Option<SegmentHeader>,

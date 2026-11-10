@@ -13,7 +13,8 @@ use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, MuxInput, MuxOutput,
-    MuxProtocol, Offer, Scope, TmChannel, TmRole, TmVc, UslpChannel, UslpVc, VcConfig,
+    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer, UslpVc,
+    VcConfig,
 };
 use aldis_link::policy::MuxPolicy;
 use aldis_link::protocol::{Aos, Tm, Uslp};
@@ -104,11 +105,35 @@ fn uslp_config(policy: MuxPolicy, frame_len: usize, cop: bool) -> ChannelMuxConf
     .unwrap()
 }
 
+/// The metadata of an offer from the First Header Pointer of a TM offer, the member the others lack.
+trait FromPointer {
+    fn from_pointer(pointer: Option<u16>) -> Self;
+}
+
+impl FromPointer for TmOffer {
+    fn from_pointer(pointer: Option<u16>) -> Self {
+        TmOffer { pointer }
+    }
+}
+
+impl FromPointer for () {
+    fn from_pointer(_: Option<u16>) -> Self {}
+}
+
+impl FromPointer for UslpOffer {
+    fn from_pointer(_: Option<u16>) -> Self {
+        UslpOffer::default()
+    }
+}
+
 /// Runs a sequence of inputs; `fresh` builds the configuration for a policy and frame length.
 fn walk<P: MuxProtocol>(
     u: &mut Unstructured<'_>,
     fresh: &dyn Fn(MuxPolicy, usize) -> ChannelMuxConfig<P, V>,
-) -> Result<()> {
+) -> Result<()>
+where
+    P::OfferMeta: FromPointer,
+{
     let frame_len = u.int_in_range(20..=F)?;
     let mut mux = ChannelMux::<P, V, F>::new(fresh(policy(u)?, frame_len)).unwrap();
     let mut out = [0_u8; F];
@@ -122,13 +147,11 @@ fn walk<P: MuxProtocol>(
             0..=3 => MuxInput::Offer(Offer {
                 vc: u.int_in_range(0..=9)?,
                 field: &field_octets,
-                pointer: if u.arbitrary()? {
+                meta: P::OfferMeta::from_pointer(if u.arbitrary()? {
                     Some(u.int_in_range(0..=0x7FF)?)
                 } else {
                     None
-                },
-                route: None,
-                cop: None,
+                }),
             }),
             4 | 5 => MuxInput::Opportunity,
             6 => MuxInput::SetOcf {

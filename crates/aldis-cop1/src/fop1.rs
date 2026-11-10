@@ -604,11 +604,7 @@ impl Fop1Target {
                 map_id,
                 tfdf,
             } => {
-                let kind = match frame_type {
-                    FrameType::Ad => UslpKind::SequenceControlled,
-                    FrameType::Bd => UslpKind::Expedited,
-                    FrameType::Bc => UslpKind::ProtocolControl,
-                };
+                let kind = UslpKind::from(frame_type);
                 // N(S) is the VCF Count of a sequence-controlled frame (732.1 §4.2.7.4 note 3); the
                 // expedited counter is absent (the constructor checked it, OI-66). A ground
                 // sender names the destination (§4.1.2.3.3).

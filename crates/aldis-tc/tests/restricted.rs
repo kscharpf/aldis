@@ -216,7 +216,6 @@ fn frame_of_len(t: &VcTable<1, 1>, len: usize, fecf: bool) -> Result<Vec<u8>, Er
 /// with `ReservedValue` (`control_command_flag`) in both modes (TC-002).
 #[test]
 fn frame_type_has_three_flag_combinations() {
-    // restricted: FrameType
     // req: TC-002, API-001, VER-023
     let t = table(64, 64, true);
     for bypass in [false, true] {
@@ -399,7 +398,7 @@ proptest! {
     /// Table 4-1; TC-002).
     #[test]
     fn frame_types_round_trip(f in tc_frame(), ty in frame_type(), user in octets(1..=8)) {
-        // restricted: FrameType, PhysicalChannelConfig, VcConfig
+        // restricted: PhysicalChannelConfig, VcConfig
         // req: TC-001, TC-002, TC-007, VER-023, VER-054
         let t = &f.channels.table;
         let d = TcFrame::decode(&f.octets, t).unwrap();

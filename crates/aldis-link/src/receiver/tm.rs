@@ -154,7 +154,11 @@ impl ReceiveProtocol for Tm {
         Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES))
     }
 
-    fn receive<const V: usize>(cx: &mut FrameContext<'_, Tm, V>, frame: &[u8]) -> Result<()> {
+    fn receive<const V: usize>(
+        cx: &mut FrameContext<'_, Tm, V>,
+        plain: &Self::Plain<'_>,
+    ) -> Result<()> {
+        let frame = Self::plain_octets(plain);
         let [_, b1, mc, vcc, s0, s1, id] = header::<{ PRIMARY_HEADER_LEN + 1 }>(frame)?;
         let vc: VcId<3> = vc_of::<Tm>((b1 >> 1) & 0x07)?;
         let ocf_flag = b1 & 1 == 1;

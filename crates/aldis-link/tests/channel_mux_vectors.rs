@@ -11,10 +11,12 @@
 use aldis_aos::AosEdition;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
+use aldis_core::{Error, ErrorKind, field};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh, MuxInput, MuxOutput,
-    MuxProtocol, Offer, Scope, TmChannel, TmRole, TmVc, UslpChannel, UslpVc, VcConfig,
+    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer, UslpVc,
+    VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
@@ -76,6 +78,24 @@ trait Proto: MuxProtocol {
     fn route(_: &Map<String, Value>, _: u8) -> Option<Route> {
         None
     }
+    /// The metadata of an offer of the scenario's members: those the protocol has. A route or a
+    /// COP-1 block that TM or AOS frames cannot have is the step's error (`InvalidField`).
+    fn meta(
+        pointer: Option<u16>,
+        route: Option<Route>,
+        cop: Option<Cop>,
+    ) -> Result<Self::OfferMeta, Error>;
+}
+
+/// `InvalidField` for a route or a COP-1 block, which a protocol without them refuses (LNK-076).
+const fn refuse_route_and_cop(route: Option<Route>, cop: Option<Cop>) -> Result<(), Error> {
+    if route.is_some() {
+        Err(Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID))
+    } else if cop.is_some() {
+        Err(Error::new(ErrorKind::InvalidField).with_field(field::COP_IN_EFFECT))
+    } else {
+        Ok(())
+    }
 }
 
 fn finish<P: MuxProtocol>(
@@ -128,6 +148,15 @@ impl Proto for Tm {
             .collect();
         finish(c, channel, &vcs)
     }
+
+    fn meta(
+        pointer: Option<u16>,
+        route: Option<Route>,
+        cop: Option<Cop>,
+    ) -> Result<TmOffer, Error> {
+        refuse_route_and_cop(route, cop)?;
+        Ok(TmOffer { pointer })
+    }
 }
 
 impl Proto for Aos {
@@ -151,6 +180,10 @@ impl Proto for Aos {
             })
             .collect();
         finish(c, channel, &vcs)
+    }
+
+    fn meta(_: Option<u16>, route: Option<Route>, cop: Option<Cop>) -> Result<(), Error> {
+        refuse_route_and_cop(route, cop)
     }
 }
 
@@ -208,6 +241,10 @@ impl Proto for Uslp {
             map: MapId::<4>::new(small(&o["map_id"])).unwrap(),
             qos: qos(o["qos"].as_str().unwrap()),
         })
+    }
+
+    fn meta(_: Option<u16>, route: Option<Route>, cop: Option<Cop>) -> Result<UslpOffer, Error> {
+        Ok(UslpOffer { route, cop })
     }
 }
 
@@ -277,12 +314,15 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
                     .map_err(|e| early = Some(e))
                     .ok()
                 });
+                let pointer = v.get("fhp").map(|p| u16::try_from(num(p)).unwrap());
+                let meta = P::meta(pointer, route, cop).unwrap_or_else(|e| {
+                    early = early.or(Some(e));
+                    <P::OfferMeta>::default()
+                });
                 MuxInput::Offer(Offer {
                     vc: vcid,
                     field: &field,
-                    pointer: v.get("fhp").map(|p| u16::try_from(num(p)).unwrap()),
-                    route,
-                    cop,
+                    meta,
                 })
             }
             "opportunity" => MuxInput::Opportunity,
