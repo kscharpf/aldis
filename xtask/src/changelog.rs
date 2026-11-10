@@ -107,6 +107,8 @@ struct Merges {
     skipped: Vec<String>,
     /// Merge commits in the log, skipped or not.
     total: usize,
+    /// Merge commits of a pull request already merged earlier in the log (listed once).
+    duplicates: usize,
 }
 
 /// Reads the merges from `git log --first-parent --merges --format=%s%x1f%b%x1e` output, oldest
@@ -117,6 +119,7 @@ fn parse_merges(log: &str) -> Merges {
         prs: Vec::new(),
         skipped: Vec::new(),
         total: 0,
+        duplicates: 0,
     };
     for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
         out.total += 1;
@@ -141,6 +144,7 @@ fn parse_merges(log: &str) -> Merges {
     for m in out.prs.into_iter().rev() {
         if let Some(existing) = deduped.iter_mut().find(|e| e.number == m.number) {
             existing.title = m.title;
+            out.duplicates += 1;
         } else {
             deduped.push(m);
         }
@@ -485,10 +489,12 @@ fn merges_since_base() -> Result<(Merges, String, String), String> {
 /// commit that could not be used and for each title that is not a known conventional commit.
 fn report(merges: &Merges, g: &Generated, base: &str) {
     println!(
-        "changelog: {} merge commit(s) after {base}: {} pull request(s), {} skipped",
+        "changelog: {} merge commit(s) after {base}: {} pull request(s), {} skipped, \
+         {} repeated merge(s)",
         merges.total,
         merges.prs.len(),
-        merges.skipped.len()
+        merges.skipped.len(),
+        merges.duplicates
     );
     for m in &merges.skipped {
         println!("warning: merge commit skipped, {m}");
@@ -692,6 +698,8 @@ mod tests {
             ]
         );
         assert_eq!(m2.total, 4);
+        assert_eq!(m2.duplicates, 1);
+        assert_eq!(m2.prs.len() + m2.skipped.len() + m2.duplicates, m2.total);
     }
 
     #[test]

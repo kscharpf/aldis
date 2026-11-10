@@ -1092,6 +1092,24 @@ if command -v jq >/dev/null 2>&1; then
     expect "the rewritten head is not the one the train holds" \
         bash -c '! git -C "$0" merge-base --is-ancestor "$1" "$2"' \
         "$work/origin.git" "$old_b" "$(tip c-b)"
+
+    # --all-behind also selects a train behind a constituent while main has not moved past it.
+    git -C "$work/other" fetch -q origin
+    git -C "$work/other" checkout -q -B train/2026-11-08-1 origin/train/2026-11-08-1
+    git -C "$work/other" merge -q --no-edit origin/main >/dev/null
+    git -C "$work/other" push -q origin train/2026-11-08-1 >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    printf '%s\n' "60 train/2026-11-08-1" >"$stub/open-prs"
+    reset ok
+    run --all-behind
+    expect "--all-behind selects a train behind a constituent" said "behind origin/main: 60"
+    train_tip="$(tip train/2026-11-08-1)"
+    for n in 61 62; do
+        jq -nc --arg sha "$train_tip" '{state:"OPEN", headRefOid:$sha}' >"$stub/pr-$n.json"
+    done
+    run --all-behind
+    expect "a train holding every constituent head is left alone" \
+        said "no open pull request is behind origin/main"
 fi
 
 if [ "$failures" -eq 0 ]; then

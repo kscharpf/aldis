@@ -13,18 +13,20 @@
 # `--alone` every open PR behind origin/main. `--status` takes `--alone` and ignores it.
 #
 # `--all-behind` takes the place of the PR numbers: it lists the open pull requests (against
-# main, `train/*` ones unless --alone) whose head does not contain origin/main and reverifies
-# them as one call; with none behind
-# it prints that and exits 0. It cannot be combined with PR numbers or `--status`.
+# main, `train/*` ones unless --alone) whose head does not contain origin/main, or, for a
+# `train/*` PR, the head of an open constituent PR (`- #<n>` in its body), and reverifies them as
+# one call; with none behind it prints that and exits 0. It cannot be combined with PR numbers or
+# `--status`.
 #
 # Phase 1, per PR in order: check it is open; use the worktree of its head branch (or add one
 # under .claude/worktrees/reverify-<n>); refuse when that worktree is dirty or holds commits the
 # remote lacks; for a train PR (`train/*`), check each constituent PR (`- #<n>` in the train body,
-# in order) whose head is not yet an ancestor of the train branch (`scripts/pr-status --train <n>`
-# must say `READY FOR TRAIN`) and merge its head into the train branch (`Merge pull request #<n>
-# from <owner>/<branch>`, the PR title as body; a constituent whose old head, the second parent
-# of the train's latest merge of it, is not an ancestor of its new head was rewritten and is
-# refused); merge origin/main (a conflict that is only
+# in order) whose head is not yet an ancestor of the train branch: refuse a constituent whose old
+# head (the second parent of the train's latest merge of it) is not an ancestor of its new head
+# (rewritten by a rebase or force-push: add commits instead, or rebuild the train), then
+# `scripts/pr-status --train <n>` must say `READY FOR TRAIN`, and merge its head into the train
+# branch (`Merge pull request #<n> from <owner>/<branch>`, the PR title as body); merge
+# origin/main (a conflict that is only
 # open-issue table rows, both sides pure appends, is resolved by keeping both sides, see
 # resolve_oi_table; any other conflict fails); run
 # `cargo xtask ci`; push; then, if the merged head needs no container (`cargo xtask verify list`:
@@ -172,7 +174,25 @@ if [ "$alone" -eq 0 ] && [ "$status_mode" -eq 0 ] && [ "$all_behind" -eq 0 ]; th
     done
 fi
 
-# --all-behind: the open PRs whose head does not contain origin/main.
+# behind_constituent <train-pr> <train-head>: succeeds when an open constituent PR (`- #<n>` in
+# the train's body) has a head that the train head does not contain (or that cannot be fetched).
+behind_constituent() {
+    local body c info c_state c_sha
+    body="$(gh pr view "$1" --json body --jq '.body // ""' 2>/dev/null)" || return 1
+    while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        info="$(gh pr view "$c" --json state,headRefOid --jq '[.state, .headRefOid] | @tsv' \
+            2>/dev/null)" || continue
+        IFS=$'\t' read -r c_state c_sha <<<"$info"
+        [ "$c_state" = OPEN ] && [ -n "$c_sha" ] || continue
+        git -C "$main_checkout" cat-file -e "$c_sha^{commit}" 2>/dev/null ||
+            git -C "$main_checkout" fetch --quiet origin "refs/pull/$c/head" 2>/dev/null || true
+        git -C "$main_checkout" merge-base --is-ancestor "$c_sha" "$2" 2>/dev/null || return 0
+    done < <(printf '%s\n' "$body" | sed -n 's/^- #\([0-9][0-9]*\) .*/\1/p')
+    return 1
+}
+
+# --all-behind: the open PRs whose head does not contain origin/main (or a train's constituent).
 if [ "$all_behind" -eq 1 ]; then
     git -C "$main_checkout" fetch --quiet origin || { echo "cannot fetch origin" >&2; exit 2; }
     open_prs="$(gh pr list --state open --base main --limit 200 --json number,headRefName \
@@ -184,6 +204,9 @@ if [ "$all_behind" -eq 1 ]; then
         # Only exit status 1 says "main is not in the head's history".
         rc=0
         git -C "$main_checkout" merge-base --is-ancestor origin/main "$head" || rc=$?
+        if [ "$rc" -ne 1 ] && [[ $branch == train/* ]] && behind_constituent "$num" "$head"; then
+            rc=1
+        fi
         [ "$rc" -ne 1 ] || args+=("$num")
     done <<<"$open_prs"
     if [ "${#args[@]}" -eq 0 ]; then
