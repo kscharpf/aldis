@@ -399,9 +399,10 @@ impl TfdfHeader {
     /// Reads the data field of a VC of packets, whose frames are fixed in length (732.1
     /// §4.1.4.2; USLP-005, USLP-006, LNK-060, LNK-064).
     ///
-    /// The UPID is read before the rule: an Only Idle Data TFDF, which an OID frame carries on a
-    /// VC that has packets, has rule `001` there (§4.1.4.1.9), and its zone is idle whatever the
-    /// rule, so the field is idle data and not an error. Any other UPID is not compared with the
+    /// The UPID is read before the rule: an Only Idle Data TFDF has rule `001` (§4.1.4.1.9) and
+    /// its zone is idle whatever the rule. OID frames are not sent on a VC that has packets
+    /// (§4.1.4.1.10 Note 1), but a receiver tolerates one: the field is idle data and not an
+    /// error. Any other UPID is not compared with the
     /// VC's: the receiver routes a TFDF to its service by the UPID. Then the rule must be `000`.
     ///
     /// # Errors
