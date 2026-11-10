@@ -25,7 +25,10 @@
 # review in full, the PR comments, and one verdict line: `READY`, `READY FOR TRAIN` (with --train),
 # or `NOT READY: <reasons>`.
 # READY means: open, not a draft, the head contains the tip of origin/<base> (otherwise `behind
-# origin/<base> by <n>`), no changes requested and no review outstanding, the review to answer
+# origin/<base> by <n>`), for a train PR (`train/*`) the head contains the head of every
+# constituent PR (`- #<n>` in its body; otherwise `behind constituent #<n> (<sha>)`, and a body or
+# constituent that cannot be read, or a head that cannot be fetched, is a reason too), no changes
+# requested and no review outstanding, the review to answer
 # has a reply, and every required context is success on the head.
 # A reply: a PR comment (`gh pr comment`) posted after the newest submitted review whose last
 # non-empty line is the marker `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
@@ -74,7 +77,7 @@ conflicted_paths() {
 
 status_one() {
     local paths n="$1" info state draft head branch base decision behind checks required ctx s
-    local labels reply_at reply_body force_at reviews_n
+    local labels reply_at reply_body force_at reviews_n body c c_sha
     local run run_id run_status run_conclusion run_sha record reasons="" inline unanswered of
     info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
         --jq '[.state, (.isDraft|tostring), .headRefOid, .headRefName, .baseRefName,
@@ -197,6 +200,28 @@ status_one() {
         reasons="$reasons; head not fetched, cannot tell whether it contains origin/$base"
     elif [ "$behind" -gt 0 ]; then
         reasons="$reasons; behind origin/$base by $behind"
+    fi
+    if [ "$state" = OPEN ] && [ "$train" -eq 0 ] && [[ $branch == train/* ]] &&
+        [ "$behind" != "?" ]; then
+        if ! body="$(gh pr view "$n" --json body --jq '.body // ""' 2>/dev/null)"; then
+            reasons="$reasons; cannot read the body to find the constituents"
+            body=""
+        fi
+        while IFS= read -r c; do
+            [ -n "$c" ] || continue
+            if ! c_sha="$(gh pr view "$c" --json headRefOid --jq .headRefOid 2>/dev/null)" ||
+                [ -z "$c_sha" ]; then
+                reasons="$reasons; cannot read constituent #$c"
+                continue
+            fi
+            g cat-file -e "$c_sha^{commit}" 2>/dev/null ||
+                g fetch --quiet origin "refs/pull/$c/head" 2>/dev/null || true
+            if ! g cat-file -e "$c_sha^{commit}" 2>/dev/null; then
+                reasons="$reasons; constituent #$c head ${c_sha:0:7} not fetched"
+            elif ! g merge-base --is-ancestor "$c_sha" "$head"; then
+                reasons="$reasons; behind constituent #$c (${c_sha:0:7})"
+            fi
+        done < <(printf '%s\n' "$body" | sed -n 's/^- #\([0-9][0-9]*\) .*/\1/p')
     fi
     [ -z "$unanswered" ] ||
         reasons="$reasons; review unanswered ($unanswered): no later reply ends in the marker"

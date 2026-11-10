@@ -107,15 +107,19 @@ struct Merges {
     skipped: Vec<String>,
     /// Merge commits in the log, skipped or not.
     total: usize,
+    /// Merge commits of a pull request already merged earlier in the log (listed once).
+    duplicates: usize,
 }
 
 /// Reads the merges from `git log --first-parent --merges --format=%s%x1f%b%x1e` output, oldest
-/// first.
+/// first. A pull request merged more than once (a train constituent updated before the train
+/// merged) is listed once, at its first merge's place, with its newest title.
 fn parse_merges(log: &str) -> Merges {
     let mut out = Merges {
         prs: Vec::new(),
         skipped: Vec::new(),
         total: 0,
+        duplicates: 0,
     };
     for record in log.split('\x1e').map(str::trim).filter(|r| !r.is_empty()) {
         out.total += 1;
@@ -136,7 +140,16 @@ fn parse_merges(log: &str) -> Merges {
             (None, _) => out.skipped.push(format!("not a pull request: {subject}")),
         }
     }
-    out.prs.reverse();
+    let mut deduped: Vec<Merge> = Vec::with_capacity(out.prs.len());
+    for m in out.prs.into_iter().rev() {
+        if let Some(existing) = deduped.iter_mut().find(|e| e.number == m.number) {
+            existing.title = m.title;
+            out.duplicates += 1;
+        } else {
+            deduped.push(m);
+        }
+    }
+    out.prs = deduped;
     out
 }
 
@@ -476,10 +489,12 @@ fn merges_since_base() -> Result<(Merges, String, String), String> {
 /// commit that could not be used and for each title that is not a known conventional commit.
 fn report(merges: &Merges, g: &Generated, base: &str) {
     println!(
-        "changelog: {} merge commit(s) after {base}: {} pull request(s), {} skipped",
+        "changelog: {} merge commit(s) after {base}: {} pull request(s), {} skipped, \
+         {} repeated merge(s)",
         merges.total,
         merges.prs.len(),
-        merges.skipped.len()
+        merges.skipped.len(),
+        merges.duplicates
     );
     for m in &merges.skipped {
         println!("warning: merge commit skipped, {m}");
@@ -657,6 +672,34 @@ mod tests {
         );
         assert_eq!(m.total, 3);
         assert!(expand_trains(log, |_| Err("no".to_owned()), |_, _| None).is_err());
+
+        // A constituent updated in place on the train (merged twice) is listed once, at its
+        // first merge's place, with the newer merge's title.
+        let updated = expand_trains(
+            log,
+            |_| {
+                Ok(
+                    "p5 p6\x1fMerge pull request #4 from a/f\x1ffeat: a (updated)\x1e\
+                    p1 p2\x1fMerge pull request #5 from a/e\x1ffix: b\x1e\
+                    p3 p4\x1fMerge pull request #4 from a/f\x1ffeat: a\x1e"
+                        .to_owned(),
+                )
+            },
+            |_, _| None,
+        )
+        .unwrap();
+        let m2 = parse_merges(&updated);
+        assert_eq!(
+            m2.prs,
+            [
+                merge(2, "feat: solo"),
+                merge(4, "feat: a (updated)"),
+                merge(5, "fix: b")
+            ]
+        );
+        assert_eq!(m2.total, 4);
+        assert_eq!(m2.duplicates, 1);
+        assert_eq!(m2.prs.len() + m2.skipped.len() + m2.duplicates, m2.total);
     }
 
     #[test]
