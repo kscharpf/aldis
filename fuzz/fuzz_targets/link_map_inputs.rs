@@ -18,7 +18,8 @@ use aldis_link::reassembler::{
     FduIn, MapReassembler, MapReassemblerConfig, ReassemblerInput, ReassemblerMap, UslpFdu,
 };
 use aldis_link::segmenter::{
-    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterService, SegmenterInput, UslpSegmenterParams,
+    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterService,
+    UslpSegmenterParams,
 };
 use aldis_uslp::{Upid, VcfCountLen};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
@@ -55,7 +56,9 @@ fn segmenter(u: &mut Unstructured<'_>) -> Result<()> {
             .with_segmentation(24)
             .unwrap()
             .with_blocking(),
-        map(2, SegmenterService::Sdu, 5).with_segmentation(24).unwrap(),
+        map(2, SegmenterService::Sdu, 5)
+            .with_segmentation(24)
+            .unwrap(),
         map(
             3,
             SegmenterService::OctetStream {

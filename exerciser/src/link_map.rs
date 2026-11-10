@@ -17,12 +17,11 @@ use aldis_link::extractor::PacketRun;
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::reassembler::{
     FduIn, MAP_REASSEMBLER_MAX_ACTIONS, MapReassembler, MapReassemblerConfig, ReassemblerInput,
-    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, TcReassemblerParams,
-    Unit, UslpFdu,
+    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, TcReassemblerParams, Unit, UslpFdu,
 };
 use aldis_link::segmenter::{
-    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterService,
-    SegmenterInput, SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput,
+    SegmenterOutput, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_uslp::{Upid, VcfCountLen};
 
@@ -55,7 +54,8 @@ fn tc(t: &mut Tally) {
         return;
     };
     let now = Instant::from_micros(bb(0));
-    let Ok(sdu_map) = MapEntry::<Tc>::new(m1, SegmenterService::Any, ()).with_segmentation(bb(40)) else {
+    let Ok(sdu_map) = MapEntry::<Tc>::new(m1, SegmenterService::Any, ()).with_segmentation(bb(40))
+    else {
         t.check(false);
         return;
     };
@@ -358,13 +358,14 @@ fn uslp(t: &mut Tally) {
     };
     let channel = UslpSegmenterParams::new(two, one);
     t.check(channel.vcf_len_sc() == two && channel.vcf_len_exp() == one);
-    let Ok(sdus) =
-        MapEntry::<Uslp>::new(m1, SegmenterService::Sdu, Upid::OctetStream).with_segmentation(bb(30))
+    let Ok(sdus) = MapEntry::<Uslp>::new(m1, SegmenterService::Sdu, Upid::OctetStream)
+        .with_segmentation(bb(30))
     else {
         t.check(false);
         return;
     };
-    let packets = MapEntry::<Uslp>::new(m2, SegmenterService::Packets, Upid::Packets).with_blocking();
+    let packets =
+        MapEntry::<Uslp>::new(m2, SegmenterService::Packets, Upid::Packets).with_blocking();
     let deadline = Duration::from_micros(bb(500));
     let stream = MapEntry::<Uslp>::new(
         m3,

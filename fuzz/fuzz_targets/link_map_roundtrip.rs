@@ -17,8 +17,8 @@ use aldis_link::reassembler::{
     ReassemblerOutput, TcReassemblerParams, UslpFdu,
 };
 use aldis_link::segmenter::{
-    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterService, SegmenterInput,
-    SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput,
+    SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_uslp::{Upid, VcfCountLen};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
