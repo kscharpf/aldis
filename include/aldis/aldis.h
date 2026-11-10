@@ -9504,7 +9504,7 @@ uint32_t aldis_aos_decode(const uint8_t *bytes,
  * Checks that the channel of a frame is one of the managed parameters of a master channel
  * (732.0 §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, API-017, API-070, RS-023).
  *
- * The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::validate`
+ * The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::check`
  * checks it. `*anomalies` receives the `ALDIS_AOS_ANOMALY_*` flags of the frame that passed, `0`
  * in strict mode (API-032).
  *
@@ -11982,7 +11982,7 @@ uint32_t aldis_tm_decode_unchecked_with(const uint8_t *bytes,
  * 5-3, §6.6 Table 6-1; TM-011, API-070).
  *
  * The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
- * virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
+ * virtual channel from `mc`, and checked as `TmFrame::check` checks it. A call that takes a
  * master channel always uses its layouts (c-abi.md §11). `*anomalies` receives the
  * `ALDIS_TM_ANOMALY_*` flags of the frame that passed, `0` in strict mode (API-032).
  *

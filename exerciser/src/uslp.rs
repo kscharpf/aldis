@@ -8,15 +8,14 @@ use aldis_core::lookup::{ChannelLookup as _, MapLookup as _, PhysicalLookup as _
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{Anomaly, AnomalySet, DecodeMode, Lenient};
+use aldis_core::{Anomaly, AnomalySet, DecodeMode};
 use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
     TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
-    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, encode,
-    encode_oid, encode_oid_galois, encode_truncated, next_frame, validate_frame,
-    validate_frame_lenient,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, check_frame,
+    encode, encode_oid, encode_oid_galois, encode_truncated, next_frame,
 };
 
 use crate::exercise::Tally;
@@ -256,9 +255,9 @@ fn frame_group(t: &mut Tally) {
         Err(_) => t.check(false),
     }
     t.check(UslpFrame::peek_length(bb(frame), &vt) == Ok(18));
-    t.check(validate_frame(bb(frame), &vt).is_ok());
+    t.check(check_frame(bb(frame), &vt, DecodeMode::Strict).is_ok());
     t.check(
-        validate_frame_lenient(bb(frame), &vt)
+        check_frame(bb(frame), &vt, DecodeMode::Lenient)
             .is_ok_and(|v| v.anomalies().is_empty() && v.len() == 18),
     );
     let mut two = [0_u8; 64];
@@ -724,10 +723,7 @@ fn encode_oid_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
 
 fn validate_case(case: &Case, o: &mut Out) -> Run {
     let t = table(case)?;
-    let validated = match mode(case) {
-        DecodeMode::Strict => validate_frame(bb(case.input), &t),
-        DecodeMode::Lenient => validate_frame_lenient(bb(case.input), &t).map(Lenient::into_view),
-    };
+    let validated = check_frame(bb(case.input), &t, mode(case));
     match validated {
         Ok(f) => {
             o.flag("accepted", true);

@@ -39,6 +39,7 @@ use aldis::aos::{
     FrameCountCycle, Mpdu, PacketOffset, PacketPointer, PduHeader, ValidBitCount, VcFrameCount,
     VcTable, encode, encode_oid, encode_oid_galois,
 };
+use aldis::core::Check;
 use aldis::core::field;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
@@ -998,7 +999,7 @@ pub unsafe extern "C" fn aldis_aos_decode(
 /// Checks that the channel of a frame is one of the managed parameters of a master channel
 /// (732.0 §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, API-017, API-070, RS-023).
 ///
-/// The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::validate`
+/// The frame is decoded as [`aldis_aos_decode`] decodes it, and checked as `AosFrame::check`
 /// checks it. `*anomalies` receives the `ALDIS_AOS_ANOMALY_*` flags of the frame that passed, `0`
 /// in strict mode (API-032).
 ///
@@ -1031,10 +1032,13 @@ pub unsafe extern "C" fn aldis_aos_validate(
             let bytes = abi::bytes(bytes, len)?;
             let anomalies = abi::out(anomalies)?;
             let (_, found) = abi::mode(mode)?.dispatch(
-                || AosFrame::decode(bytes, &m.pc, &m.vcs).and_then(AosFrame::validate),
+                || {
+                    AosFrame::decode(bytes, &m.pc, &m.vcs)
+                        .and_then(|f| f.check(m.vcs.slots()).map_err(Error::from))
+                },
                 || {
                     AosFrame::decode_lenient(bytes, &m.pc, &m.vcs)
-                        .and_then(|l| l.try_map(AosFrame::validate))
+                        .and_then(|l| l.try_map(|f| f.check(m.vcs.slots()).map_err(Error::from)))
                 },
             )?;
             anomalies.write(found.bits());

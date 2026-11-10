@@ -8,13 +8,11 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Lenient, Result};
+use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::{AosAnomaly, Deviations};
 use crate::bpdu::Bpdu;
-use crate::config::{
-    AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout, unknown_channel_field,
-};
+use crate::config::{AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout};
 use crate::fhec::CorrectedSymbols;
 use crate::field;
 use crate::header::{
@@ -68,17 +66,14 @@ impl<'a> DataUnit<'a> {
 /// Holding one guarantees that the frame has the configured length, a header the FHEC accepted
 /// (if configured), a correct FECF over the corrected header (if configured), version `01`, a non-empty data field, and an `M_PDU` or `B_PDU` pointer inside its zone
 /// (API-010). A frame of a virtual channel that `vcs` does not hold is read as opaque octets
-/// (`VCA_SDU`) with no OCF and no SDLS fields; it becomes a [`ValidatedAosFrame`](crate::validate::ValidatedAosFrame)
-/// only through [`validate`](AosFrame::validate), which rejects it (RS-023, API-016).
+/// (`VCA_SDU`) with no OCF and no SDLS fields; it becomes a [`Checked`](aldis_core::Checked)
+/// frame only through [`check`](aldis_core::Check::check), which rejects it (RS-023, API-016).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AosFrame<'a> {
     bytes: &'a [u8],
     header: AosPrimaryHeader,
     layout: FrameLayout,
     unit: DataUnit<'a>,
-    /// The field an `UnknownChannel` names if the frame's channel is not in the lookup; the
-    /// frame is read as opaque octets then (RS-023).
-    unconfigured: Option<FieldId>,
 }
 
 impl<'a> AosFrame<'a> {
@@ -90,7 +85,7 @@ impl<'a> AosFrame<'a> {
     /// no channel parameters: it has no `VC_OCF` and no SDLS fields (§4.1.4.1.5; OI-43 item 1).
     /// A frame of a virtual channel that `vcs` does not hold is not an error: it is read as opaque
     /// octets with no OCF and no SDLS fields so that an engine can count it, and
-    /// [`validate`](Self::validate) rejects it (RS-023, 732.0 §4.3.5.4, §4.3.6.3).
+    /// [`check`](aldis_core::Check::check) rejects it (RS-023, 732.0 §4.3.5.4, §4.3.6.3).
     ///
     /// # Errors
     /// In this order:
@@ -136,39 +131,18 @@ impl<'a> AosFrame<'a> {
         vcs: &L,
         mode: DecodeMode,
     ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
-        let header = AosFrame::check(bytes, pc)?;
-        let (content, security, ocf, unconfigured) = if header.is_oid() {
-            let unknown = (!vcs.has_spacecraft(header.scid())).then_some(field::SPACECRAFT_ID);
-            (
-                DataFieldContent::IdleData,
-                SecurityLayout::NONE,
-                false,
-                unknown,
-            )
+        let header = AosFrame::check_header(bytes, pc)?;
+        let (content, security, ocf) = if header.is_oid() {
+            (DataFieldContent::IdleData, SecurityLayout::NONE, false)
         } else {
             // A virtual channel that is not configured is read as opaque octets with no OCF and
-            // no SDLS fields; `validate` rejects it (RS-023, 732.0 §4.3.5.4).
-            vcs.vc(header.scid(), header.vcid()).map_or_else(
-                || {
-                    let unknown = unknown_channel_field(vcs, header.scid());
-                    (
-                        DataFieldContent::VcaSdu,
-                        SecurityLayout::NONE,
-                        false,
-                        Some(unknown),
-                    )
-                },
-                |vc| (vc.content(), vc.security(), vc.ocf(), None),
+            // no SDLS fields; `check` rejects it (RS-023, 732.0 §4.3.5.4).
+            vcs.vc(header.scid(), header.vcid()).map_or(
+                (DataFieldContent::VcaSdu, SecurityLayout::NONE, false),
+                |vc| (vc.content(), vc.security(), vc.ocf()),
             )
         };
-        AosFrame::parse(
-            bytes,
-            pc,
-            header,
-            (content, security, ocf),
-            unconfigured,
-            mode,
-        )
+        AosFrame::parse(bytes, pc, header, (content, security, ocf), mode)
     }
 
     /// Length of the frame that starts `prefix`: the configured frame length (732.0 §4.1.1.2;
@@ -198,7 +172,7 @@ impl<'a> AosFrame<'a> {
     /// The length check, the FHEC, the FECF over the corrected header, and the version
     /// (API-012, AOS-011, AOS-014). Not generic, like [`parse`](Self::parse), so that one copy
     /// of each is measured (VER-024).
-    fn check(bytes: &[u8], pc: &AosPhysicalChannelConfig) -> Result<AosPrimaryHeader> {
+    fn check_header(bytes: &[u8], pc: &AosPhysicalChannelConfig) -> Result<AosPrimaryHeader> {
         if bytes.len() != pc.frame_len() {
             return Err(mismatch(
                 ErrorKind::LengthMismatch,
@@ -221,7 +195,6 @@ impl<'a> AosFrame<'a> {
         pc: &AosPhysicalChannelConfig,
         header: AosPrimaryHeader,
         (content, security, ocf): (DataFieldContent, SecurityLayout, bool),
-        unconfigured: Option<FieldId>,
         mode: DecodeMode,
     ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
         let layout = frame_layout(pc, security, ocf)
@@ -266,14 +239,8 @@ impl<'a> AosFrame<'a> {
             header,
             layout,
             unit,
-            unconfigured,
         };
         Ok((frame, anomalies))
-    }
-
-    /// The field an `UnknownChannel` names if the frame's channel is not configured.
-    pub(crate) const fn unconfigured(&self) -> Option<FieldId> {
-        self.unconfigured
     }
 
     /// The octets of `range`, which lies inside the frame by construction (CMN-040).
@@ -435,6 +402,7 @@ pub(crate) mod tests {
     use crate::field;
     use crate::header::FrameCountCycle;
     use crate::mpdu::PacketPointer;
+    use aldis_core::Check;
     use aldis_core::crc::write_fecf;
     use aldis_core::ocf::Ocf;
     use aldis_core::security::SecurityLayout;
@@ -644,11 +612,12 @@ pub(crate) mod tests {
         let named = |bytes: &[u8]| {
             let e = AosFrame::decode(bytes, &phy, &t)
                 .unwrap()
-                .validate()
-                .unwrap_err();
+                .check(t.slots())
+                .unwrap_err()
+                .error();
             (e.kind(), e.field())
         };
-        // The decoder reads each as opaque octets; `validate` rejects it.
+        // The decoder reads each as opaque octets; `check` rejects it.
         let mut other_scid = frame(5, 0, &[0; 10]);
         other_scid[0] ^= 0x01;
         assert_eq!(
@@ -669,11 +638,11 @@ pub(crate) mod tests {
             named(&oid),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
-        // A configured channel validates, and an OID frame of a valid SCID too.
+        // A configured channel passes the check, and an OID frame of a valid SCID too.
         let good = frame(5, 0, &[0; 10]);
         let v = AosFrame::decode(&good, &phy, &t)
             .unwrap()
-            .validate()
+            .check(t.slots())
             .unwrap();
         assert_eq!(v.clone().into_frame().len(), good.len());
         assert_eq!(v.len(), good.len());
@@ -681,7 +650,7 @@ pub(crate) mod tests {
         assert!(
             AosFrame::decode(&oid_ok, &phy, &t)
                 .unwrap()
-                .validate()
+                .check(t.slots())
                 .is_ok()
         );
     }

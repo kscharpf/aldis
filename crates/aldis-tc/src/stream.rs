@@ -8,13 +8,14 @@
 //! and optional [`MapConfig`]. Corrupted frames, fill data, and truncated headers are yielded as
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
-use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
+use aldis_core::checked::check_bytes_matched;
+use aldis_core::{AnomalySet, Checked, DecodeMode, Error, ErrorKind, Lenient};
 
 use crate::anomaly::TcAnomaly;
+use crate::checked::Reason;
 use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::header::{MIN_FRAME_LEN, RawHeader};
-use crate::validate::{Reason, ValidatedTcFrame};
-use crate::view::{Channels, check_head, parse};
+use crate::view::{Channels, TcFrame, check_head};
 
 /// Why wire octets or a frame were discarded (232.0 §4.4.9.2, §4.4.9.3; TC-020, TC-021).
 ///
@@ -121,13 +122,13 @@ impl From<Reason> for DiscardReason {
 /// An item yielded by [`FrameStream`] or [`LenientFrameStream`] (232.0 §4.4.9.2, §4.4.9.3;
 /// TC-020, TC-021).
 ///
-/// `F` is the accepted frame: a [`ValidatedTcFrame`] from the strict stream, and the same in a
+/// `F` is the accepted frame: a [`Checked`] frame from the strict stream, and the same in a
 /// [`Lenient`] from the lenient one (API-030).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntakeItem<'a, F = ValidatedTcFrame<'a>> {
-    /// A validated frame, bundled with its matched Virtual Channel and MAP configurations.
+pub enum IntakeItem<'a, F = Checked<TcFrame<'a>>> {
+    /// A checked frame, bundled with its matched Virtual Channel and MAP configurations.
     Accepted {
-        /// The validated frame view.
+        /// The checked frame view.
         frame: F,
         /// The verified Virtual Channel configuration.
         vc: VcConfig,
@@ -167,7 +168,7 @@ impl<'a, F> IntakeItem<'a, F> {
     }
 }
 
-impl<'a> IntakeItem<'a, ValidatedTcFrame<'a>> {
+impl<'a> IntakeItem<'a, Checked<TcFrame<'a>>> {
     /// The octets of the item (the accepted frame or discarded octets).
     #[must_use]
     pub fn octets(&self) -> &'a [u8] {
@@ -190,7 +191,7 @@ impl<'a> IntakeItem<'a, ValidatedTcFrame<'a>> {
     }
 }
 
-impl<'a> IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>> {
+impl<'a> IntakeItem<'a, Lenient<Checked<TcFrame<'a>>, TcAnomaly>> {
     /// The octets of the item (the accepted frame or discarded octets).
     #[must_use]
     pub fn octets(&self) -> &'a [u8] {
@@ -254,7 +255,7 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
             self.max_fill,
             DecodeMode::Strict,
         )
-        .map(|item| item.map_frame(|(frame, _)| frame))
+        .map(|item| item.map_frame(Lenient::into_view))
     }
 }
 
@@ -289,7 +290,7 @@ impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
 }
 
 impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
-    type Item = IntakeItem<'a, Lenient<ValidatedTcFrame<'a>, TcAnomaly>>;
+    type Item = IntakeItem<'a, Lenient<Checked<TcFrame<'a>>, TcAnomaly>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         step(
@@ -298,7 +299,6 @@ impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
             self.max_fill,
             DecodeMode::Lenient,
         )
-        .map(|item| item.map_frame(|(frame, anomalies)| Lenient::new(frame, anomalies)))
     }
 }
 
@@ -310,7 +310,7 @@ fn step<'a, L: VcLookup + ?Sized>(
     channels: &L,
     max_fill: usize,
     mode: DecodeMode,
-) -> Option<IntakeItem<'a, (ValidatedTcFrame<'a>, AnomalySet<TcAnomaly>)>> {
+) -> Option<IntakeItem<'a, Lenient<Checked<TcFrame<'a>>, TcAnomaly>>> {
     if rest.is_empty() {
         return None;
     }
@@ -321,12 +321,8 @@ fn step<'a, L: VcLookup + ?Sized>(
         // If the declared length is available in `rest`, reconstruct and validate the frame.
         if let Some((frame_bytes, remaining)) = rest.split_at_checked(h.frame_len) {
             *rest = remaining;
-            return match parse(frame_bytes, channels, Channels::Required, mode, true) {
-                Ok(p) => Some(IntakeItem::Accepted {
-                    frame: (ValidatedTcFrame::new(p.frame), p.anomalies),
-                    vc: p.vc,
-                    map: p.map,
-                }),
+            return match check_bytes_matched::<TcFrame<'a>, L>(frame_bytes, channels, mode) {
+                Ok((frame, (vc, map))) => Some(IntakeItem::Accepted { frame, vc, map }),
                 Err(rejection) => Some(IntakeItem::Discarded {
                     reason: DiscardReason::from(rejection.reason()),
                     octets: frame_bytes,
@@ -537,7 +533,7 @@ mod tests {
         assert_eq!(item.octets(), &UNLOCK);
         assert_eq!(item.len(), 6);
         assert!(!item.is_empty());
-        assert_eq!(stream.remaining(), &[]);
+        assert_eq!(stream.remaining(), []);
         assert_eq!(stream.next(), None);
 
         // Also test discarded item accessors
@@ -592,7 +588,7 @@ mod tests {
     #[test]
     fn discard_reason_codes_and_validation_conversions() {
         // req: TC-021
-        use crate::validate::Reason;
+        use crate::checked::Reason;
 
         let pairs = [
             (

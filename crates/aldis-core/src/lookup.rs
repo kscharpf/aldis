@@ -56,6 +56,10 @@ pub trait PhysicalLookup {
 
 /// A physical channel that carries several master channels: the first lookup that accepts the
 /// Spacecraft ID answers (GEN-060; the clauses of each standard are on the alias of its codec crate).
+///
+/// The slice names no expected Spacecraft ID: it keeps the default
+/// [`sole_spacecraft`](ChannelLookup::sole_spacecraft) (`None`), also for a slice of one lookup,
+/// so an error for an unknown Spacecraft ID of a slice does not carry the expected value.
 impl<S: Copy, V, T: ChannelLookup<S, V>> ChannelLookup<S, V> for [T] {
     type Vc = T::Vc;
 

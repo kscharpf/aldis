@@ -8,6 +8,7 @@
 use core::hint::black_box as bb;
 
 use aldis_aos::AosEdition;
+use aldis_core::Check;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::NoSecurity;
 use aldis_core::time::{Duration, Instant};
@@ -420,14 +421,14 @@ impl PlainOf for Aos {
         )?;
         let frame = aldis_aos::AosFrame::decode(octets, &pc, &NoAosVcs)?;
         // The step a caller takes to reject the frame of a channel it does not hold.
-        t_validate(&frame);
+        t_check(&frame);
         frame.into_plain(NoSecurity)
     }
 }
 
-/// Calls `validate`, which rejects a frame of a channel the lookup does not hold.
-fn t_validate(frame: &aldis_aos::AosFrame<'_>) -> bool {
-    bb(frame.clone()).validate().is_err()
+/// Calls `check`, which rejects a frame of a channel the lookup does not hold.
+fn t_check(frame: &aldis_aos::AosFrame<'_>) -> bool {
+    bb(frame.clone()).check(&[]).is_err()
 }
 
 /// A lookup that holds no TC channel.

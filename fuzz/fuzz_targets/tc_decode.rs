@@ -1,4 +1,4 @@
-//! Arbitrary octets through `TcFrame::decode`, `peek_length`, and `validate_frame` on channels
+//! Arbitrary octets through `TcFrame::decode`, `peek_length`, and `check_frame` on channels
 //! drawn from the input: no panic; strict ⊆ lenient; `peek_length` agrees with `decode`; the
 //! Frame Validation Checks accept the decoded frame of a configured channel and reject that of an
 //! unknown one; and a strict decode of a configured channel re-encodes, with its Security Header
@@ -7,12 +7,13 @@
 
 // req: TC-001, TC-002, TC-003, TC-004, TC-005, TC-006, TC-021, TC-023, API-020, GEN-020, GEN-042, VER-022
 
+use aldis_core::DecodeMode;
 use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     FrameData, MapConfig, PhysicalChannelConfig, Reason, SegmentHeaderUse, TcFrame, TcFrameWriter,
-    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame_lenient,
+    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -81,7 +82,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.octets(), &bytes[..f.len()]);
             assert_eq!(TcFrame::peek_length(&bytes), Ok(f.len()));
             // The decoder reads a frame of an unknown channel; the checks reject it (RS-023).
-            match validate_frame_lenient(f.octets(), &table) {
+            match check_frame(f.octets(), &table, DecodeMode::Lenient) {
                 Ok(v) => assert_eq!(&**v, &**f),
                 Err(r) => assert!(
                     matches!(
@@ -92,11 +93,14 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 ),
             }
             if f.len() < bytes.len() {
-                assert!(validate_frame_lenient(&bytes, &table).is_err());
+                assert!(check_frame(&bytes, &table, DecodeMode::Lenient).is_err());
             }
         }
         Err(e) => {
-            assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
+            assert!(
+                check_frame(&bytes, &table, DecodeMode::Lenient).is_err(),
+                "{e:?}"
+            );
             if e.kind() == ErrorKind::Incomplete {
                 assert!(bytes.len() < TcFrame::peek_length(&bytes).unwrap_or(usize::MAX));
             }
@@ -106,7 +110,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     // The Err arms above fail on any rejection but an unknown channel, so "validates Ok" here
     // means "a configured channel".
     if let Ok(f) = strict
-        && validate_frame_lenient(f.octets(), &table).is_ok()
+        && check_frame(f.octets(), &table, DecodeMode::Lenient).is_ok()
     {
         let mut out = vec![0_u8; f.len()];
         let n = if let Some(cmd) = f.control_command() {

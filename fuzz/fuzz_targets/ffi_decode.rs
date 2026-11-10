@@ -33,7 +33,7 @@ use aldis_core::ids::VcId;
 use aldis_core::ocf::{FsrReport, OCF_LEN, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, Error, Lenient};
+use aldis_core::{AnomalySet, Check, DecodeMode, Error, Lenient};
 use aldis_epp::{EncapsulationPacket, EpiExtension, UserDefined};
 use aldis_ffi::aos::{
     ALDIS_AOS_CONTENT_BPDU, ALDIS_AOS_CONTENT_IDLE_DATA, ALDIS_AOS_CONTENT_MPDU,
@@ -596,7 +596,7 @@ fn tm(data: &[u8], fecf: bool, mode: DecodeMode, c_mode: u32) {
             || TmFrame::decode_with(data, m.pc(), &m),
             || TmFrame::decode_with_lenient(data, m.pc(), &m),
         )?;
-        frame.validate(&m).map(drop)
+        frame.check(&m).map(drop).map_err(Error::from)
     });
     let mut found = 0_u32;
     // SAFETY: as above.
@@ -1265,7 +1265,7 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             || AosFrame::decode(data, p, t),
             || AosFrame::decode_lenient(data, p, t),
         )?;
-        frame.validate().map(|_| found)
+        frame.check(t.slots()).map(|_| found).map_err(Error::from)
     });
     let mut found = u32::MAX;
     // SAFETY: as above.

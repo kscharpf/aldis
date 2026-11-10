@@ -15,7 +15,7 @@ use aldis::cop1::farm1_table::Farm1Event;
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::security::{NoSecurity, SecurityLayout};
 use aldis::core::time::Instant as CoreInstant;
-use aldis::core::{Error, ErrorKind, Result};
+use aldis::core::{DecodeMode, Error, ErrorKind, Result};
 use aldis::link::protocol::Tc;
 use aldis::link::reassembler::{
     FduIn, MapReassembler, MapReassemblerConfig, ReassemblerInput, ReassemblerMap,
@@ -28,7 +28,7 @@ use aldis::link::receiver::{
 use aldis::spp::SpacePacket;
 use aldis::tc::{
     Clcw, ClcwStatus, MapConfig, PhysicalChannelConfig, Reason, SegmentHeader, SegmentHeaderUse,
-    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, validate_frame,
+    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame,
 };
 use refapp_scenario::generated::{SPACECRAFT_ID, cop1, tc};
 use refapp_scenario::{Instant, Output};
@@ -160,8 +160,8 @@ impl FrameUplink {
         deliver: &mut dyn FnMut(&[u8], &mut dyn Output),
     ) {
         let now = CoreInstant::from_micros(now.as_micros());
-        let validated = match validate_frame(octets, &self.table) {
-            Ok(validated) => validated,
+        let validated = match check_frame(octets, &self.table, DecodeMode::Strict) {
+            Ok(validated) => validated.into_view(),
             Err(rejection) => {
                 // The FECF failure is the caller's discard (LNK-080). A rejected frame (232.0
                 // §4.4.9.3.2) is FARM-1's event E9, which discards it and changes nothing in

@@ -5,11 +5,12 @@ Frame codec for the CCSDS 732.1-B-3 Unified Space Data Link Protocol: USLP Trans
 ## Example
 
 ```rust
+use aldis_core::DecodeMode;
 use aldis_core::security::SecurityLayout;
 use aldis_uslp::{
     FrameContent, FrameDelimiter, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig,
     SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, encode, validate_frame,
+    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, encode, check_frame,
 };
 
 // A variable-length channel (as over TC Synchronization and Channel Coding) with FECF; VC 4
@@ -54,7 +55,7 @@ assert_eq!(n, 13);
 // At the receiving end: delimit the data unit, then validate each frame (732.1 §4.3.11).
 let mut frames = FrameDelimiter::new(&unit, &channels, 6);
 let frame = frames.next().unwrap();
-let uslp = validate_frame(frame.octets(), &channels).unwrap();
+let uslp = check_frame(frame.octets(), &channels, DecodeMode::Strict).unwrap();
 assert_eq!(uslp.tfdz(), [1, 2, 3]);
 assert!(!uslp.is_truncated());
 assert_eq!(frames.count(), 1); // the three octets of 0x55 fill

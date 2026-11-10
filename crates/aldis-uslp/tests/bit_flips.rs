@@ -2,7 +2,7 @@
 //! USLP-003, USLP-014, CMN-001, VER-023).
 //!
 //! Every single-bit error and every double-bit error of a set of valid frames with the FECF is
-//! rejected by the USLP Frame Validation Checks, [`validate_frame`] (USLP-014), and never
+//! rejected by the USLP Frame Validation Checks, [`check_frame`] (USLP-014), and never
 //! accepted as another frame, within the length the CRC-16 guarantees. A truncated frame has no
 //! FECF (732.1 Annex D1.2.2 note 1): it is not part of this FECF property, and its own tests
 //! (the section on truncated frames below) pin which single-bit errors the structural checks
@@ -12,9 +12,9 @@
 //! The outcome depends on where the errors are:
 //!
 //! - **Outside the Frame Length field** (bits 32–47, §4.1.2.7.1), the frame keeps its length
-//!   and the CRC sees the error: [`validate_frame`] and [`UslpFrame::decode`] reject it.
+//!   and the CRC sees the error: [`check_frame`] and [`UslpFrame::decode`] reject it.
 //! - **In the Frame Length field**, on a fixed-length channel the length no longer matches the
-//!   channel's (USLP-003), and both reject it. On a variable-length channel [`validate_frame`]
+//!   channel's (USLP-003), and both reject it. On a variable-length channel [`check_frame`]
 //!   compares it with the octets present (check (d), USLP-014) and rejects it, while
 //!   [`UslpFrame::decode`] reads a frame from the start of a longer input and ignores what
 //!   follows (API-011): a shorter claimed length makes it check the FECF of a shorter frame,
@@ -49,7 +49,7 @@ use aldis_core::crc::crc16;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{AnomalySet, DecodeMode, ErrorKind};
+use aldis_core::{AnomalySet, DecodeMode, ErrorKind, Rejection};
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_BITS, CRC16_DOUBLE_BIT_OCTETS, each_bit, each_double, each_pair, each_single,
     filler, find_double, find_single, flip, sampled_bits, sampled_pairs,
@@ -59,8 +59,8 @@ use aldis_uslp::{
     ChannelFields, FirstHeaderPointer, FrameContent, FrameFields, FrameKind, MAX_FRAME_LEN,
     MapConfig, OcfUse, PhysicalChannelConfig, Reason, SecurityScope, SourceOrDestination,
     TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpAnomaly, UslpFrame,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode,
-    encode_oid, encode_truncated, validate_frame, validate_frame_lenient,
+    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, check_frame,
+    encode, encode_oid, encode_truncated,
 };
 
 /// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
@@ -76,22 +76,16 @@ fn decode_in<'a>(
     .map(|(frame, _)| frame)
 }
 
-/// `validate_frame` or `validate_frame_lenient` as `mode` says, with the anomalies (empty in
-/// strict mode).
+/// `check_frame` in `mode`, with the anomalies (empty in strict mode).
 fn validate_with<'a>(
     bytes: &'a [u8],
     table: &impl aldis_uslp::VcLookup,
     mode: DecodeMode,
-) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>), aldis_uslp::Rejection> {
-    match mode {
-        DecodeMode::Strict => {
-            validate_frame(bytes, table).map(|v| (v.into_frame(), AnomalySet::empty()))
-        }
-        DecodeMode::Lenient => validate_frame_lenient(bytes, table).map(|v| {
-            let (v, anomalies) = v.into_parts();
-            (v.into_frame(), anomalies)
-        }),
-    }
+) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>), Rejection<Reason>> {
+    check_frame(bytes, table, mode).map(|v| {
+        let (v, anomalies) = v.into_parts();
+        (v.into_frame(), anomalies)
+    })
 }
 
 /// `validate_with` without the anomalies.
@@ -99,7 +93,7 @@ fn validate_in<'a>(
     bytes: &'a [u8],
     table: &impl aldis_uslp::VcLookup,
     mode: DecodeMode,
-) -> Result<UslpFrame<'a>, aldis_uslp::Rejection> {
+) -> Result<UslpFrame<'a>, Rejection<Reason>> {
     validate_with(bytes, table, mode).map(|(frame, _)| frame)
 }
 
@@ -249,7 +243,7 @@ fn expected(bits: &[usize]) -> Outcome {
     }
 }
 
-/// Whether `validate_frame` and `decode`, in `mode`, give `bytes`, the frame with errors at
+/// Whether `check_frame` and `decode`, in `mode`, give `bytes`, the frame with errors at
 /// `bits`, the expected outcome. An undetected error passes the FECF check; whatever the other
 /// checks then make of it is not this property's.
 fn as_expected(f: &Frame, bytes: &[u8], bits: &[usize], mode: DecodeMode) -> bool {
@@ -328,8 +322,8 @@ fn a_double_bit_error_32767_bits_apart_passes_the_fecf() {
     let mut bytes = longest.octets.clone();
     flip(&mut bytes, i);
     flip(&mut bytes, j);
-    let sent = validate_frame(&longest.octets, &longest.table).unwrap();
-    let got = validate_frame(&bytes, &longest.table).unwrap();
+    let sent = check_frame(&longest.octets, &longest.table, DecodeMode::Strict).unwrap();
+    let got = check_frame(&bytes, &longest.table, DecodeMode::Strict).unwrap();
     assert_eq!(got.len(), sent.len());
     assert_ne!(got.tfdz(), sent.tfdz());
 }
@@ -378,7 +372,7 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
         let short = decode_in(&octets, &f.table, mode).unwrap();
         assert_eq!(short.len(), 32);
         // The delimiter reads the same field, so the unit yields the shorter frame, and
-        // validate_frame of those octets accepts it: only a caller that compares the length
+        // check_frame of those octets accepts it: only a caller that compares the length
         // with the octets it was given sees the error.
         let Some(Delimited::Frame(item)) = next_frame(&octets, &f.table, 31) else {
             panic!("not a frame");
@@ -505,7 +499,7 @@ fn every_single_bit_error_of_a_truncated_frame_is_as_pinned() {
     // req: USLP-002, USLP-012, USLP-014, USLP-016, CMN-001, VER-023, VER-064
     // hazard: HZ-USLP-04 (P-USLP-06). A truncated frame has no error control: the errors
     // that the receiver rejects are those of the fields it checks, and the others are
-    // accepted, in both modes. `decode` agrees with `validate_frame` on acceptance.
+    // accepted, in both modes. `decode` agrees with `check_frame` on acceptance.
     for (len, sdls) in [(6, false), (12, false), (32, false), (28, true)] {
         let table = truncated_table(len, sdls);
         let f = truncated(&table, len, sdls, 0);

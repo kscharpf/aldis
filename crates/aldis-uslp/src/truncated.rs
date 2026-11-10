@@ -12,12 +12,13 @@ use aldis_core::layout::{FrameLayout, FramedBytes, LayoutSpec};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind};
 
+use crate::checked::Reason;
 use crate::config::{VcLookup, frame_security};
 use crate::field;
 use crate::header::{ChannelFields, OID_VCID, TRUNCATED_HEADER_LEN, invalid, unknown};
 use crate::tfdf::TfdfHeader;
-use crate::validate::{Reason, Rejection};
 use crate::view::{fail, framed, length, tfdf_rejection};
+use aldis_core::Rejection;
 
 /// A decoded truncated USLP Transfer Frame borrowing its fields from the input (732.1 Annex
 /// D; USLP-002, USLP-012, API-010, GEN-013).
@@ -50,7 +51,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
         crate::config::VcConfig,
         Option<crate::config::MapConfig>,
     ),
-    Rejection,
+    Rejection<Reason>,
 > {
     let vc = channels
         .vc(channel.spacecraft_id, channel.vc_id)
@@ -92,7 +93,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
 fn split(
     frame: &[u8],
     security: SecurityLayout,
-) -> Result<(FramedBytes<'_>, TfdfHeader), Rejection> {
+) -> Result<(FramedBytes<'_>, TfdfHeader), Rejection<Reason>> {
     let layout = FrameLayout::compute(&LayoutSpec {
         frame_len: frame.len(),
         primary_header_len: TRUNCATED_HEADER_LEN,
@@ -189,7 +190,7 @@ mod tests {
     use crate::tfdf::TfdzRule;
     use crate::upid::Upid;
     use crate::view::UslpFrame;
-    use aldis_core::{ErrorDetail, ErrorKind};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
     use std::vec;
 
     #[test]
@@ -250,13 +251,16 @@ mod tests {
     #[test]
     fn validating_truncated_frames() {
         // req: USLP-014, USLP-002
-        use crate::validate::{Reason, validate_frame};
+        use crate::checked::{Reason, check_frame};
         let t = variable();
         let mut bytes = vec![0xC0, 0x15, 0x58, 0x85, 0xE5];
         bytes.extend(1..=7);
-        assert_eq!(validate_frame(&bytes, &t).map(|f| f.len()), Ok(12));
+        assert_eq!(
+            check_frame(&bytes, &t, DecodeMode::Strict).map(|f| f.len()),
+            Ok(12)
+        );
         bytes.push(0);
-        let r = validate_frame(&bytes, &t).unwrap_err();
+        let r = check_frame(&bytes, &t, DecodeMode::Strict).unwrap_err();
         assert_eq!(r.reason(), Reason::LengthMismatch);
         assert_eq!(r.error().field(), Some(field::FRAME_LEN));
     }
@@ -344,7 +348,7 @@ mod tests {
         assert_eq!(
             rejected,
             Some((
-                crate::validate::Reason::FrameTooShort,
+                crate::checked::Reason::FrameTooShort,
                 Some(field::FRAME_DATA_FIELD)
             ))
         );

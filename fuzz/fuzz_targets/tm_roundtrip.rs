@@ -6,6 +6,7 @@
 
 // req: API-020, API-021, API-022, API-023, TM-009, TM-010, TM-011, CMN-021, GEN-042, VER-022
 
+use aldis_core::Check;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
@@ -145,7 +146,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.data_field(), data.as_slice());
             assert_eq!(f.security_trailer(), st.as_slice());
             assert_eq!(f.ocf(), ocf);
-            assert!(f.validate(&mc).is_ok());
+            assert!(f.check(&mc).is_ok());
             let mut two = vec![0x5A_u8; n];
             let mut w = TmFrameWriter::begin(&mut two, &mc, &fields).unwrap();
             w.secondary_header_data_mut().copy_from_slice(&fsh);
