@@ -228,6 +228,8 @@ fast_forward_base() {
         echo "WARNING: the main checkout has local changes; not fast-forwarded to origin/main"
     elif [ "$(g rev-parse main)" = "$(g rev-parse origin/main)" ]; then
         echo "main checkout: main is already at origin/main"
+    elif g merge-base --is-ancestor origin/main main; then
+        echo "main checkout: main is ahead of origin/main; unchanged"
     elif g merge --quiet --ff-only origin/main; then
         echo "main checkout: main fast-forwarded to $(g rev-parse --short origin/main)"
     else
