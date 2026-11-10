@@ -1,6 +1,6 @@
 # Decision rights
 
-Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §10](../06-verification.md#10-decision-rights)). This document is itself the maintainer's decision; changing it is a process decision (§2.7).
+Who may decide what on Aldis, so that routine questions don't wait for the maintainer, and the questions that do reach the maintainer arrive with an answer ready to accept. Requirement: VER-062 ([06 §10](../06-verification.md#10-decision-rights)). This document is itself the maintainer's decision; changing it is a process decision (§2.7). Worked examples and the questions that led to these rights: [history.md](history.md).
 
 ## 1. Roles and where each records its decisions
 
@@ -26,15 +26,15 @@ The rules of [AGENTS.md](../../AGENTS.md), the [checklists](../milestones/checkl
 |---|---|---|
 | A reading the Blue Book does not settle: it is silent, says it only in notes or informative annexes, or two Blue Books disagree. Any departure from a Blue Book | A reading the normative text settles: answer the OI "from <clause>", write it into the standard document, and say so in the PR | The same as the coordinator, for the clauses of its work package |
 
-Example: OI-35 items 1 and 8 (notes only; 231.0 against 732.1) and AOS-018's limits went to the maintainer; items 2, 3, and 5–7 were answered from the text in the same PR (#61). Instead of asking: add or update the OI with the clauses, the options, and a recommendation (roadmap §6 rule 8), and continue as §5 says. Never settle it silently in code.
+Instead of asking: add or update the OI with the clauses, the options, and a recommendation (roadmap §6 rule 8), and continue as §5 says. Never settle it silently in code.
 
 ### 2.2 Requirements and scope
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| A milestone's exit table or entry gate, beyond requirements of the standards it already covers; removing or weakening a requirement; a new requirement area; moving work between milestones | A new requirement for a SHALL of a Blue Book in the milestone's scope that no requirement covers, with the next free ID, added to the exit table (USLP-016, #61); wording that changes no behaviour | Proposing such a requirement in its report; renumbering after an ID clash (roadmap §6 rule 7) |
+| A milestone's exit table or entry gate, beyond requirements of the standards it already covers; removing or weakening a requirement; a new requirement area; moving work between milestones | A new requirement for a SHALL of a Blue Book in the milestone's scope that no requirement covers, with the next free ID, added to the exit table; wording that changes no behaviour | Proposing such a requirement in its report; renumbering after an ID clash (roadmap §6 rule 7) |
 
-Example: adding TV-023 to the M2 exit table (#74) was the maintainer's: it comes from no frame standard. Instead of asking: write the requirement, leave it out of the exit table, and ask in the PR description.
+Instead of asking: write the requirement, leave it out of the exit table, and ask in the PR description.
 
 ### 2.3 Plan decisions
 
@@ -42,7 +42,7 @@ Example: adding TV-023 to the M2 exit table (#74) was the maintainer's: it comes
 |---|---|---|
 | Accepting a milestone plan and its D-numbered decisions, or changing an accepted one; starting or closing a milestone; the order of work: which tasks start next | Drafting plans and proposing decisions with their alternatives; splitting a work package into pull requests (WP-0a, -0b, -0c); the work-package status rows; starting the next task of the order the maintainer last gave, once its dependencies have merged | How to build what an accepted decision says: module layout, private helpers, test organisation |
 
-Example: M2 decisions D1–D17 (#56). Instead of asking: the plan PR lists each decision as "Proposed", and no work package that depends on it starts.
+Instead of asking: the plan PR lists each decision as "Proposed", and no work package that depends on it starts.
 
 ### 2.4 API and ABI shape
 
@@ -50,7 +50,7 @@ Example: M2 decisions D1–D17 (#56). Instead of asking: the plan PR lists each 
 |---|---|---|
 | C ABI layout and conventions: the sign of status codes, struct versioning, ownership; a public Rust item that departs from the plan or the profile; whether a public enum is closed (GEN-081); new error kinds; merging or splitting field codes | Shapes an accepted decision or a profile already fixes; public names that follow the profile's conventions | Private items; public items in the shape a decision fixes; a new field code for a Blue Book field that has none (one code per field, M2 D2); which catalogued error kind an error is (a judgement call) |
 
-Example: the negative status codes and `struct_size` first in `aldis_error_detail_t` (#72); `Ocf` closed (#68); `packet_len` kept as one code (#60). Instead of asking: build the recommended shape, and put the question in the PR description under "For the maintainer"; the PR is not readied until it is answered.
+Instead of asking: build the recommended shape, and put the question in the PR description under "For the maintainer"; the PR is not readied until it is answered.
 
 ### 2.5 Test vectors
 
@@ -58,7 +58,7 @@ Example: the negative status codes and `struct_size` first in `aldis_error_detai
 |---|---|---|
 | The vector format, schema, or provenance kinds; what the loaders of every implementation accept or reject; a released case that is wrong and that TV-021 gives no way to correct | Adding cases; organising files not yet released, including moving a case to the file whose name describes it; superseding a released case with a new one (TV-021) | The same as the coordinator, for its work package's files |
 
-A file name is a promise about its contents: a case that does not fit its file's name moves to one that does, if no release holds it. Example: the C++ loader stays stricter than the Rust runner (#66, follow-up #67) was the maintainer's; moving the FHEC miscorrection case to `fhec_miscorrection.json` (#64) is routine under this rule. Instead of asking: never edit a released case; add a new one and mark the old `superseded`.
+A file name is a promise about its contents: a case that does not fit its file's name moves to one that does, if no release holds it. Instead of asking: never edit a released case; add a new one and mark the old `superseded`.
 
 ### 2.6 Review findings
 
@@ -66,9 +66,9 @@ A file name is a promise about its contents: a case that does not fit its file's
 |---|---|---|
 | A finding whose fix changes behaviour the specification defines, a requirement, the public API or C ABI, or a released vector; rejecting a finding the reviewer still holds after the reply | Whether a finding is blocking; fixing a finding that changes none of those and re-verifying; moving a non-blocking finding to a follow-up issue named in the reply (mandatory after the third review, below); the point-by-point reply | Fixing such findings on its own branch |
 
-**Blocking** means a failing check, a broken rule of AGENTS.md, or a defect against a requirement or the Blue Book; anything else is non-blocking. Fixing code to meet the existing specification is not a behaviour change. Example: the OID and CRC check fix in `cpp/vectors/` (e73db7d, #66), and the follow-up issues #65, #67, #69, are routine. Instead of asking: fix or defer, and say which and why in the reply. Standing maintainer decision (2026-11-08): the coordinator reads a fix round instead of dispatching a fresh review when it changes only what a list of allowed changes names (code comments and a few Markdown files); the conditions are in [coordinator.md](coordinator.md#a-comments-only-fix-round). A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue by the coordinator, or by the reviewing agent when the coordinator asks; a finding that exists only in chat is lost.
+**Blocking** is defined in [review.md](review.md#reporting-findings). Instead of asking: fix or defer, and say which and why in the reply. Standing maintainer decision (2026-11-08): the coordinator reads a fix round instead of dispatching a fresh review when it changes only what a list of allowed changes names (code comments and a few Markdown files); the conditions are in [coordinator.md](coordinator.md#a-comments-only-fix-round). A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue by the coordinator, or by the reviewing agent when the coordinator asks; a finding that exists only in chat is lost.
 
-Review rounds (maintainer, 2026-11-08, given in the coordinating session): "we should strive for max 3 review rounds and open non-blocking items at that point become follow-on issues." Read as a hard cap of three reviews by `reviewer` per pull request; after the third, the coordinator opens the remaining non-blocking findings and nits as follow-up issues, and a blocking finding left then goes to the maintainer as one question ([coordinator.md](coordinator.md), "At most three reviews").
+Review rounds (maintainer, 2026-11-08): a hard cap of three reviews by `reviewer` per pull request; after the third, the coordinator opens the remaining non-blocking findings and nits as follow-up issues, and a blocking finding left then goes to the maintainer as one question ([coordinator.md](coordinator.md), "At most three reviews").
 
 ### 2.7 Process and tooling
 
@@ -76,13 +76,13 @@ Review rounds (maintainer, 2026-11-08, given in the coordinating session): "we s
 |---|---|---|
 | The merge gate and the verification policy (VER-056…VER-060); these decision rights; the non-negotiable rules of AGENTS.md; the toolchain pin (RS-001, OI-07); the lint set (RS-016, RS-019); standing policies for agents (cleanup, review watch); how often approvals happen; keeping or dropping a restructure that splits a crate or moves a directory | A tooling fix, or a new check that enforces a rule already written, that loosens no gate; a check's declared inputs; documentation that restates existing rules | The registrations its work package needs (the checklists); fixing a check that is wrong for its change (a judgement call) |
 
-Example: the cleanup and review-watch policies, and holding the `xtask` split (#75). Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
+Instead of asking: build it on a branch, measure what it changes, and propose it with the measurement.
 
 ### 2.8 Dependencies and licences
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| A new third-party dependency or tool that no accepted decision names; a licence that is not plainly open source, or a free licence for public repositories only (VER-055, OI-22); reading code under a restrictive licence | Checking a dependency an accepted decision names against VER-055 and recording it (`cbindgen` 0.29.4, #72); a version bump of an existing dependency under the same licence | None: it uses what is there, and asks the coordinator |
+| A new third-party dependency or tool that no accepted decision names; a licence that is not plainly open source, or a free licence for public repositories only (VER-055, OI-22); reading code under a restrictive licence | Checking a dependency an accepted decision names against VER-055 and recording it; a version bump of an existing dependency under the same licence | None: it uses what is there, and asks the coordinator |
 
 Layers 0–2 take no third-party runtime dependency at all (GEN-001); that is a rule, not a decision. Instead of asking: name the tool, its licence, and what the requirement needs, in the plan's Decisions table.
 
@@ -92,7 +92,7 @@ Layers 0–2 take no third-party runtime dependency at all (GEN-001); that is a 
 |---|---|---|
 | Tags and releases; version numbers a consumer reads; publishing to crates.io or a registry, reserving names (OI-02); the visibility of the repository and its packages; repository settings, branch protection, and secrets; anything posted outside this repository | Preparing the release PR (`cargo xtask changelog release`, the version bump) and asking for the tag | None |
 
-Example: the tag `v0.2.0-m1` (#54), the repository made public (#57), the GHCR package `aldis-verify` made public (#63). Instead of asking: prepare everything up to the external step, and ask for that step only.
+Instead of asking: prepare everything up to the external step, and ask for that step only.
 
 ### 2.10 Merges to `main`
 
@@ -102,17 +102,13 @@ Example: the tag `v0.2.0-m1` (#54), the repository made public (#57), the GHCR p
 
 GitHub records merges. A merge that also decides something, such as merging over an open question, says so in the pull request description.
 
-Merge trains (maintainer, 2026-11-07): each pull request keeps its own independent review and the implementer's reply, and needs no verify record of its own; verify runs on the train, and the merge gate (VER-058) applies to the train PR, which the maintainer approves and merges. One train for all scopes, run by the process coordinator; the merge order stays the maintainer's. A pull request that waits on a maintainer decision (a breaking C ABI change, a requirement amendment) stays out of trains until it is decided (the label `needs-maintainer`, enforced by `scripts/pr-status --train` and `scripts/train`). A failing train drops the pull request that caused it; a conflict leaves out the later pull request of the agreed order (`scripts/train --plan` finds it before the build); both go back to their owners ([coordinator.md](coordinator.md#merge-trains)).
-
-Train assignment (maintainer, 2026-11-09): only the maintainer assigns pull requests to a train; the coordinator builds a train only from the pull requests the maintainer names, and verifies and rebuilds it ([coordinator.md](coordinator.md#merge-trains)).
-
-Concurrent agents (maintainer, 2026-11-09): at most 2 subagents run at once per coordinator session ([coordinator.md](coordinator.md)).
+Merge trains, train assignment, and the cap of 2 concurrent subagents (maintainer, 2026-11-07 and 2026-11-09): [coordinator.md](coordinator.md#merge-trains), [Dispatch](coordinator.md#dispatch).
 
 ### 2.11 Repository housekeeping
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| Deleting work that is on no remote and not merged, or a branch kept on purpose (the `xtask` split, #75); rewriting pushed history | Merging `main` into open pull requests and re-verifying (with several coordinators, see [coordinator.md](coordinator.md#multiple-coordinators)); verifying and rebuilding a merge train the maintainer assigned ([coordinator.md](coordinator.md#merge-trains)); deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
+| Deleting work that is on no remote and not merged, or a branch kept on purpose; rewriting pushed history | Merging `main` into open pull requests and re-verifying (with several coordinators, see [coordinator.md](coordinator.md#multiple-coordinators)); verifying and rebuilding a merge train the maintainer assigned ([coordinator.md](coordinator.md#merge-trains)); deleting the worktrees and branches of merged pull requests under the cleanup policy; closing issues a merge finished; keeping the review watch running | Its own worktree |
 
 Build directories (maintainer, 2026-11-07): an agent runs `cargo clean` in its worktree, and in the separate workspaces it built, after the final push of each round ([agent-brief.md](agent-brief.md) item 5).
 
@@ -157,16 +153,3 @@ Anything a rule or a check already decides:
 - An external or irreversible step (§2.9) waits; everything before it is prepared.
 - Pull requests stay open and up to date; none merges without the maintainer (§2.10).
 - No answer is never a yes. Questions still open are asked again in the next batch.
-
-## 6. The questions of 2026-10-20 and 2026-10-21
-
-The coordinator asked the maintainer about each of these. Those that were the maintainer's are recorded in the pull requests and open issues that settled them. These were routine, and under §2 would not have been asked:
-
-| Question | Category | Decided under these rights by | Rule |
-|---|---|---|---|
-| Move the FHEC miscorrection case to its own file (#64) | `vectors` | Agent | A file name is a promise about its contents; the case was not released (§2.5) |
-| Fix the OID and CRC agreement checks of `cpp/vectors/` (e73db7d, #66) | `review` | Coordinator | A finding that changes no behaviour, spec, or ABI (§2.6) |
-| Defer non-blocking review items to follow-up issues (#65, #67, #69) | `review` | Coordinator | Non-blocking findings go to a follow-up issue named in the reply (§2.6) |
-| Merge `main` into the open pull requests and re-verify | `housekeeping` | Coordinator | §2.11 |
-| Delete the worktrees of merged pull requests | `housekeeping` | Coordinator | The cleanup policy, itself a maintainer decision (§2.7, §2.11) |
-| Fix a review finding that changes no behaviour, spec, or ABI | `review` | Coordinator or agent | §2.6 |
