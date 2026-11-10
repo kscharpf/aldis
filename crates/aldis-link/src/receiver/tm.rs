@@ -1,6 +1,7 @@
 //! The `FrameReceiver` procedure for TM frames (132.0 §4.3.3–§4.3.7; LNK-050…LNK-053, LNK-077;
 //! OI-77).
 
+use aldis_core::FrameFormat;
 use aldis_core::ids::VcId;
 use aldis_core::{Error, ErrorKind, Result, field};
 
@@ -11,7 +12,7 @@ use super::{
 use crate::protocol::Tm;
 
 /// The octets of the TM Primary Header (132.0 §4.1.2).
-const PRIMARY_HEADER_LEN: usize = 6;
+const PRIMARY_HEADER_LEN: usize = Tm::PRIMARY_HEADER_LEN;
 /// The First Header Pointer of an OID frame, "only idle data" (132.0 §4.1.4.6.3).
 const OID_POINTER: u16 = 0x7FE;
 /// The longest Secondary Header: the ID octet and 63 octets of data (132.0 §4.1.3.2).
@@ -154,7 +155,7 @@ impl ReceiveProtocol for Tm {
     }
 
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Tm, V>, frame: &[u8]) -> Result<()> {
-        let [_, b1, mc, vcc, s0, s1, id] = header::<7>(frame)?;
+        let [_, b1, mc, vcc, s0, s1, id] = header::<{ PRIMARY_HEADER_LEN + 1 }>(frame)?;
         let vc: VcId<3> = vc_of::<Tm>((b1 >> 1) & 0x07)?;
         let ocf_flag = b1 & 1 == 1;
         let fsh_flag = s0 & 0x80 != 0;

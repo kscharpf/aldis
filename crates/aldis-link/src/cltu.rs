@@ -32,7 +32,11 @@ use aldis_core::engine::{Actions, OutRange};
 use aldis_core::{Error, ErrorKind, Result, field};
 
 use crate::common::{Counter, Occupancy, Qos};
-use crate::protocol::{Protocol, Tc, Uslp};
+use crate::protocol::Protocol;
+#[cfg(feature = "tc")]
+use crate::protocol::Tc;
+#[cfg(feature = "uslp")]
+use crate::protocol::Uslp;
 
 /// The most actions one input of the `CltuPacker` returns (LNK-074, docs/04-engines.md §4).
 ///
@@ -47,10 +51,12 @@ pub trait CltuProtocol: Protocol {
     const TRUNCATED_FRAMES: bool;
 }
 
+#[cfg(feature = "tc")]
 impl CltuProtocol for Tc {
     const TRUNCATED_FRAMES: bool = false;
 }
 
+#[cfg(feature = "uslp")]
 impl CltuProtocol for Uslp {
     const TRUNCATED_FRAMES: bool = true;
 }
