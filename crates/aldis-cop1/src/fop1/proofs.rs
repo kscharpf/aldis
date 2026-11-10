@@ -230,10 +230,14 @@ fn table_5_1_alerts() {
 }
 
 fn target() -> Fop1Target {
-    let (Some(sc), Some(vc)) = (TcSpacecraftId::new(42), TcVcId::new(1)) else {
+    let (Some(sc), Some(vc), Ok(physical)) = (
+        TcSpacecraftId::new(42),
+        TcVcId::new(1),
+        aldis_tc::PhysicalChannelConfig::new(F, false),
+    ) else {
         unreachable!()
     };
-    match Fop1Target::tc(sc, vc, F, false) {
+    match Fop1Target::tc(sc, vc, physical) {
         Ok(t) => t,
         Err(_) => unreachable!(),
     }

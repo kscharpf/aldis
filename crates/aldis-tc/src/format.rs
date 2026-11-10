@@ -13,6 +13,7 @@ pub struct TcFormat;
 
 impl FrameFormat for TcFormat {
     type HeaderExtension = ();
+    type Physical = crate::config::PhysicalChannelConfig;
     const PRIMARY_HEADER_LEN: usize = PRIMARY_HEADER_LEN;
     const PACKET_HEADER_LEN: usize = 0;
     const SDU_HEADER_LEN: usize = 0;

@@ -4,6 +4,7 @@
 use aldis_core::FrameFormat;
 use aldis_core::ids::VcId;
 use aldis_core::{Error, ErrorKind, Result, field};
+use aldis_tm::TmPhysicalChannelConfig;
 
 use super::{
     ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
@@ -42,17 +43,29 @@ mod layout {
 /// Secondary Header are delivered (132.0 §3.5–3.9; LNK-053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TmChannel {
+    physical: TmPhysicalChannelConfig,
     ocf: DeliveryService,
     fsh: DeliveryService,
 }
 
 impl TmChannel {
-    /// The channel whose OCF is delivered by `ocf` and whose Secondary Header by `fsh`.
+    /// The channel of the physical channel `physical` whose OCF is delivered by `ocf` and whose
+    /// Secondary Header by `fsh`.
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(ocf: DeliveryService, fsh: DeliveryService) -> TmChannel {
-        TmChannel { ocf, fsh }
+    pub const fn new(
+        physical: TmPhysicalChannelConfig,
+        ocf: DeliveryService,
+        fsh: DeliveryService,
+    ) -> TmChannel {
+        TmChannel { physical, ocf, fsh }
+    }
+
+    /// The managed parameters of the physical channel.
+    #[must_use]
+    pub const fn physical(&self) -> &TmPhysicalChannelConfig {
+        &self.physical
     }
 
     /// How the OCF is delivered.
@@ -150,11 +163,12 @@ impl ReceiveProtocol for Tm {
         frame.as_bytes()
     }
 
-    fn insert_zone_len(_: &TmChannel) -> usize {
-        0
+    fn physical(channel: &TmChannel) -> &TmPhysicalChannelConfig {
+        &channel.physical
     }
 
-    fn fits(frame_len: usize, fecf: bool, _: &TmChannel, vc: Option<&TmVc>) -> bool {
+    fn fits(frame_len: usize, channel: &TmChannel, vc: Option<&TmVc>) -> bool {
+        let fecf = channel.physical.fecf();
         let fixed = PRIMARY_HEADER_LEN
             .saturating_add(if fecf { 2 } else { 0 })
             .saturating_add(1);
@@ -164,10 +178,6 @@ impl ReceiveProtocol for Tm {
                 .saturating_add(if v.ocf { 4 } else { 0 })
         });
         frame_len >= fixed.saturating_add(own)
-    }
-
-    fn variable_length(_: &TmChannel) -> bool {
-        false
     }
 
     fn raw_insert_zone_offset(_: &TmChannel, _: &[u8]) -> Result<usize> {

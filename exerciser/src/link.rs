@@ -7,7 +7,7 @@
 
 use core::hint::black_box as bb;
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::Check;
 use aldis_core::SecuritySlices;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
@@ -33,7 +33,7 @@ use aldis_link::receiver::{
     ReceiverActions, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc,
     UslpChannel, UslpVc, VcEntry,
 };
-use aldis_uslp::Upid;
+use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType, Upid};
 
 use crate::exercise::Tally;
 use crate::vectors::{Case, Fail, Run};
@@ -561,10 +561,9 @@ fn receivers(t: &mut Tally) {
     let tm_vc = TmVc::new(bb(TmContent::Packets), bb(true), Some(bb(2)));
     let config = tm_vc.and_then(|vc| {
         let vcid = <Tm as Protocol>::Vc::try_from(bb(1))?;
+        let physical = aldis_tm::TmPhysicalChannelConfig::new(bb(LEN), bb(false))?;
         FrameReceiverConfig::<Tm, 4>::new(
-            bb(LEN),
-            bb(false),
-            TmChannel::new(DeliveryService::Vc, DeliveryService::Mc),
+            TmChannel::new(physical, DeliveryService::Vc, DeliveryService::Mc),
             &[VcEntry::new(vcid, vc)],
         )
     });
@@ -653,10 +652,10 @@ fn receiver_aos(t: &mut Tally) {
     let mut area = [0u8; LEN + 4];
     // AOS: an Insert Zone of 2 octets, VC 1 of bitstream, raw frames accepted.
     let aos_config = <Aos as Protocol>::Vc::try_from(bb(1)).and_then(|vcid| {
+        let physical =
+            AosPhysicalChannelConfig::new(bb(LEN), bb(false), bb(2), bb(true), AosEdition::Issue5)?;
         FrameReceiverConfig::<Aos, 4>::new(
-            bb(LEN),
-            bb(true),
-            AosChannel::new(bb(2), bb(false)),
+            AosChannel::new(physical),
             &[VcEntry::new(
                 vcid,
                 AosVc::new(bb(AosContent::Bitstream), bb(false)),
@@ -704,10 +703,11 @@ fn receiver_uslp(t: &mut Tally) {
         let maps = MapSet::new(&[map]);
         let one = <Uslp as Protocol>::Vc::try_from(bb(1)).ok()?;
         let two = <Uslp as Protocol>::Vc::try_from(bb(3)).ok()?;
+        let physical =
+            UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, bb(LEN), bb(2), bb(false))
+                .ok()?;
         FrameReceiverConfig::<Uslp, 4>::new(
-            bb(LEN),
-            bb(false),
-            UslpChannel::new(bb(2), DeliveryService::Mc),
+            UslpChannel::new(physical, DeliveryService::Mc).ok()?,
             &[
                 VcEntry::new(one, UslpVc::new(maps, bb(false), bb(true))),
                 VcEntry::new(two, UslpVc::new(maps, bb(true), bb(false))),
@@ -767,10 +767,9 @@ fn receiver_tc(t: &mut Tally) {
     // TC: VC 1 is served, VC 2 is not.
     let tc_config = <Tc as Protocol>::Vc::try_from(bb(1)).and_then(|one| {
         let two = <Tc as Protocol>::Vc::try_from(bb(2))?;
+        let physical = aldis_tc::PhysicalChannelConfig::new(bb(LEN), bb(false))?;
         FrameReceiverConfig::<Tc, 4>::new(
-            bb(LEN),
-            bb(false),
-            TcChannel,
+            TcChannel::new(physical),
             &[
                 VcEntry::new(one, TcVc::SERVED),
                 VcEntry::new(two, TcVc::UNSERVED),

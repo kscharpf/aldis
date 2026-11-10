@@ -51,8 +51,7 @@ fn config(c: &Map<String, Value>) -> Engine {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
         TcVcId::new(byte(&c["vcid"])).unwrap(),
-        F,
-        c["fecf"].as_bool().unwrap(),
+        aldis_tc::PhysicalChannelConfig::new(F, c["fecf"].as_bool().unwrap()).unwrap(),
     )
     .unwrap();
     Engine::new(Fop1Config {
@@ -391,8 +390,7 @@ fn the_action_bound_target_and_classification_at_run_time() {
     let plain = Fop1Target::tc(
         TcSpacecraftId::new(1).unwrap(),
         TcVcId::new(0).unwrap(),
-        F,
-        core::hint::black_box(false),
+        aldis_tc::PhysicalChannelConfig::new(F, core::hint::black_box(false)).unwrap(),
     )
     .unwrap();
     assert_eq!(plain.max_fdu_len(), F - 5);

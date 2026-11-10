@@ -13,6 +13,7 @@
 //! that only the engines use (data field content, blocking, segmentation, repetitions, CLCW
 //! reporting rate, the multiplexing schemes) are not kept here.
 
+use aldis_core::PhysicalChannel;
 use aldis_core::layout::{FECF_LEN, LayoutSpec};
 use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
@@ -65,6 +66,24 @@ impl PhysicalChannelConfig {
     #[must_use]
     pub const fn fecf(&self) -> bool {
         self.fecf
+    }
+}
+
+impl PhysicalChannel for PhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.max_frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        0
+    }
+
+    fn variable_length(&self) -> bool {
+        true
     }
 }
 
@@ -594,5 +613,21 @@ pub(crate) mod tests {
             &[],
         );
         assert!(both.is_ok());
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::PhysicalChannelConfig::new(24, true).unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 0);
+        assert!(PhysicalChannel::variable_length(&p));
     }
 }

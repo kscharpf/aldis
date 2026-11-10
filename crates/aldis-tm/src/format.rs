@@ -13,6 +13,7 @@ pub struct TmFormat;
 
 impl FrameFormat for TmFormat {
     type HeaderExtension = ();
+    type Physical = crate::config::TmPhysicalChannelConfig;
     const PRIMARY_HEADER_LEN: usize = PRIMARY_HEADER_LEN;
     const PACKET_HEADER_LEN: usize = 0;
     const SDU_HEADER_LEN: usize = 0;

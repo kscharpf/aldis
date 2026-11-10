@@ -7,7 +7,7 @@
 
 // req: VER-022, LNK-030, LNK-032, LNK-074, LNK-075, LNK-076, API-057, API-058, GEN-020
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_link::common::Qos;
@@ -18,7 +18,11 @@ use aldis_link::mux::{
 };
 use aldis_link::policy::MuxPolicy;
 use aldis_link::protocol::{Aos, Tm, Uslp};
-use aldis_uslp::{SourceOrDestination, VcfCountLen};
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{
+    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
+    VcfCountLen,
+};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
@@ -39,11 +43,10 @@ fn tm_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Tm, V> {
     };
     ChannelMuxConfig::new(
         TmChannel::new(
+            TmPhysicalChannelConfig::new(frame_len, true).unwrap(),
             SpacecraftId::<10>::new(165).unwrap(),
             VcId::<3>::new(7).unwrap(),
         ),
-        frame_len,
-        true,
         policy,
         &[
             vc(1, TmRole::Packets, 1),
@@ -61,14 +64,11 @@ fn aos_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Aos, V> {
     };
     ChannelMuxConfig::new(
         AosChannel::new(
+            AosPhysicalChannelConfig::new(frame_len, false, 0, true, AosEdition::Issue5).unwrap(),
             SpacecraftId::<10>::new(421).unwrap(),
-            AosEdition::Issue5,
-            false,
             false,
         )
         .unwrap(),
-        frame_len,
-        true,
         policy,
         &[vc(1, 1), vc(2, 2)],
     )
@@ -91,14 +91,13 @@ fn uslp_config(policy: MuxPolicy, frame_len: usize, cop: bool) -> ChannelMuxConf
         .with_priority(id)
     };
     ChannelMuxConfig::new(
-        UslpChannel {
-            scid: SpacecraftId::<16>::new(0x1234).unwrap(),
-            source_or_destination: SourceOrDestination::Source,
-            oid_vcf_len: VcfCountLen::NONE,
-            mc_ocf: None,
-        },
-        frame_len,
-        true,
+        UslpChannel::new(
+            UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, frame_len, 0, true).unwrap(),
+            SpacecraftId::<16>::new(0x1234).unwrap(),
+            SourceOrDestination::Source,
+            VcfCountLen::NONE,
+        )
+        .unwrap(),
         policy,
         &[vc(1), vc(2)],
     )

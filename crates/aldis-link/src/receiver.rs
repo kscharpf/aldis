@@ -34,6 +34,7 @@
 
 use core::fmt::Debug;
 
+use aldis_core::PhysicalChannel;
 use aldis_core::engine::{Actions, OutRange};
 use aldis_core::ids::MapId;
 use aldis_core::layout::{FrameLayout, FramedBytes, LayoutSpec};
@@ -345,23 +346,16 @@ pub trait ReceiveProtocol: Protocol {
     /// The octets of a `Plain` frame.
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8];
 
-    /// The octets of the Insert Zone, 0 for a protocol or a channel without one.
-    fn insert_zone_len(channel: &Self::Channel) -> usize;
+    /// The managed parameters of the physical channel the channel parameters embed: the frame
+    /// length, the FECF, the Insert Zone, and whether the frames vary in length, so that the
+    /// frame length is the maximum (TC, 232.0 §2.3.1; variable-length USLP, 732.1 §4.1.2.7) and
+    /// not the length of every frame (LNK-050; M6 plan WP-2c).
+    fn physical(channel: &Self::Channel) -> &Self::Physical;
 
-    /// Whether a frame of `frame_len` octets (with a FECF if `fecf`) leaves a data field octet
-    /// on the channel, with the OCF and Secondary Header of the VC when `vc` is given
-    /// (CMN-041).
-    fn fits(
-        frame_len: usize,
-        fecf: bool,
-        channel: &Self::Channel,
-        vc: Option<&Self::VcParams>,
-    ) -> bool;
-
-    /// Whether the frames of the channel vary in length, so that the configured frame length is
-    /// the maximum (TC, 232.0 §2.3.1; variable-length USLP, 732.1 §4.1.2.7) and not the length
-    /// of every frame (LNK-050).
-    fn variable_length(channel: &Self::Channel) -> bool;
+    /// Whether a frame of `frame_len` octets (with a FECF if the physical channel has one)
+    /// leaves a data field octet on the channel, with the OCF and Secondary Header of the VC
+    /// when `vc` is given (CMN-041).
+    fn fits(frame_len: usize, channel: &Self::Channel, vc: Option<&Self::VcParams>) -> bool;
 
     /// Refuses a frame that the receiver does not serve, before its length is checked (USLP: a
     /// truncated frame, Annex D, whose header has no Frame Length).
@@ -399,17 +393,15 @@ pub trait ReceiveProtocol: Protocol {
 /// the relations between the parameters (API-040, RS-020). `V` is the capacity for VC entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameReceiverConfig<P: ReceiveProtocol, const V: usize> {
-    frame_len: usize,
-    fecf: bool,
     channel: P::Channel,
     vcs: [Option<VcEntry<P>>; V],
     raw_frames: bool,
 }
 
 impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
-    /// The configuration of a physical channel whose frames are `frame_len` octets (at most
-    /// `frame_len` where the channel's frames vary in length), with a FECF
-    /// if `fecf`, serving `vcs`. It does not take raw frames (LNK-079).
+    /// The configuration of the physical channel `channel`, whose frames are as long as its
+    /// managed parameters say (at most that where the channel's frames vary in length), with or
+    /// without a FECF as they say, serving `vcs`. It does not take raw frames (LNK-079).
     ///
     /// # Errors
     /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
@@ -417,16 +409,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// octets of the Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3); `InvalidConfig`
     /// (`vc_id`)
     /// for a VC given twice; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
-    pub fn new(
-        frame_len: usize,
-        fecf: bool,
-        channel: P::Channel,
-        vcs: &[VcEntry<P>],
-    ) -> Result<FrameReceiverConfig<P, V>> {
+    pub fn new(channel: P::Channel, vcs: &[VcEntry<P>]) -> Result<FrameReceiverConfig<P, V>> {
+        // The channel's constructor has checked that a frame leaves a data field octet.
         let bad_len = Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN);
-        if !P::fits(frame_len, fecf, &channel, None) {
-            return Err(bad_len);
-        }
+        let frame_len = P::physical(&channel).frame_len();
         if vcs.len() > V {
             return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID));
         }
@@ -435,14 +421,12 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
             if vcs.iter().filter(|other| other.vc == entry.vc).count() > 1 {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
             }
-            if !P::fits(frame_len, fecf, &channel, Some(&entry.params)) {
+            if !P::fits(frame_len, &channel, Some(&entry.params)) {
                 return Err(bad_len);
             }
             *slot = Some(*entry);
         }
         Ok(FrameReceiverConfig {
-            frame_len,
-            fecf,
             channel,
             vcs: table,
             raw_frames: false,
@@ -455,7 +439,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// `InvalidConfig` (`raw_frames`) to turn it on for a protocol or a channel without an
     /// Insert Zone.
     pub fn with_raw_frames(self, on: bool) -> Result<FrameReceiverConfig<P, V>> {
-        if on && P::insert_zone_len(&self.channel) == 0 {
+        if on && P::physical(&self.channel).insert_zone_len() == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES));
         }
         Ok(FrameReceiverConfig {
@@ -468,16 +452,16 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     ///
     /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn frame_len(&self) -> usize {
-        self.frame_len
+    pub fn frame_len(&self) -> usize {
+        P::physical(&self.channel).frame_len()
     }
 
     /// Whether frames carry a FECF.
     ///
     /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn fecf(&self) -> bool {
-        self.fecf
+    pub fn fecf(&self) -> bool {
+        P::physical(&self.channel).fecf()
     }
 
     /// The parameters of the physical channel.
@@ -505,8 +489,8 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// length. The parts of a frame are disjoint, and a frame delivered whole (TC, USLP
     /// protocol control) is copied once, its Insert Zone being a range of that copy.
     #[must_use]
-    pub const fn area_len(&self) -> usize {
-        self.frame_len
+    pub fn area_len(&self) -> usize {
+        self.frame_len()
     }
 }
 
@@ -978,10 +962,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
         let config = &self.config;
         P::refuse_unserved(&config.channel, octets)?;
         let len = octets.len();
-        let ok = if P::variable_length(&config.channel) {
-            len <= config.frame_len && P::fits(len, config.fecf, &config.channel, None)
+        let ok = if P::physical(&config.channel).variable_length() {
+            len <= config.frame_len() && P::fits(len, &config.channel, None)
         } else {
-            len == config.frame_len
+            len == config.frame_len()
         };
         if !ok {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN));
@@ -1016,7 +1000,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES));
         }
         self.check_frame(octets, out)?;
-        let len = P::insert_zone_len(&self.config.channel);
+        let len = P::physical(&self.config.channel).insert_zone_len();
         let start = P::raw_insert_zone_offset(&self.config.channel, octets)?;
         let sdu = octets
             .get(start..start.saturating_add(len))
@@ -1086,9 +1070,7 @@ mod tests {
     fn a_vc_that_is_not_configured_has_no_count_and_no_flag() {
         // req: LNK-051
         let config = FrameReceiverConfig::<Tc, 2>::new(
-            16,
-            false,
-            TcChannel,
+            TcChannel::new(aldis_tc::PhysicalChannelConfig::new(16, false).unwrap()),
             &[VcEntry::new(vc_of::<Tc>(1).unwrap(), TcVc::SERVED)],
         )
         .unwrap();

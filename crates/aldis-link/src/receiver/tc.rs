@@ -1,6 +1,7 @@
 //! The `FrameReceiver` procedure for TC frames (232.0 §4.4.5–§4.4.7; LNK-050, LNK-081).
 
 use aldis_core::{Error, ErrorKind, FrameFormat, Result, field};
+use aldis_tc::PhysicalChannelConfig;
 
 use super::{DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, header, vc_of};
 use crate::protocol::Tc;
@@ -22,8 +23,25 @@ mod layout {
 ///
 /// FARM-1 and the MAP demultiplexing decide acceptance (232.0 §4.4.5–6; LNK-050). The configured
 /// frame length is the Maximum Transfer Frame Length: TC frames vary in length (232.0 §2.3.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub struct TcChannel;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TcChannel {
+    physical: PhysicalChannelConfig,
+}
+
+impl TcChannel {
+    /// The channel of the physical channel `physical`, whose maximum frame length and FECF
+    /// are the receiver's (232.0 Table 5-1; LNK-050).
+    #[must_use]
+    pub const fn new(physical: PhysicalChannelConfig) -> TcChannel {
+        TcChannel { physical }
+    }
+
+    /// The managed parameters of the physical channel.
+    #[must_use]
+    pub const fn physical(&self) -> &PhysicalChannelConfig {
+        &self.physical
+    }
+}
 
 /// The parameters of a TC VC that the receiver needs: whether the engine serves it.
 ///
@@ -61,22 +79,18 @@ impl ReceiveProtocol for Tc {
         frame.octets()
     }
 
-    fn insert_zone_len(_: &TcChannel) -> usize {
-        0
+    fn physical(channel: &TcChannel) -> &PhysicalChannelConfig {
+        &channel.physical
     }
 
-    fn fits(frame_len: usize, fecf: bool, _: &TcChannel, _: Option<&TcVc>) -> bool {
-        // At least one data octet (CMN-041, OI-41), and at most the Maximum Transfer Frame Length
-        // (232.0 Tables 5-1 to 5-3).
+    fn fits(frame_len: usize, channel: &TcChannel, _: Option<&TcVc>) -> bool {
+        let fecf = channel.physical.fecf();
+        // At least one data octet (CMN-041, OI-41); the Maximum Transfer Frame Length (232.0
+        // Tables 5-1 to 5-3) bounds the physical channel's frame length, which no frame exceeds.
         frame_len
             >= HEADER_LEN
                 .saturating_add(if fecf { 2 } else { 0 })
                 .saturating_add(1)
-            && frame_len <= aldis_tc::MAX_FRAME_LEN
-    }
-
-    fn variable_length(_: &TcChannel) -> bool {
-        true
     }
 
     fn raw_insert_zone_offset(_: &TcChannel, _: &[u8]) -> Result<usize> {

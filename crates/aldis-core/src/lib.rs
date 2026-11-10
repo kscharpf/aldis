@@ -65,7 +65,7 @@ pub use anomaly::{Anomaly, AnomalySet};
 pub use checked::{Check, CheckBytes, Checked, Rejection};
 pub use cop::CopFrameKind;
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
-pub use format::FrameFormat;
+pub use format::{FrameFormat, PhysicalChannel};
 pub use mode::{DecodeMode, Lenient};
 pub use plain::{Plain, SecuritySlices};
 

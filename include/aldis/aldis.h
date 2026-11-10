@@ -1401,7 +1401,7 @@
  * 64-bit words of one `aldis_channel_mux_t` (CABI-031): the tag and the largest of the engines
  * of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
  */
-#define ALDIS_CHANNEL_MUX_WORDS 2653
+#define ALDIS_CHANNEL_MUX_WORDS 2654
 
 /**
  * The most octets of a Secondary Header's data (132.0 §4.1.3.2.3, Table 5-2).
@@ -1429,7 +1429,7 @@
  * 64-bit words of one `aldis_frame_receiver_t` (CABI-031): the tag and the largest of the
  * engines of TM, TC, AOS, and USLP at the build capacities.
  */
-#define ALDIS_FRAME_RECEIVER_WORDS 66
+#define ALDIS_FRAME_RECEIVER_WORDS 67
 
 /**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,

@@ -15,6 +15,7 @@ pub struct UslpFormat;
 impl FrameFormat for UslpFormat {
     /// The length of the VCF Count field (732.1 §4.1.2.11).
     type HeaderExtension = VcfCountLen;
+    type Physical = crate::config::PhysicalChannelConfig;
     const PRIMARY_HEADER_LEN: usize = PRIMARY_HEADER_LEN;
     const PACKET_HEADER_LEN: usize = FIXED_TFDF_HEADER_LEN;
     const SDU_HEADER_LEN: usize = FIXED_TFDF_HEADER_LEN;
