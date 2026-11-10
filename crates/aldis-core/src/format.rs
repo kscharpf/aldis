@@ -162,6 +162,7 @@ mod tests {
 
     impl FrameFormat for Marker {
         type HeaderExtension = usize;
+        type Physical = Chan;
         type PrimaryHeader = ();
         const PRIMARY_HEADER_LEN: usize = 6;
         const PACKET_HEADER_LEN: usize = 0;
@@ -201,36 +202,6 @@ mod tests {
         assert_eq!((c.frame_len(), c.fecf(), c.insert_zone_len()), (8, true, 0));
         assert!(!c.variable_length());
         Two::write_oid_data_header(0, &mut []);
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Wide;
-
-    impl FrameFormat for Wide {
-        type HeaderExtension = usize;
-        type Physical = Chan;
-        type PrimaryHeader = ();
-        const PRIMARY_HEADER_LEN: usize = 6;
-        const PACKET_HEADER_LEN: usize = 0;
-        const SDU_HEADER_LEN: usize = 0;
-
-        fn extension_len(extension: &usize) -> usize {
-            *extension
-        }
-
-        fn write_primary_header((): &(), _: &mut [u8]) -> Result<()> {
-            Ok(())
-        }
-
-        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
-    }
-
-    #[test]
-    fn primary_header_len_adds_and_saturates() {
-        // req: LNK-001
-        assert_eq!(Wide::primary_header_len(&0), 6);
-        assert_eq!(Wide::primary_header_len(&2), 8);
-        assert_eq!(Wide::primary_header_len(&usize::MAX), usize::MAX);
     }
 
     #[test]

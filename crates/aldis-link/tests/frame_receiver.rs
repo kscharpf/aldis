@@ -206,6 +206,7 @@ fn uslp_channel(
             .unwrap(),
         ocf,
     )
+    .unwrap()
 }
 
 fn uslp_variable(len: usize, ocf: DeliveryService) -> UslpChannel {
@@ -213,6 +214,7 @@ fn uslp_variable(len: usize, ocf: DeliveryService) -> UslpChannel {
         UslpPhysicalChannelConfig::new(TransferFrameType::Variable, len, 0, false).unwrap(),
         ocf,
     )
+    .unwrap()
 }
 
 fn tc_channel(len: usize, fecf: bool) -> TcChannel {
@@ -1307,7 +1309,7 @@ fn a_frame_too_short_for_its_parts_is_refused_by_the_configuration() {
     let uslp = |len, fecf| {
         let physical = UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, len, 0, fecf)?;
         FrameReceiverConfig::<Uslp, 8>::new(
-            UslpChannel::new(physical, DeliveryService::None),
+            UslpChannel::new(physical, DeliveryService::None)?,
             &[VcEntry::new(
                 vc(1),
                 UslpVc::new(MapSet::default(), false, true),

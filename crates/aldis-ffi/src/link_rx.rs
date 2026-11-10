@@ -1302,7 +1302,7 @@ impl RxProtocol for Uslp {
                 flag(c.fecf)?,
             )?
         };
-        Ok(UslpChannel::new(physical, ocf))
+        UslpChannel::new(physical, ocf)
     }
 
     fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<UslpVc> {

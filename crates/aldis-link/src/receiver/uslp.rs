@@ -31,9 +31,17 @@ impl UslpChannel {
     /// Zone and FECF are the receiver's (a variable-length channel has frames of any length up
     /// to the maximum and no Insert Zone, 732.1 §4.1.2.7, §4.1.3.2), whose OCF is delivered by
     /// `ocf` (732.1 §3.11.2.4).
-    #[must_use]
-    pub const fn new(physical: UslpPhysicalChannelConfig, ocf: DeliveryService) -> UslpChannel {
-        UslpChannel { physical, ocf }
+    ///
+    /// # Errors
+    /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
+    /// after the header, the Insert Zone and the FECF (CMN-041).
+    pub fn new(physical: UslpPhysicalChannelConfig, ocf: DeliveryService) -> Result<UslpChannel> {
+        let channel = UslpChannel { physical, ocf };
+        if <Uslp as ReceiveProtocol>::fits(physical.frame_len(), &channel, None) {
+            Ok(channel)
+        } else {
+            Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN))
+        }
     }
 
     /// The managed parameters of the physical channel.

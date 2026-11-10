@@ -128,7 +128,7 @@ impl Proto for Uslp {
             fecf(c),
         )
         .unwrap();
-        UslpChannel::new(physical, service(&c["ocf_service"]))
+        UslpChannel::new(physical, service(&c["ocf_service"])).unwrap()
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> UslpVc {
         let maps: Vec<MapId<4>> = vc["maps"]

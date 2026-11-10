@@ -410,11 +410,9 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// (`vc_id`)
     /// for a VC given twice; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
     pub fn new(channel: P::Channel, vcs: &[VcEntry<P>]) -> Result<FrameReceiverConfig<P, V>> {
+        // The channel's constructor has checked that a frame leaves a data field octet.
         let bad_len = Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN);
         let frame_len = P::physical(&channel).frame_len();
-        if !P::fits(frame_len, &channel, None) {
-            return Err(bad_len);
-        }
         if vcs.len() > V {
             return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID));
         }

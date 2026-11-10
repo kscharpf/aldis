@@ -707,7 +707,7 @@ fn receiver_uslp(t: &mut Tally) {
             UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, bb(LEN), bb(2), bb(false))
                 .ok()?;
         FrameReceiverConfig::<Uslp, 4>::new(
-            UslpChannel::new(physical, DeliveryService::Mc),
+            UslpChannel::new(physical, DeliveryService::Mc).ok()?,
             &[
                 VcEntry::new(one, UslpVc::new(maps, bb(false), bb(true))),
                 VcEntry::new(two, UslpVc::new(maps, bb(true), bb(false))),

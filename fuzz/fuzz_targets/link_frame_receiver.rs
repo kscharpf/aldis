@@ -83,7 +83,8 @@ fn uslp() -> FrameReceiver<Uslp, 8> {
             UslpChannel::new(
                 UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, LEN, 2, false).unwrap(),
                 DeliveryService::Mc,
-            ),
+            )
+            .unwrap(),
             &[
                 VcEntry::new(vc(1), UslpVc::new(maps(&[0, 2]), false, true)),
                 VcEntry::new(vc(2), UslpVc::new(maps(&[0]), true, true)),
