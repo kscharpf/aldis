@@ -121,7 +121,10 @@ impl Uplink {
         }
         let config = MapSegmenterConfig::<Tc, 2>::new(
             vc,
-            TcSegmenterParams::with_segment_header(tc::FECF),
+            TcSegmenterParams::with_segment_header(PhysicalChannelConfig::new(
+                usize::from(tc::MAX_FRAME_LENGTH),
+                tc::FECF,
+            )?),
             max_fdu,
             &[
                 map_entry(

@@ -25,11 +25,11 @@ use aldis::link::generator::{
 };
 use aldis::link::mux::{
     ChannelMux, ChannelMuxConfig, FrameClass, MuxInput, MuxOutput, Offer, Scope, TmChannel,
-    TmOffer, TmRole, TmVc, VcConfig,
+    TmOffer, TmVc, VcConfig,
 };
 use aldis::link::policy::MuxPolicy;
 use aldis::link::protocol::{Tm, TmParams};
-use aldis::tm::TmPhysicalChannelConfig;
+use aldis::tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use refapp_scenario::generated::{SPACECRAFT_ID, tm};
 use refapp_scenario::{Duration, Instant, Output};
 
@@ -123,7 +123,12 @@ fn mux() -> Result<Mux> {
     let physical = TmPhysicalChannelConfig::new(usize::from(tm::FRAME_LENGTH), tm::FECF)?;
     let mut channel = TmChannel::new(physical, scid, VcId::<3>::from_const::<{ tm::VCID_IDLE }>());
     channel.mc_ocf = Some(tm::OCF_INITIAL.to_be_bytes());
-    let vc = |id: VcId<3>| VcConfig::<Tm>::new(id, TmVc::new(TmRole::Packets));
+    let vc = |id: VcId<3>| {
+        VcConfig::<Tm>::new(TmVc::new(TmVirtualChannelConfig::new(
+            id,
+            DataFieldContent::Packets,
+        )))
+    };
     let vcs = [
         vc(VcId::<3>::from_const::<{ tm::VCID_REALTIME }>())
             .with_priority(mux_priority(tm::PRIORITY_REALTIME)),
