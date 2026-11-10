@@ -9,6 +9,7 @@
 
 use aldis_aos::{AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig};
 use aldis_core::Result;
+use aldis_core::SecuritySlices;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::security::NoSecurity;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};

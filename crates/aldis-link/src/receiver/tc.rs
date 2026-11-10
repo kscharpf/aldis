@@ -47,7 +47,7 @@ impl TcVc {
 impl ReceiveProtocol for Tc {
     type Channel = TcChannel;
     type VcParams = TcVc;
-    type Plain<'a> = aldis_tc::PlainTcFrame<'a>;
+    type Plain<'a> = aldis_core::Plain<aldis_tc::TcFrame<'a>>;
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.octets()
@@ -78,7 +78,7 @@ impl ReceiveProtocol for Tc {
     fn receive<const V: usize>(cx: &mut FrameContext<'_, Tc, V>, frame: &[u8]) -> Result<()> {
         // The Frame Length field gives the length of this frame, which varies up to the
         // channel's maximum (232.0 §2.3.1, §4.1.2.7); the codec has checked that it is the
-        // length of the octets, a property of a `PlainTcFrame` (RS-023).
+        // length of the octets, a property of a `Plain<TcFrame>` (RS-023).
         let [_, _, b2, _, _] = header::<HEADER_LEN>(frame)?;
         // The VCID is the six bits above the 10-bit Frame Length (232.0 §4.1.2.7).
         let vc = vc_of::<Tc>(b2 >> 2)?;

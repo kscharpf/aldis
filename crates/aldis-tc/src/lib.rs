@@ -12,7 +12,7 @@
 //! | [`anomaly`] | `TcAnomaly` lenient-mode flags | 232.0 §4.1.2.4, §4.1.3.3.4, §4.2.1 | API-032, API-033 |
 //! | [`clcw`] | `Clcw`, `ClcwStatus`, `CopInEffect`, `FarmBCounter` | 232.0 §4.2 | TC-030, TC-031, CMN-011 |
 //! | [`delimit`] | Frame Delimiting and Fill Removal: stateless `next_frame`, `FrameDelimiter` | 232.0 §4.4.9.2 | TC-020 |
-//! | [`plain`] | `TcFrame::into_plain` through `NoSecurity`, returning a `PlainTcFrame`, the frame input of an engine | 232.0 Cor. 1 §6.5.2 | RS-023, API-070, API-074 |
+//! | `security` | `SecuritySlices` for `TcFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 232.0 Cor. 1 §6.5.2 | RS-023, API-070, API-074 |
 //! | [`checked`] | Frame Validation Checks: `check_frame` (strict, lenient) returning a `Checked<TcFrame>`, `Reason` | 232.0 §4.4.9.3, §4.4.7.3, §4.4.3.3 | TC-021…TC-023, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 232.0 §4.1, §4.2, §5 | API-082, GEN-041 |
 //!
@@ -37,7 +37,7 @@ pub mod control;
 pub mod delimit;
 pub mod field;
 pub mod header;
-pub mod plain;
+mod security;
 pub mod stream;
 pub mod view;
 pub mod writer;
@@ -52,7 +52,6 @@ pub use header::{
     FrameFields, FrameType, MAX_FRAME_LEN, MIN_FRAME_LEN, PRIMARY_HEADER_LEN, SEGMENT_HEADER_LEN,
     SegmentHeader, SequenceFlags, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId,
 };
-pub use plain::PlainTcFrame;
 pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
 pub use view::TcFrame;
 pub use writer::{FrameData, TcFrameWriter, encode};

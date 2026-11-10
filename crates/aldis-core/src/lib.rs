@@ -21,6 +21,7 @@
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
 //! | [`lookup`] | `ChannelLookup`, `MapLookup`, `PhysicalLookup` | GEN-060, API-040 |
 //! | [`checked`] | `Checked`, `Rejection`, the `Check` and `CheckBytes` pipeline | GEN-060, API-015, API-016, RS-020 |
+//! | [`plain`] | `Plain`, `SecuritySlices`: a frame whose SDLS processing is done | RS-023, API-017, API-074 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //!
@@ -46,6 +47,7 @@ pub mod lookup;
 pub mod mode;
 pub mod ocf;
 pub mod oid;
+pub mod plain;
 pub mod security;
 pub mod time;
 
@@ -57,6 +59,7 @@ pub use anomaly::{Anomaly, AnomalySet};
 pub use checked::{Check, CheckBytes, Checked, Rejection};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 pub use mode::{DecodeMode, Lenient};
+pub use plain::{Plain, SecuritySlices};
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.
 #[cfg(doctest)]

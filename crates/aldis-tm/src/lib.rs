@@ -9,7 +9,7 @@
 //! | [`view`] | Zero-copy `TmFrame` decoder (strict and lenient), `UncheckedTmFrame`, `peek_length` | 132.0 §4.1, §6.3 | TM-001…TM-008, API-010, API-012…API-014, API-015, API-072, GEN-013 |
 //! | [`anomaly`] | `TmAnomaly` lenient-mode flags | 132.0 §4.1.2.7.4–5 | TM-007, API-032, API-033, GEN-043 |
 //! | [`writer`] | One-shot `encode` and `encode_oid`, two-phase `TmFrameWriter`, OID frames | 132.0 §4.1, §4.1.4.6, §6.3 | TM-009, TM-010, API-020…API-023, API-072, GEN-014 |
-//! | [`plain`] | `TmFrame::into_plain` through `NoSecurity`, returning a `PlainTmFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
+//! | `security` | `SecuritySlices` for `TmFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | `checked` | `TmFrame::check` (`aldis_core::Check`) against the master channel's managed parameters, returning an `aldis_core::Checked<TmFrame>` | 132.0 §5 | TM-011, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 132.0 §4.1, §5 | API-082, GEN-041 |
 //!
@@ -31,7 +31,7 @@ mod checked;
 pub mod config;
 pub mod field;
 pub mod header;
-pub mod plain;
+mod security;
 pub mod view;
 pub mod writer;
 
@@ -44,7 +44,6 @@ pub use header::{
     DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
     TmPrimaryHeader,
 };
-pub use plain::PlainTmFrame;
 pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{
     TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,
