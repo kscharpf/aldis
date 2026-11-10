@@ -20,8 +20,8 @@
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
 # branch and leaves its branches in place.
 # the main checkout's main is fast-forwarded to origin/main after an --apply run, and left alone
-# with a warning when it is not on main, has tracked changes, or has a local commit; a dry run leaves
-# it alone.
+# with a warning when it is not on main, has tracked changes, or has a local commit; a dry
+# run leaves it alone.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
