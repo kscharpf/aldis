@@ -1,4 +1,4 @@
-//! The Security Header and Trailer of a uslp frame, for the `Plain` step (RS-023, API-074).
+//! The Security Header and Trailer of a USLP frame, for the `Plain` step (RS-023, API-074).
 
 use aldis_core::SecuritySlices;
 

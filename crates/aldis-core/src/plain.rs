@@ -1,7 +1,7 @@
 //! The `Plain` proof: a frame whose SDLS processing is done (RS-023, API-017, API-073, API-074).
 //!
-//! A frame is `Received` (the octets), then `Checked` (FECF verified; [`Checked`] when it also
-//! matches the managed parameters of its channel), then `Plain`. `Plain<F>` and
+//! A frame is `Received` (the octets), then decoded and FECF-checked (a [`Checked`] view when it
+//! also matches the managed parameters of its channel), then `Plain`. `Plain<F>` and
 //! [`Checked<F>`](crate::checked::Checked) are orthogonal wrappers of a frame `F`, next to
 //! [`Lenient`](crate::mode::Lenient): a receiving engine's frame input takes `Plain<F>` and
 //! FARM-1's intake takes a checked frame, and `Plain<Checked<F>>` is both.
@@ -68,7 +68,7 @@ pub trait SecuritySlices: Sized {
     /// The Security Trailer octets: empty on a channel with no SDLS.
     fn security_trailer(&self) -> &[u8];
 
-    /// The `Checked` to `Plain` step for a channel with no SDLS: `hook` is [`NoSecurity`], the
+    /// The decoded-view to `Plain` step for a channel with no SDLS: `hook` is [`NoSecurity`], the
     /// identity, so the frame must have no Security Header or Trailer (RS-023, API-070,
     /// API-074). A channel with SDLS verifies the frame with its `SecurityHook` before the
     /// engine sees it, which v1 does not provide for the engine input (issue #230).

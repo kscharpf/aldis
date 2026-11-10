@@ -1,4 +1,4 @@
-//! The Security Header and Trailer of a aos frame, for the `Plain` step (RS-023, API-074).
+//! The Security Header and Trailer of an AOS frame, for the `Plain` step (RS-023, API-074).
 
 use aldis_core::SecuritySlices;
 
