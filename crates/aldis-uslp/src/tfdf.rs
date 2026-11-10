@@ -402,8 +402,8 @@ impl TfdfHeader {
     /// The UPID is read before the rule: an Only Idle Data TFDF has rule `001` (§4.1.4.1.9) and
     /// its zone is idle whatever the rule. OID frames are not sent on a VC that has packets
     /// (§4.1.4.1.10 Note 1), but a receiver tolerates one: the field is idle data and not an
-    /// error. Any other UPID is not compared with the
-    /// VC's: the receiver routes a TFDF to its service by the UPID. Then the rule must be `000`.
+    /// error. Any other UPID is not compared with the VC's: the receiver routes a TFDF to its
+    /// service by the UPID. Then the rule must be `000`.
     ///
     /// # Errors
     /// `InvalidField` (`frame_data_field`) if the field holds no TFDZ octet after the three
