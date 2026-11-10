@@ -1188,18 +1188,18 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
 
 #[cfg(feature = "tc")]
 mod tc_impl {
-    use aldis_core::Result;
     use aldis_core::ids::MapId;
-    use aldis_tc::{SegmentHeader, SequenceFlags, TcMapId};
+    use aldis_core::layout::FECF_LEN;
+    use aldis_core::{FrameFormat, Result};
+    use aldis_tc::{MAX_FRAME_LEN, SegmentHeader, SequenceFlags, TcMapId};
 
     use super::{Framing, MapEntry, MapService, SegmenterProtocol};
     use crate::common::Qos;
     use crate::protocol::Tc;
 
-    /// The longest Frame Data Field of a TC frame (232.0 §4.1.3.1.2).
-    const MAX_DATA_FIELD: usize = 1019;
-    /// The octets of the FECF (232.0 §4.1.4).
-    const FECF_LEN: usize = 2;
+    /// The longest Frame Data Field of a TC frame: the longest frame less its Primary Header
+    /// (232.0 §4.1.3.1.2).
+    const MAX_DATA_FIELD: usize = MAX_FRAME_LEN - Tc::PRIMARY_HEADER_LEN;
 
     /// The parameters of a TC VC that the `MapSegmenter` needs (232.0 §5.1 Table 5-1, §5.3
     /// Table 5-3).
