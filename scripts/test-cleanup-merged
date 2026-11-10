@@ -20,8 +20,8 @@
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
 # branch and leaves its branches in place.
 # the main checkout's main is fast-forwarded to origin/main after an --apply run, and left alone
-# with a warning when it is not on main, has local changes, or has a local commit; a dry run leaves
-# it alone.
+# with a warning when it is not on main, has tracked changes, or has a local commit; a dry
+# run leaves it alone.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -416,10 +416,19 @@ expect "main is unchanged" test "$(tip main)" = "$before"
 expect "the change is kept" grep -q dirt "$repo/init.txt"
 git -C "$repo" checkout -q -- init.txt
 
+echo "# an untracked file does not block the fast-forward"
+echo stray >"$repo/stray.txt"
+advance ff3
+run --apply nonexistent
+expect "main is at origin/main" test "$(tip main)" = "$(tip origin/main)"
+expect "the untracked file stays" test -f "$repo/stray.txt"
+rm "$repo/stray.txt"
+
 echo "# cannot fast-forward: warn, change nothing"
 echo local >"$repo/local.txt"
 git -C "$repo" add local.txt
 git -C "$repo" commit -q -m "local only"
+advance ff4
 before="$(tip main)"
 run --apply nonexistent
 expect "warns" said "WARNING: main cannot fast-forward"
