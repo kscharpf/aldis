@@ -35,7 +35,8 @@ git -C "$repo" symbolic-ref HEAD refs/heads/main
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name test
 echo base >"$repo/shared"
-echo base >"$repo/Cargo.lock"
+pkg() { printf '[[package]]\nname = "%s"\nversion = "%s"\n' "$1" "$2"; }
+pkg x 1.0 >"$repo/Cargo.lock"
 mkdir "$repo/refapp"
 echo base >"$repo/refapp/Cargo.lock"
 git -C "$repo" add shared Cargo.lock refapp
@@ -63,7 +64,7 @@ cat >"$work/bin/cargo" <<'STUB'
 echo "cargo $* in $(basename "$PWD")" >>"$STUB/cargo-calls"
 [ "$1" = metadata ] || exit 1
 if [[ " $* " == *" --locked "* ]]; then ! grep -q '^<<<<<<<\|^stale' Cargo.lock; else
-    sed -i.bak '/^stale/d' Cargo.lock && rm -f Cargo.lock.bak
+    sed -i.bak '/^stale/d; s/^version = "0.9"/version = "1.0"/' Cargo.lock && rm -f Cargo.lock.bak
     echo regenerated >>Cargo.lock
 fi
 STUB
@@ -151,7 +152,14 @@ lbranch() { # lbranch <name> <file> <content>...: one commit editing several fil
 lbranch k1 Cargo.lock one refapp/Cargo.lock one
 lbranch k2 Cargo.lock two refapp/Cargo.lock two
 lbranch k3 Cargo.lock three refapp/Cargo.lock three
-lbranch s1 Cargo.lock stale
+lbranch s1 Cargo.lock "stale
+$(pkg x 0.9)"
+lbranch v1 Cargo.lock "$(pkg x 1.1)
+# v1"
+lbranch v2 Cargo.lock "$(pkg x 1.2)
+# v2"
+lbranch v3 Cargo.lock "$(pkg x 1.1)
+# v3"
 lbranch s2 fs2 x
 lbranch m1 Cargo.lock one shared m1
 lbranch m2 Cargo.lock two shared m2
@@ -171,6 +179,9 @@ pr 20 f "feat: reply names no current head" OPEN false "" 1
 pr 31 k1 "feat: lock one"
 pr 32 k2 "feat: lock two"
 pr 33 k3 "feat: lock three"
+pr 41 v1 "feat: bump x to 1.1"
+pr 42 v2 "feat: bump x to 1.2"
+pr 43 v3 "feat: bump x to 1.1 too"
 pr 36 s1 "feat: manifest change without its lock"
 pr 37 s2 "feat: other file"
 pr 34 m1 "feat: lock and shared one"
@@ -385,14 +396,14 @@ check "--plan names the paths of a conflict with origin/main" $?
 out="$(run --plan 11 12 14 13)"
 status=$?
 { [ "$status" -eq 1 ] &&
-    contains "$out" "#14: conflicts with origin/main or an earlier PR (shared)"; }
+    contains "$out" "#14: conflicts with origin/main (shared)"; }
 check "--plan names a PR that conflicts with origin/main in the cumulative merge" $?
 git -C "$repo" reset -q --hard origin/main~1
 git -C "$repo" push -q -f origin main
 out="$(run --plan 11 13 14)"
 status=$?
 { [ "$status" -eq 1 ] &&
-    contains "$out" "#14: conflicts with origin/main or an earlier PR (shared)" &&
+    contains "$out" "#14: conflicts with #13 (shared)" &&
     contains "$out" "#13 x #14: shared" && ! contains "$out" "#11 x"; }
 check "--plan names the first PR that conflicts with an earlier one and the pair" $?
 out="$(run --plan 31 32)"
@@ -431,10 +442,35 @@ check "a lockfile conflict next to another conflict is refused" $?
 t [ "$(git -C "$repo" branch --list "train/*")" = "$tbranches" ]
 check "the refused build leaves no branch" $?
 
+# A deliberate lockfile bump that the regeneration would lose is a conflict, in --plan and in
+# the build; the same bump on both sides is not.
+out="$(run --plan 41 42)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "version bump lost (x@1.2)"; }
+check "--plan reports a lockfile version bump that would be lost" $?
+out="$(run --plan 41 43)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "lock"; }
+check "--plan accepts the same bump on both sides" $?
+tbranches="$(git -C "$repo" branch --list "train/*")"
+out="$(run 41 42)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#42: Cargo.lock: versions the PR locked are not" &&
+    contains "$out" "(x@1.2)" && contains "$out" "#42 conflicts"; }
+check "the build refuses a PR whose lockfile bump the regeneration would lose" $?
+t [ "$(git -C "$repo" branch --list "train/*")" = "$tbranches" ] &&
+    t [ "$(git -C "$repo" worktree list | wc -l)" -eq 1 ]
+check "it leaves no branch or worktree" $?
+out="$(run 41 43)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "#43: Cargo.lock regenerated"; }
+check "the build accepts the same bump on both sides" $?
+
 # A merged result whose lockfile is stale, though nothing conflicted.
 out="$(run --plan 36 37)"
 status=$?
-{ [ "$status" -eq 0 ] && contains "$out" "lockfile needs regenerating: Cargo.lock"; }
+{ [ "$status" -eq 0 ] && contains "$out" "lockfile needs regenerating: Cargo.lock" &&
+    contains "$out" "not in the new one: x@0.9"; }
 check "--plan reports a stale lockfile of the merged result" $?
 out="$(run --plan 31)"
 ! contains "$out" "needs regenerating"
@@ -442,7 +478,8 @@ check "--plan of PRs with fresh lockfiles reports none" $?
 out="$(run 36 37)"
 status=$?
 tb="train/$(sed -n 's/^train \([^:]*\):.*/\1/p' <<<"$out")"
-{ [ "$status" -eq 0 ] && contains "$out" "Cargo.lock was stale after the merges"; }
+{ [ "$status" -eq 0 ] && contains "$out" "Cargo.lock was stale after the merges" &&
+    contains "$out" "not in the new one: x@0.9"; }
 check "the build regenerates a stale lockfile" $?
 t [ "$(git -C "$work/origin.git" log --format=%s -n 1 "$tb")" = \
     "chore(train): regenerate Cargo.lock for the merged manifests" ] &&

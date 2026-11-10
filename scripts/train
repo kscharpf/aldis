@@ -38,22 +38,30 @@
 # A failure after the push (`gh pr create`) deletes the pushed branch and the worktree.
 # A conflict that is only in lockfiles (Cargo.lock of the root, refapp/, exerciser/, fuzz/,
 # crosscheck/) does not stop the build: the script takes the side already in the train, runs
-# `cargo metadata --offline` in that workspace, which adds what the merged manifests need and
-# keeps every locked version (no upgrade, no network), checks the result with `--locked`, commits
-# the merge, and prints `#<pr>: <path> regenerated ...`. Any other conflict stops as above.
+# `cargo metadata --offline` in that workspace (it adds what the merged manifests need and upgrades
+# nothing already locked there; no network), checks the result with `--locked`, and compares
+# package versions: a (name, version) that the PR's lock introduced against the merge base and the
+# result lacks, such as a deliberate `cargo update`, makes the PR a conflict (named on stderr,
+# merge undone, as below). Otherwise it commits the merge and prints `#<pr>: <path> regenerated`.
+# Any other conflict stops as above.
 # After the merges the script checks every lockfile against the merged manifests
 # (`cargo metadata --locked --offline` in the root, refapp/, exerciser/, fuzz/, crosscheck/; a
 # merged result can have a stale lock though nothing conflicted: one PR changes a Cargo.toml,
-# another carries the lock). A stale lock is regenerated as above, committed on the train branch as
-# `chore(train): regenerate <path> ...`, and named in a line.
+# another carries the lock). A stale lock is regenerated, committed on the train branch as
+# `chore(train): regenerate <path> ...`, and named in a line, followed by the (name, version)
+# pairs of the old lock that the new one lacks (not compared with each constituent's lock). A
+# workspace cargo cannot read offline is left as merged and named.
 # --plan: the preflight, before the maintainer is asked to assign a train. No worktree, no push,
 # no readiness check, seconds: for the exact head of each PR it trial-merges (`git merge-tree`)
 # into origin/main and reports the conflicted paths; then merges the PRs cumulatively in the
-# order given, names each PR that conflicts with origin/main plus the PRs before it (the first
-# is the one a build would stop at; later PRs are tried without it), and prints a pairwise matrix
-# (X: the two heads conflict), and checks the lockfiles of the merged result in a temporary export
-# (`lockfile needs regenerating: <path>`, informational: the build regenerates it). A
-# lockfile-only conflict is reported as `lock` and is not a conflict (the build regenerates it).
+# order given and names each PR that conflicts, with what it conflicts with (origin/main, or the
+# earlier PRs it conflicts with alone); that PR is left out of the rest of the plan, and the
+# first one named is where a build would stop. It prints a pairwise matrix (X: the two heads
+# conflict), and checks the lockfiles of the merged result in a temporary export (`lockfile needs
+# regenerating: <path>`, with the versions the regeneration drops; informational: the build
+# regenerates it). A lockfile-only conflict is reported as `lock` and is not a conflict, unless
+# the PR bumped a package the base already locks and the other side lacks that version (without
+# cargo, only bumps can be told from new dependencies); then it is a conflict, as in the build.
 # Exit status 1 when any other conflict exists.
 # Exit status: 0 on success, 1 on a conflict or a PR that cannot ride, 2 on a usage error or
 # when git or gh fails.
@@ -139,27 +147,77 @@ verdict() { # verdict <paths>: "clean", "lock" (lockfiles only) or "conflict"
     fi
 }
 
+# lock_pairs <file>: the `name version` of every package of a Cargo.lock, sorted.
+lock_pairs() {
+    awk '/^name = /{n=$3; gsub(/"/,"",n)} /^version = /{v=$3; gsub(/"/,"",v); print n " " v}' \
+        "$1" | sort -u
+}
+# lost_versions <base> <theirs> <result> <bumps only: 0|1>: the `name version` pairs that the
+# PR's side (theirs) introduced against the merge base and the result lacks, one line each. With
+# bumps only, a pair counts only when the base has the package under another version (a bump,
+# not a new dependency, whose version a regeneration picks).
+lost_versions() {
+    comm -13 <(lock_pairs "$1") <(lock_pairs "$2") | {
+        if [ "$4" = 1 ]; then
+            awk 'NR == FNR { seen[$1] = 1; next } ($1 in seen)' <(lock_pairs "$1") -
+        else
+            cat
+        fi
+    } | comm -23 - <(lock_pairs "$3")
+}
+blob() { # blob <git dir> <spec> <out>: the file at <spec> (rev:path or :stage:path), else empty
+    git -C "$1" show "$2" >"$3" 2>/dev/null || : >"$3"
+}
+# classify <a> <b>: `conflicts`, then sets `mt_v` to clean, lock (only lockfiles conflict and
+# no version b introduced into them is lost) or conflict. For a lockfile conflict it compares
+# against a: a version bump of b that a lacks would be lost by the build's regeneration, so it
+# is a conflict, named in `mt_paths`. (The build also checks new dependencies; this needs cargo.)
+classify() {
+    local p mb tmp lost out=""
+    conflicts "$1" "$2" || return 2
+    mt_v="$(verdict "$mt_paths")"
+    [ "$mt_v" = lock ] || return 0
+    mb="$(g merge-base "$1" "$2")" || return 2
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/train-lock.XXXXXX")" || return 2
+    for p in $mt_paths; do
+        blob "$main_checkout" "$mb:$p" "$tmp/base"
+        blob "$main_checkout" "$2:$p" "$tmp/theirs"
+        blob "$main_checkout" "$1:$p" "$tmp/ours"
+        lost="$(lost_versions "$tmp/base" "$tmp/theirs" "$tmp/ours" 1 | paste -sd, - |
+            sed 's/ /@/g; s/,/, /g')"
+        [ -z "$lost" ] || out+="${out:+; }$p: version bump lost ($lost)"
+    done
+    rm -rf "$tmp"
+    if [ -n "$out" ]; then mt_v=conflict mt_paths="$mt_paths [$out]"; fi
+}
+
 LOCKDIRS=(. refapp exerciser fuzz crosscheck)
 # stale_locks <dir>: print the workspaces of the tree in <dir> whose Cargo.lock does not satisfy
 # its manifests offline: `cargo metadata --locked --offline` fails, and `cargo metadata
 # --offline` then changes the lockfile (it adds what the manifests need and upgrades nothing).
-# The lockfile is left regenerated. A workspace that cannot be read offline at all prints
-# `?<path>`: no verdict.
+# The lockfile is left regenerated; a line `!<path>: <name version>...` names the packages of
+# the old lock that the new one lacks (changed or dropped versions). A workspace that cannot be
+# read offline at all prints `?<path>`: no verdict, its lockfile restored.
 stale_locks() {
-    local dir="$1" w lock
+    local dir="$1" w lock rel changed
     for w in "${LOCKDIRS[@]}"; do
         lock="$dir/$w/Cargo.lock"
         [ -f "$lock" ] || continue
         (cd "$dir/$w" && cargo metadata --locked --offline --format-version 1 >/dev/null 2>&1) &&
             continue
         cp "$lock" "$lock.before"
+        if [ "$w" = . ]; then rel=Cargo.lock; else rel="$w/Cargo.lock"; fi
         if (cd "$dir/$w" && cargo metadata --offline --format-version 1 >/dev/null 2>&1) &&
             ! cmp -s "$lock" "$lock.before"; then
-            if [ "$w" = . ]; then echo Cargo.lock; else echo "$w/Cargo.lock"; fi
+            echo "$rel"
+            changed="$(comm -23 <(lock_pairs "$lock.before") <(lock_pairs "$lock") |
+                sed 's/ /@/' | paste -sd' ' -)"
+            [ -z "$changed" ] || echo "!$rel: versions of the old lock not in the new one: $changed"
+            rm -f "$lock.before"
         else
+            mv "$lock.before" "$lock"
             echo "?$w"
         fi
-        rm -f "$lock.before"
     done
 }
 
@@ -179,24 +237,35 @@ if [ "$plan" -eq 1 ]; then
     echo "origin/main $(g rev-parse --short origin/main)"
     echo "against origin/main:"
     for i in "${!planned[@]}"; do
-        conflicts origin/main "${shas[i]}" || die2 "#${planned[i]}: git merge-tree failed"
-        v="$(verdict "$mt_paths")"
+        classify origin/main "${shas[i]}" || die2 "#${planned[i]}: git merge-tree failed"
+        v="$mt_v"
         echo "  #${planned[i]} ${shas[i]:0:7}: $v${mt_paths:+ ($mt_paths)}"
         [ "$v" != conflict ] || bad=1
     done
     echo "cumulative, in the order given:"
     cur="$(g rev-parse origin/main)"
+    kept=()
     for i in "${!planned[@]}"; do
-        conflicts "$cur" "${shas[i]}" || die2 "#${planned[i]}: git merge-tree failed"
-        v="$(verdict "$mt_paths")"
+        classify "$cur" "${shas[i]}" || die2 "#${planned[i]}: git merge-tree failed"
+        v="$mt_v"
         if [ "$v" = conflict ]; then
-            echo "  #${planned[i]}: conflicts with origin/main or an earlier PR ($mt_paths);" \
-                "left out of the rest of this plan"
+            # Who is it? origin/main alone, else each kept PR it conflicts with alone.
+            who=""
+            classify origin/main "${shas[i]}" || die2 "git merge-tree failed"
+            [ "$mt_v" != conflict ] || who="origin/main"
+            for k in ${kept[@]+"${kept[@]}"}; do
+                classify "${shas[k]}" "${shas[i]}" || die2 "git merge-tree failed"
+                [ "$mt_v" != conflict ] || who+="${who:+, }#${planned[k]}"
+            done
+            classify "$cur" "${shas[i]}" || die2 "git merge-tree failed"
+            echo "  #${planned[i]}: conflicts with ${who:-the combination of earlier PRs}" \
+                "($mt_paths); left out of the rest of this plan"
             bad=1
             continue
         fi
         cur="$(g commit-tree "$mt_tree" -p "$cur" -p "${shas[i]}" -m "plan #${planned[i]}")" ||
             die2 "#${planned[i]}: cannot write the trial merge"
+        kept+=("$i")
         echo "  #${planned[i]}: $v${mt_paths:+ ($mt_paths)}"
     done
     echo "pairwise (X: the two heads conflict, l: lockfile only):"
@@ -209,8 +278,8 @@ if [ "$plan" -eq 1 ]; then
             if [ "$i" -eq "$j" ]; then
                 cell="-"
             else
-                conflicts "${shas[i]}" "${shas[j]}" || die2 "git merge-tree failed"
-                case "$(verdict "$mt_paths")" in
+                classify "${shas[i]}" "${shas[j]}" || die2 "git merge-tree failed"
+                case "$mt_v" in
                 clean) cell="." ;;
                 lock) cell="l" ;;
                 *) cell="X" ;;
@@ -222,22 +291,23 @@ if [ "$plan" -eq 1 ]; then
     done
     for i in "${!planned[@]}"; do
         for ((j = i + 1; j < ${#planned[@]}; j++)); do
-            conflicts "${shas[i]}" "${shas[j]}" || die2 "git merge-tree failed"
-            [ "$(verdict "$mt_paths")" != conflict ] ||
+            classify "${shas[i]}" "${shas[j]}" || die2 "git merge-tree failed"
+            [ "$mt_v" != conflict ] ||
                 echo "  #${planned[i]} x #${planned[j]}: $mt_paths"
         done
     done
     scratch="$(mktemp -d "${TMPDIR:-/tmp}/train-plan.XXXXXX")" || die2 "cannot make a temp dir"
+    trap 'rm -rf "$scratch"' EXIT
     if g archive "$cur" | tar -x -C "$scratch"; then
         while IFS= read -r l; do
             case "$l" in
             "") ;;
             \?*) echo "lockfile not checked (cargo cannot read ${l#?} offline)" ;;
+            !*) echo "  ${l#!}" ;;
             *) echo "lockfile needs regenerating: $l" ;;
             esac
         done < <(stale_locks "$scratch")
     fi
-    rm -rf "$scratch"
     if [ "$bad" -eq 0 ]; then echo "plan: no conflict"; exit 0; fi
     echo "plan: conflicts" >&2
     exit 1
@@ -331,22 +401,37 @@ cleanup() {
 # `cargo metadata --offline` adds what the merged manifests need: cargo changes a lockfile only
 # where a manifest requires it, never upgrades a locked version, and --offline forbids the
 # network, so the result follows from the merged manifests and the kept side alone. `--locked`
-# then proves the lockfile is complete. Returns 1, merge left in place, on anything else.
+# then proves the lockfile is complete. A package version that the PR's side introduced against the
+# merge base (`:3:` against `:1:`) and the result lacks, such as a deliberate `cargo update`, is
+# a conflict: it is named on stderr and the merge is left for the caller to abort. Returns 1,
+# merge left in place, on that and on anything else.
 resolve_lockfiles() {
-    local wt="$1" paths p dir
+    local wt="$1" paths p dir tmp lost
     paths="$(git -C "$wt" diff --name-only --diff-filter=U)"
     [ -n "$paths" ] || return 1
     while IFS= read -r p; do is_lockfile "$p" || return 1; done <<<"$paths"
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/train-lock.XXXXXX")" || return 1
     while IFS= read -r p; do
         dir="$(dirname "$p")"
-        git -C "$wt" checkout --ours -- "$p" || return 1
-        (cd "$wt/$dir" && cargo metadata --offline --format-version 1 >/dev/null) || return 1
+        blob "$wt" ":1:$p" "$tmp/base"
+        blob "$wt" ":3:$p" "$tmp/theirs"
+        git -C "$wt" checkout --ours -- "$p" || { rm -rf "$tmp"; return 1; }
+        (cd "$wt/$dir" && cargo metadata --offline --format-version 1 >/dev/null) ||
+            { rm -rf "$tmp"; return 1; }
         (cd "$wt/$dir" && cargo metadata --offline --locked --format-version 1 >/dev/null) ||
+            { rm -rf "$tmp"; return 1; }
+        lost="$(lost_versions "$tmp/base" "$tmp/theirs" "$wt/$p" 0 | sed 's/ /@/' | paste -sd' ' -)"
+        if [ -n "$lost" ]; then
+            echo "#$2: $p: versions the PR locked are not in the regenerated lock ($lost):" \
+                "a lockfile change that is lost is a conflict" >&2
+            rm -rf "$tmp"
             return 1
-        git -C "$wt" add -- "$p" || return 1
+        fi
+        git -C "$wt" add -- "$p" || { rm -rf "$tmp"; return 1; }
         echo "#$2: $p regenerated with cargo metadata --offline after a lockfile conflict;" \
-            "check the diff of the train"
+            "every version the PR locked is in the result; check the diff of the train"
     done <<<"$paths"
+    rm -rf "$tmp"
     git -C "$wt" commit -q --no-edit
 }
 
@@ -366,11 +451,13 @@ done
 while IFS= read -r l; do
     case "$l" in
     "") ;;
-    \?*) echo "lockfile not checked (cargo cannot read ${l#?} offline): verify decides" ;;
+    \?*) echo "lockfile not checked (cargo cannot read ${l#?} offline); left as merged," \
+        "verify decides" ;;
+    !*) echo "  ${l#!}" ;;
     *)
-        git -C "$wt" add -- "$l"
+        git -C "$wt" add -- "$l" || { cleanup; die2 "cannot stage $l"; }
         git -C "$wt" commit -q -m "chore(train): regenerate $l for the merged manifests" \
-            -m "cargo metadata --offline; no dependency upgraded." ||
+            -m "cargo metadata --offline; the versions it dropped are named in the build output." ||
             { cleanup; die2 "cannot commit $l"; }
         echo "$l was stale after the merges: regenerated with cargo metadata --offline and" \
             "committed on $tbranch"
