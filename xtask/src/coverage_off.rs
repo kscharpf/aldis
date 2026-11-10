@@ -18,12 +18,35 @@ pub const ATTRIBUTE: &str = "#[cfg_attr(coverage_nightly, coverage(off))]";
 /// The attribute a file that is a test module as a whole (`#![cfg(test)]`) carries.
 pub const INNER_ATTRIBUTE: &str = "#![cfg_attr(coverage_nightly, coverage(off))]";
 
+/// `text` without the string literals (quotes included), which may hold any bracket or word.
+fn outside_strings(text: &str) -> String {
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    for c in text.chars() {
+        if !quoted {
+            if c == '"' {
+                quoted = true;
+            } else {
+                out.push(c);
+            }
+        } else if escaped {
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == '"' {
+            quoted = false;
+        }
+    }
+    out
+}
+
 /// Whether the predicate `body` of a `cfg` names `test` as a word outside every `not(…)`.
 fn names_test(body: &str) -> bool {
     // One entry per open parenthesis: whether it is the argument list of `not`.
     let mut negated: Vec<bool> = Vec::new();
     let mut word = String::new();
-    for c in body.chars() {
+    for c in outside_strings(body).chars() {
         if c.is_alphanumeric() || c == '_' {
             word.push(c);
             continue;
@@ -85,7 +108,8 @@ fn logical_lines(text: &str) -> Vec<(usize, String)> {
         let Some((_, last)) = out.last() else {
             continue;
         };
-        open = last.starts_with('#') && last.matches('[').count() > last.matches(']').count();
+        let code = outside_strings(last);
+        open = code.starts_with('#') && code.matches('[').count() > code.matches(']').count();
     }
     out
 }
@@ -94,9 +118,15 @@ fn logical_lines(text: &str) -> Vec<(usize, String)> {
 /// `#[cfg(test)]` without [`ATTRIBUTE`], and a `#![cfg(test)]` without [`INNER_ATTRIBUTE`].
 fn missing(text: &str) -> Vec<usize> {
     let lines = logical_lines(text);
+    // The inner attributes at the top of the file, where `#![cfg_attr(…)]` is accepted.
+    let leading: Vec<&String> = lines
+        .iter()
+        .map(|(_, l)| l)
+        .take_while(|l| l.starts_with("#![") || l.starts_with("//!") || filler(l))
+        .collect();
     let mut out = Vec::new();
     for (i, (number, line)) in lines.iter().enumerate() {
-        if cfg_test(line, "#![cfg") && !lines.iter().any(|(_, l)| l == INNER_ATTRIBUTE) {
+        if cfg_test(line, "#![cfg") && !leading.iter().any(|l| *l == INNER_ATTRIBUTE) {
             out.push(*number);
         }
         if !cfg_test(line, "#[cfg") {
@@ -157,30 +187,26 @@ pub fn check() -> Result<usize, String> {
 mod tests {
     use super::*;
 
-    fn found(text: &str) -> Vec<usize> {
-        missing(text)
-    }
-
     // req: VER-024
     #[test]
-    fn a_test_module_without_the_attribute_is_found() {
-        assert_eq!(found("fn a() {}\n#[cfg(test)]\nmod tests {\n}\n"), [2]);
-        assert_eq!(found("#[cfg(test)]\nmod tests;\n"), [1]);
+    fn a_test_module_without_the_attribute_is_missing() {
+        assert_eq!(missing("fn a() {}\n#[cfg(test)]\nmod tests {\n}\n"), [2]);
+        assert_eq!(missing("#[cfg(test)]\nmod tests;\n"), [1]);
         assert_eq!(
-            found("#[cfg(all(test, feature = \"x\"))]\npub(crate) mod t {}\n"),
+            missing("#[cfg(all(test, feature = \"x\"))]\npub(crate) mod t {}\n"),
             [1]
         );
-        assert_eq!(found("#[cfg(test)]\n#[path = \"a.rs\"]\nmod t;\n"), [1]);
+        assert_eq!(missing("#[cfg(test)]\n#[path = \"a.rs\"]\nmod t;\n"), [1]);
     }
 
     // req: VER-024
     #[test]
     fn blank_and_comment_lines_do_not_hide_the_module() {
-        assert_eq!(found("#[cfg(test)]\n\nmod tests {}\n"), [1]);
-        assert_eq!(found("#[cfg(test)]\n// the tests\nmod tests {}\n"), [1]);
+        assert_eq!(missing("#[cfg(test)]\n\nmod tests {}\n"), [1]);
+        assert_eq!(missing("#[cfg(test)]\n// the tests\nmod tests {}\n"), [1]);
         let a = ATTRIBUTE;
         assert_eq!(
-            found(&format!("{a}\n\n#[cfg(test)]\nmod tests {{}}\n")),
+            missing(&format!("{a}\n\n#[cfg(test)]\nmod tests {{}}\n")),
             Vec::<usize>::new()
         );
     }
@@ -194,7 +220,7 @@ mod tests {
             format!("{a}\n#[cfg(test)]\nmod tests {{}}\n"),
             format!("#[cfg(test)]\n{a}\n#[path = \"a\"]\nmod t;\n"),
         ] {
-            assert_eq!(found(&text), Vec::<usize>::new());
+            assert_eq!(missing(&text), Vec::<usize>::new());
         }
     }
 
@@ -210,10 +236,10 @@ mod tests {
             "#[cfg(all(not(test), feature = \"x\"))]\nmod d {}\n",
             "#[cfg(not(any(test, feature = \"x\")))]\nmod d {}\n",
         ] {
-            assert_eq!(found(text), Vec::<usize>::new(), "{text}");
+            assert_eq!(missing(text), Vec::<usize>::new(), "{text}");
         }
         assert_eq!(
-            found("#[cfg(any(not(feature = \"x\"), test))]\nmod d {}\n"),
+            missing("#[cfg(any(not(feature = \"x\"), test))]\nmod d {}\n"),
             [1]
         );
     }
@@ -221,14 +247,14 @@ mod tests {
     // req: VER-024
     #[test]
     fn a_file_that_is_a_test_module_needs_the_inner_attribute() {
-        assert_eq!(found("//! docs\n#![cfg(test)]\nfn a() {}\n"), [2]);
+        assert_eq!(missing("//! docs\n#![cfg(test)]\nfn a() {}\n"), [2]);
         let a = INNER_ATTRIBUTE;
         assert_eq!(
-            found(&format!("#![cfg(test)]\n{a}\nfn a() {{}}\n")),
+            missing(&format!("#![cfg(test)]\n{a}\nfn a() {{}}\n")),
             Vec::<usize>::new()
         );
         assert_eq!(
-            found("#![cfg(not(test))]\nfn a() {}\n"),
+            missing("#![cfg(not(test))]\nfn a() {}\n"),
             Vec::<usize>::new()
         );
     }
@@ -237,13 +263,35 @@ mod tests {
     #[test]
     fn a_cfg_over_several_lines_is_read_whole() {
         let cfg = "#[cfg(all(\n    test,\n    feature = \"x\"\n))]\n";
-        assert_eq!(found(&format!("fn a() {{}}\n{cfg}mod t {{}}\n")), [2]);
+        assert_eq!(missing(&format!("fn a() {{}}\n{cfg}mod t {{}}\n")), [2]);
         assert_eq!(
-            found(&format!("{cfg}{ATTRIBUTE}\nmod t {{}}\n")),
+            missing(&format!("{cfg}{ATTRIBUTE}\nmod t {{}}\n")),
             Vec::<usize>::new()
         );
         let off = "#[cfg(all(\n    not(test),\n    feature = \"x\"\n))]\nmod t {}\n";
-        assert_eq!(found(off), Vec::<usize>::new());
-        assert_eq!(found("#![cfg(\n    test\n)]\n"), [1]);
+        assert_eq!(missing(off), Vec::<usize>::new());
+        assert_eq!(missing("#![cfg(\n    test\n)]\n"), [1]);
+    }
+
+    // req: VER-024
+    #[test]
+    fn string_literals_are_not_code() {
+        let none = Vec::<usize>::new();
+        assert_eq!(missing("#[cfg(feature = \"test\")]\nmod t {}\n"), none);
+        assert_eq!(
+            missing("#[doc = \"a[0 \\\" [\"]\nfn a() {}\n#[cfg(test)]\nmod t {}\n"),
+            [3]
+        );
+    }
+
+    // req: VER-024
+    #[test]
+    fn the_inner_attribute_counts_only_at_the_top_of_the_file() {
+        let a = INNER_ATTRIBUTE;
+        assert_eq!(missing(&format!("#![cfg(test)]\nfn a() {{}}\n{a}\n")), [1]);
+        assert_eq!(
+            missing(&format!("//! docs\n\n{a}\n#![cfg(test)]\nfn a() {{}}\n")),
+            Vec::<usize>::new()
+        );
     }
 }
