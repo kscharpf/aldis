@@ -24,8 +24,8 @@ use aldis::link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
 };
 use aldis::link::mux::{
-    ChannelMux, ChannelMuxConfig, FrameClass, MuxInput, MuxOutput, Offer, Scope, TmChannel, TmRole,
-    TmVc, VcConfig,
+    ChannelMux, ChannelMuxConfig, FrameClass, MuxInput, MuxOutput, Offer, Scope, TmChannel,
+    TmOffer, TmRole, TmVc, VcConfig,
 };
 use aldis::link::policy::MuxPolicy;
 use aldis::link::protocol::{Tm, TmParams};
@@ -231,9 +231,9 @@ impl FrameDownlink {
                         MuxInput::Offer(Offer {
                             vc,
                             field: octets,
-                            pointer: Some(data.pointer),
-                            route: None,
-                            cop: None,
+                            meta: TmOffer {
+                                pointer: Some(data.pointer),
+                            },
                         }),
                         &mut [],
                     )?)?;
