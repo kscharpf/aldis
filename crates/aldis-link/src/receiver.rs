@@ -387,7 +387,10 @@ pub trait ReceiveProtocol: Protocol {
     /// The frame is parsed before any state changes: `Malformed`, `ReservedValue`,
     /// `InvalidField`, `LengthMismatch`, `BufferTooSmall`. After that only `InternalError`.
     #[doc(hidden)]
-    fn receive<const V: usize>(cx: &mut FrameContext<'_, Self, V>, frame: &[u8]) -> Result<()>;
+    fn receive<const V: usize>(
+        cx: &mut FrameContext<'_, Self, V>,
+        frame: &Self::Plain<'_>,
+    ) -> Result<()>;
 }
 
 /// The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
@@ -942,7 +945,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
         out: &mut [u8],
     ) -> Result<ReceiverActions<P>> {
         match input {
-            ReceiverInput::Frame(frame) => self.frame(P::plain_octets(&frame), out),
+            ReceiverInput::Frame(frame) => self.frame(&frame, out),
             ReceiverInput::RawFrame(octets) => self.raw_frame(octets, out),
             ReceiverInput::CallerDiscard(reason) => {
                 let reason = DiscardReason::from(reason);
@@ -990,8 +993,8 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
         Ok(())
     }
 
-    fn frame(&mut self, octets: &[u8], out: &mut [u8]) -> Result<ReceiverActions<P>> {
-        self.check_frame(octets, out)?;
+    fn frame(&mut self, frame: &P::Plain<'_>, out: &mut [u8]) -> Result<ReceiverActions<P>> {
+        self.check_frame(P::plain_octets(frame), out)?;
         let mut cx = FrameContext {
             cfg: &self.config,
             slots: &mut self.slots,
@@ -1001,7 +1004,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
             used: 0,
             actions: Actions::new(),
         };
-        P::receive(&mut cx, octets)?;
+        P::receive(&mut cx, frame)?;
         let actions = cx.actions;
         self.status.frames_in.incr();
         Ok(actions)

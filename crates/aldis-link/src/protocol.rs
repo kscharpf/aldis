@@ -335,7 +335,7 @@ mod uslp_impl {
     use aldis_core::ids::MapId;
     use aldis_core::{Error, ErrorKind, Result, field};
     use aldis_uslp::{
-        ConstructionRule, FirstHeaderPointer, TfdfHeader, TfdzOffset, TfdzRule, Upid,
+        FirstHeaderPointer, PacketField, TfdfHeader, TfdzOffset, TfdzRule, Upid,
     };
 
     use super::{IdleField, PacketProtocol, ParsedField, Pointer, Route, Uslp};
@@ -427,42 +427,30 @@ mod uslp_impl {
         // The UPID of the field is not compared with the configured one: the UPID names the
         // service of the TFDZ (732.1 §4.1.4.2.3), and the FrameReceiver routes a TFDF to this
         // extractor by VC and MAP and by that service (LNK-050, LNK-081, WP-5), so a TFDF of
-        // another service never reaches it. Only the idle UPID is read here, because an OID
-        // frame carries it on a VC that has packets (732.1 §4.1.4.1.9).
+        // another service never reaches it. Only the idle UPID is read, because an OID frame
+        // carries it on a VC that has packets (732.1 §4.1.4.1.9); the codec reads it before the
+        // rule (`TfdfHeader::parse_packet_field`).
         fn parse<'a>(_: &UslpParams, _: Option<u16>, field: &'a [u8]) -> Result<ParsedField<'a>> {
-            let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
-            let (&first, rest) = field
-                .split_first()
-                .ok_or(invalid(field::FRAME_DATA_FIELD))?;
-            let (head, zone) = rest
-                .split_at_checked(2)
-                .filter(|(_, z)| !z.is_empty())
-                .ok_or(invalid(field::FRAME_DATA_FIELD))?;
-            // The TFDZ of an OID frame is idle data whatever its rule (rule `001` there, 732.1
-            // §4.1.4.1.9; LNK-030, LNK-064), so the UPID is read before the rule.
-            if Upid::from_bits(first & 0x1F) == Some(Upid::OnlyIdleData) {
-                return Ok(ParsedField {
+            Ok(match TfdfHeader::parse_packet_field(field)? {
+                PacketField::OnlyIdle { zone } => ParsedField {
                     pointer: Pointer::OnlyIdle,
                     zone,
-                });
-            }
-            if ConstructionRule::from_bits(first >> 5) != ConstructionRule::PacketsSpanningFrames {
-                return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
-            }
-            let raw = match head {
-                [a, b] => u16::from_be_bytes([*a, *b]),
-                _ => return Err(invalid(field::FRAME_DATA_FIELD)),
-            };
-            let pointer = match FirstHeaderPointer::from_raw(raw) {
-                FirstHeaderPointer::PacketStartsAt(n) if usize::from(n.get()) < zone.len() => {
-                    Pointer::StartsAt(usize::from(n.get()))
-                }
-                FirstHeaderPointer::PacketStartsAt(_) => {
-                    return Err(Error::new(ErrorKind::Malformed).with_field(field::FHP_LVO_POINTER));
-                }
-                FirstHeaderPointer::NoPacketStartOrEnd => Pointer::NoStart,
-            };
-            Ok(ParsedField { pointer, zone })
+                },
+                PacketField::Packets {
+                    pointer: FirstHeaderPointer::PacketStartsAt(n),
+                    zone,
+                } => ParsedField {
+                    pointer: Pointer::StartsAt(usize::from(n.get())),
+                    zone,
+                },
+                PacketField::Packets {
+                    pointer: FirstHeaderPointer::NoPacketStartOrEnd,
+                    zone,
+                } => ParsedField {
+                    pointer: Pointer::NoStart,
+                    zone,
+                },
+            })
         }
 
         fn route(params: &UslpParams) -> Option<Route> {

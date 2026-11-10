@@ -135,7 +135,11 @@ impl ReceiveProtocol for Aos {
         Ok(channel.header_len())
     }
 
-    fn receive<const V: usize>(cx: &mut FrameContext<'_, Aos, V>, frame: &[u8]) -> Result<()> {
+    fn receive<const V: usize>(
+        cx: &mut FrameContext<'_, Aos, V>,
+        plain: &Self::Plain<'_>,
+    ) -> Result<()> {
+        let frame = Self::plain_octets(plain);
         let [_, b1, c0, c1, c2, sig] = header::<PRIMARY_HEADER_LEN>(frame)?;
         let vc: VcId<6> = vc_of::<Aos>(b1 & 0x3F)?;
         let replay = sig & 0x80 != 0;

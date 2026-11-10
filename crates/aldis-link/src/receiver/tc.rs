@@ -73,7 +73,11 @@ impl ReceiveProtocol for Tc {
         Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES))
     }
 
-    fn receive<const V: usize>(cx: &mut FrameContext<'_, Tc, V>, frame: &[u8]) -> Result<()> {
+    fn receive<const V: usize>(
+        cx: &mut FrameContext<'_, Tc, V>,
+        plain: &Self::Plain<'_>,
+    ) -> Result<()> {
+        let frame = Self::plain_octets(plain);
         // The Frame Length field gives the length of this frame, which varies up to the
         // channel's maximum (232.0 §2.3.1, §4.1.2.7); the codec has checked that it is the
         // length of the octets, a property of a `Plain<TcFrame>` (RS-023).
