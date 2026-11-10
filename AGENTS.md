@@ -42,7 +42,7 @@ Protocol: [docs/process/review.md](docs/process/review.md).
 
 ## Checks
 
-Run `cargo xtask check --quick` after each edit, with zero warnings. The default or `--full` tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. `--full` is required for a PR that merges alone and for a change to a `Cargo.toml`, a `Cargo.lock`, `coverage-waivers.toml`, or `xtask/` ([agent-brief.md](docs/process/agent-brief.md) item 3 has the rounds and what it adds); the tiers and resuming a failed run (`--from`): item 2. Report which tier passed; no tier is the gate.
+Run `cargo xtask check --quick` after each edit, with zero warnings. The default tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Rounds, tiers, and resuming a failed run (`--from`): [agent-brief.md](docs/process/agent-brief.md) items 2 and 3; `--full` is optional. If a train's coverage check says "shrink the waiver", run `cargo xtask coverage -p <crate>` with `ALDIS_COVERAGE_SHRINK=1` and commit the result. Report which tier passed; no tier is the gate.
 
 **Implementation agents commit and stop**, unless the brief grants the gate ([agent brief](docs/process/agent-brief.md)). The coordinator runs the merge gate and the merge trains ([coordinator.md](docs/process/coordinator.md)).
 
