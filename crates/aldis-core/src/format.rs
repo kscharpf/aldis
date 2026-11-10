@@ -107,6 +107,41 @@ mod tests {
         fn write_oid_data_header(_: usize, _: &mut [u8]) {}
     }
 
+    /// A format whose extension is a length, which can reach `usize::MAX`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct Marker;
+
+    impl FrameFormat for Marker {
+        type HeaderExtension = usize;
+        type PrimaryHeader = ();
+        const PRIMARY_HEADER_LEN: usize = 6;
+        const PACKET_HEADER_LEN: usize = 0;
+        const SDU_HEADER_LEN: usize = 0;
+
+        fn extension_len(extension: &usize) -> usize {
+            *extension
+        }
+
+        fn write_primary_header((): &(), _: &mut [u8]) -> Result<()> {
+            Ok(())
+        }
+
+        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
+    }
+
+    #[test]
+    fn primary_header_len_adds_the_extension() {
+        // req: LNK-001
+        assert_eq!(Marker::primary_header_len(&0), 6);
+        assert_eq!(Marker::primary_header_len(&2), 8);
+    }
+
+    #[test]
+    fn primary_header_len_saturates() {
+        // req: LNK-001
+        assert_eq!(Marker::primary_header_len(&usize::MAX), usize::MAX);
+    }
+
     #[test]
     fn the_header_length_adds_the_extension() {
         // req: LNK-001
@@ -126,38 +161,5 @@ mod tests {
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!(e.detail(), ErrorDetail::Needed(4));
         assert_eq!(out, [1, 2, 3, 0xEE, 0xEE]);
-    }
-}
-
-#[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-mod tests {
-    use super::FrameFormat;
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Marker;
-
-    impl FrameFormat for Marker {
-        type HeaderExtension = usize;
-        const PRIMARY_HEADER_LEN: usize = 6;
-        const PACKET_HEADER_LEN: usize = 0;
-        const SDU_HEADER_LEN: usize = 0;
-
-        fn extension_len(extension: &usize) -> usize {
-            *extension
-        }
-    }
-
-    #[test]
-    fn primary_header_len_adds_the_extension() {
-        // req: LNK-001
-        assert_eq!(Marker::primary_header_len(&0), 6);
-        assert_eq!(Marker::primary_header_len(&2), 8);
-    }
-
-    #[test]
-    fn primary_header_len_saturates() {
-        // req: LNK-001
-        assert_eq!(Marker::primary_header_len(&usize::MAX), usize::MAX);
     }
 }
