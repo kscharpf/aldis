@@ -25,7 +25,7 @@ use crate::view::{Channels, UslpFrame, parse};
 pub enum Reason {
     /// 1, test (a): the TFVN is not `1100` (§4.1.2.2.2; USLP-001).
     UnexpectedVersion,
-    /// 2, test (b): the UslpSpacecraftId names no Master Channel of the Physical Channel, so the MCID is not
+    /// 2, test (b): the SCID names no Master Channel of the Physical Channel, so the MCID is not
     /// expected.
     UnexpectedSpacecraft,
     /// 3, test (c): Bypass/Sequence Control Flag `0` with Protocol Control Command Flag `1`
@@ -33,7 +33,7 @@ pub enum Reason {
     ReservedFlags,
     /// 4, test (c), strict mode only: the Reserve Spares are not `00` (§4.1.2.9.2).
     ReservedSpare,
-    /// 5, test (c): the UslpVcId is not valid on the Master Channel.
+    /// 5, test (c): the VCID is not valid on the Master Channel.
     InvalidVcid,
     /// 6, test (c): the MAP ID is not valid on the VC.
     InvalidMapId,
@@ -63,7 +63,7 @@ pub enum Reason {
     ConstructionRuleMismatch,
     /// 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
     PointerBeyondZone,
-    /// 17, strict mode only: a frame on UslpVcId 63 whose OID header fields deviate (§4.1.4.1.8–9;
+    /// 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (§4.1.4.1.8–9;
     /// OI-44 item 1).
     OidHeaderMismatch,
     /// 18, test (c): a non-truncated frame on a VC that has a truncated frame length, which
@@ -130,7 +130,7 @@ impl Reason {
 /// §4.3.11.3; USLP-014, API-016), in `mode`.
 ///
 /// The checks run in the order of `docs/standards/uslp-frame.md` §3.1: (a) the TFVN; (b) the
-/// UslpSpacecraftId; (c) the flags, the Reserve Spares, the UslpVcId and MAP ID, a truncated frame
+/// SCID; (c) the flags, the Reserve Spares, the VCID and MAP ID, a truncated frame
 /// on its VC, the VCF Count Length, the OCF Flag, and the Frame Length against the channel;
 /// (d) the octets present against the Frame Length (732.1 §4.3.11.3.4 d)1)), or a truncated
 /// frame's against its VC's Truncated Transfer Frame Length (d)2)); (e) the FECF; then the

@@ -3,7 +3,7 @@
 //! [`check_frame`] applies the checks of 232.0 §4.4.9.3.3 a–e to the octets of one frame,
 //! as the Frame Delimiting and Fill Removal Procedure delimits them
 //! ([`delimit`](crate::delimit)), together with the checks of the decoder and the discard
-//! rule for an invalid TcVcId (§4.4.7.3). A MAP ID the channels do not hold passes: the MAP
+//! rule for an invalid VCID (§4.4.7.3). A MAP ID the channels do not hold passes: the MAP
 //! Demultiplexing Function discards the FDU after FARM-1 (§4.4.3.3, §4.4.5). It runs the same
 //! code as [`TcFrame::decode`] for both Type-A and Type-B frames, before any FARM-1 processing
 //! (§4.4.9.3.1; TC-023), and reports each failure with a [`Reason`] whose numeric code is
@@ -32,7 +32,7 @@ pub enum Reason {
     ReservedFlags,
     /// 4, check (c), strict mode only: the Reserved Spare is not `00` (§4.1.2.4.2; TC-003).
     ReservedSpare,
-    /// 5, check (c): the TcVcId is not valid on the Master Channel (§4.4.7.3; TC-022).
+    /// 5, check (c): the VCID is not valid on the Master Channel (§4.4.7.3; TC-022).
     InvalidVcid,
     /// 6, check (c): the Frame Length exceeds the Maximum Transfer Frame Length of the
     /// Virtual or Physical Channel (Tables 5-1, 5-3).
@@ -95,7 +95,7 @@ impl Reason {
 /// §4.4.9.3; TC-021…TC-023, API-016), in `mode`.
 ///
 /// The checks run in the order of [`Reason`]: (a) version; (b) Spacecraft ID; (c) the frame
-/// type flags, the Reserved Spare, the TcVcId, and the Frame Length against the channel's limits;
+/// type flags, the Reserved Spare, the VCID, and the Frame Length against the channel's limits;
 /// (d) the Frame Length against `frame.len()` (232.0 §4.4.9.3.3 d); (e) the FECF; then the room
 /// left by the MAP's Security Header and Trailer, and the Control Command of a Type-C frame. A
 /// MAP ID the channels do not hold is not checked: the frame is read with no SDLS fields.
