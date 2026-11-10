@@ -7,7 +7,7 @@
 
 use aldis_core::{Error, ErrorKind, Result, field};
 
-/// What a MAP carries (232.0 §4.4, §5.3 Table 5-3; 732.1 §4.3.2-4, §5.4 Table 5-3): the kind both
+/// What a MAP carries (232.0 §4.4, §5.3 Table 5-3; 732.1 §4.3.2-4, §5.4 Table 5-4): the kind both
 /// MAP engines serve (LNK-040…LNK-043, LNK-070…LNK-073; OI-96).
 ///
 /// What only one engine has stays beside this enum in that engine: the `MapSegmenter`'s

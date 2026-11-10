@@ -884,7 +884,9 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             (Kind::Packet, None | Some(MapService::Packets))
             | (Kind::Sdu, None | Some(MapService::Sdu))
             | (Kind::Octets, Some(MapService::OctetStream)) => true,
-            (Kind::Packet | Kind::Sdu | Kind::Octets, _) => false,
+            (Kind::Packet, Some(MapService::Sdu | MapService::OctetStream))
+            | (Kind::Sdu, Some(MapService::Packets | MapService::OctetStream))
+            | (Kind::Octets, None | Some(MapService::Packets | MapService::Sdu)) => false,
         };
         if !served {
             return Err(content);
