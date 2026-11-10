@@ -56,12 +56,12 @@ Run `cargo xtask check --quick` after each edit and `cargo xtask check` before e
 
 - **Traceability:** every public item's docs cite the CCSDS clause and requirement IDs it implements (RS-015). Every test names the requirements it covers with a `// req: <ID>` comment (VER-020).
 - **Verification records:** only a requirement whose evidence is a person's judgement has a record, in [docs/verification/records/](docs/verification/records/) ([format](docs/verification/analysis-records.md)); change only the one you touch. A new check-to-requirement pair goes in `CHECK_REQUIREMENTS` in `xtask/src/trace.rs`.
-- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind, from the Blue Book and `docs/` only: give a model-writing agent no implementation paths.
+- **Test vectors** in [`test-vectors/`](test-vectors/README.md) are shared across the Rust and C ABI implementations; follow [docs/07-test-vectors.md](docs/07-test-vectors.md). Record provenance, and never edit a released vector: add a new case and mark the old one `superseded`. An independent model (TV-023) is written blind, from the Blue Book and `docs/` only: give a model-writing agent no implementation paths.
 - **Pull request body:** Summary, Evidence, Merge Danger; link decisions, never restate them ([pr-body.md](docs/process/pr-body.md)).
 - **Changelog:** never edit `CHANGELOG.md` in a pull request: the PR title is the entry, `type(scope)!: description`.
 - **Errors, status codes, field codes** come from the catalogue of [docs/03-api-model.md](docs/03-api-model.md) §9 and §9.1. Do not renumber error codes. C ABI names use the `aldis_` / `ALDIS_` prefix ([docs/profiles/c-abi.md](docs/profiles/c-abi.md)).
 - **Agent comments:** end every comment or review an agent posts on GitHub with the line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. It tells agent comments from the maintainer's (`cargo xtask metrics`).
-- **Search boundaries:** search only the active workspace, with `git grep` and `git ls-files`. Never inspect external application or cache directories (`~/.gemini/`, `~/.cache`), `.git/`, or `.claude/worktrees/`.
+- **Search boundaries:** search only the active workspace; prefer `git grep` and `git ls-files` over recursive walks. Never inspect external application or cache directories (e.g. `~/.gemini/`, `~/.cache`), `.git/`, or `.claude/worktrees/`.
 - **GitHub CLI queries:** use structured output flags (`--json` or `-q`), never raw interactive commands.
 - **Spec changes:** when behavior changes, update the requirement table in the same change. New requirements take the next free ID in their area and IDs are never reused; open issues take the next free `OI-<number>` ([09](docs/09-open-issues.md)).
 
