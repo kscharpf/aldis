@@ -24,6 +24,7 @@ use crate::tests::{At, Out, Rec};
 const CMD_RECEIVED: u16 = 20;
 const TABLE_RECEIVED: u16 = 21;
 const PACKET_REJECTED: u16 = 6;
+const DOWNLINK_REFUSED: u16 = 113;
 
 /// The encoder's view of the uplink: VC 0 with MAPs 0, 1, and 5, and a VC 1 the node does not
 /// serve, so a test can send a frame the node's own table refuses.
@@ -55,7 +56,7 @@ fn sender() -> VcTable<2, 4> {
 }
 
 /// A Type-BD frame (N(S) = 0) on `vc` with a Segment Header (§4.4.4).
-fn bd_frame(vc: u8, flags: SequenceFlags, map: u8, fdu: &[u8]) -> Vec<u8> {
+pub(crate) fn bd_frame(vc: u8, flags: SequenceFlags, map: u8, fdu: &[u8]) -> Vec<u8> {
     let fields = FrameFields {
         frame_type: FrameType::Bd,
         spacecraft_id: TcSpacecraftId::new(SPACECRAFT_ID).unwrap(),
@@ -119,12 +120,12 @@ struct Run {
 impl Run {
     fn new() -> Run {
         Run {
-            node: FlightNode::new().with_frame_uplink().unwrap(),
+            node: FlightNode::new_frames().unwrap(),
             rec: Rec::default(),
         }
     }
 
-    /// Delivers `frames` in one step at `now` µs (and no slot work: `tx_slot` is false).
+    /// Delivers `frames` in one step at `now` µs.
     fn deliver(&mut self, now: u64, frames: &[Vec<u8>]) {
         let refs: Vec<&[u8]> = frames.iter().map(Vec::as_slice).collect();
         let input = StepInput {
@@ -136,15 +137,17 @@ impl Run {
         self.node.step(&input, &mut At(now, &mut self.rec));
     }
 
-    /// The application events output so far, as (code, args), and forgets them.
+    /// The application events of the uplink output so far, as (code, args), and forgets them. The
+    /// `downlink_refused` events (113) are left out: a step at 5 s catches up with the packets of
+    /// 5 s at once, which the downlink without slots cannot take (APP-142).
     fn app_events(&mut self) -> Vec<(u16, Vec<u64>)> {
         let events = self
             .rec
             .0
             .iter()
             .filter_map(|(_, o)| match o {
-                Out::Event(code, args) => Some((*code, args.clone())),
-                Out::Unit(_) | Out::Packet(..) => None,
+                Out::Event(code, args) if *code != DOWNLINK_REFUSED => Some((*code, args.clone())),
+                Out::Event(..) | Out::Unit(_) | Out::Packet(..) => None,
             })
             .collect();
         self.rec = Rec::default();

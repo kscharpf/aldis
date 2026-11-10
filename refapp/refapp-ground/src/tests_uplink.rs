@@ -145,10 +145,7 @@ fn channels() -> VcTable<1, 2> {
 
 fn nominal_run() -> (Vec<(u64, Vec<Rec>)>, GroundNode) {
     let (script, at) = nominal();
-    let mut node = GroundNode::new(&script)
-        .unwrap()
-        .with_frame_uplink()
-        .unwrap();
+    let mut node = GroundNode::new_frames(&script).unwrap();
     let steps = run(&mut node, &at, 6_000_000);
     (steps, node)
 }
@@ -219,10 +216,7 @@ fn the_table_upload_takes_three_frames_without_interleaving() {
     // interleaved with the segments of the table packet.
     let never = u64::MAX;
     let at = [never, 2_000_000, never, never, 2_000_000, 2_250_000, never];
-    let mut node = GroundNode::new(&script)
-        .unwrap()
-        .with_frame_uplink()
-        .unwrap();
+    let mut node = GroundNode::new_frames(&script).unwrap();
     let steps = run(&mut node, &at, 3_500_000);
     let packet = steps
         .iter()
@@ -285,10 +279,7 @@ fn a_packet_is_output_once_and_goes_to_the_segmenter_not_out() {
 fn one_frame_per_uplink_slot_and_none_without_a_slot_or_an_fdu() {
     // req: APP-071, APP-090
     let (script, _) = nominal();
-    let mut node = GroundNode::new(&script)
-        .unwrap()
-        .with_frame_uplink()
-        .unwrap();
+    let mut node = GroundNode::new_frames(&script).unwrap();
     // The table upload released at an instant without `tx_slot` waits for the next slot, and
     // each slot hands out one FDU.
     let mut step = |t: u64, ops: &[u16], tx_slot: bool| {
@@ -331,10 +322,7 @@ fn a_submit_the_segmenter_refuses_raises_uplink_refused() {
     };
     let script = [upload(), upload(), upload(), upload()];
     let at = [1_000_000; 4];
-    let mut node = GroundNode::new(&script)
-        .unwrap()
-        .with_frame_uplink()
-        .unwrap();
+    let mut node = GroundNode::new_frames(&script).unwrap();
     let steps = run(&mut node, &at, 1_000_000);
     let (_, recs) = steps.last().unwrap();
     let ev = events(recs);

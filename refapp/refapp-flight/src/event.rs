@@ -7,6 +7,9 @@ use crate::layout::{EVENT_LEN, PayloadMode};
 /// Code of the application event `packet_rejected` (§7.4, APP-131): the argument is the error
 /// code of the catalogue in docs/03-api-model.md §9.
 pub const APP_PACKET_REJECTED: u16 = 6;
+/// Code of the application event `downlink_refused` (§7.4, APP-142): the error code, and the
+/// VCID when a generator refused a packet.
+pub const APP_DOWNLINK_REFUSED: u16 = 113;
 /// Code of the application event `cmd_received` (§7.4, APP-129): function code, command sequence
 /// count.
 pub const APP_CMD_RECEIVED: u16 = 20;
