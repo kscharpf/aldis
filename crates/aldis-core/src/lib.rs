@@ -22,6 +22,7 @@
 //! | [`lookup`] | `ChannelLookup`, `MapLookup`, `PhysicalLookup` | GEN-060, API-040 |
 //! | [`checked`] | `Checked`, `Rejection`, the `Check` and `CheckBytes` pipeline | GEN-060, API-015, API-016, RS-020 |
 //! | [`plain`] | `Plain`, `SecuritySlices`: a frame whose SDLS processing is done | RS-023, API-017, API-074 |
+//! | [`stream`] | `FrameStream`, `LenientFrameStream`, `IntakeItem`, the `Delimiter` of a protocol | TC-020, USLP-016, API-016 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //!
@@ -49,6 +50,7 @@ pub mod ocf;
 pub mod oid;
 pub mod plain;
 pub mod security;
+pub mod stream;
 pub mod time;
 
 // Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-verification.md).

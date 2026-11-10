@@ -5,7 +5,7 @@
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
 //! | [`upid`] | `Upid`, generated from the SANA registry snapshot, and `UnassignedUpid` | 732.1 §4.1.4.2.3 | USLP-007 |
-//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `VcParams`, `MapConfig`, `TransferFrameType`, `OcfUse`, `SecurityScope`, `TruncatedFrameLen`, the `VcLookup` trait and its `VcTable` | 732.1 §5, §6.6, Annex D1.2 | USLP-002, USLP-004, USLP-008, USLP-012, GEN-060, GEN-061, API-040, API-041, API-070, API-075 |
+//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `VcParams`, `MapConfig`, `TransferFrameType`, `OcfUse`, `SecurityScope`, `TruncatedFrameLen`, its `VcTable` | 732.1 §5, §6.6, Annex D1.2 | USLP-002, USLP-004, USLP-008, USLP-012, GEN-060, GEN-061, API-040, API-041, API-070, API-075 |
 //! | [`header`] | `FrameKind`, `SourceOrDestination`, `VcfCountLen`, `VcfCount`, `ChannelFields`, owned `UslpPrimaryHeader` | 732.1 §4.1.2, Annex D1.3 | USLP-001, USLP-003, USLP-004, API-014, GEN-053 |
 //! | [`view`] | Zero-copy `UslpFrame` (full or truncated) and `UslpFullFrame`, `peek_length` | 732.1 §4.1, §6.3 | USLP-001, USLP-003…USLP-007, USLP-016, API-010…API-014, API-072 |
 //! | [`truncated`] | Zero-copy `UslpTruncatedFrame` | 732.1 Annex D | USLP-002, USLP-012, API-075 |
@@ -52,7 +52,7 @@ pub use anomaly::UslpAnomaly;
 pub use checked::{Reason, check_frame};
 pub use config::{
     MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen,
-    VcConfig, VcLookup, VcParams, VcTable,
+    VcConfig, VcParams, VcTable,
 };
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
 pub use header::{
@@ -60,7 +60,7 @@ pub use header::{
     TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
     VcfCountLen,
 };
-pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
+pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, UslpIntake};
 pub use tfdf::{
     ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
     TfdzRule,

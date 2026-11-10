@@ -18,7 +18,7 @@
 //! **Security layouts** (API-070; decisions of #90 and #94, c-abi.md §11). The `_with`
 //! decoders take the Security Header and Trailer lengths of a frame's virtual channel from the
 //! master channel, as `TmFrame::decode_with` does with a `TmMasterChannelConfig` as its
-//! `VcLookup`; their plain forms take the physical channel alone and decode as on a channel
+//! lookup; their plain forms take the physical channel alone and decode as on a channel
 //! without SDLS, as `TmFrame::decode` does with `NoSdls`. Every other call that takes a master
 //! channel, [`aldis_tm_validate`] among them, uses its layouts. A physical
 //! channel that carries several master channels is decoded by reading the SCID first with

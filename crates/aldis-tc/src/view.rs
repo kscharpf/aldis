@@ -1,15 +1,19 @@
 //! Zero-copy TC frame view (232.0 §4.1; TC-001…TC-006, API-010, API-011, API-013, API-014,
 //! API-072, GEN-013, GEN-043).
 
+use crate::header::TcMapId;
 use aldis_core::crc;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, Lenient, Result};
 
 use crate::anomaly::TcAnomaly;
 use crate::checked::Reason;
-use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig};
 use crate::control::ControlCommand;
 use crate::field;
 use crate::header::{
@@ -81,7 +85,12 @@ pub(crate) enum Channels {
 
 /// Checks (a)–(c), which need only the header and the channels (232.0 §4.4.9.3.3 a–c;
 /// TC-002, TC-003, TC-007, TC-021, TC-022).
-pub(crate) fn check_head<L: VcLookup + ?Sized>(
+pub(crate) fn check_head<
+    L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     bytes: &[u8],
     channels: &L,
     known: Channels,
@@ -175,7 +184,13 @@ fn control_command(
 ///
 /// With `exact`, `bytes` must be exactly one frame (check d); otherwise any octets after the
 /// frame are ignored (API-011).
-pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
+pub(crate) fn parse<
+    'a,
+    L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     bytes: &'a [u8],
     channels: &L,
     known: Channels,
@@ -285,7 +300,15 @@ impl<'a> TcFrame<'a> {
     /// - `ReservedValue` (`control_command`) for a Type-C data field that is neither Unlock
     ///   nor Set V(R) ([`decode_lenient`](Self::decode_lenient) reports
     ///   [`TcAnomaly::UnknownControlCommand`] instead; TC-005).
-    pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<TcFrame<'a>> {
+    pub fn decode<
+        L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+            + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
+        bytes: &'a [u8],
+        channels: &L,
+    ) -> Result<TcFrame<'a>> {
         parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
@@ -297,7 +320,12 @@ impl<'a> TcFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the deviations that are anomalies.
-    pub fn decode_lenient<L: VcLookup + ?Sized>(
+    pub fn decode_lenient<
+        L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+            + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         bytes: &'a [u8],
         channels: &L,
     ) -> Result<Lenient<TcFrame<'a>, TcAnomaly>> {

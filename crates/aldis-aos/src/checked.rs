@@ -7,7 +7,7 @@ use crate::config::{AosVirtualChannelConfig, find, has};
 use crate::field;
 use crate::view::AosFrame;
 
-/// Rejects a frame whose channel the `VcLookup` it was decoded with did not hold (732.0
+/// Rejects a frame whose channel the lookup it was decoded with did not hold (732.0
 /// §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, RS-023): `frame.check(&vcs)` returns the
 /// others as an `aldis_core::Checked<AosFrame>`, which dereferences to the frame. Holding one
 /// is the proof that the frame's Spacecraft ID (an OID frame) or Spacecraft ID and VCID were

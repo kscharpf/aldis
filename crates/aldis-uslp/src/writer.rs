@@ -14,6 +14,10 @@
 //! OI-34). Their checks and errors are those of `docs/standards/uslp-frame.md` §3.3, in its
 //! order.
 
+use crate::config::MapConfig;
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use core::marker::PhantomData;
 
 use aldis_core::crc;
@@ -26,9 +30,7 @@ use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
 use aldis_core::{Error, ErrorKind, Result};
 
-use crate::config::{
-    OcfUse, PhysicalChannelConfig, VcConfig, VcLookup, frame_layout, frame_security,
-};
+use crate::config::{OcfUse, PhysicalChannelConfig, VcConfig, frame_layout, frame_security};
 use crate::field;
 use crate::header::{
     ChannelFields, FrameKind, OID_VCID, PRIMARY_HEADER_LEN, TRUNCATED_HEADER_LEN,
@@ -126,7 +128,12 @@ fn oid_tfdf(tfdz_len: usize) -> Result<TfdfHeader> {
 
 /// The VC of `fields`, checked: the SCID and VCID configured, and VCID 63 exactly for OID
 /// frames (§3.3 rows 1–2).
-fn find_vc<L: VcLookup + ?Sized>(
+fn find_vc<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     channel: ChannelFields,
     oid: bool,
@@ -160,7 +167,7 @@ fn slot<R: core::slice::SliceIndex<[u8], Output = [u8]>>(
 /// # Errors
 /// `InvalidField` (`frame_data_field`) for an empty TFDZ, and for a channel whose longest frame
 /// leaves no TFDZ octet, whatever `tfdz_len` is (`check_room` rejects that channel when its table
-/// is built, so only a `VcLookup` that skips the check reaches it); `LengthMismatch` (`frame_data_field`)
+/// is built, so only a lookup that skips the check reaches it); `LengthMismatch` (`frame_data_field`)
 /// for a TFDZ that does not fill a fixed-length frame; `OutOfRange` (`frame_len`) above a
 /// variable-length channel's maximum.
 fn reserve(
@@ -199,7 +206,12 @@ fn reserve(
 impl Plan {
     /// Checks a frame of `tfdz_len` TFDZ octets in the order of
     /// `docs/standards/uslp-frame.md` §3.3 (USLP-009, USLP-010, USLP-016).
-    fn new<L: VcLookup + ?Sized>(
+    fn new<
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         channels: &L,
         fields: FrameFields,
         content: FrameContent<'_>,
@@ -309,7 +321,12 @@ impl Plan {
 /// `LengthMismatch` (`frame_data_field`) for a TFDZ that does not fill a fixed-length frame;
 /// `OutOfRange` (`frame_len`) above a variable-length channel's maximum; `OutOfRange`
 /// (`fhp_lvo_pointer`); `BufferTooSmall`. On error `out` is unchanged (API-022).
-pub fn encode<L: VcLookup + ?Sized>(
+pub fn encode<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     fields: FrameFields,
     content: FrameContent<'_>,
@@ -342,7 +359,12 @@ pub fn encode<L: VcLookup + ?Sized>(
 /// The errors of [`encode`], with `InvalidField` (`vc_id`) for another VCID, `InvalidField`
 /// (`map_id`) for a MAP ID other than 0, and `InvalidField` (`protocol_control_command_flag`)
 /// for protocol control flags. On error neither `out` nor `oid` is changed (GEN-042).
-pub fn encode_oid<L: VcLookup + ?Sized>(
+pub fn encode_oid<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     fields: FrameFields,
     insert_zone: &[u8],
@@ -364,7 +386,12 @@ pub fn encode_oid<L: VcLookup + ?Sized>(
 ///
 /// # Errors
 /// As for [`encode_oid`]. On error neither `out` nor `oid` is changed (GEN-042).
-pub fn encode_oid_galois<L: VcLookup + ?Sized>(
+pub fn encode_oid_galois<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     fields: FrameFields,
     insert_zone: &[u8],
@@ -379,7 +406,12 @@ pub fn encode_oid_galois<L: VcLookup + ?Sized>(
 
 /// The OID frame of [`encode_oid`], its TFDZ filled by `fill` once every check has passed, so
 /// that a rejected frame leaves the generator unchanged (USLP-009, GEN-042).
-fn oid_frame<L: VcLookup + ?Sized>(
+fn oid_frame<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     fields: FrameFields,
     insert_zone: &[u8],
@@ -414,7 +446,12 @@ fn oid_frame<L: VcLookup + ?Sized>(
 /// fixed-length TFDZ (USLP-016); `InvalidField` (`frame_data_field`) for an empty TFDZ;
 /// `LengthMismatch` (`frame_data_field`) for a TFDZ that does not fill the frame;
 /// `BufferTooSmall`. On error `out` is unchanged (API-022).
-pub fn encode_truncated<L: VcLookup + ?Sized>(
+pub fn encode_truncated<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     channel: ChannelFields,
     header: TfdfHeader,
@@ -506,7 +543,12 @@ impl<'b> UslpFrameWriter<'b, Unprotected> {
     /// The errors of [`encode`] for a frame with `max_tfdz_len` TFDZ octets, except the
     /// pointer, which [`protect`](Self::protect) and [`unsecured`](Self::unsecured) check against the TFDZ it is given. On error
     /// `out` is unchanged.
-    pub fn begin<L: VcLookup + ?Sized>(
+    pub fn begin<
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         out: &'b mut [u8],
         channels: &L,
         fields: FrameFields,

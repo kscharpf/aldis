@@ -186,6 +186,9 @@ pub trait CheckBytes<'a>: Sized {
             + MapLookup<Self::Scid, Self::VcId, Self::MapId, Map = Self::Map>
             + PhysicalLookup<Physical = Self::Physical>
             + ?Sized;
+
+    /// The octets the frame was decoded from.
+    fn octets(&self) -> &'a [u8];
 }
 
 /// Checks the octets of exactly one frame and returns what it matched (TC-021, TC-023,
@@ -348,6 +351,10 @@ mod tests {
                 anomalies.insert(DemoAnomaly::Odd);
             }
             Ok((Demo(octet), anomalies, *limit))
+        }
+
+        fn octets(&self) -> &'a [u8] {
+            &[]
         }
     }
 

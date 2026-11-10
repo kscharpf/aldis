@@ -9,7 +9,7 @@
 //! | MAP (Tables 5-4, 6-3) | [`MapConfig`] | SCID, VCID, MAP ID, Security Header and Trailer lengths |
 //!
 //! The decoder, the writers, and the Frame Validation Checks look the channels up through
-//! [`VcLookup`]; [`VcTable`] is its fixed-capacity implementation (M2 plan D14). Parameters
+//! [`ChannelLookup`]; [`VcTable`] is its fixed-capacity implementation (M2 plan D14). Parameters
 //! that only the engines use (data field content, blocking, segmentation, repetitions, CLCW
 //! reporting rate, the multiplexing schemes) are not kept here.
 
@@ -224,32 +224,6 @@ impl MapConfig {
     pub const fn security(&self) -> SecurityLayout {
         self.security
     }
-}
-
-/// The lookup of the channels a frame may belong to (GEN-060, TC-021, TC-022).
-///
-/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is a [`VcConfig`], a
-/// [`MapLookup`] whose MAP is a [`MapConfig`], and a [`PhysicalLookup`] of the Physical Channel
-/// (232.0 Table 5-1; M2 plan D14).
-///
-/// A bound alias, implemented for every such lookup; implement the three traits. [`VcTable`]
-/// implements them. Another implementation must answer consistently: a VCID that `vc` finds
-/// belongs to a Spacecraft ID that `has_spacecraft` accepts (232.0 §4.4.9.3.3 b, §4.4.7.3,
-/// §4.4.3.3).
-pub trait VcLookup:
-    ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
-    + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
-    + PhysicalLookup<Physical = PhysicalChannelConfig>
-{
-}
-
-impl<
-    T: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
-        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
-        + PhysicalLookup<Physical = PhysicalChannelConfig>
-        + ?Sized,
-> VcLookup for T
-{
 }
 
 /// The longest frame of a Virtual Channel or MAP: `limit` octets (at most the Physical

@@ -20,7 +20,7 @@ The managed parameters are those of the Blue Book clause cited in the heading; t
 
 ### 2.1 What the codec keeps
 
-`aldis_uslp::config` keeps the parameters the codec reads; the engines keep the rest (multiplexing schemes, repetitions, delays, COP in Effect, SDU types). The decoder, the writers, the delimiter, and `check_frame` look the channels up through `VcLookup`, which `VcTable<V, M>` implements with fixed capacities (M2 D14).
+`aldis_uslp::config` keeps the parameters the codec reads; the engines keep the rest (multiplexing schemes, repetitions, delays, COP in Effect, SDU types). The decoder, the writers, the delimiter, and `check_frame` look the channels up through `aldis_core::lookup`, which `VcTable<V, M>` implements with fixed capacities (M2 D14).
 
 | Type | Parameters | Rejected with `InvalidConfig` (field) |
 |---|---|---|
