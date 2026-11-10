@@ -12,8 +12,8 @@ use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
     TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
-    TmVirtualChannelConfig, UncheckedTmFrame, VcLookup as _, encode,
-    encode_oid as encode_oid_frame, encode_oid_galois,
+    TmVirtualChannelConfig, UncheckedTmFrame, encode, encode_oid as encode_oid_frame,
+    encode_oid_galois, security_layout,
 };
 
 use crate::exercise::Tally;
@@ -118,10 +118,10 @@ fn frame_group(t: &mut Tally) {
     t.check(mc.pc() == &pc && mc.scid() == scid && mc.fsh().is_none() && !mc.ocf());
     t.check(mc.vc(vc1) == Some(&vca) && mc.vcs().count() == 2);
     t.check(mc.frame_layout(vc0).is_some_and(|l| l.data().len() == 17));
-    t.check(mc.security_layout(bb(scid), vc0) == Ok(security));
+    t.check(security_layout(&mc, bb(scid), vc0) == Ok(security));
     let many = [mc.clone()];
-    t.check(many[..].security_layout(bb(scid), vc1).is_ok());
-    t.check(NoSdls.security_layout(scid, vc1) == Ok(SecurityLayout::NONE));
+    t.check(security_layout(&many[..], bb(scid), vc1).is_ok());
+    t.check(security_layout(&NoSdls, scid, vc1) == Ok(SecurityLayout::NONE));
     frames(t, &mc, vc0, vc1, fsh);
 }
 

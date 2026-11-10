@@ -189,8 +189,9 @@ pub enum aldis_tc_discard {
     ALDIS_TC_DISCARD_LENGTH_MISMATCH = 8,
     /// Discard reason: check (e), FECF does not match (232.0 §4.1.4; TC-006, TC-021).
     ALDIS_TC_DISCARD_FECF_MISMATCH = 9,
-    /// Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
-    ALDIS_TC_DISCARD_INVALID_MAP_ID = 10,
+    // 10 was `INVALID_MAP_ID` and is retired, never reused: a MAP ID the channels do not hold passes
+    // the Frame Validation Checks and the MAP Demultiplexing Function discards its FDU (232.0
+    // §4.4.9.3.3, §4.4.3.3; TC-022).
     /// Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
     ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND = 11,
     /// Discard reason: fill data (232.0 §4.4.9.2.6; TC-020).
@@ -201,7 +202,7 @@ pub enum aldis_tc_discard {
     /// that start no valid header, perhaps after a Frame Length error (232.0 §4.4.9.2.6 note 2; TC-020, OI-47).
     ALDIS_TC_DISCARD_LEFTOVER_FILL = 22,
 }
-mirror!(pub aldis_tc_discard: u32 { ALDIS_TC_DISCARD_NONE, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_TC_DISCARD_RESERVED_FLAGS, ALDIS_TC_DISCARD_RESERVED_SPARE, ALDIS_TC_DISCARD_INVALID_VCID, ALDIS_TC_DISCARD_FRAME_TOO_LONG, ALDIS_TC_DISCARD_FRAME_TOO_SHORT, ALDIS_TC_DISCARD_LENGTH_MISMATCH, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_INVALID_MAP_ID, ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND, ALDIS_TC_DISCARD_FILL, ALDIS_TC_DISCARD_TRUNCATED_FRAME, ALDIS_TC_DISCARD_LEFTOVER_FILL });
+mirror!(pub aldis_tc_discard: u32 { ALDIS_TC_DISCARD_NONE, ALDIS_TC_DISCARD_UNEXPECTED_SPACECRAFT, ALDIS_TC_DISCARD_RESERVED_FLAGS, ALDIS_TC_DISCARD_RESERVED_SPARE, ALDIS_TC_DISCARD_INVALID_VCID, ALDIS_TC_DISCARD_FRAME_TOO_LONG, ALDIS_TC_DISCARD_FRAME_TOO_SHORT, ALDIS_TC_DISCARD_LENGTH_MISMATCH, ALDIS_TC_DISCARD_FECF_MISMATCH, ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND, ALDIS_TC_DISCARD_FILL, ALDIS_TC_DISCARD_TRUNCATED_FRAME, ALDIS_TC_DISCARD_LEFTOVER_FILL });
 /// Discard reason: check (a), Transfer Frame Version Number is not `00` (232.0 §4.4.9.3.3; TC-021).
 pub const ALDIS_TC_DISCARD_UNEXPECTED_VERSION: u32 = 1;
 
@@ -1388,7 +1389,6 @@ mod tests {
             ALDIS_TC_DISCARD_FRAME_TOO_SHORT,
             ALDIS_TC_DISCARD_LENGTH_MISMATCH,
             ALDIS_TC_DISCARD_FECF_MISMATCH,
-            ALDIS_TC_DISCARD_INVALID_MAP_ID,
             ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND,
         ];
         assert_eq!(reasons, Reason::ALL.map(|r| u32::from(r.code())));

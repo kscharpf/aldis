@@ -6,6 +6,7 @@
 //! own encoders; data units of several frames and fill for the delimiter; and frame octets next
 //! to the decoder's boundaries.
 
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
@@ -13,7 +14,7 @@ use aldis_uslp::{
     ChannelFields, ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule,
     TransferFrameType, TruncatedFrameLen, Upid, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig,
-    VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_oid, encode_truncated,
+    VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_oid, encode_truncated,
 };
 use proptest::prelude::*;
 

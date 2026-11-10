@@ -4103,10 +4103,6 @@ enum aldis_tc_discard
    */
   ALDIS_TC_DISCARD_FECF_MISMATCH = 9,
   /**
-   * Discard reason: MAP ID is not configured on the Virtual Channel (232.0 §4.4.3.3; TC-022).
-   */
-  ALDIS_TC_DISCARD_INVALID_MAP_ID = 10,
-  /**
    * Discard reason: strict mode only, Type-C data field is not a recognized command (232.0 §4.1.3.3.4; TC-005).
    */
   ALDIS_TC_DISCARD_RESERVED_CONTROL_COMMAND = 11,

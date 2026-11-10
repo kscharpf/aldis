@@ -1934,7 +1934,7 @@ start:
                 &[],
             ),
             // A `pub(crate)` helper, global because generic code calls it.
-            node("aldis_tc::config::check_room", "aldis_tc", Some(1), &[]),
+            node("aldis_tc::config::longest_frame", "aldis_tc", Some(1), &[]),
             // A public free function, and its closure.
             node(
                 "aldis_aos::writer::encode::<aldis_aos::config::VcTable<64>>",
@@ -1985,7 +1985,7 @@ start:
                 },
                 true,
             ),
-            (free("aldis_tc", "config::check_room"), false),
+            (free("aldis_tc", "config::longest_frame"), false),
             (free("aldis_aos", "writer::encode"), true),
             (
                 api::Key::Method {

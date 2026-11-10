@@ -276,6 +276,8 @@ jobs:
       - run: cargo xtask trace --scope m4 --strict
       # M5 is closed: every in-scope requirement must keep an artefact (VER-020, m5 plan D1).
       - run: cargo xtask trace --scope m5 --strict
+      # M6 is in progress: progress is reported, not enforced, until its exit (VER-020, m6 plan D7).
+      - run: cargo xtask trace --scope m6
       # A1 is closed: every in-scope requirement must keep an artefact (VER-020, a1 plan D2).
       - run: cargo xtask trace --scope a1 --strict
       # A2 is in progress: progress is reported, not enforced, until its exit (VER-020, a2 plan D1).
