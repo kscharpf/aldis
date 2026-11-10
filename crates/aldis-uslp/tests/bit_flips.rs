@@ -43,6 +43,8 @@
     reason = "test fixtures fail loudly, and bit and octet bookkeeping on lengths the frames bound (RS-018)"
 )]
 
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use core::ops::Range;
 
 use aldis_core::crc::crc16;
@@ -66,7 +68,10 @@ use aldis_uslp::{
 /// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
 fn decode_in<'a>(
     bytes: &'a [u8],
-    table: &impl aldis_uslp::VcLookup,
+    table: &(
+         impl MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Vc = VcConfig, Map = MapConfig>
+         + PhysicalLookup<Physical = PhysicalChannelConfig>
+     ),
     mode: DecodeMode,
 ) -> Result<UslpFrame<'a>, aldis_core::Error> {
     mode.dispatch(
@@ -79,7 +84,10 @@ fn decode_in<'a>(
 /// `check_frame` in `mode`, with the anomalies (empty in strict mode).
 fn validate_with<'a>(
     bytes: &'a [u8],
-    table: &impl aldis_uslp::VcLookup,
+    table: &(
+         impl MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Vc = VcConfig, Map = MapConfig>
+         + PhysicalLookup<Physical = PhysicalChannelConfig>
+     ),
     mode: DecodeMode,
 ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>), Rejection<Reason>> {
     check_frame(bytes, table, mode).map(|v| {
@@ -91,7 +99,10 @@ fn validate_with<'a>(
 /// `validate_with` without the anomalies.
 fn validate_in<'a>(
     bytes: &'a [u8],
-    table: &impl aldis_uslp::VcLookup,
+    table: &(
+         impl MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Vc = VcConfig, Map = MapConfig>
+         + PhysicalLookup<Physical = PhysicalChannelConfig>
+     ),
     mode: DecodeMode,
 ) -> Result<UslpFrame<'a>, Rejection<Reason>> {
     validate_with(bytes, table, mode).map(|(frame, _)| frame)

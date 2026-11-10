@@ -12,6 +12,7 @@
     reason = "test helpers on small bounded values fail loudly (RS-018)"
 )]
 
+use aldis_core::lookup::MapLookup;
 use std::collections::BTreeSet;
 
 use aldis_core::lookup::{ChannelLookup, PhysicalLookup};
@@ -34,7 +35,10 @@ use aldis_uslp::{
 /// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
 fn decode_in<'a>(
     bytes: &'a [u8],
-    table: &impl aldis_uslp::VcLookup,
+    table: &(
+         impl MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Vc = VcConfig, Map = MapConfig>
+         + PhysicalLookup<Physical = PhysicalChannelConfig>
+     ),
     mode: DecodeMode,
 ) -> Result<UslpFrame<'a>, aldis_core::Error> {
     mode.dispatch(

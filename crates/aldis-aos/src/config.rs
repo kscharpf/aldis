@@ -8,7 +8,7 @@
 //! | Master Channel (Table 5-2) | the [`AosVirtualChannelConfig`] entries of one SCID | Spacecraft ID, valid VCIDs 0–62; VCID 63 is always valid for OID frames |
 //! | Virtual Channel (Tables 5-3, 6-1) | [`AosVirtualChannelConfig`] | SCID, VCID 0–62, Data Field Content, presence of the `VC_OCF`, Security Header and Trailer lengths |
 //!
-//! The decoder and the writers look the channels up through [`VcLookup`]; [`VcTable`] is its
+//! The decoder and the writers look the channels up through [`ChannelLookup`](aldis_core::lookup::ChannelLookup); [`VcTable`] is its
 //! fixed-capacity implementation (M2 plan D14). The Valid Spacecraft IDs of the physical channel
 //! (Table 5-1) are the SCIDs of its virtual channels. The MC and VC Multiplexing Schemes and the
 //! Packet Transfer parameters of Table 5-4 belong to the engines (M4).
@@ -293,7 +293,9 @@ pub(crate) const fn pdu_header_len(content: DataFieldContent) -> usize {
 /// The field an `UnknownChannel` names for a frame of (`scid`, a VCID not configured): the
 /// Spacecraft ID if it is not valid on the physical channel, else the VCID (732.0 §4.3.5.4,
 /// §4.3.6.3).
-pub(crate) fn unknown_channel_field<L: VcLookup + ?Sized>(
+pub(crate) fn unknown_channel_field<
+    L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+>(
     vcs: &L,
     scid: SpacecraftId<10>,
 ) -> FieldId {
@@ -306,23 +308,13 @@ pub(crate) fn unknown_channel_field<L: VcLookup + ?Sized>(
 
 /// `UnknownChannel` for a frame of (`scid`, a VCID not configured), as
 /// [`unknown_channel_field`] names it.
-pub(crate) fn unknown_channel<L: VcLookup + ?Sized>(vcs: &L, scid: SpacecraftId<10>) -> Error {
+pub(crate) fn unknown_channel<
+    L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+>(
+    vcs: &L,
+    scid: SpacecraftId<10>,
+) -> Error {
     Error::new(ErrorKind::UnknownChannel).with_field(unknown_channel_field(vcs, scid))
-}
-
-/// The lookup of the virtual channels a frame may belong to (AOS-010, GEN-060, API-040).
-///
-/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is an
-/// [`AosVirtualChannelConfig`] (M2 plan D14). A bound alias, implemented for every such lookup;
-/// implement `ChannelLookup`. [`VcTable`] implements it. Another implementation must answer
-/// consistently: a virtual channel that `vc` finds belongs to a Spacecraft ID that
-/// `has_spacecraft` accepts, and has the VCID it was asked for; `vc` never finds a virtual
-/// channel for VCID 63 (732.0 Table 5-2, Table 5-3).
-pub trait VcLookup: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> {}
-
-impl<T: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized> VcLookup
-    for T
-{
 }
 
 /// The virtual channels of one physical channel, with room for `N` of them (732.0 §5; GEN-011,

@@ -12,7 +12,7 @@ use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::{AnomalySet, CheckBytes, Checked, DecodeMode, Lenient, Rejection};
 
 use crate::anomaly::UslpAnomaly;
-use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig};
 use crate::header::{UslpMapId, UslpSpacecraftId, UslpVcId};
 use crate::view::{Channels, UslpFrame, parse};
 
@@ -142,7 +142,13 @@ impl Reason {
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
-pub fn check_frame<'a, L: VcLookup + ?Sized>(
+pub fn check_frame<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     frame: &'a [u8],
     channels: &L,
     mode: DecodeMode,
@@ -177,6 +183,10 @@ impl<'a> CheckBytes<'a> for UslpFrame<'a> {
     {
         parse(bytes, channels, Channels::Required, mode, true)
             .map(|p| (p.frame, p.anomalies, (p.vc, p.map)))
+    }
+
+    fn octets(&self) -> &'a [u8] {
+        UslpFrame::octets(self)
     }
 }
 

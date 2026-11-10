@@ -8,12 +8,21 @@
 //! Security Trailer (D1.2.3; USLP-012). It is processed as expedited user data (D1.3.1 note 3).
 //! Its rule and UPID are exposed and not checked beyond USLP-016 (OI-35 item 1).
 
+use crate::config::MapConfig;
+use crate::config::PhysicalChannelConfig;
+use crate::config::VcConfig;
+use crate::header::UslpMapId;
+use crate::header::UslpSpacecraftId;
+use crate::header::UslpVcId;
 use aldis_core::layout::{FrameLayout, FramedBytes, LayoutSpec};
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind};
 
 use crate::checked::Reason;
-use crate::config::{VcLookup, frame_security};
+use crate::config::frame_security;
 use crate::field;
 use crate::header::{ChannelFields, OID_VCID, TRUNCATED_HEADER_LEN, invalid, unknown};
 use crate::tfdf::TfdfHeader;
@@ -40,7 +49,13 @@ pub(crate) const fn truncated_security(channel: SecurityLayout) -> SecurityLayou
 }
 
 /// The checks of a truncated frame after the SCID (`docs/standards/uslp-frame.md` §3.1).
-pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
+pub(crate) fn parse<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     bytes: &'a [u8],
     channel: ChannelFields,
     channels: &L,

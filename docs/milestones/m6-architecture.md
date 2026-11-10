@@ -11,7 +11,7 @@
 | WP-1a Channel-lookup trait | | | Phase 1 step 1 |
 | WP-1b One checking pipeline | | | Phase 1 step 2; `check_frame` returns `Lenient<Checked<F>, A>` in both modes (empty anomaly set after a strict check); `Checked<F>` replaces the four `Validated…Frame` types, the `Plain…` types stay for WP-1c; refapp needs a companion PR (D8) |
 | WP-1c Generic proof types | | | Phase 1 step 3 |
-| WP-1d Generic frame stream | | | Phase 1 step 4 |
+| WP-1d Generic frame stream | | | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
 | WP-2a Frame geometry | | | Phase 2 step 1 |
 | WP-2b Header writers and parsers | | | Phase 2 step 2; `bits` primitives (D2) |
 | WP-2c Managed-parameter sets | | | Phase 2 step 3 |

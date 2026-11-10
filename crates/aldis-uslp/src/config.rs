@@ -11,7 +11,7 @@
 //! | MAP (Tables 5-4, 6-3) | [`MapConfig`] | MAP ID, SDLS lengths |
 //!
 //! The decoder, the writers, the delimiter, and the Frame Validation Checks look the channels up
-//! through [`VcLookup`]; [`VcTable`] is its fixed-capacity implementation (M2 plan D14).
+//! through [`ChannelLookup`](aldis_core::lookup::ChannelLookup); [`VcTable`] is its fixed-capacity implementation (M2 plan D14).
 //! Parameters that only the engines use (multiplexing schemes, repetitions, delays, COP in
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 
@@ -412,32 +412,6 @@ impl MapConfig {
     pub const fn security(&self) -> SecurityLayout {
         self.security
     }
-}
-
-/// The lookup of the channels a frame may belong to (GEN-060, USLP-014, USLP-015).
-///
-/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is a [`VcConfig`], a
-/// [`MapLookup`] whose MAP is a [`MapConfig`], and a [`PhysicalLookup`] of the Physical Channel
-/// (732.1 Table 5-1; M2 plan D14).
-///
-/// A bound alias, implemented for every such lookup; implement the three traits. [`VcTable`]
-/// implements them. Another implementation must answer consistently: a VC that `vc` finds
-/// belongs to a Spacecraft ID that `has_spacecraft` accepts (732.1 §4.3.11.3.4 b, c), and obeys
-/// the rules [`VcTable::new`] checks.
-pub trait VcLookup:
-    ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
-    + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
-    + PhysicalLookup<Physical = PhysicalChannelConfig>
-{
-}
-
-impl<
-    T: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
-        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
-        + PhysicalLookup<Physical = PhysicalChannelConfig>
-        + ?Sized,
-> VcLookup for T
-{
 }
 
 /// The layout of a non-truncated frame of `spec`, the Insert Zone in the secondary slot and the

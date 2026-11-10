@@ -4,7 +4,7 @@
 //!
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
-//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `SegmentHeaderUse`, `MapConfig`, the `VcLookup` trait and its `VcTable` | 232.0 §5, §6.6 | GEN-060, GEN-061, API-040, API-041, API-070 |
+//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `SegmentHeaderUse`, `MapConfig`, its `VcTable` | 232.0 §5, §6.6 | GEN-060, GEN-061, API-040, API-041, API-070 |
 //! | [`header`] | `FrameType`, `FrameFields`, `SegmentHeader`, `SequenceFlags`, owned `TcFrameHeader` | 232.0 §4.1.2, §4.1.3.2.2 | TC-001…TC-004, TC-008, API-014, GEN-053 |
 //! | [`view`] | Zero-copy `TcFrame` decoder (strict and lenient), `peek_length` | 232.0 §4.1, §6.3 | TC-001…TC-006, API-010…API-014, API-072 |
 //! | [`writer`] | One-shot `encode` with `FrameData`, two-phase `TcFrameWriter` | 232.0 §4.1, §6.3 | TC-004, TC-007, TC-008, API-020…API-023 |
@@ -45,14 +45,14 @@ pub mod writer;
 pub use anomaly::TcAnomaly;
 pub use checked::{Reason, check_frame};
 pub use clcw::{Clcw, ClcwStatus, CopInEffect, FarmBCounter};
-pub use config::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcLookup, VcTable};
+pub use config::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcTable};
 pub use control::{ControlCommand, ControlOctets};
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
 pub use header::{
     FrameFields, FrameType, MAX_FRAME_LEN, MIN_FRAME_LEN, PRIMARY_HEADER_LEN, SEGMENT_HEADER_LEN,
     SegmentHeader, SequenceFlags, TcFrameHeader, TcMapId, TcSpacecraftId, TcVcId,
 };
-pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
+pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, TcIntake};
 pub use view::TcFrame;
 pub use writer::{FrameData, TcFrameWriter, encode};
 
