@@ -831,4 +831,10 @@ fn the_receiver_frame_length_checks_report_the_frame_len_field() {
     c.uslp_variable = 1;
     assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
+    // A fixed frame of 8 octets without a FECF is below the codec minimum of 9; it was accepted
+    // before and is refused now (maintainer, 2026-11-10).
+    let mut c = fr_config(ALDIS_LINK_PROTOCOL_USLP);
+    c.frame_len = 8;
+    assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
+    assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
 }
