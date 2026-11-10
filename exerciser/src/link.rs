@@ -9,6 +9,7 @@ use core::hint::black_box as bb;
 
 use aldis_aos::AosEdition;
 use aldis_core::Check;
+use aldis_core::SecuritySlices;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::NoSecurity;
 use aldis_core::time::{Duration, Instant};
