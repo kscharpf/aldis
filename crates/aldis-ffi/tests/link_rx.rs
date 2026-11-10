@@ -838,3 +838,48 @@ fn the_receiver_frame_length_checks_report_the_frame_len_field() {
     assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
 }
+
+#[test]
+fn the_tm_vc_members_are_refused_in_the_same_order_as_before_the_codec_configuration() {
+    // req: LNK-078, LNK-050, CABI-040, API-040, RS-020
+    let mut s = fr_storage();
+    let mut d = detail();
+    let mut refuse = |c: &aldis_frame_receiver_config_t| {
+        let status = fr_init(&mut s, c, &mut d);
+        (status, d.field)
+    };
+    let tm = || fr_config(ALDIS_LINK_PROTOCOL_TM);
+    // The VCID, the content, the OCF flag, then the Secondary Header length.
+    let mut c = tm();
+    c.vcs[0].vc_id = 8;
+    c.vcs[0].content = ALDIS_LINK_CONTENT_BITSTREAM;
+    assert_eq!(refuse(&c), (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID));
+    c.vcs[0].vc_id = 1;
+    c.vcs[0].ocf = 2;
+    assert_eq!(
+        refuse(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_DATA_FIELD_CONTENT)
+    );
+    c.vcs[0].content = ALDIS_LINK_CONTENT_PACKETS;
+    c.vcs[0].fsh_len = 65;
+    assert_eq!(refuse(&c).0, ALDIS_ERR_INVALID_FIELD);
+    c.vcs[0].ocf = 1;
+    assert_eq!(refuse(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FSH_LEN));
+    // A Secondary Header of 64 octets, the longest, and the OCF fit a frame of 75 octets, not 74.
+    c.vcs[0].fsh_len = 64;
+    c.frame_len = 74;
+    assert_eq!(
+        refuse(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FRAME_LEN)
+    );
+    c.frame_len = 75;
+    assert_eq!(refuse(&c).0, 0);
+    // A VC that is not served has its parameters checked all the same.
+    c.vcs[0].content = ALDIS_LINK_CONTENT_UNSERVED;
+    assert_eq!(refuse(&c).0, 0);
+    c.frame_len = 74;
+    assert_eq!(
+        refuse(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FRAME_LEN)
+    );
+}

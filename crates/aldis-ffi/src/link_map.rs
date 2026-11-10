@@ -45,7 +45,8 @@ use aldis::link::segmenter::{
     MapSegmenterConfig, MapSegmenterHead, SegmenterActions, SegmenterInput, SegmenterOutput,
     SegmenterProtocol, SegmenterService, SegmenterStatus, TcSegmenterParams, UslpSegmenterParams,
 };
-use aldis::uslp::{Upid, VcfCountLen};
+use aldis::tc::{MAX_FRAME_LEN as TC_MAX_FRAME_LEN, PhysicalChannelConfig as TcPhysical};
+use aldis::uslp::{TransferFrameType, Upid, VcParams, VcfCountLen};
 
 use crate::abi::{self, flag};
 use crate::capacities::{
@@ -79,7 +80,7 @@ const _: () = assert!(ALDIS_MAP_REASSEMBLER_MAX_ACTIONS == MAP_REASSEMBLER_MAX_A
 
 /// 64-bit words of one `aldis_map_segmenter_t` (CABI-031): the tag and the larger of the engines
 /// of TC and USLP at the build capacities; the build fails when it outgrows it.
-pub const ALDIS_MAP_SEGMENTER_WORDS: usize = 1168;
+pub const ALDIS_MAP_SEGMENTER_WORDS: usize = 1172;
 /// 64-bit words of one `aldis_map_reassembler_t` (CABI-031).
 pub const ALDIS_MAP_REASSEMBLER_WORDS: usize = 4174;
 
@@ -439,11 +440,14 @@ fn sg_entry<P: SegmenterProtocol>(
 
 impl SgProtocol for Tc {
     fn channel(c: &aldis_map_segmenter_config_t) -> Result<TcSegmenterParams> {
-        let fecf = flag(c.tc_fecf)?;
+        // The configuration gives the FECF and no frame length, and the segmenter reads only
+        // the FECF: the longest frame the standard allows stands for the channel's (232.0
+        // §4.1.3.1.2).
+        let physical = TcPhysical::new(TC_MAX_FRAME_LEN, flag(c.tc_fecf)?)?;
         Ok(if flag(c.tc_segment_header)? {
-            TcSegmenterParams::with_segment_header(fecf)
+            TcSegmenterParams::with_segment_header(physical)
         } else {
-            TcSegmenterParams::without_segment_header(fecf, flag(c.tc_blocking)?)
+            TcSegmenterParams::without_segment_header(physical, flag(c.tc_blocking)?)
         })
     }
 
@@ -469,10 +473,10 @@ fn upid(bits: u8) -> Result<Upid> {
 
 impl SgProtocol for Uslp {
     fn channel(c: &aldis_map_segmenter_config_t) -> Result<UslpSegmenterParams> {
-        Ok(UslpSegmenterParams::new(
-            VcfCountLen::new(c.uslp_vcf_len_sc)?,
-            VcfCountLen::new(c.uslp_vcf_len_exp)?,
-        ))
+        let mut vc = VcParams::new(TransferFrameType::Variable);
+        vc.vcf_count_len_sequence = VcfCountLen::new(c.uslp_vcf_len_sc)?;
+        vc.vcf_count_len_expedited = VcfCountLen::new(c.uslp_vcf_len_exp)?;
+        UslpSegmenterParams::new(vc)
     }
 
     fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Uslp>> {

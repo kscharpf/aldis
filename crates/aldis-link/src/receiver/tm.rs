@@ -4,7 +4,7 @@
 use aldis_core::FrameFormat;
 use aldis_core::ids::VcId;
 use aldis_core::{Error, ErrorKind, Result, field};
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 
 use super::{
     ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
@@ -16,8 +16,6 @@ use crate::protocol::Tm;
 const PRIMARY_HEADER_LEN: usize = Tm::PRIMARY_HEADER_LEN;
 /// The First Header Pointer of an OID frame, "only idle data" (132.0 §4.1.4.6.3).
 const OID_POINTER: u16 = 0x7FE;
-/// The longest Secondary Header: the ID octet and 63 octets of data (132.0 §4.1.3.2).
-const MAX_FSH_LEN: usize = 64;
 
 /// The fields the receiver reads of the TM Primary Header and the first octet of the Secondary
 /// Header, by bit position (132.0 §4.1.2, §4.1.3.2; GEN-051).
@@ -99,42 +97,46 @@ pub enum TmContent {
 
 /// The parameters of a TM VC that the receiver needs (132.0 §5 Table 5-2).
 ///
+/// The codec's configuration of the VC gives what it carries, whether its frames have an OCF, and
+/// the length of its Secondary Header (M6 plan WP-2c); the engine adds whether the receiver serves
+/// the VC.
+///
 /// The presence of the OCF and the length of the Secondary Header are fixed for a VC
 /// (132.0 §4.1.2.4.3, §4.1.2.7.2.3), so a frame that differs is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TmVc {
-    content: TmContent,
-    ocf: bool,
-    fsh_len: Option<u8>,
+    config: TmVirtualChannelConfig,
+    served: bool,
 }
 
 impl TmVc {
-    /// A VC with `content`, with an OCF if `ocf`, and a Secondary Header of `fsh_len` octets
-    /// (the ID octet included, 2 to 64) if given.
+    /// The VC of the configuration `config`, which the receiver serves if `served`: with
+    /// `served` false it does not provide the VC's service, and its frames are `NotServed`.
     ///
-    /// # Errors
-    /// `InvalidConfig` (`fsh_len`) for a length outside 2 to 64 (132.0 §4.1.3.2).
-    pub fn new(content: TmContent, ocf: bool, fsh_len: Option<usize>) -> Result<TmVc> {
-        let fsh_len = match fsh_len {
-            None => None,
-            Some(n) if (2..=MAX_FSH_LEN).contains(&n) => u8::try_from(n).ok(),
-            Some(_) => {
-                return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN));
-            }
-        };
-        Ok(TmVc {
-            content,
-            ocf,
-            fsh_len,
-        })
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
+    #[must_use]
+    pub const fn new(config: TmVirtualChannelConfig, served: bool) -> TmVc {
+        TmVc { config, served }
     }
 
-    /// What the VC carries.
+    /// The codec's configuration of the VC.
+    ///
+    /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
+    #[must_use]
+    pub const fn config(&self) -> &TmVirtualChannelConfig {
+        &self.config
+    }
+
+    /// What the VC carries, and so what the receiver delivers for it.
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn content(&self) -> TmContent {
-        self.content
+        match (self.served, self.config.content()) {
+            (false, _) => TmContent::Unserved,
+            (true, DataFieldContent::Packets) => TmContent::Packets,
+            (true, DataFieldContent::VcaSdu) => TmContent::Vca,
+        }
     }
 
     /// Whether its frames have an OCF.
@@ -142,7 +144,7 @@ impl TmVc {
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn ocf(&self) -> bool {
-        self.ocf
+        self.config.ocf()
     }
 
     /// The octets of its Secondary Header, the ID octet included, if it has one.
@@ -150,7 +152,7 @@ impl TmVc {
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub fn fsh_len(&self) -> Option<usize> {
-        self.fsh_len.map(usize::from)
+        self.config.fsh().map(FshLen::octets)
     }
 }
 
@@ -175,9 +177,13 @@ impl ReceiveProtocol for Tm {
         let own = vc.map_or(0, |v| {
             v.fsh_len()
                 .unwrap_or(0)
-                .saturating_add(if v.ocf { 4 } else { 0 })
+                .saturating_add(if v.ocf() { 4 } else { 0 })
         });
         frame_len >= fixed.saturating_add(own)
+    }
+
+    fn agrees(vc: VcId<3>, params: &TmVc) -> bool {
+        params.config.vcid() == vc
     }
 
     fn raw_insert_zone_offset(_: &TmChannel, _: &[u8]) -> Result<usize> {
@@ -217,7 +223,7 @@ impl ReceiveProtocol for Tm {
             // The OCF Flag and the Secondary Header Flag are static for a channel (132.0
             // §4.1.2.4.3, §4.1.2.7.2.3; TM-011): a frame that differs is not a validated one.
             let found = (ocf_flag, fsh_flag, fsh_len);
-            let wanted = (p.ocf, p.fsh_len.is_some(), p.fsh_len().unwrap_or(0));
+            let wanted = (p.ocf(), p.fsh_len().is_some(), p.fsh_len().unwrap_or(0));
             if found.0 != wanted.0 {
                 return Err(Error::new(ErrorKind::InvalidField).with_field(field::OCF_FLAG));
             }
@@ -245,15 +251,15 @@ impl ReceiveProtocol for Tm {
             return cx.discard(DiscardReason::UnknownChannel, Some(vc), None);
         };
         let raised = cx.count_vc(vc, false, u64::from(vcc), 8)?;
-        if raised && p.content != TmContent::Unserved {
+        if raised && p.content() != TmContent::Unserved {
             cx.mark_gap(vc);
         }
         cx.deliver_fsh(channel.fsh.scope(vc), fsh)?;
         cx.deliver_ocf(channel.ocf.scope(vc), ocf, None)?;
-        if p.content == TmContent::Unserved {
+        if p.content() == TmContent::Unserved {
             return cx.discard(DiscardReason::NotServed, Some(vc), None);
         }
-        let carries_packets = p.content == TmContent::Packets;
+        let carries_packets = p.content() == TmContent::Packets;
         if carries_packets && !sync && pointer == OID_POINTER {
             // An OID frame: its counts and services count, its data is dropped (LNK-052).
             cx.count_oid();

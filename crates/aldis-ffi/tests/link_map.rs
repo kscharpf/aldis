@@ -1147,3 +1147,29 @@ fn the_members_of_the_channel_are_read_whatever_the_protocol() {
         );
     }
 }
+
+#[test]
+fn the_segmenter_channel_parameters_come_from_the_sets_with_the_same_limits() {
+    // req: LNK-078, LNK-040, CABI-040, API-040
+    let mut s = sg_storage();
+    let mut d = detail();
+    // TC: the FECF of the physical channel takes two octets of the 1 019 of a data field.
+    for (fecf, longest) in [(0, 1019), (1, 1017)] {
+        let mut cfg = tc_sg();
+        cfg.tc_fecf = fecf;
+        cfg.max_fdu_len = longest;
+        assert_eq!(sg_init(&mut s, &cfg, &mut d), 0, "{fecf}");
+        cfg.max_fdu_len = longest + 1;
+        assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_CONFIG);
+        assert_eq!(d.field, ALDIS_FIELD_MAX_FDU_LEN);
+    }
+    // USLP: a MAP that segments or blocks needs a VCF Count Length above 0 for the
+    // sequence-controlled service, the one COP-1 uses, and the expedited length may be 0.
+    let mut cfg = uslp_sg();
+    cfg.uslp_vcf_len_sc = 0;
+    assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_CONFIG);
+    assert_eq!(d.field, ALDIS_FIELD_VCF_COUNT_LEN);
+    cfg.uslp_vcf_len_sc = 1;
+    cfg.uslp_vcf_len_exp = 0;
+    assert_eq!(sg_init(&mut s, &cfg, &mut d), 0);
+}
