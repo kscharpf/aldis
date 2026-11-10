@@ -819,6 +819,27 @@ mod tests {
     }
 
     #[test]
+    fn a_discard_that_outruns_the_unit_takes_the_rest_and_a_zero_length_is_fill() {
+        // req: TC-020, USLP-014
+        let mut short = FrameStream::<Proto, _>::new(&[9], &Any, 6);
+        let IntakeItem::Discarded { reason, octets, .. } = short.next().unwrap() else {
+            panic!("discarded")
+        };
+        assert_eq!((reason, octets), (Why::Gone, &[9][..]));
+        assert_eq!(short.next(), None);
+        assert_eq!(Peek::<Why>::frame(0), Peek::Fill);
+        assert_eq!(
+            Peek::<Why>::frame(3),
+            Peek::Frame(NonZeroUsize::new(3).unwrap())
+        );
+        let mut zero = FrameStream::<Proto, _>::new(&[0, 1], &Any, 6);
+        let IntakeItem::Discarded { reason, octets, .. } = zero.next().unwrap() else {
+            panic!("discarded")
+        };
+        assert_eq!((reason, octets), (Why::Fill, &[0, 1][..]));
+    }
+
+    #[test]
     fn the_lenient_stream_carries_anomalies() {
         // req: API-030, API-032, TC-020, USLP-014
         let mut s = LenientFrameStream::<Proto, _>::new(&[3, 0, 0, 2, 0], &Any, 6);
