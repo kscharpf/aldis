@@ -2,6 +2,7 @@
 //! length, without truncated frames (732.1 §4.3.5–§4.3.11; LNK-050…LNK-053, LNK-079…LNK-081;
 //! OI-77, OI-78).
 
+use aldis_core::FrameFormat;
 use aldis_core::engine::OutRange;
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::{Error, ErrorKind, Result, field};
@@ -13,7 +14,7 @@ use super::{
 use crate::protocol::Uslp;
 
 /// The octets of the USLP Primary Header before the VCF Count (732.1 §4.1.2).
-const PRIMARY_HEADER_LEN: usize = 7;
+const PRIMARY_HEADER_LEN: usize = Uslp::PRIMARY_HEADER_LEN;
 /// The VCID of an OID frame, all ones (732.1 §4.1.4.1.6).
 const OID_VC: u8 = 63;
 

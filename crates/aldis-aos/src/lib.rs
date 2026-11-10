@@ -14,6 +14,7 @@
 //! | [`writer`] | One-shot `encode` and `encode_oid`, two-phase `AosFrameWriter`, OID frames on VCID 63 | 732.0 §4.1, §4.1.4.1.5, §4.2.7, §6.3 | AOS-015, AOS-016, AOS-019, API-020…API-023, API-072 |
 //! | [`anomaly`] | `AosAnomaly` lenient-mode flags | 732.0 §4.1.2.5.5.3, §4.1.4.3.2; 732.0-B-4 §4.1.2.5.4, §4.1.4.2.2 | API-032, API-033, GEN-043 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.0 §4.1, §5 | API-082, GEN-041 |
+//! | [`format`] | `AosFormat`: the `FrameFormat` geometry (Primary Header, data field header lengths) the link engines are generic over | 732.0 §4.1 | LNK-001, GEN-003 |
 //!
 //! The OCF is returned as an [`Ocf`](aldis_core::ocf::Ocf); a Type-1 Report (CLCW) is decoded
 //! with `aldis-tc` (CMN-011, M2 plan D7).
@@ -34,6 +35,7 @@ mod checked;
 pub mod config;
 pub mod fhec;
 pub mod field;
+pub mod format;
 pub mod header;
 pub mod mpdu;
 mod security;
@@ -46,6 +48,7 @@ pub use config::{
     AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, VcTable,
 };
 pub use fhec::{CorrectedHeader, CorrectedSymbols};
+pub use format::AosFormat;
 pub use header::{AosPrimaryHeader, FrameCountCycle, OID_VCID, VcFrameCount};
 pub use mpdu::{Mpdu, PacketOffset, PacketPointer};
 pub use view::{AosFrame, DataUnit};
