@@ -273,7 +273,8 @@ pub struct TfdfHeader {
     pub upid: Upid,
 }
 
-/// Length of the TFDF Header that carries a pointer: 3 octets (§4.1.4.2.1.2; USLP-005).
+/// Length of the TFDF Header of a fixed-length TFDZ, and of the VCA SDU and OID data of a
+/// fixed-length frame: 3 octets (§4.1.4.2.1.2; USLP-005).
 pub const FIXED_TFDF_HEADER_LEN: usize = 3;
 
 /// Length of the TFDF Header of a VC: 3 octets with the pointer of a fixed-length TFDZ, 1

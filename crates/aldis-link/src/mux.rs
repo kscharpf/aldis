@@ -397,8 +397,9 @@ pub trait MuxProtocol: Protocol {
         vc: Option<&Self::VcParams>,
         bypass: bool,
     ) -> Self::HeaderExtension;
-    /// Writes the primary header into `header`, which holds the octets of
-    /// [`header_extension`](Self::header_extension) (LNK-032, LNK-082).
+    /// Writes the primary header into `header`, which holds
+    /// [`primary_header_len`](aldis_core::FrameFormat::primary_header_len) of
+    /// [`header_extension`](Self::header_extension) octets (LNK-032, LNK-082).
     ///
     /// # Errors
     /// `InternalError` for a frame length the header cannot hold; `check_channel` rules it out.
@@ -408,9 +409,9 @@ pub trait MuxProtocol: Protocol {
         fields: &FrameFields,
         header: &mut [u8],
     ) -> Result<()>;
-    /// Writes the data header of an OID frame into `header`, `SDU_HEADER_LEN` octets (the TFDF
-    /// Header of USLP, [`SDU_HEADER_LEN`](aldis_core::FrameFormat::SDU_HEADER_LEN)), for a data field of `data_len` octets
-    /// (LNK-030).
+    /// Writes the data header of an OID frame into `header`, which holds
+    /// [`SDU_HEADER_LEN`](aldis_core::FrameFormat::SDU_HEADER_LEN) octets (the TFDF Header of
+    /// USLP), for a data field of `data_len` octets (LNK-030).
     fn write_oid_data_header(data_len: usize, header: &mut [u8]);
 }
 

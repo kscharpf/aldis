@@ -31,7 +31,7 @@ pub trait FrameFormat: Copy + Debug + Eq + 'static {
 
     /// The octets of the data field header that precedes an SDU of a Virtual Channel Access
     /// service, and the data of an OID frame: the TFDF Header of USLP (732.1 §4.1.4.2); none in
-    /// TM and AOS, whose SDU is the whole data field.
+    /// TM, TC and AOS, whose SDU is the whole data field.
     const SDU_HEADER_LEN: usize;
 
     /// The octets that `extension` adds to the Primary Header.
