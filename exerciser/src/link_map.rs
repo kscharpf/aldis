@@ -164,8 +164,8 @@ fn tc(t: &mut Tally) {
         return;
     };
     t.check(rconfig.channel() == &params && rconfig.maps().count() == 2);
-    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == SegmenterService::Sdu);
-    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == SegmenterService::Packets);
+    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == MapService::Sdu);
+    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == MapService::Packets);
     let Ok(mut reas) = MapReassembler::<Tc, 2, S>::new(rconfig) else {
         t.check(false);
         return;
