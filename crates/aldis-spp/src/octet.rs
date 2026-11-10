@@ -66,10 +66,11 @@ impl OctetStringEncoder {
             sequence_flags: SequenceFlags::Unsegmented,
             sequence_count: self.counter.peek(),
         };
-        check_parts(fields, 0, octets.len())?;
+        let parts = check_parts(fields, 0, octets.len())?;
+        // The proof is not kept: the header sizes from `parts`, and `write_packet` sizes the total.
         self.config
-            .check_len(octets.len().saturating_add(PRIMARY_HEADER_LEN))?;
-        let header = SpacePacketHeader::new(fields, secondary_header_indicator, octets.len());
+            .check_len(parts.data_len().saturating_add(PRIMARY_HEADER_LEN))?;
+        let header = SpacePacketHeader::new(fields, secondary_header_indicator, parts.data_len());
         let total = write_packet(out, &header, [octets, &[]])?;
         self.counter.advance();
         Ok(total)
