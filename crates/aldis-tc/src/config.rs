@@ -9,7 +9,7 @@
 //! | MAP (Tables 5-4, 6-3) | [`MapConfig`] | SCID, VCID, MAP ID, Security Header and Trailer lengths |
 //!
 //! The decoder, the writers, and the Frame Validation Checks look the channels up through
-//! [`ChannelLookup`](aldis_core::lookup::ChannelLookup); [`VcTable`] is its fixed-capacity implementation (M2 plan D14). Parameters
+//! [`ChannelLookup`]; [`VcTable`] is its fixed-capacity implementation (M2 plan D14). Parameters
 //! that only the engines use (data field content, blocking, segmentation, repetitions, CLCW
 //! reporting rate, the multiplexing schemes) are not kept here.
 

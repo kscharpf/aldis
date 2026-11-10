@@ -11,7 +11,7 @@
 //! | MAP (Tables 5-4, 6-3) | [`MapConfig`] | MAP ID, SDLS lengths |
 //!
 //! The decoder, the writers, the delimiter, and the Frame Validation Checks look the channels up
-//! through [`ChannelLookup`](aldis_core::lookup::ChannelLookup); [`VcTable`] is its fixed-capacity implementation (M2 plan D14).
+//! through [`ChannelLookup`]; [`VcTable`] is its fixed-capacity implementation (M2 plan D14).
 //! Parameters that only the engines use (multiplexing schemes, repetitions, delays, COP in
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 

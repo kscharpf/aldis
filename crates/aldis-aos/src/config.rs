@@ -8,7 +8,7 @@
 //! | Master Channel (Table 5-2) | the [`AosVirtualChannelConfig`] entries of one SCID | Spacecraft ID, valid VCIDs 0–62; VCID 63 is always valid for OID frames |
 //! | Virtual Channel (Tables 5-3, 6-1) | [`AosVirtualChannelConfig`] | SCID, VCID 0–62, Data Field Content, presence of the `VC_OCF`, Security Header and Trailer lengths |
 //!
-//! The decoder and the writers look the channels up through [`ChannelLookup`](aldis_core::lookup::ChannelLookup); [`VcTable`] is its
+//! The decoder and the writers look the channels up through [`ChannelLookup`]; [`VcTable`] is its
 //! fixed-capacity implementation (M2 plan D14). The Valid Spacecraft IDs of the physical channel
 //! (Table 5-1) are the SCIDs of its virtual channels. The MC and VC Multiplexing Schemes and the
 //! Packet Transfer parameters of Table 5-4 belong to the engines (M4).
