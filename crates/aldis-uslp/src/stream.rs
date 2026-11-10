@@ -206,16 +206,13 @@ impl Delimiter for UslpIntake {
             let len = if start.truncated {
                 channels
                     .vc(start.channel.spacecraft_id, start.channel.vc_id)
-                    .and_then(|vc| vc.truncated_frame_len())?
-                    .get()
+                    .and_then(|vc| vc.truncated_frame_len())
+                    .and_then(|len| NonZeroUsize::new(len.get()))?
             } else {
                 let raw = RawRest::parse(rest)?;
-                if raw.frame_len < 7 {
-                    return None;
-                }
-                raw.frame_len
+                NonZeroUsize::new(raw.frame_len).filter(|len| len.get() >= 7)?
             };
-            let cut = Cut::new(rest, NonZeroUsize::new(len)?)?;
+            let cut = Cut::new(rest, len)?;
             Some((cut, error))
         })();
         if let Some((cut, error)) = unexpected_version_frame {
