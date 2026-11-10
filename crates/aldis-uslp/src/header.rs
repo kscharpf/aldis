@@ -2,7 +2,7 @@
 //! USLP-001, USLP-003, USLP-004, API-014, GEN-052, GEN-053).
 
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
-use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
+use aldis_core::{CopFrameKind, Error, ErrorDetail, ErrorKind, FieldId};
 
 use crate::checked::Reason;
 use crate::field;
@@ -100,6 +100,28 @@ impl FrameKind {
     #[must_use]
     pub const fn protocol_control_flag(self) -> bool {
         matches!(self, FrameKind::ProtocolControl)
+    }
+}
+
+impl From<CopFrameKind> for FrameKind {
+    /// Type-AD is sequence-controlled, Type-BD expedited, and Type-BC Protocol Control
+    /// (732.1 Table 4-1, 232.1 §4.2.7.4; USLP-001, COP-010).
+    fn from(kind: CopFrameKind) -> FrameKind {
+        match kind {
+            CopFrameKind::Ad => FrameKind::SequenceControlled,
+            CopFrameKind::Bd => FrameKind::Expedited,
+            CopFrameKind::Bc => FrameKind::ProtocolControl,
+        }
+    }
+}
+
+impl From<FrameKind> for CopFrameKind {
+    fn from(kind: FrameKind) -> CopFrameKind {
+        match kind {
+            FrameKind::SequenceControlled => CopFrameKind::Ad,
+            FrameKind::Expedited => CopFrameKind::Bd,
+            FrameKind::ProtocolControl => CopFrameKind::Bc,
+        }
     }
 }
 
@@ -479,7 +501,22 @@ mod tests {
     };
     use crate::checked::Reason;
     use crate::field;
-    use aldis_core::{ErrorDetail, ErrorKind};
+    use aldis_core::{CopFrameKind, ErrorDetail, ErrorKind};
+
+    #[test]
+    fn frame_kind_converts_to_and_from_the_cop_kind() {
+        // req: USLP-001, COP-010
+        for kind in [
+            FrameKind::SequenceControlled,
+            FrameKind::Expedited,
+            FrameKind::ProtocolControl,
+        ] {
+            let cop = CopFrameKind::from(kind);
+            assert_eq!(FrameKind::from(cop), kind);
+            assert_eq!(cop.bypass_flag(), kind.bypass_flag());
+            assert_eq!(cop.control_command_flag(), kind.protocol_control_flag());
+        }
+    }
 
     fn channel() -> ChannelFields {
         ChannelFields {

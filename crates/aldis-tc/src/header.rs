@@ -34,45 +34,11 @@ const VERSION: u8 = 0;
 pub(crate) const UNFINISHED_VERSION: u8 = 0b11;
 
 /// The frame type set by the Bypass and Control Command Flags (232.0 §4.1.2.3, Table 4-1;
-/// TC-002).
+/// TC-002): the [`CopFrameKind`](aldis_core::CopFrameKind) every codec and engine shares.
 ///
 /// The combination Bypass Flag `0` with Control Command Flag `1` is reserved and has no
 /// variant: the decoder rejects it in both modes (TC-002).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FrameType {
-    /// `00`: Type-AD, a Frame Data Unit under the Sequence-Controlled Service.
-    Ad,
-    /// `10`: Type-BD, a Frame Data Unit under the Expedited Service.
-    Bd,
-    /// `11`: Type-BC, Control Commands (232.0 §4.1.3.3).
-    Bc,
-}
-
-impl FrameType {
-    /// The frame type of the two flags, or `None` for the reserved Bypass `0` / Control
-    /// Command `1` (232.0 Table 4-1; TC-002).
-    #[must_use]
-    pub const fn from_flags(bypass: bool, control_command: bool) -> Option<FrameType> {
-        match (bypass, control_command) {
-            (false, false) => Some(FrameType::Ad),
-            (true, false) => Some(FrameType::Bd),
-            (true, true) => Some(FrameType::Bc),
-            (false, true) => None,
-        }
-    }
-
-    /// The Bypass Flag: `true` for a Type-B frame (232.0 §4.1.2.3.1).
-    #[must_use]
-    pub const fn bypass_flag(self) -> bool {
-        !matches!(self, FrameType::Ad)
-    }
-
-    /// The Control Command Flag: `true` for a Type-C frame (232.0 §4.1.2.3.2).
-    #[must_use]
-    pub const fn control_command_flag(self) -> bool {
-        matches!(self, FrameType::Bc)
-    }
-}
+pub use aldis_core::CopFrameKind as FrameType;
 
 /// Sequence Flags of the Segment Header (232.0 §4.1.3.2.2.2, Table 4-2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
