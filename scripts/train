@@ -123,7 +123,8 @@ main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-di
 g() { git -C "$main_checkout" "$@"; }
 
 g fetch --quiet origin
-tmproot="$(mktemp -d "${TMPDIR:-/tmp}/train.XXXXXX")" || { echo "cannot make a temp dir" >&2; exit 2; }
+tmproot="$(mktemp -d "${TMPDIR:-/tmp}/train.XXXXXX")" ||
+    { echo "cannot make a temp dir" >&2; exit 2; }
 trap 'rm -rf "$tmproot"' EXIT
 die2() { echo "$*" >&2; exit 2; }
 

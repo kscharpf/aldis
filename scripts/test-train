@@ -198,7 +198,10 @@ branch g fg 1
 BASE=a pr 21 g "feat: stacked on a"
 
 failures=0
-run() { (cd "$repo" && : >"$STUB/cargo-calls" && TMPDIR="$work/tmp" PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
+run() {
+    (cd "$repo" && : >"$STUB/cargo-calls" &&
+        TMPDIR="$work/tmp" PATH="$work/bin:$PATH" "$script" "$@" 2>&1)
+}
 check() { # check <case> <condition exit status>
     if [ "$2" -eq 0 ]; then echo "ok: $1"; else echo "FAIL: $1"; failures=$((failures + 1)); fi
 }
