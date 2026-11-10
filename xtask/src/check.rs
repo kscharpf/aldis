@@ -9,9 +9,7 @@
 //!   first failure. An extra whose tool is not installed is skipped and reported. It does not
 //!   promise the gate.
 //! - `check --full`: the default tier plus coverage, `stack`, `big-endian`, and the exerciser's run
-//!   under QEMU when the verification run would run them for the change; required only for a PR
-//!   that merges alone or touches a `Cargo.toml`, a `Cargo.lock`, `coverage-waivers.toml`, or
-//!   `xtask/` (agent-brief item 3).
+//!   under QEMU when the verification run would run them for the change; optional, never required.
 //!
 //! Which extras and which of the `--full` steps run is decided by the gate's own data, not by a
 //! list of directories here: a step runs when `verify::inputs_differ` (the rule of VER-056) says
@@ -1035,9 +1033,7 @@ fn verdict(
             println!("check: next: cargo xtask check");
         }
         Mode::Default => {
-            println!(
-                "check: next: cargo xtask check --full if the PR merges alone or touches a Cargo.toml, a Cargo.lock, coverage-waivers.toml or xtask/"
-            );
+            println!("check: next: push; the merge train's `cargo xtask verify` decides the merge");
         }
         Mode::Full => {}
     }

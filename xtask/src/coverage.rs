@@ -152,7 +152,8 @@ fn measured<'a>(
 }
 
 /// `xtask coverage [-p <crate>]...`: the gate for every crate, or for the crates named. With
-/// `ALDIS_COVERAGE_SHRINK=1` (`xtask check --full` sets it) it lowers a waiver count to the
+/// `ALDIS_COVERAGE_SHRINK=1` (`xtask check --full` sets it; set it by hand to run `coverage -p
+/// <crate>` alone) it lowers a waiver count to the
 /// measured misses when those are fewer ([`shrink_waiver`]); it never raises one.
 pub fn main(args: &[&str]) -> Result<usize, String> {
     let shrink = std::env::var("ALDIS_COVERAGE_SHRINK").is_ok_and(|v| v == "1");

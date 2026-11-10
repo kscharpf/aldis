@@ -28,6 +28,12 @@
 # main, an ancestor of origin/main, so a remote branch with a commit main lacks is kept). For a
 # closed pull request both refs are tested before anything is deleted: if either fails, both are
 # kept and the script says which.
+# Last, with --apply, the main checkout's `main` is fast-forwarded to the fetched origin/main
+# (`merge --ff-only`), because sessions and subagents read AGENTS.md and docs/ there (maintainer
+# decision, 2026-11-10). If the main checkout is not on `main`, has changes to tracked files, or
+# cannot fast-forward, the script prints a warning and changes nothing (never a reset or a merge
+# commit); an untracked file does not count, since git itself refuses a fast-forward that would
+# overwrite one. The warning does not change the exit status.
 # Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
@@ -211,11 +217,31 @@ clean_one() {
     return 0
 }
 
+# Fast-forward the main checkout's main to origin/main, or warn and change nothing.
+fast_forward_base() {
+    local head
+    head="$(g symbolic-ref --quiet --short HEAD || true)"
+    if [ "$head" != main ]; then
+        echo "WARNING: the main checkout is on ${head:-a detached HEAD}, not main;" \
+            "not fast-forwarded to origin/main"
+    elif [ -n "$(g status --porcelain --untracked-files=no)" ]; then
+        echo "WARNING: the main checkout has local changes; not fast-forwarded to origin/main"
+    elif [ "$(g rev-parse main)" = "$(g rev-parse origin/main)" ]; then
+        echo "main checkout: main is already at origin/main"
+    elif g merge-base --is-ancestor origin/main main; then
+        echo "main checkout: main is ahead of origin/main; unchanged"
+    elif g merge --quiet --ff-only origin/main; then
+        echo "main checkout: main fast-forwarded to $(g rev-parse --short origin/main)"
+    else
+        echo "WARNING: main cannot fast-forward to origin/main (local commits?); unchanged"
+    fi
+}
+
 kept=0
 for b in "${branches[@]}"; do
     clean_one "$b" || kept=$((kept + 1))
 done
-[ "$apply" -eq 1 ] || echo "dry run; pass --apply to act"
+if [ "$apply" -eq 1 ]; then fast_forward_base; else echo "dry run; pass --apply to act"; fi
 if [ "$kept" -ne 0 ]; then
     echo "cleanup-merged: kept or failed $kept of ${#branches[@]} branch(es)"
     exit 1

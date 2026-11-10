@@ -19,6 +19,9 @@
 # ` start <time>`) is unlocked and
 # removed when clean, and kept when dirty; a failed step (any other locked worktree) stops the
 # branch and leaves its branches in place.
+# The main checkout's main is fast-forwarded to origin/main after an --apply run, and left alone
+# with a warning when it is not on main, has tracked changes, or has a local commit; a dry
+# run leaves it alone.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -366,6 +369,78 @@ expect "the worktree is removed" test ! -d "$work/wt-closed-ok"
 expect_not "the local branch is deleted" local_has train/closed-ok
 expect_not "the remote branch is deleted" remote_has train/closed-ok
 expect "the output says the remote has no unique commits" said "has no commits outside origin/main"
+expect "exit status 0" status_is 0
+
+echo "# the main checkout is fast-forwarded to origin/main"
+other="$work/other"
+git clone -q "$work/origin.git" "$other" 2>/dev/null
+git -C "$other" config user.email test@example.com
+git -C "$other" config user.name test
+advance() { # advance <file>: a new commit on origin's main, from the second clone
+    git -C "$other" checkout -q main
+    git -C "$other" pull -q --ff-only
+    echo "$1" >"$other/$1.txt"
+    git -C "$other" add "$1.txt"
+    git -C "$other" commit -q -m "$1"
+    git -C "$other" push -q origin main
+}
+tip() { git -C "$repo" rev-parse "$1"; }
+git -C "$repo" checkout -q main
+advance ff1
+run merged-after
+expect "dry run: main stays" test "$(tip main)" != "$(git -C "$other" rev-parse HEAD)"
+run --apply nonexistent
+expect "apply: main is at origin/main" test "$(tip main)" = "$(tip origin/main)"
+expect "apply: main is at the new commit" test "$(tip main)" = "$(git -C "$other" rev-parse HEAD)"
+expect "apply: says so" said "main checkout: main fast-forwarded"
+run --apply nonexistent
+expect "already current: says so" said "main is already at origin/main"
+
+advance ff2
+echo "# not on main: warn, change nothing"
+git -C "$repo" checkout -q merged-after
+before="$(tip main)"
+run --apply nonexistent
+expect "warns" said "WARNING: the main checkout is on merged-after"
+expect "main is unchanged" test "$(tip main)" = "$before"
+now="$(git -C "$repo" symbolic-ref --short HEAD)"
+expect "the checkout stays on its branch" test "$now" = merged-after
+git -C "$repo" checkout -q main
+
+echo "# local changes: warn, change nothing"
+echo dirt >>"$repo/init.txt"
+before="$(tip main)"
+run --apply nonexistent
+expect "warns" said "WARNING: the main checkout has local changes"
+expect "main is unchanged" test "$(tip main)" = "$before"
+expect "the change is kept" grep -q dirt "$repo/init.txt"
+git -C "$repo" checkout -q -- init.txt
+
+echo "# an untracked file does not block the fast-forward"
+echo stray >"$repo/stray.txt"
+advance ff3
+run --apply nonexistent
+expect "main is at origin/main" test "$(tip main)" = "$(tip origin/main)"
+expect "the untracked file stays" test -f "$repo/stray.txt"
+rm "$repo/stray.txt"
+
+echo "# main strictly ahead of origin/main: say so, change nothing"
+echo local >"$repo/local.txt"
+git -C "$repo" add local.txt
+git -C "$repo" commit -q -m "local only"
+before="$(tip main)"
+run --apply nonexistent
+expect "says ahead" said "main is ahead of origin/main; unchanged"
+expect_not "does not claim a fast-forward" said "main fast-forwarded"
+expect "main is unchanged" test "$(tip main)" = "$before"
+expect "exit status 0" status_is 0
+
+echo "# cannot fast-forward: warn, change nothing"
+advance ff4
+before="$(tip main)"
+run --apply nonexistent
+expect "warns" said "WARNING: main cannot fast-forward"
+expect "main is unchanged" test "$(tip main)" = "$before"
 expect "exit status 0" status_is 0
 
 if [ "$failures" -eq 0 ]; then

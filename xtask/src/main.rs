@@ -10,6 +10,7 @@ mod check;
 mod check_lock;
 mod consistency;
 mod coverage;
+mod coverage_off;
 mod features;
 mod fields;
 mod fuzz;
@@ -102,6 +103,8 @@ commands:
   rs020                        no bare integer in a public field or enum payload of a codec
                                crate unless xtask/rs020-exemptions.toml exempts it with a
                                reason, and no exemption that matches nothing (RS-020)
+  coverage-off                 every test module of a coverage-measured crate carries
+                               #[cfg_attr(coverage_nightly, coverage(off))] (VER-024)
   restricted [list]            every restricted type of a codec crate (a checked constructor)
                                has a property test with a `// restricted: <Type>` marker, and
                                every marker names one; `list` prints the types (RS-020, VER-023)
@@ -147,7 +150,7 @@ commands:
                                time per worktree; --from <step> skips the steps before the
                                named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, layers, consistency, rs020, loops,
+                               spec-lint, links, layers, consistency, rs020, loops, coverage-off,
                                restricted, assurance --strict, refapp-deps, vectors validate,
                                vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
@@ -175,6 +178,7 @@ pub(crate) const CI: &[Step] = &[
     ("consistency", consistency::check),
     ("rs020", rs020::check),
     ("loops", || loops::run(&[])),
+    ("coverage-off", coverage_off::check),
     ("restricted", || restricted::run(false)),
     ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),
@@ -279,6 +283,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["restricted"] => restricted::run(false),
         ["restricted", "list"] => restricted::run(true),
         ["loops", rest @ ..] => loops::run(rest),
+        ["coverage-off"] => coverage_off::check(),
         ["assurance"] => assurance::run(false),
         ["assurance", "--strict"] => assurance::run(true),
         ["verify", rest @ ..] => verify::run(rest),
