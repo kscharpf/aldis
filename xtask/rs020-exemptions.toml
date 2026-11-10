@@ -107,7 +107,3 @@ reason = "output: the frame length in octets a header declares, which the stream
 [[exemption]]
 item = "aldis_uslp::writer::FrameFields.vcf_count"
 reason = "relation: the VCF Count, whose range is set by the VC's VCF Count Length; the writer checks the fit when it builds the VcfCount (USLP-004)"
-
-[[exemption]]
-item = "aldis_core::stream::Peek::Frame.0"
-reason = "output: the frame length in octets a header declares, which the delimiter reports to the stream (TC-020, USLP-014)"

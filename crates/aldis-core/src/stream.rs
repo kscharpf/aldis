@@ -17,6 +17,7 @@
 use core::fmt;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
+use core::num::NonZeroUsize;
 
 use crate::checked::{CheckBytes, Checked, check_bytes_matched};
 use crate::error::{Error, ErrorKind};
@@ -28,13 +29,18 @@ use crate::mode::{DecodeMode, Lenient};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Peek<'a, R> {
     /// A valid header declares a frame of this many octets.
-    Frame(usize),
+    Frame(NonZeroUsize),
     /// The first octets are discarded with a reason and the stream goes on after them.
     Discard {
-        /// The discarded octets.
-        octets: &'a [u8],
-        /// The octets after them.
-        rest: &'a [u8],
+        /// The discarded octets and the octets after them.
+        cut: Cut<'a>,
+        /// The reason for discard.
+        reason: R,
+        /// The error detail of the discard.
+        error: Error,
+    },
+    /// The whole rest of the unit is discarded with a reason.
+    DiscardRest {
         /// The reason for discard.
         reason: R,
         /// The error detail of the discard.
@@ -43,6 +49,39 @@ pub enum Peek<'a, R> {
     /// No valid header: the rest of the unit is Fill Data, or leftover fill if longer than the
     /// longest fill.
     Fill,
+}
+
+impl<R> Peek<'_, R> {
+    /// A frame of `len` octets, or [`Peek::Fill`] if `len` is zero, which no header declares.
+    #[must_use]
+    pub const fn frame(len: usize) -> Self {
+        match NonZeroUsize::new(len) {
+            Some(len) => Peek::Frame(len),
+            None => Peek::Fill,
+        }
+    }
+}
+
+/// A non-empty stretch of octets cut from the front of a slice, and the octets after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cut<'a> {
+    octets: &'a [u8],
+    rest: &'a [u8],
+}
+
+impl<'a> Cut<'a> {
+    /// Cuts the first `len` octets of `whole`; `None` if `whole` holds fewer.
+    #[must_use]
+    pub fn new(whole: &'a [u8], len: NonZeroUsize) -> Option<Self> {
+        let (octets, rest) = whole.split_at_checked(len.get())?;
+        Some(Cut { octets, rest })
+    }
+
+    /// The cut octets, never empty.
+    #[must_use]
+    pub const fn octets(&self) -> &'a [u8] {
+        self.octets
+    }
 }
 
 /// The protocol side of a [`FrameStream`] (TC-020, USLP-014).
@@ -437,7 +476,7 @@ where
     let all: &'a [u8] = rest;
     match D::peek(all, channels) {
         Peek::Frame(len) => {
-            if let Some((frame_bytes, remaining)) = all.split_at_checked(len) {
+            if let Some((frame_bytes, remaining)) = all.split_at_checked(len.get()) {
                 *rest = remaining;
                 return Some(
                     match check_bytes_matched::<D::Frame<'a>, L>(frame_bytes, channels, mode) {
@@ -450,7 +489,7 @@ where
                     },
                 );
             }
-            match D::incomplete(all, len, channels, mode) {
+            match D::incomplete(all, len.get(), channels, mode) {
                 Some((reason, error)) => {
                     *rest = &[];
                     Some(IntakeItem::Discarded {
@@ -462,16 +501,19 @@ where
                 None => Some(fill::<D, _>(rest, all, max_fill)),
             }
         }
-        Peek::Discard {
-            octets,
-            rest: remaining,
-            reason,
-            error,
-        } => {
-            *rest = remaining;
+        Peek::Discard { cut, reason, error } => {
+            *rest = cut.rest;
             Some(IntakeItem::Discarded {
                 reason,
-                octets,
+                octets: cut.octets,
+                error,
+            })
+        }
+        Peek::DiscardRest { reason, error } => {
+            *rest = &[];
+            Some(IntakeItem::Discarded {
+                reason,
+                octets: all,
                 error,
             })
         }
@@ -506,7 +548,9 @@ const fn fill<'a, D: Delimiter, F>(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Delimiter, FrameStream, IntakeItem, LenientFrameStream, Peek, StreamFrame};
+    use core::num::NonZeroUsize;
+
+    use super::{Cut, Delimiter, FrameStream, IntakeItem, LenientFrameStream, Peek, StreamFrame};
     use crate::anomaly::AnomalySet;
     use crate::checked::{CheckBytes, Rejection};
     use crate::error::{Error, ErrorKind};
@@ -635,17 +679,20 @@ mod tests {
                 + ?Sized,
         {
             match rest.first().copied() {
-                Some(9) => {
-                    let (octets, rest) = rest.split_at(rest.len().min(2));
-                    Peek::Discard {
-                        octets,
-                        rest,
+                Some(9) => match Cut::new(rest, NonZeroUsize::MIN.saturating_add(1)) {
+                    Some(cut) => Peek::Discard {
+                        cut,
                         reason: Why::Gone,
                         error: Error::new(ErrorKind::Malformed),
-                    }
-                }
-                Some(n @ (2..=8)) => Peek::Frame(usize::from(n)),
-                Some(0xFF) => Peek::Frame(9),
+                    },
+                    None => Peek::DiscardRest {
+                        reason: Why::Gone,
+                        error: Error::new(ErrorKind::Malformed),
+                    },
+                },
+                Some(n @ (2..=8)) => Peek::frame(usize::from(n)),
+                Some(0xFF) => Peek::frame(9),
+                Some(0) => Peek::frame(0),
                 _ => Peek::Fill,
             }
         }
