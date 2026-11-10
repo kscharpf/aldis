@@ -8,6 +8,8 @@
 //! **A1 WP-3b:** the command handler with its time-tag queue, the table store, and the memory
 //! dump (APP-012, APP-013, APP-016, APP-017, APP-024); the node ignores ops-script entries,
 //! which only the ground node uses.
+//! **A2 WP-3a:** the downlink at frame level ([`frames_down`]): generators, multiplexer, OCF, and
+//! TM frames, selected by [`FlightNode::new_frames`], which also selects the uplink at frame level (APP-030…APP-035, APP-090, APP-132).
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -15,6 +17,7 @@ pub mod command;
 pub mod downlink;
 pub mod dump;
 pub mod event;
+pub mod frames_down;
 pub mod frames_up;
 pub mod layout;
 pub mod queue;
@@ -31,6 +34,7 @@ use refapp_scenario::{Instant, Node, Output, StepInput};
 pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
 pub use event::Event;
+use frames_down::FrameDownlink;
 pub use frames_up::FrameUplink;
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
@@ -42,6 +46,8 @@ use table::TableStore;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FlightNode {
     downlink: Downlink,
+    /// The frame level of the downlink; none at the packet level of A1 (§6.1).
+    frames: Option<FrameDownlink>,
     status: Status,
     /// Time-tagged commands waiting for their execution time (§2.3).
     queue: TimeTagQueue,
@@ -68,15 +74,20 @@ impl FlightNode {
         FlightNode::default()
     }
 
-    /// A flight node whose uplink units are TC frames (A2 on, §4.2, APP-139): each goes through
-    /// the receiver, FARM-1, and the MAP reassembler before the command handler (APP-040…APP-043).
+    /// A flight node at frame level (A2 on, §6.1): the downlink unit is the TM frame, one at every
+    /// step with `tx_slot` (APP-090, APP-132), and the uplink units are TC frames (APP-139), each
+    /// through the receiver, FARM-1, and the MAP reassembler before the command handler
+    /// (APP-040…APP-043). [`FlightNode::new`] is the packet level of A1.
     ///
     /// # Errors
     /// `InvalidConfig` if the scenario values are no valid engine configuration, which the
     /// generated constants rule out.
-    pub fn with_frame_uplink(mut self) -> Result<FlightNode> {
-        self.uplink = Some(FrameUplink::new()?);
-        Ok(self)
+    pub fn new_frames() -> Result<FlightNode> {
+        Ok(FlightNode {
+            frames: Some(FrameDownlink::new()?),
+            uplink: Some(FrameUplink::new()?),
+            ..FlightNode::default()
+        })
     }
 
     /// The CLCW FARM-1 reports now, for the OCF of the downlink (§4.4.1, APP-134); `None` at
@@ -98,9 +109,11 @@ impl FlightNode {
         &mut self.status
     }
 
-    /// Packets the node could not build: 0 unless the time conversion or the packet writer
-    /// fails, which the scenario's values rule out (APP-060). Each failure is also raised as the
-    /// application event `packet_rejected` (APP-131).
+    /// Failures of the node's output: 0 in a correctly configured run. A packet it could not
+    /// build (the time conversion or the packet writer failed, which the scenario's values rule
+    /// out, APP-060) is raised as the application event `packet_rejected` (APP-131). At frame
+    /// level it also counts a packet a generator refused and a slot an engine failed, each raised
+    /// as `downlink_refused` (APP-142).
     #[must_use]
     pub const fn build_failures(&self) -> u32 {
         self.build_failures
@@ -113,9 +126,16 @@ impl FlightNode {
 
     /// Sends an unsegmented packet of `stream`; a failure is counted, never panics.
     fn send(&mut self, stream: Stream, now: Instant, user_data: &[u8], out: &mut dyn Output) {
-        let sent = self
-            .downlink
-            .send(stream, SequenceFlags::Unsegmented, now, user_data, out);
+        let (sent, refused) = {
+            let mut tap = FlightNode::tap(self.frames.as_mut(), stream, now, out);
+            let sent =
+                self.downlink
+                    .send(stream, SequenceFlags::Unsegmented, now, user_data, &mut tap);
+            (sent, tap.refused())
+        };
+        if let Some(kind) = refused {
+            self.packet_refused(kind, frames_down::vc_of(stream), out);
+        }
         if let Err(e) = sent {
             self.build_failed(e.kind(), out);
         }
@@ -162,6 +182,7 @@ impl FlightNode {
             Periodic::PAYLOAD.at(self.payload_slot),
             queued,
             dump,
+            self.frames.as_ref().and_then(FrameDownlink::next_deadline),
         ]
         .into_iter()
         .flatten()
@@ -177,6 +198,8 @@ impl Node for FlightNode {
         self.dump_segments(input.now, out);
         self.housekeeping(input.now, out);
         self.payload(input.now, out);
+        // §2.1 step 6 (A2 on): the frame of the slot.
+        self.downlink_frame(input.tx_slot, input.now, out);
         self.next_deadline()
     }
 }
@@ -499,3 +522,5 @@ pub(crate) mod tests {
 
 #[cfg(test)]
 mod command_tests;
+#[cfg(test)]
+mod frames_down_tests;

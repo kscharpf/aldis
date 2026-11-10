@@ -389,4 +389,4 @@ fn reject_packet(out: &mut dyn Output, kind: ErrorKind) {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

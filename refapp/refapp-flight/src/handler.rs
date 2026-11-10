@@ -189,7 +189,7 @@ impl FlightNode {
                 self.dump = Some(dump);
                 return;
             }
-            match dump.send(&mut self.downlink, out) {
+            match self.send_dump_packet(&mut dump, out) {
                 Ok(segment) if segment.last => {
                     self.status.dumps_completed = self.status.dumps_completed.wrapping_add(1);
                     let region = dump.region();
