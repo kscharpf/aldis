@@ -1,6 +1,7 @@
 //! Zero-copy TM Transfer Frame view (132.0-B-3 §4.1, §6.3; TM-001…TM-008, API-010, API-012…014,
 //! API-072, GEN-013, GEN-043, GEN-053).
 
+use aldis_core::lookup::ChannelLookup;
 use core::ops::Range;
 
 use aldis_core::crc::verify_fecf;
@@ -11,7 +12,7 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::TmAnomaly;
-use crate::config::{NoSdls, TmPhysicalChannelConfig, VcLookup, security_layout};
+use crate::config::{NoSdls, TmPhysicalChannelConfig, security_layout};
 use crate::field;
 use crate::header::{
     DataFieldStatus, FSH_VERSION, FshLen, PRIMARY_HEADER_LEN, PacketPointer, SegmentLengthId,
@@ -90,7 +91,9 @@ impl<'a> TmFrame<'a> {
     /// - last, with the Synchronization Flag `0` and the First Header Pointer `0x7FE` (Only Idle
     ///   Data) on a virtual channel whose security layout is not empty, `InvalidField` (`vc_id`)
     ///   (132.0 §6.4.6.2; TM-010, OI-54).
-    pub fn decode_with<L: VcLookup + ?Sized>(
+    pub fn decode_with<
+        L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
@@ -105,7 +108,9 @@ impl<'a> TmFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except the deviations that are anomalies.
-    pub fn decode_with_lenient<L: VcLookup + ?Sized>(
+    pub fn decode_with_lenient<
+        L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
@@ -121,7 +126,9 @@ impl<'a> TmFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except `CrcMismatch`.
-    pub fn decode_unchecked<L: VcLookup + ?Sized>(
+    pub fn decode_unchecked<
+        L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
@@ -135,7 +142,9 @@ impl<'a> TmFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode_with_lenient`](Self::decode_with_lenient), except `CrcMismatch`.
-    pub fn decode_unchecked_lenient<L: VcLookup + ?Sized>(
+    pub fn decode_unchecked_lenient<
+        L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
@@ -146,7 +155,7 @@ impl<'a> TmFrame<'a> {
 
     /// The decode of every entry point: the length and Primary Header checks, the FECF check if
     /// `fecf`, the security layout of the virtual channel, and the rest.
-    fn decode_in<L: VcLookup + ?Sized>(
+    fn decode_in<L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized>(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,

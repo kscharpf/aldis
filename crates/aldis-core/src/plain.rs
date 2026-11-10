@@ -53,6 +53,19 @@ impl<F> Deref for Plain<F> {
     }
 }
 
+/// A frame that is both checked and plain gives up its channel check where only the SDLS proof
+/// matters, such as a receiving engine's frame input (RS-023, API-016, API-017).
+///
+/// Only the [`Checked`] proof is dropped: the result has the same [`Plain`] proof as the
+/// original, so no proof is made, only forgotten.
+impl<F> From<Plain<Checked<F>>> for Plain<F> {
+    fn from(plain: Plain<Checked<F>>) -> Plain<F> {
+        Plain {
+            frame: plain.frame.into_frame(),
+        }
+    }
+}
+
 /// A frame that exposes the Security Header and Trailer of its channel (355.0 §2.3; RS-023,
 /// API-070, API-074).
 ///
@@ -138,6 +151,18 @@ mod tests {
         let checked = Demo(&[], &[]).check(&()).unwrap();
         let plain: Plain<Checked<Demo>> = checked.into_plain(NoSecurity).unwrap();
         assert_eq!(plain.into_frame().into_frame(), Demo(&[], &[]));
+    }
+
+    #[test]
+    fn a_checked_plain_frame_gives_up_the_check_and_keeps_plain() {
+        // req: RS-023, API-016, API-017
+        let both: Plain<Checked<Demo>> = Demo(&[], &[])
+            .check(&())
+            .unwrap()
+            .into_plain(NoSecurity)
+            .unwrap();
+        let plain: Plain<Demo> = both.into();
+        assert_eq!(plain.into_frame(), Demo(&[], &[]));
     }
 
     #[test]

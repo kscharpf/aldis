@@ -14,7 +14,7 @@ use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::{AnomalySet, CheckBytes, Checked, DecodeMode, Lenient, Rejection};
 
 use crate::anomaly::TcAnomaly;
-use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig};
 use crate::header::{TcMapId, TcSpacecraftId, TcVcId};
 use crate::view::{Channels, TcFrame, parse};
 
@@ -114,7 +114,13 @@ impl Reason {
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
-pub fn check_frame<'a, L: VcLookup + ?Sized>(
+pub fn check_frame<
+    'a,
+    L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     frame: &'a [u8],
     channels: &L,
     mode: DecodeMode,
@@ -149,6 +155,10 @@ impl<'a> CheckBytes<'a> for TcFrame<'a> {
     {
         parse(bytes, channels, Channels::Required, mode, true)
             .map(|p| (p.frame, p.anomalies, (p.vc, p.map)))
+    }
+
+    fn octets(&self) -> &'a [u8] {
+        TcFrame::octets(self)
     }
 }
 

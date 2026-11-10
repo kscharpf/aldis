@@ -4,19 +4,23 @@
 //! Replaces fragmented delimiting and validation passes with a single in-place iterator over
 //! an ingested data unit (such as a CLTU's decoded codeblocks).
 //!
-//! A valid frame is yielded as [`IntakeItem::Accepted`], bundled with its verified [`VcConfig`]
+//! The stream is `aldis_core::stream::FrameStream` over [`UslpIntake`], the USLP rules of the
+//! [`Delimiter`]. A valid frame is yielded as [`IntakeItem::Accepted`], bundled with its verified [`VcConfig`]
 //! and optional [`MapConfig`]. Discarded frames, fill data, and truncated headers are yielded as
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
-use aldis_core::checked::check_bytes_matched;
-use aldis_core::{Checked, DecodeMode, Error, ErrorKind, Lenient};
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
+use core::num::NonZeroUsize;
+
+use aldis_core::stream::{Cut, Delimiter, Peek};
+use aldis_core::{Checked, DecodeMode, Error, ErrorKind};
 
 use crate::anomaly::UslpAnomaly;
 use crate::checked::Reason;
-use crate::config::{MapConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig};
 use crate::delimit::{Declared, declared_len};
 use crate::field;
-use crate::header::{RawRest, RawStart};
+use crate::header::{RawRest, RawStart, UslpMapId, UslpSpacecraftId, UslpVcId};
 use crate::view::{Channels, UslpFrame, parse};
 
 /// Why wire octets or a USLP frame were discarded (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
@@ -163,294 +167,121 @@ impl From<Reason> for DiscardReason {
     }
 }
 
-/// An item yielded by [`FrameStream`] or [`LenientFrameStream`] (732.1 §4.3.11.2, §4.3.11.3;
-/// USLP-014, USLP-015).
+/// The USLP rules of the frame stream (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
 ///
-/// `F` is the accepted frame: a [`Checked`] frame from the strict stream, and the same in a
-/// [`Lenient`] from the lenient one (API-016, API-030). A discarded item has no anomalies.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntakeItem<'a, F = Checked<UslpFrame<'a>>> {
-    /// A checked USLP Transfer Frame, bundled with its matched Virtual Channel and MAP configurations.
-    Accepted {
-        /// The checked frame view.
-        frame: F,
-        /// The verified Virtual Channel configuration.
-        vc: VcConfig,
-        /// The verified MAP configuration, if present.
-        map: Option<MapConfig>,
-    },
-    /// Discarded wire octets with the reason and underlying error.
-    Discarded {
-        /// The reason for discard.
-        reason: DiscardReason,
-        /// The discarded octets.
-        octets: &'a [u8],
-        /// The error detail of the rejection.
-        error: Error,
-    },
-}
+/// A frame of an unexpected version whose length (declared, or its VC's truncated frame length)
+/// fits in the unit is discarded and the stream goes on after it; a valid header declares a
+/// frame, and a frame that declares more octets than remain is checked as far as it goes and
+/// discarded as incomplete unless an earlier check fails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UslpIntake;
 
-impl<'a, F> IntakeItem<'a, F> {
-    /// The item with its accepted frame converted by `convert`; a discarded item is unchanged.
-    pub fn map_frame<G>(self, convert: impl FnOnce(F) -> G) -> IntakeItem<'a, G> {
-        match self {
-            IntakeItem::Accepted { frame, vc, map } => IntakeItem::Accepted {
-                frame: convert(frame),
-                vc,
-                map,
-            },
-            IntakeItem::Discarded {
-                reason,
-                octets,
-                error,
-            } => IntakeItem::Discarded {
-                reason,
-                octets,
-                error,
-            },
-        }
-    }
-}
+impl Delimiter for UslpIntake {
+    type Frame<'a> = UslpFrame<'a>;
+    type Anomaly = UslpAnomaly;
+    type Rejected = Reason;
+    type Reason = DiscardReason;
+    type Scid = UslpSpacecraftId;
+    type VcId = UslpVcId;
+    type MapId = UslpMapId;
+    type Vc = VcConfig;
+    type Map = MapConfig;
+    type Physical = PhysicalChannelConfig;
 
-impl<'a> IntakeItem<'a, Checked<UslpFrame<'a>>> {
-    /// The octets of the item.
-    #[must_use]
-    pub fn octets(&self) -> &'a [u8] {
-        match self {
-            IntakeItem::Accepted { frame, .. } => frame.octets(),
-            IntakeItem::Discarded { octets, .. } => octets,
-        }
-    }
+    const FILL: DiscardReason = DiscardReason::Fill;
+    const LEFTOVER_FILL: DiscardReason = DiscardReason::LeftoverFill;
 
-    /// Length in octets consumed from the input stream.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.octets().len()
-    }
-
-    /// Always `false`: every intake item consumes at least one octet.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        false
-    }
-}
-
-impl<'a> IntakeItem<'a, Lenient<Checked<UslpFrame<'a>>, UslpAnomaly>> {
-    /// The octets of the item.
-    #[must_use]
-    pub fn octets(&self) -> &'a [u8] {
-        match self {
-            IntakeItem::Accepted { frame, .. } => frame.octets(),
-            IntakeItem::Discarded { octets, .. } => octets,
-        }
-    }
-
-    /// Length in octets consumed from the input stream.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.octets().len()
-    }
-
-    /// Always `false`: every intake item consumes at least one octet.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        false
-    }
-}
-
-/// The position in a data unit and the channels, shared by the strict and the lenient stream.
-#[derive(Debug, Clone)]
-struct Intake<'a, 'c, L: VcLookup + ?Sized> {
-    rest: &'a [u8],
-    channels: &'c L,
-    max_fill: usize,
-}
-
-/// In-place zero-allocation iterator over a received USLP data unit (732.1 §4.3.11.2, §4.3.11.3; USLP-014, USLP-015).
-///
-/// Fuses delimiting, fill removal, and channel validation in a single pass, in strict mode.
-/// [`LenientFrameStream`] is the lenient one (API-030).
-#[derive(Debug, Clone)]
-pub struct FrameStream<'a, 'c, L: VcLookup + ?Sized> {
-    intake: Intake<'a, 'c, L>,
-}
-
-/// The lenient twin of [`FrameStream`]: each item comes with the anomalies of the frame it
-/// accepted, none for a discarded item (732.1 §4.3.11.2, §4.3.11.3; USLP-014, API-032).
-#[derive(Debug, Clone)]
-pub struct LenientFrameStream<'a, 'c, L: VcLookup + ?Sized> {
-    intake: Intake<'a, 'c, L>,
-}
-
-impl<'a, 'c, L: VcLookup + ?Sized> FrameStream<'a, 'c, L> {
-    /// Creates a new strict intake stream over one clean data unit, where `max_fill` is the
-    /// longest fill the coding sublayer appends (six octets for the BCH codeblock, seven or 31
-    /// for the LDPC codeblocks, 732.1 §4.3.11.2.4 note 2; OI-47).
-    #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
-        FrameStream {
-            intake: Intake {
-                rest: data_unit,
-                channels,
-                max_fill,
-            },
-        }
-    }
-
-    /// The remaining unconsumed octets of the data unit.
-    #[must_use]
-    pub const fn remaining(&self) -> &'a [u8] {
-        self.intake.rest
-    }
-}
-
-impl<'a, 'c, L: VcLookup + ?Sized> LenientFrameStream<'a, 'c, L> {
-    /// Creates a new lenient intake stream over one clean data unit, where `max_fill` is the
-    /// longest fill the coding sublayer appends (OI-47).
-    #[must_use]
-    pub const fn new(data_unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
-        LenientFrameStream {
-            intake: Intake {
-                rest: data_unit,
-                channels,
-                max_fill,
-            },
-        }
-    }
-
-    /// The remaining unconsumed octets of the data unit.
-    #[must_use]
-    pub const fn remaining(&self) -> &'a [u8] {
-        self.intake.rest
-    }
-}
-
-impl<'a, L: VcLookup + ?Sized> Iterator for FrameStream<'a, '_, L> {
-    type Item = IntakeItem<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // A strict decode has no anomalies; the empty set is dropped.
-        self.intake
-            .next_in(DecodeMode::Strict)
-            .map(|item| item.map_frame(Lenient::into_view))
-    }
-}
-
-impl<'a, L: VcLookup + ?Sized> Iterator for LenientFrameStream<'a, '_, L> {
-    type Item = IntakeItem<'a, Lenient<Checked<UslpFrame<'a>>, UslpAnomaly>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.intake.next_in(DecodeMode::Lenient)
-    }
-}
-
-impl<'a, L: VcLookup + ?Sized> Intake<'a, '_, L> {
-    /// The next item; an accepted frame comes with its anomalies.
-    fn next_in(
-        &mut self,
-        mode: DecodeMode,
-    ) -> Option<IntakeItem<'a, Lenient<Checked<UslpFrame<'a>>, UslpAnomaly>>> {
-        if self.rest.is_empty() {
-            return None;
-        }
-
+    fn peek<'a, L>(rest: &'a [u8], channels: &L) -> Peek<'a, DiscardReason>
+    where
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    {
         // If an unexpected-version frame is present with its declared length available in rest,
         // report DiscardReason::UnexpectedVersion and advance past it.
         let unexpected_version_frame = (|| {
-            let start = RawStart::parse(self.rest)?;
+            let start = RawStart::parse(rest)?;
             let error = start.check_version().err()?;
             let len = if start.truncated {
-                self.channels
+                channels
                     .vc(start.channel.spacecraft_id, start.channel.vc_id)
                     .and_then(|vc| vc.truncated_frame_len())?
                     .get()
             } else {
-                let raw = RawRest::parse(self.rest)?;
+                let raw = RawRest::parse(rest)?;
                 if raw.frame_len < 7 {
                     return None;
                 }
                 raw.frame_len
             };
-            let (frame_bytes, remaining) = self.rest.split_at_checked(len)?;
-            Some((frame_bytes, remaining, error))
+            let cut = Cut::new(rest, NonZeroUsize::new(len)?)?;
+            Some((cut, error))
         })();
-        if let Some((frame_bytes, remaining, error)) = unexpected_version_frame {
-            self.rest = remaining;
-            return Some(IntakeItem::Discarded {
+        if let Some((cut, error)) = unexpected_version_frame {
+            return Peek::Discard {
+                cut,
                 reason: DiscardReason::UnexpectedVersion,
-                octets: frame_bytes,
                 error,
-            });
+            };
         }
 
-        let len = match declared_len(self.rest, self.channels) {
-            Some(Declared::Len(len)) => len,
-            Some(Declared::TruncatedOnly) => self.rest.len(),
-            Some(Declared::NoTruncatedLength) => {
-                let octets = self.rest;
-                self.rest = &[];
-                return Some(IntakeItem::Discarded {
-                    reason: DiscardReason::NoTruncatedLength,
-                    octets,
-                    error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
-                });
-            }
-            None if self.rest.len() > self.max_fill => {
-                // More than the coding sublayer appends: a Frame Length error may have
-                // shortened a frame (732.1 §4.3.11.2.4 note 2; OI-47).
-                let octets = self.rest;
-                self.rest = &[];
-                return Some(IntakeItem::Discarded {
-                    reason: DiscardReason::LeftoverFill,
-                    octets,
-                    error: Error::new(ErrorKind::Malformed).with_field(field::FRAME_LEN),
-                });
-            }
-            None => {
-                let octets = self.rest;
-                self.rest = &[];
-                return Some(IntakeItem::Discarded {
-                    reason: DiscardReason::Fill,
-                    octets,
-                    error: Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD),
-                });
-            }
-        };
+        match declared_len(rest, channels) {
+            Some(Declared::Len(len)) => Peek::frame(len),
+            Some(Declared::TruncatedOnly) => Peek::frame(rest.len()),
+            Some(Declared::NoTruncatedLength) => Peek::DiscardRest {
+                reason: DiscardReason::NoTruncatedLength,
+                error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
+            },
+            None => Peek::Fill,
+        }
+    }
 
-        if let Some((frame_bytes, remaining)) = self.rest.split_at_checked(len) {
-            self.rest = remaining;
-            match check_bytes_matched::<UslpFrame<'a>, L>(frame_bytes, self.channels, mode) {
-                Ok((frame, (vc, map))) => Some(IntakeItem::Accepted { frame, vc, map }),
-                Err(rejection) => Some(IntakeItem::Discarded {
-                    reason: DiscardReason::from(rejection.reason()),
-                    octets: frame_bytes,
-                    error: rejection.error(),
-                }),
+    fn incomplete<L>(
+        rest: &[u8],
+        declared_len: usize,
+        channels: &L,
+        mode: DecodeMode,
+    ) -> Option<(DiscardReason, Error)>
+    where
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    {
+        match parse(rest, channels, Channels::Required, mode, true) {
+            Err(rejection) if rejection.reason() != Reason::LengthMismatch => {
+                Some((DiscardReason::from(rejection.reason()), rejection.error()))
             }
-        } else {
-            let octets = self.rest;
-            self.rest = &[];
-            match parse(octets, self.channels, Channels::Required, mode, true) {
-                Err(rejection) if rejection.reason() != Reason::LengthMismatch => {
-                    Some(IntakeItem::Discarded {
-                        reason: DiscardReason::from(rejection.reason()),
-                        octets,
-                        error: rejection.error(),
-                    })
-                }
-                _ => Some(IntakeItem::Discarded {
-                    reason: DiscardReason::IncompleteFrame { declared_len: len },
-                    octets,
-                    error: Error::incomplete(len),
-                }),
-            }
+            _ => Some((
+                DiscardReason::IncompleteFrame { declared_len },
+                Error::incomplete(declared_len),
+            )),
         }
     }
 }
 
-impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameStream<'_, '_, L> {}
+/// An item yielded by [`FrameStream`] or [`LenientFrameStream`] (732.1 §4.3.11.2, §4.3.11.3;
+/// USLP-014, USLP-015).
+///
+/// `F` is the accepted frame: a [`Checked`] frame from the strict stream, and the same in a
+/// [`Lenient`](aldis_core::Lenient) from the lenient one (API-016, API-030). A discarded item
+/// has no anomalies.
+pub type IntakeItem<'a, F = Checked<UslpFrame<'a>>> =
+    aldis_core::stream::IntakeItem<'a, UslpIntake, F>;
 
-impl<L: VcLookup + ?Sized> core::iter::FusedIterator for LenientFrameStream<'_, '_, L> {}
+/// In-place zero-allocation iterator over a received USLP data unit (732.1 §4.3.11.2,
+/// §4.3.11.3; USLP-014, USLP-015), in strict mode.
+///
+/// Fuses delimiting, fill removal, and channel validation in a single pass.
+/// [`LenientFrameStream`] is the lenient one (API-030).
+pub type FrameStream<'a, 'c, L> = aldis_core::stream::FrameStream<'a, 'c, UslpIntake, L>;
+
+/// The lenient twin of [`FrameStream`]: each item comes with the anomalies of the frame it
+/// accepted, none for a discarded item (732.1 §4.3.11.2, §4.3.11.3; USLP-014, API-032).
+pub type LenientFrameStream<'a, 'c, L> =
+    aldis_core::stream::LenientFrameStream<'a, 'c, UslpIntake, L>;
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {

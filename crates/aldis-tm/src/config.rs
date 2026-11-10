@@ -8,7 +8,7 @@
 //! can be computed for each of its VCs without failing.
 //!
 //! The Valid Spacecraft IDs of a physical channel (Table 5-1) are the SCIDs of the master channel
-//! configurations the receiver holds: a decoder given a slice of them ([`VcLookup`]) rejects any
+//! configurations the receiver holds: a decoder given a slice of them (a `ChannelLookup`) rejects any
 //! other SCID with `UnknownChannel`. The MC and VC Multiplexing Schemes are mission-specific and
 //! belong to the engines (M4).
 
@@ -321,23 +321,14 @@ impl TmMasterChannelConfig {
     }
 }
 
-/// The lookup of the Security Header and Trailer lengths of a frame's virtual channel (API-070).
-///
-/// A decoder needs them to place the data field (132.0 §6.3, Table 6-1; M2 plan D14). A
-/// [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is its [`SecurityLayout`].
-/// A bound alias, implemented for every such lookup; implement `ChannelLookup`. Implemented by
-/// [`TmMasterChannelConfig`], by a slice of them for a physical channel that carries several
-/// master channels, and by [`NoSdls`] for a channel on which no VC uses SDLS.
-pub trait VcLookup: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> {}
-
-impl<T: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized> VcLookup for T {}
-
 /// The security layout of virtual channel `vcid` of spacecraft `scid` (API-070).
 ///
 /// # Errors
 /// `UnknownChannel` (`spacecraft_id`, with the expected value if the lookup has one Spacecraft
 /// ID) if `scid` is not configured; (`vc_id`) if the channel is not.
-pub fn security_layout<L: VcLookup + ?Sized>(
+pub fn security_layout<
+    L: ChannelLookup<SpacecraftId<10>, VcId<3>, Vc = SecurityLayout> + ?Sized,
+>(
     vcs: &L,
     scid: SpacecraftId<10>,
     vcid: VcId<3>,

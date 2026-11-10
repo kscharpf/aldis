@@ -3,6 +3,15 @@
 //! The writer has a finishing typestate (232.0 §4.1, §6.3; TC-004, TC-007, TC-008, API-020…API-023, API-070, API-072,
 //! API-074, RS-023, GEN-014, GEN-052).
 
+use crate::config::MapConfig;
+use crate::config::PhysicalChannelConfig;
+use crate::config::VcConfig;
+use crate::header::TcMapId;
+use crate::header::TcSpacecraftId;
+use crate::header::TcVcId;
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use core::marker::PhantomData;
 
 use aldis_core::crc;
@@ -13,7 +22,6 @@ use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
 use aldis_core::{Error, ErrorKind, Result};
 
-use crate::config::VcLookup;
 use crate::control::{ControlCommand, ControlOctets};
 use crate::field;
 use crate::header::{
@@ -64,7 +72,12 @@ impl Plan {
     /// `InvalidField` (`segment_header`) when a Segment Header is given on a Virtual Channel
     /// without them or missing on one with them; `InvalidField` (`frame_data_field`) for no
     /// data; `OutOfRange` (`frame_len`) above the channel's Maximum Transfer Frame Length.
-    fn new<L: VcLookup + ?Sized>(
+    fn new<
+        L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+            + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         channels: &L,
         fields: FrameFields,
         segment_header: Option<SegmentHeader>,
@@ -147,7 +160,12 @@ impl Plan {
 /// - `BufferTooSmall` if `out` is shorter than the frame.
 ///
 /// On error `out` is unchanged (API-022).
-pub fn encode<L: VcLookup + ?Sized>(
+pub fn encode<
+    L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+        + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     channels: &L,
     fields: FrameFields,
     data: FrameData<'_>,
@@ -224,7 +242,12 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
     /// The errors of [`encode`] for a frame with `max_user_len` octets of User Data:
     /// `InvalidField` (`control_command_flag`) for a Type-BC frame; `BufferTooSmall` if `out`
     /// cannot hold the largest frame. On error `out` is unchanged.
-    pub fn begin<L: VcLookup + ?Sized>(
+    pub fn begin<
+        L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+            + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         out: &'b mut [u8],
         channels: &L,
         fields: FrameFields,

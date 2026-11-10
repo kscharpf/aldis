@@ -22,8 +22,16 @@
 //! [`Delimited::LeftoverFill`], discarded all the same, so that a Frame Length error that
 //! shortens a frame cannot pass as fill unreported (OI-47, P-USLP-01).
 
-use crate::config::VcLookup;
+use crate::config::MapConfig;
+use crate::config::PhysicalChannelConfig;
+use crate::config::VcConfig;
+use crate::header::UslpMapId;
+use crate::header::UslpSpacecraftId;
+use crate::header::UslpVcId;
 use crate::header::{PRIMARY_HEADER_LEN, RawRest, RawStart, VERSION};
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 
 /// One item of a data unit (732.1 §4.3.11.2.2–4; USLP-015).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -95,7 +103,15 @@ pub(crate) enum Declared {
 }
 
 /// What the header at the start of `rest` declares, or `None` for no valid header.
-pub(crate) fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> Option<Declared> {
+pub(crate) fn declared_len<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
+    rest: &[u8],
+    channels: &L,
+) -> Option<Declared> {
     let start = RawStart::parse(rest).filter(|s| s.version == VERSION)?;
     let ch = start.channel;
     let truncated_len = channels
@@ -129,7 +145,13 @@ pub(crate) fn declared_len<L: VcLookup + ?Sized>(rest: &[u8], channels: &L) -> O
 /// [`Delimited::LeftoverFill`] above (OI-47). `usize::MAX` is no bound, and `0` makes every
 /// octet of fill leftover.
 #[must_use]
-pub fn next_frame<'a, L: VcLookup + ?Sized>(
+pub fn next_frame<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     rest: &'a [u8],
     channels: &L,
     max_fill: usize,
@@ -156,13 +178,28 @@ pub fn next_frame<'a, L: VcLookup + ?Sized>(
 /// An iterator over the frames and discarded octets of one data unit (732.1 §4.3.11.2;
 /// USLP-015).
 #[derive(Debug)]
-pub struct FrameDelimiter<'a, 'c, L: VcLookup + ?Sized> {
+pub struct FrameDelimiter<
+    'a,
+    'c,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> {
     rest: &'a [u8],
     channels: &'c L,
     max_fill: usize,
 }
 
-impl<'a, 'c, L: VcLookup + ?Sized> FrameDelimiter<'a, 'c, L> {
+impl<
+    'a,
+    'c,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> FrameDelimiter<'a, 'c, L>
+{
     /// A delimiter over the octets of one error-free data unit, with the channels whose
     /// truncated frame lengths delimit truncated frames (732.1 §4.3.11.2.1; USLP-015), where
     /// `max_fill` is the longest fill the coding sublayer appends (OI-47).
@@ -186,7 +223,14 @@ impl<'a, 'c, L: VcLookup + ?Sized> FrameDelimiter<'a, 'c, L> {
     }
 }
 
-impl<'a, L: VcLookup + ?Sized> Iterator for FrameDelimiter<'a, '_, L> {
+impl<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> Iterator for FrameDelimiter<'a, '_, L>
+{
     type Item = Delimited<'a>;
 
     fn next(&mut self) -> Option<Delimited<'a>> {
@@ -196,7 +240,14 @@ impl<'a, L: VcLookup + ?Sized> Iterator for FrameDelimiter<'a, '_, L> {
     }
 }
 
-impl<L: VcLookup + ?Sized> core::iter::FusedIterator for FrameDelimiter<'_, '_, L> {}
+impl<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+> core::iter::FusedIterator for FrameDelimiter<'_, '_, L>
+{
+}
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
