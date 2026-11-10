@@ -5,8 +5,7 @@
 //!
 //! The engine serves one master channel of one protocol (TM, TC, AOS, or USLP; LNK-001, v1 has
 //! one master channel per receiver, OI-75). It takes only the codec's `Plain` frame
-//! ([`ReceiveProtocol::Plain`]: `PlainTmFrame`, `PlainTcFrame`, `PlainAosFrame`,
-//! `PlainUslpFrame`), a frame whose FECF the codec has checked (correcting the AOS FHEC) and whose
+//! ([`ReceiveProtocol::Plain`]: `aldis_core::Plain` of the codec's frame), a frame whose FECF the codec has checked (correcting the AOS FHEC) and whose
 //! SDLS processing is done: `Received`, `Checked`, `Plain` are types, so a frame that skipped a
 //! step does not compile (RS-023, LNK-050, API-074). The codec decodes a frame of a VC or MAP
 //! that is not configured too, because the receiver must count such a frame and extract its

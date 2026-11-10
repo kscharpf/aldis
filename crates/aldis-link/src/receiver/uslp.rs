@@ -142,7 +142,7 @@ impl UslpVc {
 impl ReceiveProtocol for Uslp {
     type Channel = UslpChannel;
     type VcParams = UslpVc;
-    type Plain<'a> = aldis_uslp::PlainUslpFrame<'a>;
+    type Plain<'a> = aldis_core::Plain<aldis_uslp::UslpFrame<'a>>;
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.octets()
@@ -190,7 +190,7 @@ impl ReceiveProtocol for Uslp {
         // The codec has checked that the Frame Length field (one less than the length of the
         // frame, 732.1 §4.1.2.7) and the Protocol Control Command Flag (Bypass 0 with Protocol
         // Control Command 1 is reserved, Table 4-1) are valid: they are properties of a
-        // `PlainUslpFrame` (RS-023).
+        // `Plain<UslpFrame>` (RS-023).
         let [_, _, t2, t3, _, _, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
         // TFVN (4 bits), SCID (16), Source or Destination (1), VCID (6), MAP ID (4), End of
         // Frame Primary Header Flag (1), from the most significant bit (732.1 §4.1.2).

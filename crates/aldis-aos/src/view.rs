@@ -658,6 +658,7 @@ pub(crate) mod tests {
     #[test]
     fn plain_needs_no_sdls_fields() {
         // req: RS-023, API-017, API-070, API-074
+        use aldis_core::SecuritySlices;
         use aldis_core::security::NoSecurity;
         let t = plain();
         let phy = t.physical_channel();
