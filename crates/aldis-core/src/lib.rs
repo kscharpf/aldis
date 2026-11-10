@@ -17,6 +17,7 @@
 //! | [`oid`] | OID pseudo-noise generators | CMN-020…CMN-023 |
 //! | [`counter`] | Modular counters, gap classification | CMN-030, CMN-031 |
 //! | [`container`] | Fixed-capacity vector | GEN-010…GEN-012 |
+//! | [`cop`] | `CopFrameKind`: Type-AD, Type-BD, Type-BC | TC-002, USLP-001, COP-001 |
 //! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
 //! | [`lookup`] | `ChannelLookup`, `MapLookup`, `PhysicalLookup` | GEN-060, API-040 |
@@ -37,6 +38,7 @@ pub mod anomaly;
 pub mod bits;
 pub mod checked;
 pub mod container;
+pub mod cop;
 pub mod counter;
 pub mod crc;
 pub mod engine;
@@ -61,6 +63,7 @@ mod proofs;
 
 pub use anomaly::{Anomaly, AnomalySet};
 pub use checked::{Check, CheckBytes, Checked, Rejection};
+pub use cop::CopFrameKind;
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 pub use format::FrameFormat;
 pub use mode::{DecodeMode, Lenient};

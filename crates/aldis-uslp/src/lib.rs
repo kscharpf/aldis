@@ -59,14 +59,14 @@ pub use config::{
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
 pub use format::UslpFormat;
 pub use header::{
-    ChannelFields, FrameKind, MAX_FRAME_LEN, OID_VCID, PRIMARY_HEADER_LEN, SourceOrDestination,
-    TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
-    VcfCountLen,
+    ChannelFields, FrameKind, MAX_FRAME_LEN, OID_VC, OID_VCID, PRIMARY_HEADER_LEN,
+    SourceOrDestination, TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId,
+    UslpVcId, VcfCount, VcfCountLen,
 };
 pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, UslpIntake};
 pub use tfdf::{
     ConstructionRule, FIXED_TFDF_HEADER_LEN, FirstHeaderPointer, LastValidOctet, POINTER_NONE,
-    TfdfHeader, TfdzOffset, TfdzRule,
+    PacketField, TfdfHeader, TfdzOffset, TfdzRule,
 };
 pub use truncated::UslpTruncatedFrame;
 pub use upid::{UnassignedUpid, Upid};

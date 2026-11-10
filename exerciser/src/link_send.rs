@@ -19,8 +19,8 @@ use aldis_link::bitstream::{
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh,
-    MAX_FSH_DATA, MuxInput, MuxOutput, Offer, Scope, TmChannel, TmRole, TmVc, UslpChannel, UslpVc,
-    VcConfig,
+    MAX_FSH_DATA, MuxInput, MuxOutput, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
+    UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Selector, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp, UslpParams};
@@ -105,9 +105,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     let offer = |vc: u8, len: usize, pointer: Option<u16>| Offer {
         vc,
         field: field.get(..len).unwrap_or_default(),
-        pointer,
-        route: None,
-        cop: None,
+        meta: TmOffer { pointer },
     };
     let kinds = |mux: &mut ChannelMux<Tm, 4, F>, input, out: &mut [u8; F]| {
         mux.step(input, out).err().map(|e| e.kind())
@@ -248,9 +246,7 @@ fn aos(t: &mut Tally) {
     let offer = Offer {
         vc: 1,
         field: data.get(..len).unwrap_or_default(),
-        pointer: None,
-        route: None,
-        cop: None,
+        meta: (),
     };
     t.check(mux.step(MuxInput::Offer(offer), &mut out).is_ok());
     t.check(
@@ -325,12 +321,13 @@ fn uslp(t: &mut Tally) {
     let offer = Offer {
         vc: 1,
         field: data.get(..len).unwrap_or_default(),
-        pointer: None,
-        route: Some(Route {
-            map,
-            qos: Qos::Expedited,
-        }),
-        cop: Cop::new(bb(0), true, bb(true)).ok(),
+        meta: UslpOffer {
+            route: Some(Route {
+                map,
+                qos: Qos::Expedited,
+            }),
+            cop: Cop::new(bb(0), true, bb(true)).ok(),
+        },
     };
     t.check(Cop::new(bb(0), false, bb(true)).is_err());
     t.check(
@@ -342,7 +339,10 @@ fn uslp(t: &mut Tally) {
         qos: Qos::Expedited,
     });
     let wrong = Offer {
-        route: bad_map,
+        meta: UslpOffer {
+            route: bad_map,
+            ..offer.meta
+        },
         ..offer
     };
     t.check(

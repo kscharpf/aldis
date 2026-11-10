@@ -9,7 +9,7 @@ use aldis_core::{Error, ErrorKind, Result, field};
 
 use super::{
     ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
-    header, lay_out, ocf_of, spec, vc_of,
+    header, lay_out, ocf_of, spec,
 };
 use crate::protocol::Uslp;
 
@@ -187,20 +187,26 @@ impl ReceiveProtocol for Uslp {
         }
     }
 
-    fn receive<const V: usize>(cx: &mut FrameContext<'_, Uslp, V>, frame: &[u8]) -> Result<()> {
+    fn receive<const V: usize>(
+        cx: &mut FrameContext<'_, Uslp, V>,
+        plain: &Self::Plain<'_>,
+    ) -> Result<()> {
         // The codec has checked that the Frame Length field (one less than the length of the
         // frame, 732.1 §4.1.2.7) and the Protocol Control Command Flag (Bypass 0 with Protocol
-        // Control Command 1 is reserved, Table 4-1) are valid: they are properties of a
-        // `Plain<UslpFrame>` (RS-023).
-        let [_, _, t2, t3, _, _, flags] = header::<PRIMARY_HEADER_LEN>(frame)?;
-        // TFVN (4 bits), SCID (16), Source or Destination (1), VCID (6), MAP ID (4), End of
-        // Frame Primary Header Flag (1), from the most significant bit (732.1 §4.1.2).
-        let vc: VcId<6> = vc_of::<Uslp>(((t2 & 0x07) << 3) | (t3 >> 5))?;
-        let map: MapId<4> = MapId::<4>::try_from((t3 >> 1) & 0x0F)?;
-        let bypass = flags & 0x80 != 0;
-        let control = flags & 0x40 != 0;
-        let ocf_flag = flags & 0x08 != 0;
-        let count_len = flags & 0x07;
+        // Control Command 1 is reserved, Table 4-1) are valid, and read the header: the fields
+        // are those of the `UslpFrame` it decoded (RS-023). A truncated frame has no Frame
+        // Length and no such flags; `refuse_unserved` refused it before the length check.
+        let frame = plain.octets();
+        let full = plain.full().ok_or(
+            Error::new(ErrorKind::InvalidField).with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG),
+        )?;
+        let (vc, map) = (full.header().vc_id(), full.header().map_id());
+        let kind = full.kind();
+        let (bypass, control) = (kind.bypass_flag(), kind.protocol_control_flag());
+        let ocf_flag = full.header().ocf_flag();
+        let vcf = full.vcf_count();
+        let count_len = vcf.len().get();
+        let count = vcf.value();
         let channel = *cx.cfg().channel();
         let framed = lay_out(
             frame,
@@ -212,13 +218,6 @@ impl ReceiveProtocol for Uslp {
                 cx.cfg().fecf(),
             ),
         )?;
-        let count = framed
-            .primary_header()
-            .iter()
-            .skip(PRIMARY_HEADER_LEN)
-            .fold(0u64, |count, &octet| {
-                count.wrapping_shl(8) | u64::from(octet)
-            });
         let oid = vc.get() == OID_VC;
         let params = cx.params(vc);
         let ocf = ocf_of(framed.ocf());
