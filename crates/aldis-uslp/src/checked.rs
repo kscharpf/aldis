@@ -8,10 +8,12 @@
 //! numeric code is stable (`docs/standards/uslp-frame.md` §3.1).
 
 use aldis_core::checked::check_bytes;
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::{AnomalySet, CheckBytes, Checked, DecodeMode, Lenient, Rejection};
 
 use crate::anomaly::UslpAnomaly;
-use crate::config::{MapConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::header::{UslpMapId, UslpSpacecraftId, UslpVcId};
 use crate::view::{Channels, UslpFrame, parse};
 
 /// Why a frame failed the USLP Frame Validation Checks or the decoder (USLP-014).
@@ -23,7 +25,7 @@ use crate::view::{Channels, UslpFrame, parse};
 pub enum Reason {
     /// 1, test (a): the TFVN is not `1100` (§4.1.2.2.2; USLP-001).
     UnexpectedVersion,
-    /// 2, test (b): the SCID names no Master Channel of the Physical Channel, so the MCID is not
+    /// 2, test (b): the UslpSpacecraftId names no Master Channel of the Physical Channel, so the MCID is not
     /// expected.
     UnexpectedSpacecraft,
     /// 3, test (c): Bypass/Sequence Control Flag `0` with Protocol Control Command Flag `1`
@@ -31,7 +33,7 @@ pub enum Reason {
     ReservedFlags,
     /// 4, test (c), strict mode only: the Reserve Spares are not `00` (§4.1.2.9.2).
     ReservedSpare,
-    /// 5, test (c): the VCID is not valid on the Master Channel.
+    /// 5, test (c): the UslpVcId is not valid on the Master Channel.
     InvalidVcid,
     /// 6, test (c): the MAP ID is not valid on the VC.
     InvalidMapId,
@@ -61,7 +63,7 @@ pub enum Reason {
     ConstructionRuleMismatch,
     /// 16: the First Header or Last Valid Octet Pointer lies beyond the TFDZ (USLP-006).
     PointerBeyondZone,
-    /// 17, strict mode only: a frame on VCID 63 whose OID header fields deviate (§4.1.4.1.8–9;
+    /// 17, strict mode only: a frame on UslpVcId 63 whose OID header fields deviate (§4.1.4.1.8–9;
     /// OI-44 item 1).
     OidHeaderMismatch,
     /// 18, test (c): a non-truncated frame on a VC that has a truncated frame length, which
@@ -128,7 +130,7 @@ impl Reason {
 /// §4.3.11.3; USLP-014, API-016), in `mode`.
 ///
 /// The checks run in the order of `docs/standards/uslp-frame.md` §3.1: (a) the TFVN; (b) the
-/// SCID; (c) the flags, the Reserve Spares, the VCID and MAP ID, a truncated frame
+/// UslpSpacecraftId; (c) the flags, the Reserve Spares, the UslpVcId and MAP ID, a truncated frame
 /// on its VC, the VCF Count Length, the OCF Flag, and the Frame Length against the channel;
 /// (d) the octets present against the Frame Length (732.1 §4.3.11.3.4 d)1)), or a truncated
 /// frame's against its VC's Truncated Transfer Frame Length (d)2)); (e) the FECF; then the
@@ -148,21 +150,31 @@ pub fn check_frame<'a, L: VcLookup + ?Sized>(
     check_bytes(frame, channels, mode)
 }
 
-impl aldis_core::checked::sealed::Sealed for UslpFrame<'_> {}
-
 /// The USLP Frame Validation Checks of [`check_frame`], through the pipeline of
 /// `aldis_core::checked` (USLP-014, API-016). What it matches besides the frame is the Virtual
 /// Channel and MAP configuration.
-impl<'a, L: VcLookup + ?Sized> CheckBytes<'a, L> for UslpFrame<'a> {
+impl<'a> CheckBytes<'a> for UslpFrame<'a> {
     type Reason = Reason;
     type Anomaly = UslpAnomaly;
     type Matched = (VcConfig, Option<MapConfig>);
+    type Scid = UslpSpacecraftId;
+    type VcId = UslpVcId;
+    type MapId = UslpMapId;
+    type Vc = VcConfig;
+    type Map = MapConfig;
+    type Physical = PhysicalChannelConfig;
 
-    fn parse_exact(
+    fn parse_exact<L>(
         bytes: &'a [u8],
         channels: &L,
         mode: DecodeMode,
-    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>> {
+    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>>
+    where
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    {
         parse(bytes, channels, Channels::Required, mode, true)
             .map(|p| (p.frame, p.anomalies, (p.vc, p.map)))
     }

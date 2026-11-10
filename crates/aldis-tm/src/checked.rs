@@ -8,8 +8,6 @@ use crate::field;
 use crate::header::{DataFieldStatus, FshLen, PacketPointer, len_u64, mismatch};
 use crate::view::TmFrame;
 
-impl aldis_core::checked::sealed::Sealed for TmFrame<'_> {}
-
 /// Checks a [`TmFrame`] against the managed parameters of a master channel (132.0 §5 Tables 5-1
 /// to 5-3, §6.6 Table 6-1; TM-011, API-016): `frame.check(&mc)` returns it as an
 /// `aldis_core::Checked<TmFrame>`, which dereferences to the frame; holding one is the proof
@@ -33,8 +31,29 @@ impl aldis_core::checked::sealed::Sealed for TmFrame<'_> {}
 /// - `InvalidField` (`vc_id`) for an Only Idle Data frame (First Header Pointer `0x7FE`) on a
 ///   VC that uses SDLS, which a lenient decode accepts with an anomaly flag (132.0 §6.4.6.2;
 ///   TM-010, OI-54).
-impl Check<TmMasterChannelConfig> for TmFrame<'_> {
+///
+/// `Check` has one implementation for `TmFrame`, and only this crate can write it: another
+/// crate that implements `Check` for `TmFrame` with a lookup of its own, to make a `Checked`
+/// frame without the checks above, is refused (E0117):
+///
+/// ```compile_fail,E0117
+/// use aldis_core::checked::{Check, Rejection};
+/// use aldis_tm::TmFrame;
+///
+/// struct MyLookup;
+///
+/// impl Check for TmFrame<'_> {
+///     type Reason = ();
+///     type Lookup = MyLookup;
+///
+///     fn verify(&self, _: &MyLookup) -> Result<(), Rejection<()>> {
+///         Ok(())
+///     }
+/// }
+/// ```
+impl Check for TmFrame<'_> {
     type Reason = ();
+    type Lookup = TmMasterChannelConfig;
 
     fn verify(&self, mc: &TmMasterChannelConfig) -> Result<(), Rejection<()>> {
         verify(self, mc).map_err(Rejection::from)

@@ -7,8 +7,6 @@ use crate::config::{VcLookup, unknown_channel_field};
 use crate::field;
 use crate::view::AosFrame;
 
-impl aldis_core::checked::sealed::Sealed for AosFrame<'_> {}
-
 /// Rejects a frame whose channel the `VcLookup` it was decoded with did not hold (732.0
 /// §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, RS-023): `frame.check(&vcs)` returns the
 /// others as an `aldis_core::Checked<AosFrame>`, which dereferences to the frame. Holding one
@@ -19,13 +17,18 @@ impl aldis_core::checked::sealed::Sealed for AosFrame<'_> {}
 /// The decoder reads such a frame as opaque octets with no OCF and no SDLS fields so that an
 /// engine can count it; the Blue Book discards it.
 ///
+/// The lookup is a `dyn VcLookup`, so the trait has no type parameter and only this crate can
+/// implement `Check` for `AosFrame` (see `aldis_core::checked`); `&vcs` of any sized lookup
+/// coerces to it.
+///
 /// # Errors
 /// `UnknownChannel` (`spacecraft_id`) for a Spacecraft ID that is not valid on the physical
 /// channel, and (`vc_id`) for a VCID of a valid Spacecraft ID that is not configured.
-impl<L: VcLookup + ?Sized> Check<L> for AosFrame<'_> {
+impl Check for AosFrame<'_> {
     type Reason = ();
+    type Lookup = dyn VcLookup;
 
-    fn verify(&self, vcs: &L) -> Result<(), Rejection<()>> {
+    fn verify(&self, vcs: &dyn VcLookup) -> Result<(), Rejection<()>> {
         let header = self.header();
         let (scid, vcid) = (header.scid(), header.vcid());
         let unknown = if header.is_oid() {

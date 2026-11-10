@@ -12,17 +12,19 @@
 //!   strict check (API-030, API-032).
 //!
 //! [`Checked`] has no public constructor: a value of it is the proof that a codec's check
-//! passed, and it is made only by [`Check::check`] and [`check_bytes`] (RS-020). Both traits
-//! are sealed (a hidden supertrait that only the codec crates implement, for their own frame
-//! types), so no other crate can implement them for a codec's frame and make a [`Checked`]
-//! frame without a check. A check that
-//! fails returns a [`Rejection`], which holds the error of the failed check (GEN-041) and,
+//! passed, and it is made only by [`Check::check`] and [`check_bytes`] (RS-020). Neither
+//! trait has a type parameter, so a frame type has one implementation, and only the crate that
+//! defines the frame can write it (the orphan rule: a foreign trait for a foreign type with no
+//! local type in it is refused, E0117). No other crate can therefore make a [`Checked`] codec
+//! frame without the codec's check; `aldis-tm` has the compile-fail example of the attack. A
+//! check that fails returns a [`Rejection`], which holds the error of the failed check (GEN-041) and,
 //! for the standards that number their failures (TC reasons 1–11, USLP 1–18), the reason `R`.
 
 use core::ops::Deref;
 
 use crate::anomaly::{Anomaly, AnomalySet};
 use crate::error::Error;
+use crate::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use crate::mode::{DecodeMode, Lenient};
 
 /// A frame that failed a check: the error of the failed check and the reason `R` that the
@@ -101,51 +103,38 @@ impl<F> Deref for Checked<F> {
     }
 }
 
-/// The seal of [`Check`] and [`CheckBytes`]: implemented by the codec crates for their frame
-/// types. An outside crate cannot implement it for a codec's frame (the orphan rule), so it
-/// cannot implement the sealed traits for one (API-016, RS-020).
-#[doc(hidden)]
-pub mod sealed {
-    /// Marks a frame type whose codec implements the checking pipeline.
-    pub trait Sealed {}
-}
-
-/// A decoded frame that can be checked against a lookup `L` of its channels (TM-011, AOS-010,
+/// A decoded frame that can be checked against the lookup of its channels (TM-011, AOS-010,
 /// AOS-016, API-016).
 ///
-/// Sealed: only the codec crates implement it, so a [`Checked`] frame is a proof. An outside
-/// crate cannot implement it for a codec's frame:
+/// The trait has no type parameter, so a frame type has at most one implementation, and only
+/// the crate that defines the frame can write it (the orphan rule: `Check` is foreign to every
+/// other crate, and so is the frame, and no local type appears in `impl Check for Frame`).
+/// A [`Checked`] frame is therefore a proof that the codec's check ran. An outside crate that
+/// implements the trait for a codec's frame with a lookup type of its own is refused:
 ///
-/// ```compile_fail,E0277
-/// use aldis_core::checked::{Check, Rejection};
-///
-/// struct Lookup;
-/// impl Check<Lookup> for aldis_core::Error {
-///     type Reason = ();
-///     fn verify(&self, _: &Lookup) -> Result<(), Rejection<()>> {
-///         Ok(())
-///     }
-/// }
-/// ```
+/// The compile-fail example on `aldis_tm`'s implementation shows the attack: another crate
+/// implements `Check` for `TmFrame` with a lookup type of its own.
 ///
 /// A codec implements [`verify`](Self::verify), the checks themselves; callers use
 /// [`check`](Self::check), the only way to a [`Checked`] frame from a decoded one.
-pub trait Check<L: ?Sized>: Sized + sealed::Sealed {
+pub trait Check: Sized {
     /// The reason type of the standard's failure numbering; `()` if it has none.
     type Reason;
+    /// What the frame is checked against: the channels it was decoded with.
+    type Lookup: ?Sized;
 
     /// Runs the checks against `lookup`, which must hold the channels the frame was decoded
     /// with.
     ///
     /// # Errors
     /// The first check that fails, as a [`Rejection`].
-    fn verify(&self, lookup: &L) -> Result<(), Rejection<Self::Reason>>;
+    fn verify(&self, lookup: &Self::Lookup) -> Result<(), Rejection<Self::Reason>>;
 
     /// Checks the frame against `lookup` and returns it as a [`Checked`] frame.
     ///
     /// # Errors
     /// The first check that fails, as a [`Rejection`] (see [`verify`](Self::verify)).
-    fn check(self, lookup: &L) -> Result<Checked<Self>, Rejection<Self::Reason>> {
+    fn check(self, lookup: &Self::Lookup) -> Result<Checked<Self>, Rejection<Self::Reason>> {
         self.verify(lookup).map(|()| Checked { frame: self })
     }
 }
@@ -153,15 +142,30 @@ pub trait Check<L: ?Sized>: Sized + sealed::Sealed {
 /// A frame whose checks run on the octets of exactly one frame, in the order of its standard's
 /// receiving procedure (TC-021, TC-023, USLP-014).
 ///
-/// A codec implements [`parse_exact`](Self::parse_exact); callers use [`check_bytes`]. Sealed
-/// like [`Check`].
-pub trait CheckBytes<'a, L: ?Sized>: Sized + sealed::Sealed {
+/// A codec implements [`parse_exact`](Self::parse_exact); callers use [`check_bytes`]. Like
+/// [`Check`] it has no type parameter, so only the codec's crate can implement it for its
+/// frame (the lookup is a parameter of the method, bounded by the lookup traits of
+/// `aldis_core::lookup` at the identifier types of the frame). The attack of
+/// the example on [`Check`] is refused alike.
+pub trait CheckBytes<'a>: Sized {
     /// The reason type of the standard's failure numbering.
     type Reason;
     /// The anomaly flags of the codec's lenient mode.
     type Anomaly: Anomaly;
     /// What the check matched besides the frame: the configurations of its channels.
     type Matched;
+    /// The Spacecraft ID type of the standard.
+    type Scid: Copy;
+    /// The Virtual Channel ID type of the standard.
+    type VcId: Copy;
+    /// The MAP ID type of the standard.
+    type MapId: Copy;
+    /// What a virtual channel carries for the decoder.
+    type Vc;
+    /// What a MAP carries for the decoder.
+    type Map;
+    /// The configuration of the Physical Channel.
+    type Physical;
 
     /// Decodes `bytes`, which must be exactly one frame, and runs every check of the receiving
     /// end on it against `lookup`, in `mode`.
@@ -172,11 +176,16 @@ pub trait CheckBytes<'a, L: ?Sized>: Sized + sealed::Sealed {
         clippy::type_complexity,
         reason = "the one result type of the pipeline; an alias would only rename its parts"
     )]
-    fn parse_exact(
+    fn parse_exact<L>(
         bytes: &'a [u8],
         lookup: &L,
         mode: DecodeMode,
-    ) -> Result<(Self, AnomalySet<Self::Anomaly>, Self::Matched), Rejection<Self::Reason>>;
+    ) -> Result<(Self, AnomalySet<Self::Anomaly>, Self::Matched), Rejection<Self::Reason>>
+    where
+        L: ChannelLookup<Self::Scid, Self::VcId, Vc = Self::Vc>
+            + MapLookup<Self::Scid, Self::VcId, Self::MapId, Map = Self::Map>
+            + PhysicalLookup<Physical = Self::Physical>
+            + ?Sized;
 }
 
 /// Checks the octets of exactly one frame and returns what it matched (TC-021, TC-023,
@@ -197,8 +206,11 @@ pub fn check_bytes_matched<'a, F, L>(
     mode: DecodeMode,
 ) -> Result<(Lenient<Checked<F>, F::Anomaly>, F::Matched), Rejection<F::Reason>>
 where
-    F: CheckBytes<'a, L>,
-    L: ?Sized,
+    F: CheckBytes<'a>,
+    L: ChannelLookup<F::Scid, F::VcId, Vc = F::Vc>
+        + MapLookup<F::Scid, F::VcId, F::MapId, Map = F::Map>
+        + PhysicalLookup<Physical = F::Physical>
+        + ?Sized,
 {
     F::parse_exact(bytes, lookup, mode)
         .map(|(frame, anomalies, matched)| (Lenient::new(Checked { frame }, anomalies), matched))
@@ -219,8 +231,11 @@ pub fn check_bytes<'a, F, L>(
     mode: DecodeMode,
 ) -> Result<Lenient<Checked<F>, F::Anomaly>, Rejection<F::Reason>>
 where
-    F: CheckBytes<'a, L>,
-    L: ?Sized,
+    F: CheckBytes<'a>,
+    L: ChannelLookup<F::Scid, F::VcId, Vc = F::Vc>
+        + MapLookup<F::Scid, F::VcId, F::MapId, Map = F::Map>
+        + PhysicalLookup<Physical = F::Physical>
+        + ?Sized,
 {
     check_bytes_matched(bytes, lookup, mode).map(|(checked, _)| checked)
 }
@@ -231,6 +246,7 @@ mod tests {
     use super::{Check, CheckBytes, Checked, Rejection, check_bytes, check_bytes_matched};
     use crate::anomaly::AnomalySet;
     use crate::error::{Error, ErrorKind};
+    use crate::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
     use crate::mode::DecodeMode;
 
     crate::anomaly_flags! {
@@ -244,15 +260,14 @@ mod tests {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Demo(u8);
 
-    impl crate::checked::sealed::Sealed for Demo {}
-
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Why {
         TooBig,
     }
 
-    impl Check<u8> for Demo {
+    impl Check for Demo {
         type Reason = ();
+        type Lookup = u8;
 
         fn verify(&self, limit: &u8) -> Result<(), Rejection<()>> {
             if self.0 > *limit {
@@ -262,16 +277,60 @@ mod tests {
         }
     }
 
-    impl<'a> CheckBytes<'a, u8> for Demo {
+    /// A lookup with one channel, whose limit is the octet.
+    struct Limit(u8);
+
+    impl ChannelLookup<u8, u8> for Limit {
+        type Vc = u8;
+
+        fn has_spacecraft(&self, _: u8) -> bool {
+            true
+        }
+
+        fn vc(&self, _: u8, _: u8) -> Option<u8> {
+            Some(self.0)
+        }
+    }
+
+    impl MapLookup<u8, u8, u8> for Limit {
+        type Map = u8;
+
+        fn map(&self, _: u8, _: u8, _: u8) -> Option<u8> {
+            Some(self.0)
+        }
+    }
+
+    impl PhysicalLookup for Limit {
+        type Physical = u8;
+
+        fn physical_channel(&self) -> u8 {
+            self.0
+        }
+    }
+
+    impl<'a> CheckBytes<'a> for Demo {
         type Reason = Why;
         type Anomaly = DemoAnomaly;
         type Matched = u8;
+        type Scid = u8;
+        type VcId = u8;
+        type MapId = u8;
+        type Vc = u8;
+        type Map = u8;
+        type Physical = u8;
 
-        fn parse_exact(
+        fn parse_exact<L>(
             bytes: &'a [u8],
-            limit: &u8,
+            lookup: &L,
             mode: DecodeMode,
-        ) -> Result<(Demo, AnomalySet<DemoAnomaly>, u8), Rejection<Why>> {
+        ) -> Result<(Demo, AnomalySet<DemoAnomaly>, u8), Rejection<Why>>
+        where
+            L: ChannelLookup<u8, u8, Vc = u8>
+                + MapLookup<u8, u8, u8, Map = u8>
+                + PhysicalLookup<Physical = u8>
+                + ?Sized,
+        {
+            let limit = &lookup.physical_channel();
             let [octet] = *bytes else {
                 return Err(Rejection::new(
                     Why::TooBig,
@@ -309,17 +368,17 @@ mod tests {
     #[test]
     fn octets_are_checked_in_both_modes() {
         // req: GEN-060, API-016, API-030, API-032
-        let strict = check_bytes::<Demo, u8>(&[3], &4, DecodeMode::Strict).unwrap();
+        let strict = check_bytes::<Demo, _>(&[3], &Limit(4), DecodeMode::Strict).unwrap();
         assert!(strict.anomalies().is_empty());
-        let lenient = check_bytes::<Demo, u8>(&[3], &4, DecodeMode::Lenient).unwrap();
+        let lenient = check_bytes::<Demo, _>(&[3], &Limit(4), DecodeMode::Lenient).unwrap();
         assert!(lenient.anomalies().contains(DemoAnomaly::Odd));
         assert_eq!(DemoAnomaly::ALL, &[DemoAnomaly::Odd]);
         let (checked, matched) =
-            check_bytes_matched::<Demo, u8>(&[2], &4, DecodeMode::Strict).unwrap();
+            check_bytes_matched::<Demo, _>(&[2], &Limit(4), DecodeMode::Strict).unwrap();
         assert_eq!((checked.into_view().into_frame(), matched), (Demo(2), 4));
-        let r = check_bytes::<Demo, u8>(&[9], &4, DecodeMode::Strict).unwrap_err();
+        let r = check_bytes::<Demo, _>(&[9], &Limit(4), DecodeMode::Strict).unwrap_err();
         assert_eq!(r.reason(), Why::TooBig);
-        let r = check_bytes::<Demo, u8>(&[], &4, DecodeMode::Strict).unwrap_err();
+        let r = check_bytes::<Demo, _>(&[], &Limit(4), DecodeMode::Strict).unwrap_err();
         assert_eq!(r.error().kind(), ErrorKind::LengthMismatch);
         let _: Checked<Demo> = Demo(1).check(&1).unwrap();
     }
