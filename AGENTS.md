@@ -36,7 +36,7 @@ Reviewers follow [docs/process/review.md](docs/process/review.md), the one copy 
 
 ## Checks
 
-Run `cargo xtask check --quick` after each edit, with zero warnings. The default tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Rounds, tiers, and resuming a failed run (`--from`): [agent-brief.md](docs/process/agent-brief.md) items 2 and 3; `--full` is optional. Report which tier passed; no tier is the gate.
+Run `cargo xtask check --quick` after each edit, with zero warnings. For a change the gate checks with `spec` alone (documentation, workflows, `.gitignore`; [glossary](docs/glossary.md#skipped-check)), the default tier runs only the steps of the `spec` check, and `--quick` need not run after a documentation edit. The default tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Rounds, tiers, and resuming a failed run (`--from`): [agent-brief.md](docs/process/agent-brief.md) items 2 and 3; `--full` is optional. Report which tier passed; no tier is the gate.
 
 **Implementation agents commit and stop**, unless the brief grants the gate ([agent brief](docs/process/agent-brief.md)). The coordinator runs the merge gate and the merge trains ([coordinator.md](docs/process/coordinator.md)).
 
