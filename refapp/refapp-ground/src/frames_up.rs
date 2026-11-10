@@ -24,7 +24,7 @@ use aldis::core::time::{Duration, Instant};
 use aldis::link::common::Qos;
 use aldis::link::protocol::Tc;
 use aldis::link::segmenter::{
-    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterService, SegmenterInput, SegmenterOutput,
+    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput, SegmenterService,
     TcSegmenterParams,
 };
 use refapp_scenario::generated::{apid, cop1, tc};
