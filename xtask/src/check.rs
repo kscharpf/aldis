@@ -5,9 +5,10 @@
 //! - `check --quick`: format of the four workspaces and clippy of each, with the lints of the gate,
 //!   which runs every step and prints every error, for the edit loop (about a minute).
 //! - `check` (default): format, clippy, rustdoc, tests, the bare-metal clippy build, and
-//!   `xtask ci`, then the extras that the verification run would run for the change. Stops at the
-//!   first failure. An extra whose tool is not installed is skipped and reported. It does not
-//!   promise the gate.
+//!   `xtask ci`, then the extras that the verification run would run for the change. For a change
+//!   that only `spec` reads (documentation, workflows, `.gitignore`), the commands of the `spec`
+//!   check instead. Stops at the first failure. An extra whose tool is not installed is skipped
+//!   and reported. It does not promise the gate.
 //! - `check --full`: the default tier plus coverage, `stack`, `big-endian`, and the exerciser's run
 //!   under QEMU when the verification run would run them for the change; optional, never required.
 //!
@@ -160,6 +161,80 @@ impl Touched {
     fn gate_runs(&self, name: &str) -> bool {
         self.gate.iter().any(|g| g == name)
     }
+
+    /// Whether `spec` is the only check that the change makes the verification run run: the
+    /// change is documentation (glossary, "Skipped check"; VER-056).
+    fn spec_only(&self) -> bool {
+        self.gate == ["spec"]
+    }
+}
+
+/// The script of the `spec` check of the verification run, if it has one.
+fn spec_script() -> Option<String> {
+    all_checks()
+        .into_iter()
+        .find(|c| c.name == "spec")
+        .map(|c| c.script)
+}
+
+/// The steps that run the lines of the script of the `spec` check (`script`), one for each
+/// `cargo` command, in the script's order (VER-068): what `check` runs for a change that only
+/// `spec` reads. They are derived from the script, so a line added to `spec` is a step here. A
+/// missing `spec` check, a line that is neither blank, a comment, an `export`, nor a `cargo`
+/// command, and a script with no command are errors, never a plan that passes without a step.
+fn spec_steps(script: Option<String>) -> Result<Vec<Item>, String> {
+    let script = script.ok_or("the verification run has no `spec` check to mirror")?;
+    let env = exports(&script);
+    let mut items = Vec::new();
+    for line in script.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') || line.starts_with("export ") {
+            continue;
+        }
+        let rest = line.strip_prefix("cargo ").ok_or_else(|| {
+            format!("the `spec` script has a line that `check` cannot run as a step: `{line}`")
+        })?;
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        // A name that outlives the run: the plan holds a few dozen, once.
+        let name: &'static str = Box::leak(format!("spec: {rest}").into_boxed_str());
+        let mut item = match words.as_slice() {
+            ["xtask", args @ ..] => xtask(name, args),
+            _ => Item {
+                name,
+                action: Action::Cmd {
+                    program: "cargo",
+                    args: Box::leak(
+                        words
+                            .iter()
+                            .map(|w| &*Box::leak((*w).to_owned().into_boxed_str()))
+                            .collect::<Vec<&'static str>>()
+                            .into_boxed_slice(),
+                    ),
+                    dir: "",
+                },
+                env: Vec::new(),
+                note: None,
+                limit: None,
+            },
+        };
+        item.env.clone_from(&env);
+        items.push(item);
+    }
+    if items.is_empty() {
+        return Err("the `spec` script has no command".into());
+    }
+    Ok(items)
+}
+
+/// The plan of `mode` for the change `t`: that of `plan`, except that a change that only `spec`
+/// reads runs the steps of `spec` in the default and full tiers (VER-068).
+fn plan_for(t: &Touched, tools: Tools, mode: Mode) -> Result<Plan, String> {
+    if mode != Mode::Quick && t.spec_only() {
+        return Ok(Plan {
+            items: spec_steps(spec_script())?,
+            skipped: Vec::new(),
+        });
+    }
+    Ok(plan(t, tools, mode))
 }
 
 /// What the paths `changed` (repository-relative) make the verification run do.
@@ -301,7 +376,8 @@ fn exports(script: &str) -> Vec<(String, String)> {
 
 /// The steps to run for `t` and the ones skipped, each with the reason.
 ///
-/// The base steps run for every change. The others run when the verification run would run the
+/// The base steps run for every change but a change of documentation, which runs the steps of the
+/// `spec` check alone (`plan_for`). The others run when the verification run would run the
 /// check they mirror for the change (`Touched::gate_runs`); `--full` adds coverage, `stack`,
 /// `big-endian`, and the exerciser's QEMU run on the same rule.
 #[expect(clippy::too_many_lines, reason = "one entry per check step")]
@@ -698,7 +774,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "spec",
-        "partly: `xtask ci` runs all of its commands but the cross-check run",
+        "partly: `xtask ci` runs all of its commands but the cross-check run; a change that only `spec` reads runs every line of it instead (`plan_for`)",
     ),
     ("deny", "not mirrored: needs cargo-deny"),
 ];
@@ -714,7 +790,10 @@ fn gate_also_runs(mode: Mode, t: &Touched, plan: &Plan) -> Vec<String> {
         .map(|c| c.name)
         .collect();
     let mut out = Vec::new();
-    let named = |n: &str| gating.iter().any(|g| g == n) && t.gate_runs(n);
+    // A change of documentation runs every line of `spec`; the quick tier does not.
+    let ran_spec = mode >= Mode::Default && t.spec_only();
+    let named =
+        |n: &str| gating.iter().any(|g| g == n) && t.gate_runs(n) && !(ran_spec && n == "spec");
     let skip_of = |n: &str| plan.skipped.iter().find(|s| s.check == n);
     for (name, steps, first) in COVERED.iter().filter(|(n, _, _)| named(n)) {
         let ran: Vec<&Item> = plan
@@ -958,7 +1037,7 @@ pub fn run(args: &[&str]) -> Result<usize, String> {
     if let Some(note) = note {
         println!("check: {note}");
     }
-    let plan = plan(&touched, tools(), mode);
+    let plan = plan_for(&touched, tools(), mode)?;
     let items = &plan.items;
     let total = items.len();
     let first = match from {
@@ -1037,7 +1116,10 @@ fn verdict(
         }
         Mode::Full => {}
     }
-    let also = gate_also_runs(mode, touched, plan).join(", ");
+    let mut also = gate_also_runs(mode, touched, plan).join(", ");
+    if also.is_empty() {
+        "nothing".clone_into(&mut also);
+    }
     let steps = ran.join(", ");
     match mode {
         Mode::Quick => {
@@ -1063,7 +1145,7 @@ mod tests {
     use super::{
         Action, COVERED, GATE_ONLY, Item, Mode, NOT_LOCAL, Options, Plan, SEPARATE_WORKSPACES,
         Tools, Touched, command, exports, fmt_duration, from_index, gate_also_runs, gate_env,
-        parse_args, plan, touched,
+        parse_args, plan, plan_for, spec_script, spec_steps, touched,
     };
     use crate::verify::{CHECK_ENV, all_checks};
     use std::collections::BTreeMap;
@@ -1172,11 +1254,8 @@ mod tests {
     }
 
     #[test]
-    fn base_steps_come_first_and_alone_for_a_change_of_documentation() {
+    fn base_steps_run_for_a_change_that_is_not_only_documentation() {
         // req: VER-068
-        // Documentation is read by `spec` alone: no step beyond the base ones, in any tier.
-        let docs = touched(&paths(&["docs/x.md"]));
-        assert_eq!(docs.gate, ["spec"]);
         let base = [
             "fmt",
             "clippy",
@@ -1185,9 +1264,82 @@ mod tests {
             "clippy (thumbv7em)",
             "xtask ci",
         ];
-        assert_eq!(names(&docs, ALL, Mode::Default), base);
-        assert_eq!(names(&docs, ALL, Mode::Full), base);
+        // No known change (or none that the gate reads): the base steps, nothing else.
         assert_eq!(names(&Touched::default(), NONE, Mode::Default), base);
+        // Documentation and a source file: `spec` is not the only reader, so the base steps run.
+        let mixed = touched(&paths(&["docs/x.md", "crates/aldis-core/src/lib.rs"]));
+        assert!(!mixed.spec_only());
+        let n = names(&mixed, NONE, Mode::Default);
+        assert!(base.iter().all(|b| n.contains(b)), "{n:?}");
+    }
+
+    #[test]
+    fn a_change_of_documentation_runs_the_steps_of_the_spec_check_alone() {
+        // req: VER-068
+        let docs = touched(&paths(&["docs/x.md"]));
+        assert_eq!(docs.gate, ["spec"]);
+        assert!(docs.spec_only());
+        let script = all_checks()
+            .into_iter()
+            .find(|c| c.name == "spec")
+            .unwrap()
+            .script;
+        // Every line that is not blank, a comment, or an export is a command, and a step.
+        let lines: Vec<&str> = script
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.starts_with('#') && !l.starts_with("export "))
+            .collect();
+        assert!(!lines.is_empty() && lines.iter().all(|l| l.starts_with("cargo ")));
+        for mode in [Mode::Default, Mode::Full] {
+            let p = plan_for(&docs, ALL, mode).unwrap();
+            assert!(p.skipped.is_empty());
+            assert_eq!(p.items.len(), lines.len());
+            for (item, line) in p.items.iter().zip(&lines) {
+                assert_eq!(item.name, format!("spec: {}", &line["cargo ".len()..]));
+                let words: Vec<&str> = line.split_whitespace().collect();
+                let ran = match &item.action {
+                    Action::Cmd { program, args, .. } => {
+                        let mut w = vec![*program];
+                        w.extend(args.iter().copied());
+                        w.join(" ")
+                    }
+                    Action::Xtask(args) => format!("cargo xtask {}", args.join(" ")),
+                };
+                assert_eq!(ran, words.join(" "));
+            }
+            // None of the base steps.
+            let n: Vec<&str> = p.items.iter().map(|i| i.name).collect();
+            assert!(!n.contains(&"fmt") && !n.contains(&"test") && !n.contains(&"xtask ci"));
+        }
+        // The quick tier is the same for every change.
+        assert_eq!(
+            names(&docs, ALL, Mode::Quick),
+            names(&Touched::default(), NONE, Mode::Quick)
+        );
+        // Every line of `spec` ran, so the last line does not say that the gate also runs it.
+        let p = plan_for(&docs, ALL, Mode::Default).unwrap();
+        assert_eq!(
+            gate_also_runs(Mode::Default, &docs, &p),
+            <[String; 0]>::default()
+        );
+        let q = plan_for(&docs, ALL, Mode::Quick).unwrap();
+        assert_eq!(gate_also_runs(Mode::Quick, &docs, &q), ["spec"]);
+    }
+
+    #[test]
+    fn the_spec_steps_fail_instead_of_passing_without_a_step() {
+        // req: VER-068
+        assert!(!spec_steps(spec_script()).unwrap().is_empty());
+        assert!(
+            spec_steps(None)
+                .map(|_| ())
+                .unwrap_err()
+                .contains("no `spec` check")
+        );
+        let with = |script: &str| spec_steps(Some(script.into())).map(|_| ()).unwrap_err();
+        assert!(with("# only a comment\nexport A=1\n").contains("no command"));
+        let err = with("cargo xtask links\nmake all\n");
+        assert!(err.contains("`make all`"), "{err}");
     }
 
     #[test]
@@ -1472,8 +1624,11 @@ mod tests {
         );
         // A check that the change does not make the gate run is not listed.
         let docs = touched(&paths(&["docs/x.md"]));
-        let p = plan(&docs, ALL, Mode::Full);
-        assert_eq!(gate_also_runs(Mode::Full, &docs, &p), ["spec"]);
+        let p = plan_for(&docs, ALL, Mode::Full).unwrap();
+        assert_eq!(
+            gate_also_runs(Mode::Full, &docs, &p),
+            <[String; 0]>::default()
+        );
         let none = Plan {
             items: Vec::new(),
             skipped: Vec::new(),
