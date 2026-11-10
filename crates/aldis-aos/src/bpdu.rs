@@ -12,6 +12,16 @@ use crate::anomaly::{AosAnomaly, Deviations};
 use crate::field;
 use crate::header::{len_u64, mismatch};
 
+/// The fields of the `B_PDU` header by bit position (732.0 §4.1.4.3; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::BPDU_HEADER_LEN as N;
+
+    pub(super) type Spare = Field<N, 0, 2>;
+    pub(super) type Pointer = Field<N, 2, 14>;
+}
+
 /// Length of the `B_PDU` Header, in octets (732.0 §4.1.4.3.1.3 a).
 pub const BPDU_HEADER_LEN: usize = 2;
 
@@ -214,14 +224,14 @@ impl<'a> Bpdu<'a> {
 
     /// Decodes the `B_PDU`, noting its deviations in `deviations`.
     pub(crate) fn parse(field: &'a [u8], deviations: &mut Deviations) -> Result<Bpdu<'a>> {
-        let (Some(&[o0, o1]), Some(zone)) = (
+        let (Some(h), Some(zone)) = (
             field.first_chunk::<BPDU_HEADER_LEN>(),
             field.get(BPDU_HEADER_LEN..).filter(|z| !z.is_empty()),
         ) else {
             return Err(Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD));
         };
-        let spare = o0 >> 6;
-        let raw = u16::from_be_bytes([o0, o1]) & BitstreamPointer::MAX_RAW;
+        let spare = layout::Spare::get_u8(h);
+        let raw = layout::Pointer::get_u16(h);
         let pointer = BitstreamPointer::classify(raw, zone.len())?;
         if spare != 0 {
             deviations.note(

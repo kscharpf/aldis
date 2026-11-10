@@ -42,8 +42,8 @@ use aldis::link::reassembler::{
 };
 use aldis::link::segmenter::{
     Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterBuffers,
-    MapSegmenterConfig, MapSegmenterHead, MapService, SegmenterActions, SegmenterInput,
-    SegmenterOutput, SegmenterProtocol, SegmenterStatus, TcSegmenterParams, UslpSegmenterParams,
+    MapSegmenterConfig, MapSegmenterHead, SegmenterActions, SegmenterInput, SegmenterOutput,
+    SegmenterProtocol, SegmenterService, SegmenterStatus, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis::uslp::{Upid, VcfCountLen};
 
@@ -424,7 +424,7 @@ trait SgProtocol: SegmenterProtocol {
 /// The MAP `m` with the service and the parameters the protocol read from it.
 fn sg_entry<P: SegmenterProtocol>(
     m: &aldis_map_segmenter_map_t,
-    service: MapService,
+    service: SegmenterService,
     params: P::MapParams,
 ) -> Result<MapEntry<P>> {
     let mut entry = MapEntry::<P>::new(P::Map::try_from(m.map_id)?, service, params);
@@ -449,7 +449,9 @@ impl SgProtocol for Tc {
 
     fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Tc>> {
         match parse::<aldis_map_service>(m.service)? {
-            aldis_map_service::ALDIS_MAP_SERVICE_ANY => sg_entry::<Tc>(m, MapService::Any, ()),
+            aldis_map_service::ALDIS_MAP_SERVICE_ANY => {
+                sg_entry::<Tc>(m, SegmenterService::Any, ())
+            }
             aldis_map_service::ALDIS_MAP_SERVICE_PACKETS
             | aldis_map_service::ALDIS_MAP_SERVICE_SDU
             | aldis_map_service::ALDIS_MAP_SERVICE_OCTET_STREAM => Err(wrong_service()),
@@ -475,9 +477,9 @@ impl SgProtocol for Uslp {
 
     fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Uslp>> {
         let service = match parse::<aldis_map_service>(m.service)? {
-            aldis_map_service::ALDIS_MAP_SERVICE_PACKETS => MapService::Packets,
-            aldis_map_service::ALDIS_MAP_SERVICE_SDU => MapService::Sdu,
-            aldis_map_service::ALDIS_MAP_SERVICE_OCTET_STREAM => MapService::OctetStream {
+            aldis_map_service::ALDIS_MAP_SERVICE_PACKETS => SegmenterService::Packets,
+            aldis_map_service::ALDIS_MAP_SERVICE_SDU => SegmenterService::Sdu,
+            aldis_map_service::ALDIS_MAP_SERVICE_OCTET_STREAM => SegmenterService::OctetStream {
                 release_deadline: Duration::from_micros(m.release_deadline_us),
             },
             aldis_map_service::ALDIS_MAP_SERVICE_ANY => return Err(wrong_service()),

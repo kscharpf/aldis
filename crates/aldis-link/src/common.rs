@@ -7,6 +7,24 @@
 
 use aldis_core::{Error, ErrorKind, Result, field};
 
+/// What a MAP carries (232.0 §4.4, §5.3 Table 5-3; 732.1 §4.3.2-4, §5.4 Table 5-4): the kind both
+/// MAP engines serve (LNK-040…LNK-043, LNK-070…LNK-073; OI-96).
+///
+/// What only one engine has stays beside this enum in that engine: the `MapSegmenter`'s
+/// [`SegmenterService`](crate::segmenter::SegmenterService) (a TC MAP that carries either, and the
+/// release deadline of a stream), so that neither engine can hold a state it does not support
+/// (RS-020, RS-021).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MapService {
+    /// Packets: a segmented packet is delivered once, whole packets are split by their length
+    /// fields (LNK-071).
+    Packets,
+    /// `MAP_SDUs` or `MAPA_SDUs` (and the `VCA_SDU` of a TC VC without a Segment Header).
+    Sdu,
+    /// An octet stream (USLP rule `011`), delivered as it arrives (LNK-072).
+    OctetStream,
+}
+
 /// A saturating counter of occurrences (LNK-002, API-056).
 ///
 /// A counter is state, not an event (API-083): it counts what an engine did, and never wraps.

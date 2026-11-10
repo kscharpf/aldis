@@ -17,6 +17,21 @@ pub const MAX_PACKET_LEN: usize = 65_542;
 /// Longest Packet Data Field (133.0 §4.1.3.5).
 pub(crate) const MAX_DATA_LEN: usize = 65_536;
 
+/// The fields of the Packet Primary Header by bit position (133.0 §4.1.3; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::PRIMARY_HEADER_LEN as N;
+
+    pub(super) type Version = Field<N, 0, 3>;
+    pub(super) type Type = Field<N, 3, 1>;
+    pub(super) type SecondaryHeader = Field<N, 4, 1>;
+    pub(super) type Apid = Field<N, 5, 11>;
+    pub(super) type Flags = Field<N, 16, 2>;
+    pub(super) type Count = Field<N, 18, 14>;
+    pub(super) type Length = Field<N, 32, 16>;
+}
+
 /// Packet Version Number of a Space Packet, `000` (133.0 §4.1.3.2.2).
 const VERSION: u8 = 0;
 
@@ -120,10 +135,10 @@ impl SpacePacketHeader {
     /// `Incomplete` (`needed` = 6) if `bytes` is shorter; `UnsupportedVersion` if the version is
     /// not `000`.
     pub(crate) fn parse(bytes: &[u8]) -> Result<SpacePacketHeader> {
-        let Some(&[b0, b1, b2, b3, b4, b5]) = bytes.first_chunk::<PRIMARY_HEADER_LEN>() else {
+        let Some(h) = bytes.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
-        let version = b0 >> 5;
+        let version = layout::Version::get_u8(h);
         if version != VERSION {
             return Err(Error::new(ErrorKind::UnsupportedVersion)
                 .with_field(field::PACKET_VERSION)
@@ -132,40 +147,34 @@ impl SpacePacketHeader {
                     found: version.into(),
                 }));
         }
-        let id = u16::from_be_bytes([b0, b1]);
-        let control = u16::from_be_bytes([b2, b3]);
-        let length = u16::from_be_bytes([b4, b5]);
         Ok(SpacePacketHeader {
             fields: PacketFields {
-                packet_type: if id & 0x1000 == 0 {
-                    PacketType::Telemetry
-                } else {
+                packet_type: if layout::Type::flag(h) {
                     PacketType::Telecommand
+                } else {
+                    PacketType::Telemetry
                 },
-                apid: Apid::new(id & Apid::MAX).unwrap_or(Apid::IDLE),
-                sequence_flags: SequenceFlags::from_bits(b2 >> 6),
-                sequence_count: SeqCount::new(control & SeqCount::MAX).unwrap_or_default(),
+                apid: Apid::new(layout::Apid::get_u16(h)).unwrap_or(Apid::IDLE),
+                sequence_flags: SequenceFlags::from_bits(layout::Flags::get_u8(h)),
+                sequence_count: SeqCount::new(layout::Count::get_u16(h)).unwrap_or_default(),
             },
-            secondary_header: id & 0x0800 != 0,
-            data_len: u32::from(length).wrapping_add(1),
+            secondary_header: layout::SecondaryHeader::flag(h),
+            data_len: u32::from(layout::Length::get_u16(h)).wrapping_add(1),
         })
     }
 
     /// The 6 header octets with `version` in bits 0–2 (133.0 §4.1.3).
     pub(crate) fn octets_with_version(&self, version: u8) -> [u8; PRIMARY_HEADER_LEN] {
-        let packet_type = match self.fields.packet_type {
-            PacketType::Telemetry => 0,
-            PacketType::Telecommand => 0x1000,
-        };
-        let shf = if self.secondary_header { 0x0800 } else { 0 };
-        let id = (u16::from(version & 0b111) << 13) | packet_type | shf | self.fields.apid.get();
-        let control =
-            (u16::from(self.fields.sequence_flags.bits()) << 14) | self.fields.sequence_count.get();
+        let mut h = [0; PRIMARY_HEADER_LEN];
+        layout::Version::put_u8(&mut h, version);
+        layout::Type::put_flag(&mut h, self.fields.packet_type == PacketType::Telecommand);
+        layout::SecondaryHeader::put_flag(&mut h, self.secondary_header);
+        layout::Apid::put_u16(&mut h, self.fields.apid.get());
+        layout::Flags::put_u8(&mut h, self.fields.sequence_flags.bits());
+        layout::Count::put_u16(&mut h, self.fields.sequence_count.get());
         let length = u16::try_from(self.data_len.wrapping_sub(1)).unwrap_or(u16::MAX);
-        let [i0, i1] = id.to_be_bytes();
-        let [c0, c1] = control.to_be_bytes();
-        let [l0, l1] = length.to_be_bytes();
-        [i0, i1, c0, c1, l0, l1]
+        layout::Length::put_u16(&mut h, length);
+        h
     }
 
     /// The 6 header octets as they appear on the wire (133.0 §4.1.3, API-020).

@@ -82,6 +82,24 @@ impl Epi {
     }
 }
 
+/// The fields of the first header octet by bit position (133.1 §4.1.2; GEN-051).
+mod octet0_layout {
+    use aldis_core::bits::Field;
+
+    pub(super) type Version = Field<1, 0, 3>;
+    pub(super) type Epi = Field<1, 3, 3>;
+    pub(super) type LengthOfLength = Field<1, 6, 2>;
+}
+
+/// The fields of the second header octet of a 4- or 8-octet header by bit position (133.1
+/// §4.1.2; GEN-051).
+mod octet1_layout {
+    use aldis_core::bits::Field;
+
+    pub(super) type UserDefined = Field<1, 0, 4>;
+    pub(super) type Extension = Field<1, 4, 4>;
+}
+
 /// Length of the Packet Header, set by the Length of Length field (133.1 §4.1.2.4, Table 4-1;
 /// EPP-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -395,7 +413,7 @@ impl EncapsulationHeader {
         let Some(&octet0) = bytes.first() else {
             return Err(Error::incomplete(1));
         };
-        let version = octet0 >> 5;
+        let version = octet0_layout::Version::get_u8(&[octet0]);
         if version != VERSION {
             return Err(Error::new(ErrorKind::UnsupportedVersion)
                 .with_field(field::PACKET_VERSION)
@@ -404,7 +422,7 @@ impl EncapsulationHeader {
                     found: u64::from(version),
                 }));
         }
-        let epi = Epi((octet0 >> 2) & 0b111);
+        let epi = Epi(octet0_layout::Epi::get_u8(&[octet0]));
         let header_len = HeaderLen::from_length_of_length(octet0);
         let (octet1, ccsds_defined, packet_len) = match (header_len, bytes) {
             (HeaderLen::One, _) => (0, 0, 1),
@@ -442,8 +460,8 @@ impl EncapsulationHeader {
         Ok(EncapsulationHeader {
             epi,
             header_len,
-            extension: EpiExtension(octet1 & 0xF),
-            user_defined: UserDefined(octet1 >> 4),
+            extension: EpiExtension(octet1_layout::Extension::get_u8(&[octet1])),
+            user_defined: UserDefined(octet1_layout::UserDefined::get_u8(&[octet1])),
             ccsds_defined,
             packet_len,
         })
@@ -469,13 +487,20 @@ impl EncapsulationHeader {
     /// the EPI is `110`, so a header taken from a lenient decode re-encodes conformant (GEN-052,
     /// 133.1 §4.1.2.6.3, §4.1.2.7.2).
     fn octets(&self) -> [u8; 8] {
-        let octet0 = (VERSION << 5) | (self.epi.0 << 2) | self.header_len.length_of_length();
+        let mut octet0 = [0];
+        octet0_layout::Version::put_u8(&mut octet0, VERSION);
+        octet0_layout::Epi::put_u8(&mut octet0, self.epi.0);
+        octet0_layout::LengthOfLength::put_u8(&mut octet0, self.header_len.length_of_length());
+        let [octet0] = octet0;
         let extension = if self.epi == Epi::EXTENDED {
             self.extension.0
         } else {
             0
         };
-        let octet1 = (self.user_defined.0 << 4) | extension;
+        let mut octet1 = [0];
+        octet1_layout::UserDefined::put_u8(&mut octet1, self.user_defined.0);
+        octet1_layout::Extension::put_u8(&mut octet1, extension);
+        let [octet1] = octet1;
         let [l0, l1, l2, l3] = self.packet_len.to_be_bytes();
         match self.header_len {
             HeaderLen::One => [octet0, 0, 0, 0, 0, 0, 0, 0],
