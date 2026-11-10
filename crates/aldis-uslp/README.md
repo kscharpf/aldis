@@ -5,6 +5,7 @@ Frame codec for the CCSDS 732.1-B-3 Unified Space Data Link Protocol: USLP Trans
 ## Example
 
 ```rust
+use aldis_core::DecodeMode;
 use aldis_core::security::SecurityLayout;
 use aldis_uslp::{
     FrameContent, FrameDelimiter, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig,

@@ -6,6 +6,7 @@ Frame codec for the CCSDS 232.0-B-4 TC Space Data Link Protocol: TC Transfer Fra
 
 ```rust
 use aldis_core::ids::FrameSeqNum;
+use aldis_core::DecodeMode;
 use aldis_core::security::SecurityLayout;
 use aldis_tc::{
     FrameData, FrameDelimiter, FrameFields, FrameType, PhysicalChannelConfig, SegmentHeaderUse,
