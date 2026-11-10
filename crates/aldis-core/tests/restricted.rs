@@ -29,6 +29,7 @@ use aldis_core::ids::{Apid, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
 use aldis_core::layout::{FrameLayout, FramedBytes};
 use aldis_core::ocf::{FsrReport, Ocf, ProjectSpecificReport, Type1Report};
 use aldis_core::security::{SecuredFields, SecurityLayout};
+use aldis_core::stream::Cut;
 use aldis_testkit::strategies::common::{
     apid, apid_out_of_range, layout_spec, map_id, mod_counter, mod_counter_out_of_range,
     ocf_octets, packet_version, packet_version_out_of_range, secured_ranges, seq_count,
@@ -683,6 +684,31 @@ proptest! {
                 FramedBytes::new(&longer, layout.clone()),
                 Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FRAME_LEN))
             );
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(strategies::config(256, REGRESSIONS))]
+
+    /// A `Cut` is a non-empty stretch of the front of a slice: it exists exactly when the slice
+    /// holds at least the requested non-zero length, and the cut octets are that prefix (API-016,
+    /// TC-020, USLP-014).
+    #[test]
+    fn cut_is_the_non_empty_prefix_that_fits(
+        whole in prop::collection::vec(any::<u8>(), 0..64),
+        len in 1usize..80,
+    ) {
+        // restricted: Cut
+        // req: API-016, RS-020, TC-020, USLP-014, VER-023
+        let wanted = core::num::NonZeroUsize::new(len).unwrap();
+        match Cut::new(&whole, wanted) {
+            Some(cut) => {
+                prop_assert!(len <= whole.len());
+                prop_assert!(!cut.octets().is_empty());
+                prop_assert_eq!(cut.octets(), &whole[..len]);
+            }
+            None => prop_assert!(len > whole.len()),
         }
     }
 }
