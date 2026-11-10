@@ -18,7 +18,7 @@ MAP SDUs/packets ─▶ MapSegmenter (TC/USLP) ─▶ FOP-1 / direct BD ─▶ f
 
 **Readings.** The clause-by-clause reading of M4 WP-1 checked each row against 132.0-B-3, 232.0-B-4, 232.1-B-2, 732.0-B-5, 732.1-B-3, 133.0-B-2, 133.1-B-3, and 355.0-B-2. A "Source" cites the clause the row rests on; where the Blue Book is silent the row says so and names the open issue or the project decision that settles the point. The clause numbers of the procedures are those of the "Protocol Procedures" sections (132.0 §4.2–§4.3, 232.0 §4.3–§4.4, 732.0 §4.2–§4.3, 732.1 §4.2–§4.3).
 
-**Protocols per engine (LNK-001, D3 of the [M4 plan](milestones/m4-link-engines.md)).** An engine is generic over a protocol trait and has one implementation of it for each protocol it serves:
+**Protocols per engine (LNK-001, D3 of the [M4 plan](milestones/m4-link-engines.md)).** An engine is generic over a protocol trait and has one implementation of it for each protocol it serves. The protocol trait has the codec's `FrameFormat` (`aldis_core::format`) as a supertrait: the Primary Header length, the length it gains from the managed parameters (the AOS FHEC, the USLP VCF Count Length), and the data field header lengths are stated once, in the codec, and no engine restates them (M6 plan WP-2a):
 
 | Engine | TM | TC | AOS | USLP |
 |---|---|---|---|---|

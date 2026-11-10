@@ -1,14 +1,12 @@
 //! The `FrameReceiver` procedure for TC frames (232.0 §4.4.5–§4.4.7; LNK-050, LNK-081).
 
-use aldis_core::{Error, ErrorKind, Result, field};
+use aldis_core::{Error, ErrorKind, FrameFormat, Result, field};
 
 use super::{DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput, header, vc_of};
 use crate::protocol::Tc;
 
 /// The octets of the TC Primary Header and the Frame Sequence Number (232.0 §4.1.2).
-const HEADER_LEN: usize = 5;
-/// The largest Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3).
-const MAX_FRAME_LEN: usize = 1024;
+const HEADER_LEN: usize = Tc::PRIMARY_HEADER_LEN;
 
 /// The parameters of a TC physical channel that the receiver needs: none.
 ///
@@ -64,7 +62,7 @@ impl ReceiveProtocol for Tc {
             >= HEADER_LEN
                 .saturating_add(if fecf { 2 } else { 0 })
                 .saturating_add(1)
-            && frame_len <= MAX_FRAME_LEN
+            && frame_len <= aldis_tc::MAX_FRAME_LEN
     }
 
     fn variable_length(_: &TcChannel) -> bool {

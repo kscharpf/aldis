@@ -273,18 +273,26 @@ pub struct TfdfHeader {
     pub upid: Upid,
 }
 
+/// Length of the TFDF Header of a fixed-length TFDZ, and of the VCA SDU and OID data of a
+/// fixed-length frame: 3 octets (§4.1.4.2.1.2; USLP-005).
+pub const FIXED_TFDF_HEADER_LEN: usize = 3;
+
 /// Length of the TFDF Header of a VC: 3 octets with the pointer of a fixed-length TFDZ, 1
 /// without (§4.1.4.2.1.2; USLP-005).
 #[must_use]
 pub(crate) const fn header_len(fixed_tfdz: bool) -> usize {
-    if fixed_tfdz { 3 } else { 1 }
+    if fixed_tfdz { FIXED_TFDF_HEADER_LEN } else { 1 }
 }
 
 impl TfdfHeader {
     /// Length of the header: 3 octets with the pointer, 1 without (§4.1.4.2.1.2; USLP-005).
     #[must_use]
     pub const fn len(&self) -> usize {
-        if self.rule.rule().has_pointer() { 3 } else { 1 }
+        if self.rule.rule().has_pointer() {
+            FIXED_TFDF_HEADER_LEN
+        } else {
+            1
+        }
     }
 
     /// Always `false`: the header has at least one octet.
