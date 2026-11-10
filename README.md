@@ -6,7 +6,7 @@ Aldis is a set of libraries that add CCSDS protocol support to spacecraft flight
 
 Aldis exists for two reasons. It aims to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified: [How Aldis is verified](#how-aldis-is-verified) lists the practices that back this claim.
 
-Aldis is **not** acceptable for certification today. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
+Aldis is **not** qualified or certified today, and is not yet ready to be. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
 
 ## Where Aldis stands
 

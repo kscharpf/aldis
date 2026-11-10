@@ -3,7 +3,7 @@
 **Goal:** the simplest crate architecture that still meets every requirement. Most protocols (TM, TC, AOS, USLP) were added one work package at a time by copying a sibling, so the codecs, the link engines, and the C ABI each restate protocol facts. The pattern of this milestone: **each protocol fact is stated once, in the codec crate or in `aldis-core`, and the engine, FFI, and feature layers are generic over it.** The work changes no wire behaviour: every vector, every requirement, and the trace stay as they are.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M5](m5-c-abi-completion.md) (complete; its release `v0.6.0-m5` is pending) · **Release:** none planned; the maintainer decides whether it ships as `v0.7.0-m6` or with the next release
 
-**Status: planned.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat). Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); its release `v0.6.0-m5` is pending, is the maintainer's, and is not a condition of the gate.
+**Status: in progress.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat). Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); its release `v0.6.0-m5` was made 2026-11-06.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
