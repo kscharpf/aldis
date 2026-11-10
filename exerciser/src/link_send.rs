@@ -5,7 +5,7 @@
 
 use core::hint::black_box as bb;
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
@@ -24,7 +24,10 @@ use aldis_link::mux::{
 };
 use aldis_link::policy::{MuxPolicy, Selector, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp, UslpParams};
-use aldis_uslp::{SourceOrDestination, Upid, VcfCountLen};
+use aldis_uslp::{
+    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
+    Upid, VcfCountLen,
+};
 
 use crate::exercise::Tally;
 
@@ -65,7 +68,11 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         t.check(false);
         return;
     };
-    let mut channel = TmChannel::new(scid, oid);
+    let Ok(physical) = aldis_tm::TmPhysicalChannelConfig::new(bb(F), true) else {
+        t.check(false);
+        return;
+    };
+    let mut channel = TmChannel::new(physical, scid, oid);
     channel.mc_ocf = Some([0; 4]);
     let mut v1_params = TmVc::new(TmRole::Packets);
     v1_params.fsh = Some(fsh);
@@ -77,7 +84,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         VcConfig::<Tm>::new(v3, TmVc::new(TmRole::Vca)).with_priority(bb(1)),
         VcConfig::<Tm>::new(oid, TmVc::new(TmRole::Packets)),
     ];
-    let Ok(config) = ChannelMuxConfig::<Tm, 4>::new(channel, bb(F), true, policy, &vcs) else {
+    let Ok(config) = ChannelMuxConfig::<Tm, 4>::new(channel, policy, &vcs) else {
         t.check(false);
         return;
     };
@@ -214,14 +221,22 @@ fn aos(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let Ok(channel) = AosChannel::new(scid, AosEdition::Issue5, bb(true), bb(true)) else {
+    let Ok(physical) =
+        AosPhysicalChannelConfig::new(bb(F), bb(true), bb(3), true, AosEdition::Issue5)
+    else {
+        t.check(false);
+        return;
+    };
+    let Ok(channel) = AosChannel::new(physical, scid, bb(true)) else {
         t.check(false);
         return;
     };
     t.check(channel.scid() == scid && channel.edition() == AosEdition::Issue5);
     t.check(channel.fhec() && channel.cycle_in_use());
     t.check(SpacecraftId::<10>::new(bb(256)).is_some_and(|big| {
-        AosChannel::new(big, AosEdition::Issue4Compatible, false, false).is_err()
+        AosPhysicalChannelConfig::new(F, false, 0, true, AosEdition::Issue4Compatible)
+            .and_then(|issue4| AosChannel::new(issue4, big, false))
+            .is_err()
     }));
     let vcs = [VcConfig::<Aos>::new(
         v1,
@@ -229,8 +244,8 @@ fn aos(t: &mut Tally) {
             ocf: Some([bb(1); 4]),
         },
     )];
-    let config = ChannelMuxConfig::<Aos, 2>::new(channel, F, true, MuxPolicy::RoundRobin, &vcs)
-        .and_then(|c| c.with_insert_zone(bb(3), bb(0xA5)));
+    let config = ChannelMuxConfig::<Aos, 2>::new(channel, MuxPolicy::RoundRobin, &vcs)
+        .and_then(|c| c.with_insert_zone_fill(bb(0xA5)));
     let Ok(config) = config else {
         t.check(false);
         return;
@@ -291,12 +306,21 @@ fn uslp(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let channel = UslpChannel {
-        scid,
-        source_or_destination: SourceOrDestination::Source,
-        oid_vcf_len: VcfCountLen::NONE,
-        mc_ocf: Some([bb(7); 4]),
+    let Ok(physical) = UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, bb(F), 0, true)
+    else {
+        t.check(false);
+        return;
     };
+    let Ok(mut channel) = UslpChannel::new(
+        physical,
+        scid,
+        SourceOrDestination::Source,
+        VcfCountLen::NONE,
+    ) else {
+        t.check(false);
+        return;
+    };
+    channel.mc_ocf = Some([bb(7); 4]);
     let Ok(params) = UslpVc::new(map, Qos::SequenceControlled, sc, exp, bb(true)) else {
         t.check(false);
         return;
@@ -305,8 +329,7 @@ fn uslp(t: &mut Tally) {
     t.check(params.vcf_len_sc() == sc && params.vcf_len_exp() == exp);
     t.check(UslpVc::new(map, Qos::Expedited, VcfCountLen::NONE, exp, bb(true)).is_err());
     let vcs = [VcConfig::<Uslp>::new(v1, params)];
-    let Ok(config) =
-        ChannelMuxConfig::<Uslp, 2>::new(channel, F, true, MuxPolicy::FixedPriority, &vcs)
+    let Ok(config) = ChannelMuxConfig::<Uslp, 2>::new(channel, MuxPolicy::FixedPriority, &vcs)
     else {
         t.check(false);
         return;

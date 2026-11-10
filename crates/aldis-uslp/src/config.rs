@@ -15,6 +15,7 @@
 //! Parameters that only the engines use (multiplexing schemes, repetitions, delays, COP in
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 
+use aldis_core::PhysicalChannel;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
@@ -116,6 +117,24 @@ impl PhysicalChannelConfig {
     /// Whether frames have one length (Table 5-1).
     pub(crate) const fn is_fixed(&self) -> bool {
         matches!(self.frame_type, TransferFrameType::Fixed)
+    }
+}
+
+impl PhysicalChannel for PhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        self.insert_zone_len
+    }
+
+    fn variable_length(&self) -> bool {
+        !self.is_fixed()
     }
 }
 

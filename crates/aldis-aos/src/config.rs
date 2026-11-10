@@ -18,6 +18,7 @@
 //! Security Header or Trailer (Table 6-1); the Insert Zone and the FECF, physical channel
 //! parameters, are present when configured (§4.1.3.3, §4.1.6.1.3; OI-43 item 1).
 
+use aldis_core::PhysicalChannel;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::lookup::ChannelLookup;
@@ -149,6 +150,24 @@ impl AosPhysicalChannelConfig {
 }
 
 /// 6 octets, or 8 with the FHEC (732.0 §4.1.1.1 a).
+impl PhysicalChannel for AosPhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        self.insert_zone_len
+    }
+
+    fn variable_length(&self) -> bool {
+        false
+    }
+}
+
 const fn primary_header_len(fhec: bool) -> usize {
     if fhec {
         PRIMARY_HEADER_LEN.saturating_add(FHEC_LEN)

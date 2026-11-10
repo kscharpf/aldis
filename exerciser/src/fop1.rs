@@ -56,8 +56,7 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(bb(42))?,
         TcVcId::new(bb(1))?,
-        bb(F),
-        bb(true),
+        aldis_tc::PhysicalChannelConfig::new(bb(F), bb(true)).ok()?,
     )
     .ok()?;
     t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 7);

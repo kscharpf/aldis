@@ -13,6 +13,7 @@
 //! that only the engines use (data field content, blocking, segmentation, repetitions, CLCW
 //! reporting rate, the multiplexing schemes) are not kept here.
 
+use aldis_core::PhysicalChannel;
 use aldis_core::layout::{FECF_LEN, LayoutSpec};
 use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
@@ -65,6 +66,24 @@ impl PhysicalChannelConfig {
     #[must_use]
     pub const fn fecf(&self) -> bool {
         self.fecf
+    }
+}
+
+impl PhysicalChannel for PhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.max_frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        0
+    }
+
+    fn variable_length(&self) -> bool {
+        true
     }
 }
 

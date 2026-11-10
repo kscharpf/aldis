@@ -14,7 +14,7 @@
 | WP-1d Generic frame stream | | | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
 | WP-2a Frame geometry | | | Phase 2 step 1; `FrameFormat` in `aldis-core` (geometry only), implemented by `TmFormat`, `TcFormat`, `AosFormat`, `UslpFormat`; `aldis-link`'s `Tm`, `Tc`, `Aos`, `Uslp` are those markers and exist with the codec feature (the `CltuPacker` impls too) |
 | WP-2b Header writers and parsers | | | Phase 2 step 2; `bits` primitives (D2) |
-| WP-2c Managed-parameter sets | | | Phase 2 step 3 |
+| WP-2c Managed-parameter sets | | | Phase 2 step 3; first slice: the physical-channel set (`FrameFormat::Physical`, the codec's `*PhysicalChannelConfig`) is embedded by the mux and receiver channel types and taken by `Fop1Target::tc`, which no longer restate the frame length, FECF, Insert Zone, FHEC, or edition; the VC sets and the segmenter's channel parameters follow |
 | WP-2d One frame writer | | | Phase 2 step 4 |
 | WP-2e Link codec dependencies | | | Scope question (OI-97); may be cut |
 | WP-3a `InPlace` and `place` | | | Phase 3 step 1 |

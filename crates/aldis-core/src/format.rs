@@ -6,11 +6,35 @@
 //! engines put before the user data. The link engines are generic over a protocol trait that has
 //! the format as a supertrait, so no engine restates a length of the standard (M6 plan WP-2a).
 //! The Primary Header writer and the header of an Only Idle Data frame are members of the same
-//! trait (WP-2b); the managed-parameter sets and the frame writer are later (WP-2c, WP-2d).
+//! trait (WP-2b). The managed parameters of one physical channel are the checked
+//! [`Physical`](FrameFormat::Physical) set the codec defines (WP-2c); the frame writer is later
+//! (WP-2d).
 
 use core::fmt::Debug;
 
 use crate::error::{Error, Result};
+
+/// The managed parameters of one physical channel that every engine reads (LNK-001, LNK-078;
+/// 132.0 Table 5-1; 232.0 Table 5-1; 732.0 Table 5-1; 732.1 Table 5-1).
+///
+/// The codec implements it for the type that holds those parameters after its constructor has
+/// checked them, so an engine takes the set and keeps no copy of the frame length or the FECF
+/// (M6 plan WP-2c, RS-020).
+pub trait PhysicalChannel: Copy + Debug + Eq {
+    /// The Transfer Frame Length in octets: the length of every frame of a fixed-length channel,
+    /// the maximum of one whose frames vary in length.
+    fn frame_len(&self) -> usize;
+
+    /// Whether the frames have a Frame Error Control Field.
+    fn fecf(&self) -> bool;
+
+    /// The octets of the Insert Zone, 0 for a protocol or a channel without one.
+    fn insert_zone_len(&self) -> usize;
+
+    /// Whether the frames of the channel vary in length (TC, 232.0 §2.3.1; variable-length USLP,
+    /// 732.1 §4.1.2.7).
+    fn variable_length(&self) -> bool;
+}
 
 /// The geometry of the frames of one CCSDS data link protocol (LNK-001).
 ///
@@ -20,6 +44,9 @@ pub trait FrameFormat: Copy + Debug + Eq + 'static {
     /// The managed parameter that adds octets to the Primary Header: nothing for TM and TC, the
     /// presence of the FHEC for AOS, the VCF Count Length for USLP.
     type HeaderExtension: Copy + Debug + Eq;
+
+    /// The checked managed parameters of one physical channel of the protocol (LNK-078).
+    type Physical: PhysicalChannel;
 
     /// The octets of the Primary Header that every frame of the protocol has, without the part
     /// of [`HeaderExtension`](Self::HeaderExtension): 132.0 §4.1.2 (6); 232.0 §4.1.2 (5); 732.0
@@ -83,14 +110,36 @@ pub fn put_header(octets: &[u8], len: usize, out: &mut [u8]) -> Result<()> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{FrameFormat, put_header};
+    use super::{FrameFormat, PhysicalChannel, put_header};
     use crate::error::{ErrorDetail, ErrorKind, Result};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Two;
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Chan;
+
+    impl PhysicalChannel for Chan {
+        fn frame_len(&self) -> usize {
+            8
+        }
+
+        fn fecf(&self) -> bool {
+            true
+        }
+
+        fn insert_zone_len(&self) -> usize {
+            0
+        }
+
+        fn variable_length(&self) -> bool {
+            false
+        }
+    }
+
     impl FrameFormat for Two {
         type HeaderExtension = bool;
+        type Physical = Chan;
         type PrimaryHeader = ();
         const PRIMARY_HEADER_LEN: usize = 5;
         const PACKET_HEADER_LEN: usize = 0;
@@ -113,6 +162,9 @@ mod tests {
         assert_eq!(Two::primary_header_len(&false), 5);
         assert_eq!(Two::primary_header_len(&true), 7);
         assert!(Two::write_primary_header(&(), &mut []).is_ok());
+        let c = Chan;
+        assert_eq!((c.frame_len(), c.fecf(), c.insert_zone_len()), (8, true, 0));
+        assert!(!c.variable_length());
         Two::write_oid_data_header(0, &mut []);
     }
 

@@ -11,6 +11,7 @@
 #[path = "../../crates/aldis-link/tests/support/mod.rs"]
 mod support;
 
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, VcId};
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
@@ -19,6 +20,9 @@ use aldis_link::receiver::{
     FrameReceiverConfig, MapSet, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel,
     TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
+use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 use libfuzzer_sys::fuzz_target;
 use support::Plained;
 
@@ -31,9 +35,11 @@ fn vc<const B: u32>(n: u8) -> VcId<B> {
 fn tm() -> FrameReceiver<Tm, 8> {
     FrameReceiver::new(
         FrameReceiverConfig::new(
-            LEN,
-            false,
-            TmChannel::new(DeliveryService::Vc, DeliveryService::Vc),
+            TmChannel::new(
+                TmPhysicalChannelConfig::new(LEN, false).unwrap(),
+                DeliveryService::Vc,
+                DeliveryService::Vc,
+            ),
             &[
                 VcEntry::new(vc(0), TmVc::new(TmContent::Packets, false, None).unwrap()),
                 VcEntry::new(vc(1), TmVc::new(TmContent::Vca, false, None).unwrap()),
@@ -50,9 +56,9 @@ fn tm() -> FrameReceiver<Tm, 8> {
 fn aos() -> FrameReceiver<Aos, 8> {
     FrameReceiver::new(
         FrameReceiverConfig::new(
-            LEN,
-            false,
-            AosChannel::new(2, false),
+            AosChannel::new(
+                AosPhysicalChannelConfig::new(LEN, false, 2, false, AosEdition::Issue5).unwrap(),
+            ),
             &[
                 VcEntry::new(vc(1), AosVc::new(AosContent::Packets, true)),
                 VcEntry::new(vc(2), AosVc::new(AosContent::Vca, false)),
@@ -74,9 +80,10 @@ fn uslp() -> FrameReceiver<Uslp, 8> {
     };
     FrameReceiver::new(
         FrameReceiverConfig::new(
-            LEN,
-            false,
-            UslpChannel::new(2, DeliveryService::Mc),
+            UslpChannel::new(
+                UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, LEN, 2, false).unwrap(),
+                DeliveryService::Mc,
+            ),
             &[
                 VcEntry::new(vc(1), UslpVc::new(maps(&[0, 2]), false, true)),
                 VcEntry::new(vc(2), UslpVc::new(maps(&[0]), true, true)),
@@ -90,9 +97,7 @@ fn uslp() -> FrameReceiver<Uslp, 8> {
 fn tc() -> FrameReceiver<Tc, 8> {
     FrameReceiver::new(
         FrameReceiverConfig::new(
-            LEN,
-            false,
-            TcChannel,
+            TcChannel::new(TcPhysicalChannelConfig::new(LEN, false).unwrap()),
             &[
                 VcEntry::new(vc(1), TcVc::SERVED),
                 VcEntry::new(vc(2), TcVc::UNSERVED),

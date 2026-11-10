@@ -26,6 +26,7 @@
 use core::fmt::Debug;
 use core::ops::Range;
 
+use aldis_core::PhysicalChannel;
 use aldis_core::engine::{Actions, OutRange};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::oid::OidGenerator;
@@ -377,6 +378,9 @@ pub trait MuxProtocol: Protocol {
     /// Whether OID frames are expedited (USLP; LNK-030).
     const OID_BYPASS: bool;
 
+    /// The managed parameters of the physical channel the channel parameters embed (M6 plan
+    /// WP-2c).
+    fn physical(channel: &Self::Channel) -> &Self::Physical;
     /// The VC of OID frames: the dedicated VC (TM) or 63 (AOS, USLP; LNK-030).
     fn oid_vc(channel: &Self::Channel) -> Self::Vc;
     /// The initial `MC_OCF`, if the master channel has one (LNK-033).
@@ -400,11 +404,7 @@ pub trait MuxProtocol: Protocol {
     ///
     /// # Errors
     /// `InvalidConfig` naming the parameter.
-    fn check_channel(
-        channel: &Self::Channel,
-        frame_len: usize,
-        vcs: &[Option<VcConfig<Self>>],
-    ) -> Result<()>;
+    fn check_channel(channel: &Self::Channel, vcs: &[Option<VcConfig<Self>>]) -> Result<()>;
     /// The managed parameter that lengthens the primary header of a frame of the VC (`None`: the
     /// OID frame of a protocol whose OID VC is not configured): the FHEC of AOS, the VCF Count
     /// Length of USLP. The header holds
@@ -517,18 +517,17 @@ impl<P: MuxProtocol> VcConfig<P> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelMuxConfig<P: MuxProtocol, const V: usize> {
     channel: P::Channel,
-    frame_len: usize,
-    fecf: bool,
     policy: MuxPolicy,
-    insert_len: usize,
     idle_pattern: u8,
     vcs: [Option<VcConfig<P>>; V],
     count: usize,
 }
 
 impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
-    /// The configuration of a physical channel of frames of `frame_len` octets, with a FECF if
-    /// `fecf`, the VCs `vcs` (in any order, each VCID once), and no Insert Zone.
+    /// The configuration of the physical channel `channel`, whose managed parameters
+    /// (the frame length, the FECF, the Insert Zone) are those of its
+    /// [`Physical`](aldis_core::FrameFormat::Physical) set, with the VCs `vcs` (in any order,
+    /// each VCID once). The Insert Zone, if the set has one, starts filled with the octet 0.
     ///
     /// # Errors
     /// - `CapacityExceeded` (`capacity`) for more than `V` VCs;
@@ -539,8 +538,6 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     ///   protocol's own checks (LNK-078).
     pub fn new(
         channel: P::Channel,
-        frame_len: usize,
-        fecf: bool,
         policy: MuxPolicy,
         vcs: &[VcConfig<P>],
     ) -> Result<ChannelMuxConfig<P, V>> {
@@ -557,10 +554,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
         }
         ChannelMuxConfig {
             channel,
-            frame_len,
-            fecf,
             policy,
-            insert_len: 0,
             idle_pattern: 0,
             vcs: sorted,
             count: vcs.len(),
@@ -568,28 +562,26 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
         .checked()
     }
 
-    /// The same configuration with an Insert Zone of one `IN_SDU` of `len` octets in every frame,
-    /// initially filled with `idle_pattern` (LNK-034).
+    /// The same configuration with the Insert Zone (one `IN_SDU` in every frame, of the length
+    /// the physical channel's managed parameters give) initially filled with `idle_pattern`
+    /// (LNK-034).
     ///
     /// # Errors
-    /// `InvalidConfig` (`insert_zone_len`) for 0 or a protocol without an Insert Zone, and
-    /// (`frame_len`) when some frame has no data field left.
-    pub fn with_insert_zone(self, len: usize, idle_pattern: u8) -> Result<ChannelMuxConfig<P, V>> {
-        if len == 0 || !P::INSERT_ZONE {
+    /// `InvalidConfig` (`insert_zone_len`) for a physical channel without an Insert Zone.
+    pub fn with_insert_zone_fill(self, idle_pattern: u8) -> Result<ChannelMuxConfig<P, V>> {
+        if self.insert_zone_len() == 0 || !P::INSERT_ZONE {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::INSERT_ZONE_LEN));
         }
-        ChannelMuxConfig {
-            insert_len: len,
+        Ok(ChannelMuxConfig {
             idle_pattern,
             ..self
-        }
-        .checked()
+        })
     }
 
     /// Checks the relations between the parameters (LNK-078).
     fn checked(self) -> Result<ChannelMuxConfig<P, V>> {
         let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
-        P::check_channel(&self.channel, self.frame_len, &self.vcs)?;
+        P::check_channel(&self.channel, &self.vcs)?;
         if self.policy == MuxPolicy::FixedPriority {
             for v in self.vcs() {
                 if self.vcs().filter(|o| o.priority == v.priority).count() > 1 {
@@ -606,10 +598,10 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
             return Err(bad(field::FSH_LEN));
         }
         for bypass in [false, true] {
-            if self.frame_len <= self.overhead(None, bypass)
+            if self.frame_len() <= self.overhead(None, bypass)
                 || self
                     .vcs()
-                    .any(|v| self.frame_len <= self.overhead(Some(v), bypass))
+                    .any(|v| self.frame_len() <= self.overhead(Some(v), bypass))
             {
                 return Err(bad(field::FRAME_LEN));
             }
@@ -648,7 +640,8 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
 
     /// The octets of the Transfer Frame Secondary Header or Insert Zone of a frame of `vc`.
     fn secondary_len(&self, vc: Option<&VcConfig<P>>) -> usize {
-        self.fsh(vc).map_or(self.insert_len, |f| f.total_len())
+        self.fsh(vc)
+            .map_or(self.insert_zone_len(), |f| f.total_len())
     }
 
     /// Whether a frame of `vc` has an OCF (LNK-033).
@@ -659,7 +652,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     /// The layout of the fields of a frame of `vc`, which leaves the data field open.
     fn spec(&self, vc: Option<&VcConfig<P>>, bypass: bool) -> LayoutSpec {
         LayoutSpec {
-            frame_len: self.frame_len,
+            frame_len: self.frame_len(),
             primary_header_len: P::primary_header_len(&P::header_extension(
                 &self.channel,
                 vc.map(|v| &v.params),
@@ -668,7 +661,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
             secondary_len: self.secondary_len(vc),
             security: vc.map_or(SecurityLayout::NONE, |v| v.security),
             ocf: self.has_ocf(vc),
-            fecf: self.fecf,
+            fecf: self.fecf(),
         }
     }
 
@@ -679,7 +672,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
 
     /// The octets of the data field of a frame of `vc` for the flag `bypass`.
     fn data_len(&self, vc: Option<&VcConfig<P>>, bypass: bool) -> usize {
-        self.frame_len.saturating_sub(self.overhead(vc, bypass))
+        self.frame_len().saturating_sub(self.overhead(vc, bypass))
     }
 
     /// The octets of the data field a VC offers for the quality of service `qos`: the length
@@ -702,16 +695,16 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn frame_len(&self) -> usize {
-        self.frame_len
+    pub fn frame_len(&self) -> usize {
+        P::physical(&self.channel).frame_len()
     }
 
     /// Whether frames have a FECF.
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn fecf(&self) -> bool {
-        self.fecf
+    pub fn fecf(&self) -> bool {
+        P::physical(&self.channel).fecf()
     }
 
     /// The multiplexing policy (LNK-031).
@@ -722,8 +715,8 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
 
     /// The octets of the Insert Zone, 0 if none (LNK-034).
     #[must_use]
-    pub const fn insert_zone_len(&self) -> usize {
-        self.insert_len
+    pub fn insert_zone_len(&self) -> usize {
+        P::physical(&self.channel).insert_zone_len()
     }
 
     /// The number of VCs.
@@ -917,8 +910,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         self.bufs.insert.fill(self.head.config.idle_pattern);
     }
 
-    const fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {
-        if config.frame_len > F {
+    fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {
+        if config.frame_len() > F {
             Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::FRAME_LEN))
         } else {
             Ok(())
@@ -1110,7 +1103,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// `SetInsert` (LNK-034).
     fn set_insert(&mut self, data: &[u8]) -> Result<()> {
-        let len = self.head.config.insert_len;
+        let len = self.head.config.insert_zone_len();
         if len == 0 {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::INSERT_ZONE_LEN));
         }
@@ -1126,7 +1119,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// `Opportunity` (LNK-030…LNK-036).
     fn opportunity(&mut self, out: &mut [u8], actions: &mut MuxActions) -> Result<()> {
-        let frame_len = self.head.config.frame_len;
+        let frame_len = self.head.config.frame_len();
         if out.len() < frame_len {
             return Err(Error::buffer_too_small(frame_len));
         }
@@ -1157,7 +1150,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             data: out_range(&layout.data()),
             security_trailer: out_range(&layout.security_trailer()),
         }))?;
-        if self.head.config.insert_len > 0 {
+        if self.head.config.insert_zone_len() > 0 {
             if !self.head.insert_fresh {
                 self.head.status.insert_repeated.incr();
                 actions.push(MuxOutput::InsertSduRepeated)?;
@@ -1225,7 +1218,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         FrameFields {
             vc,
             oid: pick.held.is_none(),
-            frame_len: cfg.frame_len,
+            frame_len: cfg.frame_len(),
             mc_count: self.head.mc_count,
             vc_count: pick.held.and_then(|h| h.given_count).unwrap_or(counted),
             ocf: cfg.has_ocf(pick.vc.as_ref()),
@@ -1351,7 +1344,7 @@ mod tm_impl {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::layout::OCF_LEN;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
-    use aldis_tm::config::TmPhysicalChannelConfig;
+    use aldis_tm::TmPhysicalChannelConfig;
     use aldis_tm::{FirstHeaderPointer, SegmentLengthId, TmPrimaryHeader};
 
     use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
@@ -1372,6 +1365,9 @@ mod tm_impl {
     /// §5.2; LNK-030, LNK-033).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TmChannel {
+        /// The managed parameters of the physical channel: the frame length and the FECF
+        /// (132.0 Table 5-1; TM-001).
+        pub physical: TmPhysicalChannelConfig,
         /// The Spacecraft Identifier, 10 bits (132.0 §4.1.2.2.3).
         pub scid: SpacecraftId<10>,
         /// The VC dedicated to OID frames, which is one of the VCs and carries Packets without
@@ -1385,12 +1381,17 @@ mod tm_impl {
     }
 
     impl TmChannel {
-        /// A channel with no `MC_OCF` and no `MC_FSH`.
+        /// A channel of the physical channel `physical` with no `MC_OCF` and no `MC_FSH`.
         ///
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
-        pub const fn new(scid: SpacecraftId<10>, oid_vc: VcId<3>) -> TmChannel {
+        pub const fn new(
+            physical: TmPhysicalChannelConfig,
+            scid: SpacecraftId<10>,
+            oid_vc: VcId<3>,
+        ) -> TmChannel {
             TmChannel {
+                physical,
                 scid,
                 oid_vc,
                 mc_ocf: None,
@@ -1442,6 +1443,10 @@ mod tm_impl {
         const MC_COUNT: bool = true;
         const OID_BYPASS: bool = false;
 
+        fn physical(channel: &TmChannel) -> &TmPhysicalChannelConfig {
+            &channel.physical
+        }
+
         fn oid_vc(channel: &TmChannel) -> VcId<3> {
             channel.oid_vc
         }
@@ -1485,15 +1490,8 @@ mod tm_impl {
             })
         }
 
-        fn check_channel(
-            channel: &TmChannel,
-            frame_len: usize,
-            vcs: &[Option<VcConfig<Tm>>],
-        ) -> Result<()> {
+        fn check_channel(channel: &TmChannel, vcs: &[Option<VcConfig<Tm>>]) -> Result<()> {
             let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
-            // The physical channel checks of the codec: the longest frame for which the CRC-16
-            // detects every double-bit error (TM-001, OI-51, HZ-TM-04).
-            TmPhysicalChannelConfig::new(frame_len, false)?;
             let oid = vcs
                 .iter()
                 .flatten()
@@ -1538,7 +1536,7 @@ pub use tm_impl::{TmChannel, TmOffer, TmRole, TmVc};
 
 #[cfg(feature = "aos")]
 mod aos_impl {
-    use aldis_aos::{AosEdition, AosPrimaryHeader, VcFrameCount};
+    use aldis_aos::{AosEdition, AosPhysicalChannelConfig, AosPrimaryHeader, VcFrameCount};
     use aldis_core::ids::SpacecraftId;
     use aldis_core::layout::OCF_LEN;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
@@ -1552,37 +1550,41 @@ mod aos_impl {
     /// Built only by [`new`](Self::new), which relates the edition to the SCID (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct AosChannel {
+        physical: AosPhysicalChannelConfig,
         scid: SpacecraftId<10>,
-        edition: AosEdition,
-        fhec: bool,
         cycle_in_use: bool,
     }
 
     impl AosChannel {
-        /// A channel of the Spacecraft Identifier `scid` in the `edition` of the standard, with
-        /// a Frame Header Error Control field if `fhec` (which the caller computes, LNK-035),
-        /// and the VC Frame Count Cycle in use if `cycle_in_use`: the Use Flag is set and the
+        /// A channel of the Spacecraft Identifier `scid` on the physical channel `physical`,
+        /// whose managed parameters give the edition of the standard and whether frames have a
+        /// Frame Header Error Control field (which the caller computes, LNK-035), with the VC
+        /// Frame Count Cycle in use if `cycle_in_use`: the Use Flag is set and the
         /// cycle counts the wraps of the VC Frame Count (LNK-032; 732.0 §4.1.2.5.5).
         ///
         /// # Errors
         /// `InvalidConfig` (`spacecraft_id`) for a SCID above 255 in the Issue 4 edition, whose
         /// SCID has 8 bits (732.0 §4.1.2.2.3 and its note 1; AOS-002).
         pub fn new(
+            physical: AosPhysicalChannelConfig,
             scid: SpacecraftId<10>,
-            edition: AosEdition,
-            fhec: bool,
             cycle_in_use: bool,
         ) -> Result<AosChannel> {
-            if edition == AosEdition::Issue4Compatible && scid.get() > 0xFF {
+            if physical.edition() == AosEdition::Issue4Compatible && scid.get() > 0xFF {
                 Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID))
             } else {
                 Ok(AosChannel {
+                    physical,
                     scid,
-                    edition,
-                    fhec,
                     cycle_in_use,
                 })
             }
+        }
+
+        /// The managed parameters of the physical channel.
+        #[must_use]
+        pub const fn physical(&self) -> &AosPhysicalChannelConfig {
+            &self.physical
         }
 
         /// The Spacecraft Identifier, 10 bits (8 bits in the Issue 4 edition).
@@ -1596,7 +1598,7 @@ mod aos_impl {
         /// The edition of the standard, which sets the SCID width (AOS-002).
         #[must_use]
         pub const fn edition(&self) -> AosEdition {
-            self.edition
+            self.physical.edition()
         }
 
         /// Whether frames have a Frame Header Error Control field.
@@ -1604,7 +1606,7 @@ mod aos_impl {
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn fhec(&self) -> bool {
-            self.fhec
+            self.physical.fhec()
         }
 
         /// Whether the VC Frame Count Cycle is in use.
@@ -1631,6 +1633,10 @@ mod aos_impl {
         const INSERT_ZONE: bool = true;
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = false;
+
+        fn physical(channel: &AosChannel) -> &AosPhysicalChannelConfig {
+            &channel.physical
+        }
 
         fn oid_vc(_: &AosChannel) -> aldis_core::ids::VcId<6> {
             aldis_aos::OID_VCID
@@ -1660,7 +1666,7 @@ mod aos_impl {
             })
         }
 
-        fn check_channel(_: &AosChannel, _: usize, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
+        fn check_channel(_: &AosChannel, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
             if vcs
                 .iter()
                 .flatten()
@@ -1673,7 +1679,7 @@ mod aos_impl {
         }
 
         fn header_extension(channel: &AosChannel, _: Option<&AosVc>, _: bool) -> bool {
-            channel.fhec
+            channel.physical.fhec()
         }
 
         fn primary_header(
@@ -1685,12 +1691,12 @@ mod aos_impl {
             // §4.1.2.5.5; LNK-032).
             let (count, cycle) = VcFrameCount::wrapping(f.vc_count);
             Ok(AosPrimaryHeader::unsealed(
-                channel.edition,
+                channel.physical.edition(),
                 channel.scid,
                 f.vc,
                 count,
                 channel.cycle_in_use.then_some(cycle),
-                channel.fhec,
+                channel.physical.fhec(),
             ))
         }
     }
@@ -1701,9 +1707,11 @@ pub use aos_impl::{AosChannel, AosVc};
 
 #[cfg(feature = "uslp")]
 mod uslp_impl {
+    use aldis_core::PhysicalChannel;
     use aldis_core::ids::{MapId, SpacecraftId};
     use aldis_core::layout::OCF_LEN;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
+    use aldis_uslp::PhysicalChannelConfig as UslpPhysicalChannelConfig;
     use aldis_uslp::{
         ChannelFields, FrameKind, SourceOrDestination, UslpPrimaryHeader, UslpVcId, VcfCount,
         VcfCountLen,
@@ -1715,8 +1723,12 @@ mod uslp_impl {
 
     /// The parameters of the physical channel and master channel of a USLP mux with
     /// fixed-length frames (732.1 §5.2, §5.3; LNK-030, LNK-032, LNK-033).
+    ///
+    /// Built only by [`new`](Self::new), which takes the managed parameters of a fixed-length
+    /// physical channel (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct UslpChannel {
+        physical: UslpPhysicalChannelConfig,
         /// The Spacecraft Identifier, 16 bits.
         pub scid: SpacecraftId<16>,
         /// Whether the SCID is the source or the destination of the frames.
@@ -1726,6 +1738,41 @@ mod uslp_impl {
         /// The initial `MC_OCF`: "Inclusion of OCF Required" is true for the master channel, and
         /// every frame has an OCF, OID frames included (LNK-033, OI-76).
         pub mc_ocf: Option<[u8; OCF_LEN]>,
+    }
+
+    impl UslpChannel {
+        /// A channel of the Spacecraft Identifier `scid` (`source_or_destination` says what it
+        /// names) on the fixed-length physical channel `physical`, with VCID 63 frames that have
+        /// a VCF Count of `oid_vcf_len` and no `MC_OCF`.
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`transfer_frame_type`) for a physical channel of variable-length
+        /// frames, which the mux does not build.
+        pub fn new(
+            physical: UslpPhysicalChannelConfig,
+            scid: SpacecraftId<16>,
+            source_or_destination: SourceOrDestination,
+            oid_vcf_len: VcfCountLen,
+        ) -> Result<UslpChannel> {
+            if physical.variable_length() {
+                return Err(
+                    Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSFER_FRAME_TYPE)
+                );
+            }
+            Ok(UslpChannel {
+                physical,
+                scid,
+                source_or_destination,
+                oid_vcf_len,
+                mc_ocf: None,
+            })
+        }
+
+        /// The managed parameters of the physical channel.
+        #[must_use]
+        pub const fn physical(&self) -> &UslpPhysicalChannelConfig {
+            &self.physical
+        }
     }
 
     /// The parameters of a USLP VC (732.1 §5.4 Table 5-3; LNK-032, LNK-076).
@@ -1842,6 +1889,10 @@ mod uslp_impl {
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = true;
 
+        fn physical(channel: &UslpChannel) -> &UslpPhysicalChannelConfig {
+            &channel.physical
+        }
+
         fn oid_vc(_: &UslpChannel) -> UslpVcId {
             aldis_uslp::OID_VC
         }
@@ -1903,16 +1954,11 @@ mod uslp_impl {
             })
         }
 
-        fn check_channel(
-            _: &UslpChannel,
-            frame_len: usize,
-            vcs: &[Option<VcConfig<Uslp>>],
-        ) -> Result<()> {
-            let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
+        fn check_channel(_: &UslpChannel, vcs: &[Option<VcConfig<Uslp>>]) -> Result<()> {
+            // The frame length is at most `MAX_FRAME_LEN`, which the physical channel's
+            // constructor checks.
             if vcs.iter().flatten().any(|v| v.id() == aldis_uslp::OID_VCID) {
-                Err(bad(field::VC_ID))
-            } else if frame_len > aldis_uslp::MAX_FRAME_LEN {
-                Err(bad(field::FRAME_LEN))
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
             } else {
                 Ok(())
             }
@@ -1961,7 +2007,7 @@ pub use uslp_impl::{UslpChannel, UslpOffer, UslpVc};
     reason = "test helpers fail loudly by design (RS-018)"
 )]
 mod tests {
-    use aldis_aos::AosEdition;
+    use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
     use aldis_core::ids::{SpacecraftId, VcId};
 
     use super::{
@@ -1971,18 +2017,17 @@ mod tests {
     use crate::protocol::Aos;
 
     fn mux(cycle_in_use: bool) -> ChannelMux<Aos, 2, 32> {
+        let physical =
+            AosPhysicalChannelConfig::new(28, false, 0, true, AosEdition::Issue5).unwrap();
         let channel = AosChannel::new(
+            physical,
             SpacecraftId::<10>::new(421).unwrap(),
-            AosEdition::Issue5,
-            false,
             cycle_in_use,
         )
         .unwrap();
         let vc = VcConfig::<Aos>::new(VcId::<6>::new(1).unwrap(), AosVc::default());
-        ChannelMux::new(
-            ChannelMuxConfig::new(channel, 28, true, MuxPolicy::RoundRobin, &[vc]).unwrap(),
-        )
-        .unwrap()
+        ChannelMux::new(ChannelMuxConfig::new(channel, MuxPolicy::RoundRobin, &[vc]).unwrap())
+            .unwrap()
     }
 
     /// The VC Frame Count and the signaling octet of the next frame of VC 1.

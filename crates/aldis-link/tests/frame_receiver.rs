@@ -11,11 +11,12 @@
     reason = "tests fail loudly by design"
 )]
 
-use aldis_core::ErrorKind;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::engine::OutRange;
 use aldis_core::field;
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::ocf::Ocf;
+use aldis_core::{ErrorKind, PhysicalChannel};
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
     AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
@@ -23,6 +24,9 @@ use aldis_link::receiver::{
     ReceiveProtocol, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc,
     UslpChannel, UslpVc, VcEntry,
 };
+use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 mod support;
 
 use aldis_testkit::strategies;
@@ -180,11 +184,44 @@ fn vc<const B: u32>(n: u8) -> VcId<B> {
     VcId::<B>::new(n).unwrap()
 }
 
+fn tm_channel(len: usize, fecf: bool, ocf: DeliveryService, fsh: DeliveryService) -> TmChannel {
+    TmChannel::new(TmPhysicalChannelConfig::new(len, fecf).unwrap(), ocf, fsh)
+}
+
+fn aos_channel(len: usize, insert_zone_len: usize, fhec: bool, fecf: bool) -> AosChannel {
+    AosChannel::new(
+        AosPhysicalChannelConfig::new(len, fhec, insert_zone_len, fecf, AosEdition::Issue5)
+            .unwrap(),
+    )
+}
+
+fn uslp_channel(
+    len: usize,
+    insert_zone_len: usize,
+    fecf: bool,
+    ocf: DeliveryService,
+) -> UslpChannel {
+    UslpChannel::new(
+        UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, len, insert_zone_len, fecf)
+            .unwrap(),
+        ocf,
+    )
+}
+
+fn uslp_variable(len: usize, ocf: DeliveryService) -> UslpChannel {
+    UslpChannel::new(
+        UslpPhysicalChannelConfig::new(TransferFrameType::Variable, len, 0, false).unwrap(),
+        ocf,
+    )
+}
+
+fn tc_channel(len: usize, fecf: bool) -> TcChannel {
+    TcChannel::new(TcPhysicalChannelConfig::new(len, fecf).unwrap())
+}
+
 fn tm_config(ocf: DeliveryService, fsh: DeliveryService) -> FrameReceiverConfig<Tm, 8> {
     FrameReceiverConfig::new(
-        LEN,
-        false,
-        TmChannel::new(ocf, fsh),
+        tm_channel(LEN, false, ocf, fsh),
         &[
             VcEntry::new(vc(0), TmVc::new(TmContent::Packets, false, None).unwrap()),
             VcEntry::new(vc(1), TmVc::new(TmContent::Vca, false, None).unwrap()),
@@ -203,9 +240,7 @@ fn tm() -> TmRx {
 
 fn aos_config(fhec: bool) -> FrameReceiverConfig<Aos, 8> {
     FrameReceiverConfig::new(
-        LEN,
-        false,
-        AosChannel::new(2, fhec),
+        aos_channel(LEN, 2, fhec, false),
         &[
             VcEntry::new(vc(1), AosVc::new(AosContent::Packets, true)),
             VcEntry::new(vc(2), AosVc::new(AosContent::Vca, false)),
@@ -229,9 +264,7 @@ fn uslp_config() -> FrameReceiverConfig<Uslp, 8> {
         )
     };
     FrameReceiverConfig::new(
-        LEN,
-        false,
-        UslpChannel::new(2, DeliveryService::Mc),
+        uslp_channel(LEN, 2, false, DeliveryService::Mc),
         &[
             VcEntry::new(vc(1), UslpVc::new(maps(&[0, 2]), false, true)),
             VcEntry::new(vc(2), UslpVc::new(maps(&[0]), true, true)),
@@ -248,9 +281,7 @@ fn uslp() -> UslpRx {
 fn tc() -> TcRx {
     TcRx::new(
         FrameReceiverConfig::new(
-            LEN,
-            false,
-            TcChannel,
+            tc_channel(LEN, false),
             &[
                 VcEntry::new(vc(1), TcVc::SERVED),
                 VcEntry::new(vc(2), TcVc::UNSERVED),
@@ -320,9 +351,7 @@ fn the_worst_case_of_each_protocol_returns_exactly_the_bound() {
     ));
     // A served TM frame has five too: two gaps, FSH, OCF, field.
     let config = FrameReceiverConfig::<Tm, 8>::new(
-        LEN,
-        false,
-        TmChannel::new(DeliveryService::Vc, DeliveryService::Vc),
+        tm_channel(LEN, false, DeliveryService::Vc, DeliveryService::Vc),
         &[VcEntry::new(
             vc(0),
             TmVc::new(TmContent::Packets, true, Some(2)).unwrap(),
@@ -757,9 +786,7 @@ fn a_raw_frame_is_refused_when_the_option_is_off_or_the_length_is_wrong() {
 fn a_channel_without_an_insert_zone_delivers_none() {
     // req: LNK-053
     let config = FrameReceiverConfig::<Aos, 2>::new(
-        LEN,
-        false,
-        AosChannel::new(0, false),
+        aos_channel(LEN, 0, false, false),
         &[VcEntry::new(vc(1), AosVc::new(AosContent::Vca, false))],
     )
     .unwrap();
@@ -768,22 +795,18 @@ fn a_channel_without_an_insert_zone_delivers_none() {
     assert!(matches!(out[..], [ReceiverOutput::DataField { .. }]));
     assert!(config.with_raw_frames(true).is_err());
     // Only a protocol with an Insert Zone has an offset for a raw frame.
-    let tm_channel = TmChannel::new(DeliveryService::None, DeliveryService::None);
+    let tm_channel = tm_channel(LEN, false, DeliveryService::None, DeliveryService::None);
+    let tc_channel = tc_channel(LEN, false);
     for e in [
         Tm::raw_insert_zone_offset(&tm_channel, &[]).unwrap_err(),
-        Tc::raw_insert_zone_offset(&TcChannel, &[]).unwrap_err(),
+        Tc::raw_insert_zone_offset(&tc_channel, &[]).unwrap_err(),
     ] {
         assert_eq!(e.field(), Some(field::RAW_FRAMES));
     }
-    assert!(!Tm::variable_length(&tm_channel) && Tc::variable_length(&TcChannel));
-    assert_eq!(
-        Tm::insert_zone_len(&TmChannel::new(
-            DeliveryService::None,
-            DeliveryService::None
-        )),
-        0
-    );
-    assert_eq!(Tc::insert_zone_len(&TcChannel), 0);
+    assert!(!Tm::physical(&tm_channel).variable_length());
+    assert!(Tc::physical(&tc_channel).variable_length());
+    assert_eq!(Tm::physical(&tm_channel).insert_zone_len(), 0);
+    assert_eq!(Tc::physical(&tc_channel).insert_zone_len(), 0);
 }
 
 // ---- LNK-050: frames of varying length ----
@@ -827,15 +850,20 @@ fn tc_frames_vary_in_length_up_to_the_maximum() {
 #[test]
 fn a_tc_configuration_needs_a_data_field_and_stays_within_the_maximum() {
     // req: LNK-050, API-040; 232.0 Tables 5-1 to 5-3, CMN-041
+    // The physical channel's managed parameters check the length (WP-2c): 232.0 Table 5-1.
     let build = |len: usize, fecf: bool| {
-        FrameReceiverConfig::<Tc, 2>::new(
-            len,
-            fecf,
-            TcChannel,
-            &[VcEntry::new(vc(1), TcVc::SERVED)],
-        )
+        TcPhysicalChannelConfig::new(len, fecf).map(|physical| {
+            FrameReceiverConfig::<Tc, 2>::new(
+                TcChannel::new(physical),
+                &[VcEntry::new(vc(1), TcVc::SERVED)],
+            )
+            .unwrap()
+        })
     };
-    assert_eq!(build(5, false).unwrap_err().field(), Some(field::FRAME_LEN));
+    assert_eq!(
+        build(5, false).unwrap_err().field(),
+        Some(field::MAX_FRAME_LEN)
+    );
     assert!(build(6, false).is_ok());
     assert!(build(8, true).is_ok() && build(7, true).is_err());
     assert!(build(1024, false).is_ok());
@@ -850,9 +878,7 @@ fn a_truncated_uslp_frame_is_not_served() {
     // req: LNK-050, API-058; 732.1 §4.1.2.6, Annex D; OI-48
     let maps = MapSet::new(&[MapId::<4>::new(0).unwrap()]);
     let config = FrameReceiverConfig::<Uslp, 4>::new(
-        LEN,
-        false,
-        UslpChannel::variable(DeliveryService::Mc),
+        uslp_variable(LEN, DeliveryService::Mc),
         &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
     )
     .unwrap();
@@ -890,9 +916,7 @@ fn variable_length_uslp_frames_are_routed_by_their_own_length() {
     // req: LNK-050, LNK-051; 732.1 §4.1.2.7
     let maps = MapSet::new(&[MapId::<4>::new(0).unwrap()]);
     let config = FrameReceiverConfig::<Uslp, 4>::new(
-        LEN,
-        false,
-        UslpChannel::variable(DeliveryService::Mc),
+        uslp_variable(LEN, DeliveryService::Mc),
         &[VcEntry::new(vc(1), UslpVc::new(maps, false, true))],
     )
     .unwrap();
@@ -1145,9 +1169,7 @@ fn counters_count_and_persist_across_a_reconfiguration() {
     assert_eq!(rx.status().unknown_channel.get(), 1);
     // Reconfiguring to another channel serves it at once.
     let other = FrameReceiverConfig::<Tm, 8>::new(
-        LEN,
-        false,
-        TmChannel::new(DeliveryService::None, DeliveryService::None),
+        tm_channel(LEN, false, DeliveryService::None, DeliveryService::None),
         &[VcEntry::new(
             vc(4),
             TmVc::new(TmContent::Vca, false, None).unwrap(),
@@ -1169,34 +1191,32 @@ fn counters_count_and_persist_across_a_reconfiguration() {
 fn a_configuration_is_checked_where_it_is_built() {
     // req: API-040, RS-020, LNK-079
     let tm_vc = TmVc::new(TmContent::Vca, false, None).unwrap();
-    let channel = TmChannel::new(DeliveryService::None, DeliveryService::None);
+    let channel_of =
+        |len, fecf| tm_channel(len, fecf, DeliveryService::None, DeliveryService::None);
+    let channel = channel_of(LEN, false);
     let one = [VcEntry::<Tm>::new(vc(1), tm_vc)];
-    let e = FrameReceiverConfig::<Tm, 8>::new(7, true, channel, &one).unwrap_err();
+    // The physical channel's managed parameters refuse a frame with no data field.
+    let e = TmPhysicalChannelConfig::new(7, true).unwrap_err();
     assert_eq!(
         (e.kind(), e.field()),
         (ErrorKind::InvalidConfig, Some(field::FRAME_LEN))
     );
-    assert!(FrameReceiverConfig::<Tm, 8>::new(9, true, channel, &one).is_ok());
+    assert!(FrameReceiverConfig::<Tm, 8>::new(channel_of(9, true), &one).is_ok());
     let twice = [one[0], one[0]];
-    let e = FrameReceiverConfig::<Tm, 8>::new(LEN, false, channel, &twice).unwrap_err();
+    let e = FrameReceiverConfig::<Tm, 8>::new(channel, &twice).unwrap_err();
     assert_eq!(
         (e.kind(), e.field()),
         (ErrorKind::InvalidConfig, Some(field::VC_ID))
     );
-    let e = FrameReceiverConfig::<Tm, 1>::new(
-        LEN,
-        false,
-        channel,
-        &[one[0], VcEntry::new(vc(2), tm_vc)],
-    )
-    .unwrap_err();
+    let e = FrameReceiverConfig::<Tm, 1>::new(channel, &[one[0], VcEntry::new(vc(2), tm_vc)])
+        .unwrap_err();
     assert_eq!(
         (e.kind(), e.field()),
         (ErrorKind::CapacityExceeded, Some(field::VC_ID))
     );
     // A VC whose OCF and Secondary Header do not fit.
     let wide = TmVc::new(TmContent::Vca, true, Some(64)).unwrap();
-    let e = FrameReceiverConfig::<Tm, 8>::new(60, false, channel, &[VcEntry::new(vc(1), wide)])
+    let e = FrameReceiverConfig::<Tm, 8>::new(channel_of(60, false), &[VcEntry::new(vc(1), wide)])
         .unwrap_err();
     assert_eq!(e.field(), Some(field::FRAME_LEN));
     for bad in [1, 65] {
@@ -1239,12 +1259,12 @@ fn a_configuration_is_checked_where_it_is_built() {
         (entry.params().content(), entry.params().ocf()),
         (AosContent::Packets, true)
     );
-    let channel = TmChannel::new(DeliveryService::Mc, DeliveryService::Vc);
+    let channel = tm_channel(LEN, false, DeliveryService::Mc, DeliveryService::Vc);
     assert_eq!(
         (channel.ocf(), channel.fsh()),
         (DeliveryService::Mc, DeliveryService::Vc)
     );
-    let channel = UslpChannel::new(3, DeliveryService::Vc);
+    let channel = uslp_channel(LEN, 3, false, DeliveryService::Vc);
     assert_eq!(
         (channel.insert_zone_len(), channel.ocf()),
         (3, DeliveryService::Vc)
@@ -1267,12 +1287,12 @@ fn a_frame_too_short_for_its_parts_is_refused_by_the_configuration() {
     // req: LNK-078, API-040, LNK-075
     let frame_len = |e: aldis_core::Error| (e.kind(), e.field());
     let refused = (ErrorKind::InvalidConfig, Some(field::FRAME_LEN));
-    // AOS: the header, the Insert Zone, the FECF, the OCF of a VC, and one octet of data field.
+    // AOS: the header, the Insert Zone, the FECF, and one octet of data field are checked by the
+    // physical channel's managed parameters (WP-2c); the OCF of a VC by the receiver.
     let aos = |len, fecf, ocf| {
+        let physical = AosPhysicalChannelConfig::new(len, false, 0, fecf, AosEdition::Issue5)?;
         FrameReceiverConfig::<Aos, 8>::new(
-            len,
-            fecf,
-            AosChannel::new(0, false),
+            AosChannel::new(physical),
             &[VcEntry::new(vc(1), AosVc::new(AosContent::Packets, ocf))],
         )
     };
@@ -1282,20 +1302,20 @@ fn a_frame_too_short_for_its_parts_is_refused_by_the_configuration() {
     assert!(aos(9, true, false).is_ok());
     assert_eq!(frame_len(aos(10, false, true).unwrap_err()), refused);
     assert!(aos(11, false, true).is_ok());
-    // USLP: the 7-octet primary header, the Insert Zone, the FECF, and one octet.
+    // USLP: the 7-octet primary header, the TFDF Header, one octet of data, and the FECF; the
+    // codec's minimum frame is 9 octets (732.1 Table 5-1).
     let uslp = |len, fecf| {
+        let physical = UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, len, 0, fecf)?;
         FrameReceiverConfig::<Uslp, 8>::new(
-            len,
-            fecf,
-            UslpChannel::new(0, DeliveryService::None),
+            UslpChannel::new(physical, DeliveryService::None),
             &[VcEntry::new(
                 vc(1),
                 UslpVc::new(MapSet::default(), false, true),
             )],
         )
     };
-    assert_eq!(frame_len(uslp(7, false).unwrap_err()), refused);
-    assert!(uslp(8, false).is_ok());
+    assert_eq!(frame_len(uslp(8, false).unwrap_err()), refused);
+    assert!(uslp(9, false).is_ok());
     assert_eq!(frame_len(uslp(9, true).unwrap_err()), refused);
     assert!(uslp(10, true).is_ok());
 }

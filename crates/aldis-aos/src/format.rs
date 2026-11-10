@@ -15,6 +15,7 @@ pub struct AosFormat;
 impl FrameFormat for AosFormat {
     /// Whether the Primary Header has the Frame Header Error Control (732.0 §4.1.1.1 a, §4.1.2.6).
     type HeaderExtension = bool;
+    type Physical = crate::config::AosPhysicalChannelConfig;
     const PRIMARY_HEADER_LEN: usize = PRIMARY_HEADER_LEN;
     const PACKET_HEADER_LEN: usize = MPDU_HEADER_LEN;
     const SDU_HEADER_LEN: usize = 0;

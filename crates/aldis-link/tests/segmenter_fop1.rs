@@ -135,8 +135,7 @@ fn tc_fdus_are_the_requests_of_fop1() {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(0x155).unwrap(),
         TcVcId::new(2).unwrap(),
-        40,
-        true,
+        aldis_tc::PhysicalChannelConfig::new(40, true).unwrap(),
     )
     .unwrap();
     // The segmenter's longest FDU is the target's: the frame length less the Primary Header and
