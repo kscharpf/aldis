@@ -2,8 +2,16 @@
 
 [![CI](https://github.com/kscharpf/aldis/actions/workflows/ci.yml/badge.svg)](https://github.com/kscharpf/aldis/actions/workflows/ci.yml)
 
-> [!WARNING]
-> **Pre-release, under active development.** Aldis is not ready for use:
+Aldis is a set of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
+
+Aldis exists for two reasons. It aims to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified: [How Aldis is verified](#how-aldis-is-verified) lists the practices that back this claim.
+
+Aldis is **not** acceptable for certification today. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
+
+## Where Aldis stands
+
+> [!NOTE]
+> **Pre-release, under active development.**
 > - Most of v1 is still to be built (see **Status** below).
 > - It has not been qualified or certified for flight or any other mission-critical use.
 > - Its API may change in any 0.x release (Semantic Versioning, GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
@@ -11,8 +19,6 @@
 > - Outside contributions are not being accepted yet.
 >
 > The repository is public so that the free tools it relies on for open-source projects can be used (VER-055, OI-22).
-
-Libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
 
 ## About the name
 
@@ -26,16 +32,18 @@ Aldis is named after the Aldis lamp, the signal lamp that ships use to send Mors
 | M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
 | M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
 | M3 COP-1 (`v0.4.0-m3`) | Released: `aldis-cop1` (FOP-1 and FARM-1 as step functions over their state tables), their C ABI handles, the closed-loop tests, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m3-cop1.md)) |
-| M4 Link engines | Complete, release `v0.5.0-m4` pending: `aldis-link` (the PacketGenerator, Access and Bitstream generators, ChannelMux, FrameReceiver, PacketExtractor, MapSegmenter, MapReassembler, and CLTU packer over TM, TC, AOS, and USLP), their C ABI handles, the blind vectors, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m4-link-engines.md)) |
-| M5 C ABI completion | Complete, release `v0.6.0-m5` pending: `aldis-sync` (ASM attach, the TM pseudo-randomizer, and the ASM search engine of 131.0 §9–10) with its C ABI, the C harness under sanitizers and the C ABI tests under Miri, header checks across C and C++ standards, `aldis.hpp` over the engine handles, the open v1 requirements closed, and the hazard analysis ([plan §4](docs/milestones/m5-c-abi-completion.md)) |
+| M4 Link engines (`v0.5.0-m4`) | Released: `aldis-link` (the PacketGenerator, Access and Bitstream generators, ChannelMux, FrameReceiver, PacketExtractor, MapSegmenter, MapReassembler, and CLTU packer over TM, TC, AOS, and USLP), their C ABI handles, the blind vectors, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m4-link-engines.md)) |
+| M5 C ABI completion (`v0.6.0-m5`) | Released: `aldis-sync` (ASM attach, the TM pseudo-randomizer, and the ASM search engine of 131.0 §9–10) with its C ABI, the C harness under sanitizers and the C ABI tests under Miri, header checks across C and C++ standards, `aldis.hpp` over the engine handles, the open v1 requirements closed, and the hazard analysis ([plan §4](docs/milestones/m5-c-abi-completion.md)) |
+| M6 Crate architecture simplification | In progress: one checking pipeline, one frame-format trait per codec, one frame writer, and a generic C ABI over them, without a change of wire behaviour ([plan](docs/milestones/m6-architecture.md)) |
 | A0 reference application scenario | Complete: the scenario ([`docs/reference-application.md`](docs/reference-application.md), area APP) and the `refapp/` skeleton ([plan](docs/milestones/a0-scenario.md)) |
 | A1 reference application packets | Complete: the flight and ground nodes of `refapp/` exchange Space Packets with CUC time stamps through the harness, and the golden traces of the four `a1-*` cases are decoded with the strict codecs and reproduced in CI ([plan](docs/milestones/a1-packets.md)) |
+| A2 reference application frames | In progress: TM and TC frames multiplexed and demultiplexed by the `aldis-link` engines ([plan](docs/milestones/a2-frames.md)) |
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
 
 ## How Aldis is verified
 
-Aldis is built to the practices of safety- and mission-critical software. It is **not** qualified or certified (see the warning above); these practices are how it is built, not a claim of fitness for flight. Every rule below is a numbered requirement in [`docs/`](docs/README.md), and most are enforced by a check of the merge gate rather than by review alone.
+Aldis is built to the practices of safety- and mission-critical software. It is **not** qualified or certified (see [Where Aldis stands](#where-aldis-stands)); these practices are how it is built, and they back its purpose as a showcase of embedded high-assurance Rust, not a claim of fitness for flight. Every rule below is a numbered requirement in [`docs/`](docs/README.md), and most are enforced by a check of the merge gate rather than by review alone.
 
 **Code rules** ([02-design-rules](docs/02-design-rules.md), [Rust profile](docs/profiles/rust.md))
 - `no_std` and no heap: fixed capacities through const generics (GEN-010, GEN-011).
