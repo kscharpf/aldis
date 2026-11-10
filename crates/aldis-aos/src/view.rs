@@ -612,7 +612,7 @@ pub(crate) mod tests {
         let named = |bytes: &[u8]| {
             let e = AosFrame::decode(bytes, &phy, &t)
                 .unwrap()
-                .check(&t)
+                .check(t.slots())
                 .unwrap_err()
                 .error();
             (e.kind(), e.field())
@@ -642,7 +642,7 @@ pub(crate) mod tests {
         let good = frame(5, 0, &[0; 10]);
         let v = AosFrame::decode(&good, &phy, &t)
             .unwrap()
-            .check(&t)
+            .check(t.slots())
             .unwrap();
         assert_eq!(v.clone().into_frame().len(), good.len());
         assert_eq!(v.len(), good.len());
@@ -650,7 +650,7 @@ pub(crate) mod tests {
         assert!(
             AosFrame::decode(&oid_ok, &phy, &t)
                 .unwrap()
-                .check(&t)
+                .check(t.slots())
                 .is_ok()
         );
     }

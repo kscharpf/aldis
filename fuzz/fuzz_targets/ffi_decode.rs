@@ -1265,7 +1265,7 @@ fn aos(data: &[u8], selector: u8, mode: DecodeMode, c_mode: u32) {
             || AosFrame::decode(data, p, t),
             || AosFrame::decode_lenient(data, p, t),
         )?;
-        frame.check(t).map(|_| found).map_err(Error::from)
+        frame.check(t.slots()).map(|_| found).map_err(Error::from)
     });
     let mut found = u32::MAX;
     // SAFETY: as above.

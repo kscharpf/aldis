@@ -1034,11 +1034,11 @@ pub unsafe extern "C" fn aldis_aos_validate(
             let (_, found) = abi::mode(mode)?.dispatch(
                 || {
                     AosFrame::decode(bytes, &m.pc, &m.vcs)
-                        .and_then(|f| f.check(&m.vcs).map_err(Error::from))
+                        .and_then(|f| f.check(m.vcs.slots()).map_err(Error::from))
                 },
                 || {
                     AosFrame::decode_lenient(bytes, &m.pc, &m.vcs)
-                        .and_then(|l| l.try_map(|f| f.check(&m.vcs).map_err(Error::from)))
+                        .and_then(|l| l.try_map(|f| f.check(m.vcs.slots()).map_err(Error::from)))
                 },
             )?;
             anomalies.write(found.bits());

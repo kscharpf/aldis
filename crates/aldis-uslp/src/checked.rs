@@ -8,10 +8,12 @@
 //! numeric code is stable (`docs/standards/uslp-frame.md` §3.1).
 
 use aldis_core::checked::check_bytes;
+use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::{AnomalySet, CheckBytes, Checked, DecodeMode, Lenient, Rejection};
 
 use crate::anomaly::UslpAnomaly;
-use crate::config::{MapConfig, VcConfig, VcLookup};
+use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
+use crate::header::{UslpMapId, UslpSpacecraftId, UslpVcId};
 use crate::view::{Channels, UslpFrame, parse};
 
 /// Why a frame failed the USLP Frame Validation Checks or the decoder (USLP-014).
@@ -151,16 +153,28 @@ pub fn check_frame<'a, L: VcLookup + ?Sized>(
 /// The USLP Frame Validation Checks of [`check_frame`], through the pipeline of
 /// `aldis_core::checked` (USLP-014, API-016). What it matches besides the frame is the Virtual
 /// Channel and MAP configuration.
-impl<'a, L: VcLookup + ?Sized> CheckBytes<'a, L> for UslpFrame<'a> {
+impl<'a> CheckBytes<'a> for UslpFrame<'a> {
     type Reason = Reason;
     type Anomaly = UslpAnomaly;
     type Matched = (VcConfig, Option<MapConfig>);
+    type Scid = UslpSpacecraftId;
+    type VcId = UslpVcId;
+    type MapId = UslpMapId;
+    type Vc = VcConfig;
+    type Map = MapConfig;
+    type Physical = PhysicalChannelConfig;
 
-    fn parse_exact(
+    fn parse_exact<L>(
         bytes: &'a [u8],
         channels: &L,
         mode: DecodeMode,
-    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>> {
+    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>>
+    where
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    {
         parse(bytes, channels, Channels::Required, mode, true)
             .map(|p| (p.frame, p.anomalies, (p.vc, p.map)))
     }

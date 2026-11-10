@@ -428,7 +428,7 @@ impl PlainOf for Aos {
 
 /// Calls `check`, which rejects a frame of a channel the lookup does not hold.
 fn t_check(frame: &aldis_aos::AosFrame<'_>) -> bool {
-    bb(frame.clone()).check(&NoAosVcs).is_err()
+    bb(frame.clone()).check(&[]).is_err()
 }
 
 /// A lookup that holds no TC channel.
