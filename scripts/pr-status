@@ -12,7 +12,10 @@
 # a later reply ending in the marker (below) that names the current head (`headRefOid`, a hex
 # prefix of at least 7 characters anywhere in the reply, so a push after the reply is caught), no
 # force-push of the head branch after the reply (`head_ref_force_pushed` in the issue timeline),
-# and no label `needs-maintainer` (a PR that waits on a maintainer decision stays out of trains).
+# and no label `needs-maintainer` (a PR that waits on a maintainer decision stays out of trains),
+# and a head that merges into origin/main (`git merge-tree`, no worktree): otherwise `conflicts with
+# origin/main: <paths>`. A conflict only in a Cargo.lock does not count, since scripts/train
+# regenerates it. `scripts/train --plan` checks the order of a whole train.
 #
 # Per PR: state, head, commits behind origin/<base>, the required status contexts of branch
 # protection with their state on the head, the other checks (not required), the newest
@@ -58,8 +61,16 @@ if g ls-remote --exit-code origin refs/notes/verify >/dev/null 2>&1; then
     g fetch --quiet origin '+refs/notes/verify:refs/notes/verify-origin'
 fi
 
+# conflicted_paths <a> <b>: the paths where merging b into a conflicts, one per line (none when
+# it merges cleanly), from `git merge-tree`: no worktree, nothing written but objects.
+conflicted_paths() {
+    local out
+    out="$(g merge-tree --write-tree --name-only --no-messages "$1" "$2" 2>/dev/null)" || true
+    printf '%s\n' "$out" | sed '1d' | grep . || true
+}
+
 status_one() {
-    local n="$1" info state draft head branch base decision behind checks required ctx s
+    local paths n="$1" info state draft head branch base decision behind checks required ctx s
     local labels reply_at reply_body force_at reviews_n
     local run run_id run_status run_conclusion run_sha record reasons="" inline unanswered of
     info="$(gh pr view "$n" --json state,isDraft,headRefOid,headRefName,baseRefName,reviewDecision \
@@ -204,6 +215,13 @@ status_one() {
         case ",$labels," in
         *,needs-maintainer,*) reasons="$reasons; label needs-maintainer (waits on a decision)" ;;
         esac
+        if [ "$state" = OPEN ] && [ "$behind" != "?" ]; then
+            paths="$(conflicted_paths "origin/main" "$head")" || paths=""
+            paths="$(printf '%s\n' "$paths" |
+                grep -Ev '^((refapp|exerciser|fuzz|crosscheck)/)?Cargo\.lock$' | grep . |
+                paste -sd ' ' -)" || paths=""
+            [ -z "$paths" ] || reasons="$reasons; conflicts with origin/main: $paths"
+        fi
     elif [ "$required" = "?" ]; then
         reasons="$reasons; required contexts unreadable"
     elif [ -n "$required" ]; then

@@ -11,7 +11,13 @@
 # a further train of the day takes the next number; --rebuild --without drops a PR, opens the
 # new train, and closes the old one; another open train PR refuses a real build (but not
 # --dry-run, or the --rebuild of that PR while it is open, but a second open train PR still
-# refuses a --rebuild) unless --allow-open-train is given.
+# refuses a --rebuild) unless --allow-open-train is given; --plan (a preflight with no worktree
+# and no push) says clean for PRs that merge, names the paths of a conflict with origin/main,
+# the first PR that conflicts with the ones before it and the pairwise matrix, and exits 1; a
+# build whose only conflict is Cargo.lock (root and a workspace) regenerates it with a stub
+# `cargo` and commits the merge, a lockfile left stale by clean merges is reported by --plan and
+# regenerated in a commit on the train branch, while a lockfile conflict next to another conflict
+# is refused.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -29,7 +35,10 @@ git -C "$repo" symbolic-ref HEAD refs/heads/main
 git -C "$repo" config user.email test@example.com
 git -C "$repo" config user.name test
 echo base >"$repo/shared"
-git -C "$repo" add shared
+echo base >"$repo/Cargo.lock"
+mkdir "$repo/refapp"
+echo base >"$repo/refapp/Cargo.lock"
+git -C "$repo" add shared Cargo.lock refapp
 git -C "$repo" commit -q -m base
 git -C "$repo" push -q -u origin main
 
@@ -47,6 +56,18 @@ branch c shared "changed by c"
 branch d shared "changed by d"
 
 mkdir "$work/bin" "$work/stub"
+# A stub cargo: `metadata` appends a line to the Cargo.lock of the current directory; with
+# --locked it fails while the lockfile still has conflict markers.
+cat >"$work/bin/cargo" <<'STUB'
+#!/usr/bin/env bash
+echo "cargo $* in $(basename "$PWD")" >>"$STUB/cargo-calls"
+[ "$1" = metadata ] || exit 1
+if [[ " $* " == *" --locked "* ]]; then ! grep -q '^<<<<<<<\|^stale' Cargo.lock; else
+    sed -i.bak '/^stale/d' Cargo.lock && rm -f Cargo.lock.bak
+    echo regenerated >>Cargo.lock
+fi
+STUB
+chmod +x "$work/bin/cargo"
 cat >"$work/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >>"$STUB/calls"
@@ -114,6 +135,26 @@ pr() {
         labels: ($labels | split(",") | map(select(. != "") | {name: .})),
         }' >"$STUB/pr-$1.json"
 }
+lbranch() { # lbranch <name> <file> <content>...: one commit editing several files
+    local name="$1"
+    shift
+    git -C "$repo" checkout -q -b "$name" main
+    while [ $# -gt 0 ]; do
+        echo "$2" >"$repo/$1"
+        git -C "$repo" add "$1"
+        shift 2
+    done
+    git -C "$repo" commit -q -m "$name"
+    git -C "$repo" push -q origin "$name"
+    git -C "$repo" checkout -q main
+}
+lbranch k1 Cargo.lock one refapp/Cargo.lock one
+lbranch k2 Cargo.lock two refapp/Cargo.lock two
+lbranch k3 Cargo.lock three refapp/Cargo.lock three
+lbranch s1 Cargo.lock stale
+lbranch s2 fs2 x
+lbranch m1 Cargo.lock one shared m1
+lbranch m2 Cargo.lock two shared m2
 branch train/x ftx 1
 branch e fe 1
 branch f ff 1
@@ -127,11 +168,18 @@ pr 17 train/x "chore(train): other"
 pr 18 e "feat: unreviewed" OPEN false "" 0
 pr 19 f "feat: waits" OPEN false "needs-maintainer"
 pr 20 f "feat: reply names no current head" OPEN false "" 1
+pr 31 k1 "feat: lock one"
+pr 32 k2 "feat: lock two"
+pr 33 k3 "feat: lock three"
+pr 36 s1 "feat: manifest change without its lock"
+pr 37 s2 "feat: other file"
+pr 34 m1 "feat: lock and shared one"
+pr 35 m2 "feat: lock and shared two"
 branch g fg 1
 BASE=a pr 21 g "feat: stacked on a"
 
 failures=0
-run() { (cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
+run() { (cd "$repo" && : >"$STUB/cargo-calls" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
 check() { # check <case> <condition exit status>
     if [ "$2" -eq 0 ]; then echo "ok: $1"; else echo "FAIL: $1"; failures=$((failures + 1)); fi
 }
@@ -306,6 +354,101 @@ status=$?
 { [ "$status" -eq 0 ] && grep -Fq "pr close 99" "$STUB/calls"; }
 check "--rebuild with a second train PR open is allowed with --allow-open-train" $?
 echo '[]' >"$STUB/all-prs.json"
+
+# --plan: no worktree, no push, no branch.
+before="$(git -C "$work/origin.git" for-each-ref | wc -l)"
+: >"$STUB/calls"
+out="$(run --plan 11 12)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "plan: no conflict" &&
+    contains "$out" "#11" && contains "$out" "cumulative"; }
+check "--plan of PRs that merge is clean and exits 0" $?
+t [ "$(git -C "$work/origin.git" for-each-ref | wc -l)" -eq "$before" ] &&
+    t [ "$(git -C "$repo" worktree list | wc -l)" -eq 1 ] && ! grep -Fq "pr create" "$STUB/calls"
+check "--plan pushes nothing and opens nothing" $?
+out="$(run --plan 11 13)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "plan: no conflict"; }
+check "--plan of two PRs that touch other files is clean" $?
+git -C "$repo" fetch -q origin
+mainfile() { # a commit on main that conflicts with c
+    git -C "$repo" checkout -q main
+    echo "main edit" >"$repo/shared"
+    git -C "$repo" commit -q -am "main moves shared"
+    git -C "$repo" push -q origin main
+}
+mainfile
+out="$(run --plan 11 13)"
+status=$?
+{ [ "$status" -eq 1 ] && grep -Eq '^  #13 [0-9a-f]+: conflict \(shared\)' <<<"$out"; }
+check "--plan names the paths of a conflict with origin/main" $?
+out="$(run --plan 11 12 14 13)"
+status=$?
+{ [ "$status" -eq 1 ] &&
+    contains "$out" "#14: conflicts with origin/main or an earlier PR (shared)"; }
+check "--plan names a PR that conflicts with origin/main in the cumulative merge" $?
+git -C "$repo" reset -q --hard origin/main~1
+git -C "$repo" push -q -f origin main
+out="$(run --plan 11 13 14)"
+status=$?
+{ [ "$status" -eq 1 ] &&
+    contains "$out" "#14: conflicts with origin/main or an earlier PR (shared)" &&
+    contains "$out" "#13 x #14: shared" && ! contains "$out" "#11 x"; }
+check "--plan names the first PR that conflicts with an earlier one and the pair" $?
+out="$(run --plan 31 32)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "lock"; }
+check "--plan treats a lockfile-only conflict as no conflict" $?
+out="$(run --plan 34 35)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#34 x #35: Cargo.lock shared"; }
+check "--plan reports a lockfile conflict next to another one" $?
+run --plan >/dev/null
+t [ $? -eq 2 ]
+check "--plan without a PR is a usage error" $?
+
+# A lockfile-only conflict: the build regenerates it and commits the merge.
+out="$(run 31 32)"
+status=$?
+tb="train/$(sed -n 's/^train \([^:]*\):.*/\1/p' <<<"$out")"
+{ [ "$status" -eq 0 ] && contains "$out" "#32: Cargo.lock regenerated" &&
+    contains "$out" "#32: refapp/Cargo.lock regenerated"; }
+check "a lockfile-only conflict is regenerated and the build succeeds" $?
+t [ "$(git -C "$work/origin.git" show "$tb:Cargo.lock" | tail -n 1)" = regenerated ] &&
+    t [ "$(git -C "$work/origin.git" show "$tb:Cargo.lock" | head -n 1)" = one ]
+check "it kept the side of the train and regenerated" $?
+grep -Fq "metadata --offline --locked --format-version 1 in refapp" "$STUB/cargo-calls" &&
+    grep -Fq "metadata --offline --format-version 1 in ${tb#train/}" "$STUB/cargo-calls"
+check "it ran cargo in the workspace of each lockfile" $?
+t [ "$(git -C "$work/origin.git" log --first-parent --format=%s -n 1 "$tb")" = \
+    "Merge pull request #32 from o/k2" ]
+check "the merge commit is the usual one" $?
+tbranches="$(git -C "$repo" branch --list "train/*")"
+out="$(run 34 35)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#35 conflicts" && ! contains "$out" "regenerated"; }
+check "a lockfile conflict next to another conflict is refused" $?
+t [ "$(git -C "$repo" branch --list "train/*")" = "$tbranches" ]
+check "the refused build leaves no branch" $?
+
+# A merged result whose lockfile is stale, though nothing conflicted.
+out="$(run --plan 36 37)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "lockfile needs regenerating: Cargo.lock"; }
+check "--plan reports a stale lockfile of the merged result" $?
+out="$(run --plan 31)"
+! contains "$out" "needs regenerating"
+check "--plan of PRs with fresh lockfiles reports none" $?
+out="$(run 36 37)"
+status=$?
+tb="train/$(sed -n 's/^train \([^:]*\):.*/\1/p' <<<"$out")"
+{ [ "$status" -eq 0 ] && contains "$out" "Cargo.lock was stale after the merges"; }
+check "the build regenerates a stale lockfile" $?
+t [ "$(git -C "$work/origin.git" log --format=%s -n 1 "$tb")" = \
+    "chore(train): regenerate Cargo.lock for the merged manifests" ] &&
+    t [ "$(git -C "$work/origin.git" show "$tb:Cargo.lock" | tail -n 1)" = regenerated ] &&
+    ! git -C "$work/origin.git" show "$tb:Cargo.lock" | grep -q '^stale'
+check "it commits the regenerated lock on the train branch" $?
 
 run >/dev/null
 t [ $? -eq 2 ]
