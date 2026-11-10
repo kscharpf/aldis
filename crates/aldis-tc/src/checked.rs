@@ -120,6 +120,8 @@ pub fn check_frame<'a, L: VcLookup + ?Sized>(
     check_bytes(frame, channels, mode)
 }
 
+impl aldis_core::checked::sealed::Sealed for TcFrame<'_> {}
+
 /// The Frame Validation Checks of [`check_frame`], through the pipeline of `aldis_core::checked`
 /// (TC-021…TC-023, API-016). What it matches besides the frame is the Virtual Channel and MAP
 /// configuration.

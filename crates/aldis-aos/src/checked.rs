@@ -7,6 +7,8 @@ use crate::config::{VcLookup, unknown_channel_field};
 use crate::field;
 use crate::view::AosFrame;
 
+impl aldis_core::checked::sealed::Sealed for AosFrame<'_> {}
+
 /// Rejects a frame whose channel the `VcLookup` it was decoded with did not hold (732.0
 /// §4.3.5.4, §4.3.6.3; AOS-010, AOS-016, API-016, RS-023): `frame.check(&vcs)` returns the
 /// others as an `aldis_core::Checked<AosFrame>`, which dereferences to the frame. Holding one

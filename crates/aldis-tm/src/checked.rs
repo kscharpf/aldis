@@ -8,6 +8,8 @@ use crate::field;
 use crate::header::{DataFieldStatus, FshLen, PacketPointer, len_u64, mismatch};
 use crate::view::TmFrame;
 
+impl aldis_core::checked::sealed::Sealed for TmFrame<'_> {}
+
 /// Checks a [`TmFrame`] against the managed parameters of a master channel (132.0 §5 Tables 5-1
 /// to 5-3, §6.6 Table 6-1; TM-011, API-016): `frame.check(&mc)` returns it as an
 /// `aldis_core::Checked<TmFrame>`, which dereferences to the frame; holding one is the proof

@@ -12,7 +12,10 @@
 //!   strict check (API-030, API-032).
 //!
 //! [`Checked`] has no public constructor: a value of it is the proof that a codec's check
-//! passed, and it is made only by [`Check::check`] and [`check_bytes`] (RS-020). A check that
+//! passed, and it is made only by [`Check::check`] and [`check_bytes`] (RS-020). Both traits
+//! are sealed (a hidden supertrait that only the codec crates implement, for their own frame
+//! types), so no other crate can implement them for a codec's frame and make a [`Checked`]
+//! frame without a check. A check that
 //! fails returns a [`Rejection`], which holds the error of the failed check (GEN-041) and,
 //! for the standards that number their failures (TC reasons 1–11, USLP 1–18), the reason `R`.
 
@@ -98,12 +101,36 @@ impl<F> Deref for Checked<F> {
     }
 }
 
+/// The seal of [`Check`] and [`CheckBytes`]: implemented by the codec crates for their frame
+/// types. An outside crate cannot implement it for a codec's frame (the orphan rule), so it
+/// cannot implement the sealed traits for one (API-016, RS-020).
+#[doc(hidden)]
+pub mod sealed {
+    /// Marks a frame type whose codec implements the checking pipeline.
+    pub trait Sealed {}
+}
+
 /// A decoded frame that can be checked against a lookup `L` of its channels (TM-011, AOS-010,
 /// AOS-016, API-016).
 ///
+/// Sealed: only the codec crates implement it, so a [`Checked`] frame is a proof. An outside
+/// crate cannot implement it for a codec's frame:
+///
+/// ```compile_fail,E0277
+/// use aldis_core::checked::{Check, Rejection};
+///
+/// struct Lookup;
+/// impl Check<Lookup> for aldis_core::Error {
+///     type Reason = ();
+///     fn verify(&self, _: &Lookup) -> Result<(), Rejection<()>> {
+///         Ok(())
+///     }
+/// }
+/// ```
+///
 /// A codec implements [`verify`](Self::verify), the checks themselves; callers use
 /// [`check`](Self::check), the only way to a [`Checked`] frame from a decoded one.
-pub trait Check<L: ?Sized>: Sized {
+pub trait Check<L: ?Sized>: Sized + sealed::Sealed {
     /// The reason type of the standard's failure numbering; `()` if it has none.
     type Reason;
 
@@ -126,8 +153,9 @@ pub trait Check<L: ?Sized>: Sized {
 /// A frame whose checks run on the octets of exactly one frame, in the order of its standard's
 /// receiving procedure (TC-021, TC-023, USLP-014).
 ///
-/// A codec implements [`parse_exact`](Self::parse_exact); callers use [`check_bytes`].
-pub trait CheckBytes<'a, L: ?Sized>: Sized {
+/// A codec implements [`parse_exact`](Self::parse_exact); callers use [`check_bytes`]. Sealed
+/// like [`Check`].
+pub trait CheckBytes<'a, L: ?Sized>: Sized + sealed::Sealed {
     /// The reason type of the standard's failure numbering.
     type Reason;
     /// The anomaly flags of the codec's lenient mode.
@@ -215,6 +243,8 @@ mod tests {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Demo(u8);
+
+    impl crate::checked::sealed::Sealed for Demo {}
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Why {
