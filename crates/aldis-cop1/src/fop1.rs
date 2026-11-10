@@ -356,19 +356,22 @@ enum Payload<'a> {
 }
 
 impl Fop1Target {
-    /// The TC Virtual Channel (`spacecraft_id`, `vc_id`) with frames of at most `max_frame_len`
-    /// octets, with the FECF when `fecf` (232.0 §4.1.4, Table 5-1, Table 5-3; COP-010).
+    /// The TC Virtual Channel (`spacecraft_id`, `vc_id`) of the physical channel `physical`,
+    /// whose managed parameters give the Maximum Transfer Frame Length and the FECF (232.0
+    /// §4.1.4, Table 5-1, Table 5-3; COP-010; M6 plan WP-2c).
     ///
     /// # Errors
-    /// `InvalidConfig` (`max_frame_len`) outside 6..=1024 octets, or too short for one data
-    /// octet (232.0 Table 5-3, CMN-041).
+    /// `InvalidConfig` (`max_frame_len`) if a frame of the length of `physical` has no data
+    /// field octet (232.0 Table 5-3, CMN-041): `PhysicalChannelConfig::new` has checked the
+    /// length, 6 to 1 024 octets and 8 or more with a FECF, so this does not fail in practice;
+    /// the VC and table constructors it calls are the ones that would report it.
     pub fn tc(
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,
-        max_frame_len: usize,
-        fecf: bool,
+        physical: PhysicalChannelConfig,
     ) -> Result<Fop1Target> {
-        let physical = PhysicalChannelConfig::new(max_frame_len, fecf)?;
+        let max_frame_len = physical.max_frame_len();
+        let fecf = physical.fecf();
         let vc = VcConfig::new(
             spacecraft_id,
             vc_id,
@@ -2077,8 +2080,7 @@ mod tests {
         Fop1Target::tc(
             TcSpacecraftId::new(42).unwrap(),
             TcVcId::new(1).unwrap(),
-            F,
-            true,
+            aldis_tc::PhysicalChannelConfig::new(F, true).unwrap(),
         )
         .unwrap()
     }
@@ -2577,8 +2579,7 @@ mod tests {
         let plain = Fop1Target::tc(
             TcSpacecraftId::new(42).unwrap(),
             TcVcId::new(1).unwrap(),
-            F,
-            false,
+            aldis_tc::PhysicalChannelConfig::new(F, false).unwrap(),
         )
         .unwrap();
         assert_eq!(plain.max_fdu_len(), F - 5);
@@ -2621,22 +2622,14 @@ mod tests {
             target: Fop1Target::tc(
                 TcSpacecraftId::new(42).unwrap(),
                 TcVcId::new(1).unwrap(),
-                100,
-                false,
+                aldis_tc::PhysicalChannelConfig::new(100, false).unwrap(),
             )
             .unwrap(),
             ..config(TimeoutType::Tt0, 1)
         };
         assert_eq!(bad(big), Some(field::MAX_FRAME_LEN));
-        assert!(
-            Fop1Target::tc(
-                TcSpacecraftId::new(1).unwrap(),
-                TcVcId::new(1).unwrap(),
-                2000,
-                true
-            )
-            .is_err()
-        );
+        // The physical channel's managed parameters refuse the length (232.0 Table 5-1).
+        assert!(aldis_tc::PhysicalChannelConfig::new(2000, true).is_err());
     }
 
     #[test]

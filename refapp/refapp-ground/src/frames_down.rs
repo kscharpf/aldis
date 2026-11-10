@@ -128,9 +128,11 @@ impl FrameDownlink {
             Ok(VcEntry::new(id, TmVc::new(TmContent::Packets, true, None)?))
         };
         let receiver = FrameReceiver::new(FrameReceiverConfig::<Tm, VC_CAPACITY>::new(
-            frame_len,
-            tm::FECF,
-            TmChannel::new(DeliveryService::Mc, DeliveryService::None),
+            TmChannel::new(
+                TmPhysicalChannelConfig::new(frame_len, tm::FECF)?,
+                DeliveryService::Mc,
+                DeliveryService::None,
+            ),
             &[entry(realtime)?, entry(payload)?, entry(idle)?],
         )?);
         let ocf_word = tm::OCF_INITIAL;

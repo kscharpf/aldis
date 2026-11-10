@@ -97,7 +97,12 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     let scid = TcSpacecraftId::new(SCID).unwrap();
     let vc = TcVcId::new(VCID).unwrap();
     let mut g = Rig::<Q, F, N>::new(Fop1Config {
-        target: Fop1Target::tc(scid, vc, F, true).unwrap(),
+        target: Fop1Target::tc(
+            scid,
+            vc,
+            aldis_tc::PhysicalChannelConfig::new(F, true).unwrap(),
+        )
+        .unwrap(),
         t1_initial: Duration::from_micros(u.int_in_range(1..=2_000)?),
         transmission_limit: NonZeroU8::new(u.int_in_range(1..=5)?).unwrap(),
         timeout_type: if u.arbitrary()? {

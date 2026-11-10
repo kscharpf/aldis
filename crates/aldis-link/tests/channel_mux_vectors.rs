@@ -8,7 +8,7 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, field};
@@ -21,7 +21,11 @@ use aldis_link::mux::{
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
-use aldis_uslp::{SourceOrDestination, VcfCountLen};
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{
+    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
+    VcfCountLen,
+};
 use serde_json::{Map, Value, json};
 
 const FILES: [&str; 3] = [
@@ -40,6 +44,19 @@ fn num(v: &Value) -> u64 {
 
 fn small(v: &Value) -> u8 {
     u8::try_from(num(v)).unwrap()
+}
+
+fn frame_len(c: &Map<String, Value>) -> usize {
+    usize::try_from(num(&c["frame_len"])).unwrap()
+}
+
+fn fecf(c: &Map<String, Value>) -> bool {
+    c["fecf"].as_bool().unwrap()
+}
+
+fn insert_zone_len(c: &Map<String, Value>) -> usize {
+    c.get("insert_zone_len")
+        .map_or(0, |n| usize::try_from(num(n)).unwrap())
 }
 
 fn octets(c: &Map<String, Value>, key: &str) -> Option<Vec<u8>> {
@@ -103,28 +120,20 @@ fn finish<P: MuxProtocol>(
     channel: P::Channel,
     vcs: &[VcConfig<P>],
 ) -> ChannelMuxConfig<P, V> {
-    let config = ChannelMuxConfig::<P, V>::new(
-        channel,
-        usize::try_from(num(&c["frame_len"])).unwrap(),
-        c["fecf"].as_bool().unwrap(),
-        policy(c),
-        vcs,
-    )
-    .unwrap();
-    match c.get("insert_zone_len").map(num) {
-        Some(len) if len > 0 => {
-            let fill = octets(c, "insert_init_hex").unwrap();
-            config
-                .with_insert_zone(usize::try_from(len).unwrap(), fill[0])
-                .unwrap()
-        }
-        _ => config,
+    let config = ChannelMuxConfig::<P, V>::new(channel, policy(c), vcs).unwrap();
+    if insert_zone_len(c) > 0 {
+        let fill = octets(c, "insert_init_hex").unwrap();
+        config.with_insert_zone_fill(fill[0]).unwrap()
+    } else {
+        config
     }
 }
 
 impl Proto for Tm {
     fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Tm, V> {
+        let physical = TmPhysicalChannelConfig::new(frame_len(c), fecf(c)).unwrap();
         let mut channel = TmChannel::new(
+            physical,
             SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             VcId::<3>::new(small(&c["oid_vc"])).unwrap(),
         );
@@ -161,10 +170,17 @@ impl Proto for Tm {
 
 impl Proto for Aos {
     fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Aos, V> {
-        let channel = AosChannel::new(
-            SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
-            AosEdition::Issue5,
+        let physical = AosPhysicalChannelConfig::new(
+            frame_len(c),
             c["fhec"].as_bool().unwrap(),
+            insert_zone_len(c),
+            fecf(c),
+            AosEdition::Issue5,
+        )
+        .unwrap();
+        let channel = AosChannel::new(
+            physical,
+            SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
             c["cycle_in_use"].as_bool().unwrap(),
         )
         .unwrap();
@@ -207,14 +223,21 @@ fn qos(name: &str) -> Qos {
 
 impl Proto for Uslp {
     fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Uslp, V> {
-        let channel = UslpChannel {
-            scid: SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
-            source_or_destination: SourceOrDestination::from_bit(
-                num(&c["source_or_destination"]) == 1,
-            ),
-            oid_vcf_len: VcfCountLen::new(small(&c["oid"]["vcf_len"])).unwrap(),
-            mc_ocf: ocf(c, "mc_ocf_init_hex"),
-        };
+        let physical = UslpPhysicalChannelConfig::new(
+            TransferFrameType::Fixed,
+            frame_len(c),
+            insert_zone_len(c),
+            fecf(c),
+        )
+        .unwrap();
+        let mut channel = UslpChannel::new(
+            physical,
+            SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
+            SourceOrDestination::from_bit(num(&c["source_or_destination"]) == 1),
+            VcfCountLen::new(small(&c["oid"]["vcf_len"])).unwrap(),
+        )
+        .unwrap();
+        channel.mc_ocf = ocf(c, "mc_ocf_init_hex");
         let vcs: Vec<_> = c["vcs"]
             .as_array()
             .unwrap()

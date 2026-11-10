@@ -19,8 +19,9 @@ use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_DATA_FIELD_CONTENT, ALDIS_FIELD_FSH_LEN, ALDIS_FIELD_LINK_PROTOCOL,
-    ALDIS_FIELD_MAX_PACKET_LEN, ALDIS_FIELD_RAW_FRAMES, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_DATA_FIELD_CONTENT, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_FSH_LEN,
+    ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_PACKET_LEN, ALDIS_FIELD_RAW_FRAMES,
+    ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::link::*;
 use aldis_ffi::link_rx::*;
@@ -806,4 +807,34 @@ fn the_extractor_reads_the_members_of_the_channel_whatever_the_protocol() {
             );
         }
     }
+}
+
+#[test]
+fn the_receiver_frame_length_checks_report_the_frame_len_field() {
+    // req: LNK-078, LNK-050, CABI-040, API-040
+    let mut s = fr_storage();
+    let mut d = detail();
+    // TC: a frame with no data field octet, and one above the Maximum Transfer Frame Length.
+    for len in [5, 1025] {
+        let mut c = fr_config(ALDIS_LINK_PROTOCOL_TC);
+        c.frame_len = len;
+        assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
+        assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN, "{len}");
+    }
+    // USLP: a frame above the 16-bit Frame Length field. The receiver accepted such a
+    // configuration before the physical sets (it checked only the lower bound); it is refused
+    // now, as the codec refuses the length.
+    let mut c = fr_config(ALDIS_LINK_PROTOCOL_USLP);
+    c.frame_len = 65_537;
+    assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
+    assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
+    c.uslp_variable = 1;
+    assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
+    assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
+    // A fixed frame of 8 octets without a FECF is below the codec minimum of 9; it was accepted
+    // before and is refused now (maintainer, 2026-11-10).
+    let mut c = fr_config(ALDIS_LINK_PROTOCOL_USLP);
+    c.frame_len = 8;
+    assert_eq!(fr_init(&mut s, &c, &mut d), ALDIS_ERR_INVALID_CONFIG);
+    assert_eq!(d.field, ALDIS_FIELD_FRAME_LEN);
 }

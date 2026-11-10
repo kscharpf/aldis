@@ -256,7 +256,12 @@ impl World {
     fn new(s: Scenario, seed: u64) -> World {
         let scid = TcSpacecraftId::new(SCID).unwrap();
         let vc = TcVcId::new(VCID).unwrap();
-        let target = Fop1Target::tc(scid, vc, F, true).unwrap();
+        let target = Fop1Target::tc(
+            scid,
+            vc,
+            aldis_tc::PhysicalChannelConfig::new(F, true).unwrap(),
+        )
+        .unwrap();
         let ground = Ground::new(Fop1Config {
             target,
             t1_initial: Duration::from_micros(s.t1_us),

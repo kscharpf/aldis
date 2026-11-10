@@ -9,6 +9,7 @@
 
 mod support;
 
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::engine::OutRange;
 use aldis_core::ids::MapId;
 use aldis_core::ocf::Ocf;
@@ -18,7 +19,10 @@ use aldis_link::receiver::{
     DiscardReason, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput,
     ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
 };
+use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 use serde_json::{Map, Value, json};
 use support::Plained;
 
@@ -34,6 +38,10 @@ const V: usize = 8;
 
 fn num(v: &Value) -> usize {
     usize::try_from(v.as_u64().unwrap_or_else(|| panic!("{v} is not a number"))).unwrap()
+}
+
+fn fecf(c: &Map<String, Value>) -> bool {
+    c["fecf"].as_bool().unwrap()
 }
 
 fn service(v: &Value) -> DeliveryService {
@@ -59,7 +67,12 @@ impl Proto for Tm {
     const NAME: &'static str = "tm";
     const FIXED: bool = true;
     fn channel(c: &Map<String, Value>) -> TmChannel {
-        TmChannel::new(service(&c["ocf_service"]), service(&c["fsh_service"]))
+        let physical = TmPhysicalChannelConfig::new(num(&c["frame_len"]), fecf(c)).unwrap();
+        TmChannel::new(
+            physical,
+            service(&c["ocf_service"]),
+            service(&c["fsh_service"]),
+        )
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> TmVc {
         let content = match vc["role"].as_str().unwrap() {
@@ -82,7 +95,15 @@ impl Proto for Aos {
     const NAME: &'static str = "aos";
     const FIXED: bool = true;
     fn channel(c: &Map<String, Value>) -> AosChannel {
-        AosChannel::new(num(&c["insert_zone_len"]), false)
+        let physical = AosPhysicalChannelConfig::new(
+            num(&c["frame_len"]),
+            false,
+            num(&c["insert_zone_len"]),
+            fecf(c),
+            AosEdition::Issue5,
+        )
+        .unwrap();
+        AosChannel::new(physical)
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> AosVc {
         let content = match vc["role"].as_str().unwrap() {
@@ -100,7 +121,14 @@ impl Proto for Uslp {
     const NAME: &'static str = "uslp";
     const FIXED: bool = false;
     fn channel(c: &Map<String, Value>) -> UslpChannel {
-        UslpChannel::new(num(&c["insert_zone_len"]), service(&c["ocf_service"]))
+        let physical = UslpPhysicalChannelConfig::new(
+            TransferFrameType::Fixed,
+            num(&c["frame_len"]),
+            num(&c["insert_zone_len"]),
+            fecf(c),
+        )
+        .unwrap();
+        UslpChannel::new(physical, service(&c["ocf_service"])).unwrap()
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> UslpVc {
         let maps: Vec<MapId<4>> = vc["maps"]
@@ -120,8 +148,8 @@ impl Proto for Uslp {
 impl Proto for Tc {
     const NAME: &'static str = "tc";
     const FIXED: bool = false;
-    fn channel(_: &Map<String, Value>) -> TcChannel {
-        TcChannel
+    fn channel(c: &Map<String, Value>) -> TcChannel {
+        TcChannel::new(TcPhysicalChannelConfig::new(num(&c["frame_len"]), fecf(c)).unwrap())
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> TcVc {
         if vc.get("role").and_then(Value::as_str) == Some("unserved") {
@@ -142,13 +170,7 @@ fn config<P: Proto>(c: &Map<String, Value>) -> FrameReceiverConfig<P, V> {
             VcEntry::new(P::Vc::try_from(id).unwrap(), P::vc_params(vc, c))
         })
         .collect();
-    let config = FrameReceiverConfig::<P, V>::new(
-        num(&c["frame_len"]),
-        c["fecf"].as_bool().unwrap(),
-        P::channel(c),
-        &vcs,
-    )
-    .unwrap();
+    let config = FrameReceiverConfig::<P, V>::new(P::channel(c), &vcs).unwrap();
     config
         .with_raw_frames(
             c.get("accept_rejected_frame_insert_zone")

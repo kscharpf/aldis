@@ -24,7 +24,7 @@ use aldis::cop1::{
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::{Duration, Instant};
 use aldis::core::{Error, ErrorKind, Result, field};
-use aldis::tc::{Clcw, TcSpacecraftId, TcVcId};
+use aldis::tc::{Clcw, PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 
 use crate::abi::{self, flag};
 use crate::capacities::{ALDIS_FOP1_MAX_FRAME_OCTETS, ALDIS_FOP1_SENT_QUEUE_FRAMES};
@@ -654,12 +654,10 @@ fn action(output: &Fop1Output) -> aldis_fop1_action_t {
 
 /// The engine configuration of `cfg` (232.1 §7.2; COP-010, COP-015).
 fn config(cfg: &aldis_fop1_config_t) -> Result<Fop1Config> {
-    let target = Fop1Target::tc(
-        TcSpacecraftId::try_from(cfg.scid)?,
-        TcVcId::try_from(cfg.vc_id)?,
-        cfg.max_frame_len,
-        flag(cfg.fecf)?,
-    )?;
+    let scid = TcSpacecraftId::try_from(cfg.scid)?;
+    let vc_id = TcVcId::try_from(cfg.vc_id)?;
+    let physical = PhysicalChannelConfig::new(cfg.max_frame_len, flag(cfg.fecf)?)?;
+    let target = Fop1Target::tc(scid, vc_id, physical)?;
     let timeout_type = match parse::<aldis_fop1_timeout>(cfg.timeout_type)? {
         aldis_fop1_timeout::ALDIS_FOP1_TIMEOUT_TT0 => TimeoutType::Tt0,
         aldis_fop1_timeout::ALDIS_FOP1_TIMEOUT_TT1 => TimeoutType::Tt1,

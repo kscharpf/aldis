@@ -12,6 +12,7 @@
 //! other SCID with `UnknownChannel`. The MC and VC Multiplexing Schemes are mission-specific and
 //! belong to the engines (M4).
 
+use aldis_core::PhysicalChannel;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::lookup::ChannelLookup;
@@ -84,6 +85,24 @@ impl TmPhysicalChannelConfig {
     #[must_use]
     pub const fn fecf(&self) -> bool {
         self.fecf
+    }
+}
+
+impl PhysicalChannel for TmPhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        0
+    }
+
+    fn variable_length(&self) -> bool {
+        false
     }
 }
 
@@ -573,5 +592,21 @@ mod tests {
             security_layout(&NoSdls, scid(1023), vcid(7)),
             Ok(SecurityLayout::NONE)
         );
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::TmPhysicalChannelConfig::new(24, true).unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 0);
+        assert!(!PhysicalChannel::variable_length(&p));
     }
 }

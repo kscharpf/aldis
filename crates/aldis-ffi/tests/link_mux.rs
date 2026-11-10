@@ -1008,3 +1008,46 @@ fn every_protocol_refuses_a_bad_member_and_reports_its_status() {
         assert_eq!(status(&mut s), aldis_channel_mux_status_t::default());
     }
 }
+
+#[test]
+fn the_frame_checks_report_the_same_field_and_order_as_before_the_physical_sets() {
+    // req: LNK-078, CABI-040, API-040
+    let refuse = |c: &aldis_channel_mux_config_t| {
+        let mut s = storage();
+        let mut d = detail();
+        let status = init(&mut s, c, &mut d);
+        (status, d.field)
+    };
+    let invalid_frame_len = (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FRAME_LEN);
+    // TM: a frame with a FECF that leaves no data field.
+    let mut c = tm_config();
+    c.frame_len = 8;
+    assert_eq!(refuse(&c), invalid_frame_len);
+    // USLP: a frame above the 16-bit Frame Length field.
+    let mut c = uslp_config();
+    c.frame_len = 65_537;
+    assert_eq!(refuse(&c), invalid_frame_len);
+    // AOS: an Issue 4 SCID above 255 is refused before the frame length is, and before the OID
+    // VCID.
+    let mut c = aos_config();
+    c.aos_edition = ALDIS_AOS_EDITION_ISSUE4;
+    c.scid = 256;
+    c.frame_len = 4;
+    assert_eq!(
+        refuse(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_SPACECRAFT_ID)
+    );
+    // AOS and USLP: VCID 63 is refused before the frame length is.
+    let mut c = aos_config();
+    c.frame_len = 4;
+    c.vcs[0].vc_id = 63;
+    assert_eq!(refuse(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID));
+    let mut c = uslp_config();
+    c.frame_len = 65_537;
+    c.vcs[0].vc_id = 63;
+    assert_eq!(refuse(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID));
+    // An Insert Zone that takes the whole data field.
+    let mut c = aos_config();
+    c.insert_zone_len = 20;
+    assert_eq!(refuse(&c), invalid_frame_len);
+}

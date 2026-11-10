@@ -127,8 +127,7 @@ fn engine(k: u8, limit: u8, tt1: bool) -> Engine {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(7).unwrap(),
         TcVcId::new(VCID).unwrap(),
-        F,
-        true,
+        aldis_tc::PhysicalChannelConfig::new(F, true).unwrap(),
     )
     .unwrap();
     Engine::new(Fop1Config {

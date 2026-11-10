@@ -9,7 +9,7 @@
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"
 )]
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{ErrorKind, field};
@@ -23,7 +23,11 @@ use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
-use aldis_uslp::{SourceOrDestination, VcfCountLen};
+use aldis_tm::TmPhysicalChannelConfig;
+use aldis_uslp::{
+    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
+    VcfCountLen,
+};
 
 /// Failing cases are saved here and replayed first.
 const REGRESSIONS: &str = concat!(
@@ -51,25 +55,31 @@ fn tm_vcs() -> Vec<VcConfig<Tm>> {
     ]
 }
 
-const fn tm_channel() -> TmChannel {
+fn tm_channel_of(frame_len: usize, fecf: bool) -> TmChannel {
     TmChannel::new(
+        TmPhysicalChannelConfig::new(frame_len, fecf).unwrap(),
         SpacecraftId::<10>::new(165).unwrap(),
         VcId::<3>::new(7).unwrap(),
     )
 }
 
+fn tm_channel() -> TmChannel {
+    tm_channel_of(24, true)
+}
+
 fn tm_config(policy: MuxPolicy) -> ChannelMuxConfig<Tm, V> {
-    ChannelMuxConfig::new(tm_channel(), 24, true, policy, &tm_vcs()).unwrap()
+    ChannelMuxConfig::new(tm_channel(), policy, &tm_vcs()).unwrap()
+}
+
+fn aos_channel_of(frame_len: usize, insert_zone_len: usize) -> AosChannel {
+    let physical =
+        AosPhysicalChannelConfig::new(frame_len, false, insert_zone_len, true, AosEdition::Issue5)
+            .unwrap();
+    AosChannel::new(physical, SpacecraftId::<10>::new(421).unwrap(), false).unwrap()
 }
 
 fn aos_channel() -> AosChannel {
-    AosChannel::new(
-        SpacecraftId::<10>::new(421).unwrap(),
-        AosEdition::Issue5,
-        false,
-        false,
-    )
-    .unwrap()
+    aos_channel_of(28, 0)
 }
 
 fn aos_vc(id: u8, priority: u8) -> VcConfig<Aos> {
@@ -79,8 +89,15 @@ fn aos_vc(id: u8, priority: u8) -> VcConfig<Aos> {
 fn aos_config() -> ChannelMuxConfig<Aos, V> {
     ChannelMuxConfig::new(
         aos_channel(),
-        28,
-        true,
+        MuxPolicy::FixedPriority,
+        &[aos_vc(1, 1), aos_vc(2, 2)],
+    )
+    .unwrap()
+}
+
+fn aos_config_iz(insert_zone_len: usize) -> ChannelMuxConfig<Aos, V> {
+    ChannelMuxConfig::new(
+        aos_channel_of(28, insert_zone_len),
         MuxPolicy::FixedPriority,
         &[aos_vc(1, 1), aos_vc(2, 2)],
     )
@@ -102,20 +119,27 @@ fn uslp_vc(id: u8, cop: bool) -> VcConfig<Uslp> {
     .with_priority(id)
 }
 
-const fn uslp_channel() -> UslpChannel {
-    UslpChannel {
-        scid: SpacecraftId::<16>::new(0x1234).unwrap(),
-        source_or_destination: SourceOrDestination::Source,
-        oid_vcf_len: VcfCountLen::NONE,
-        mc_ocf: None,
-    }
+fn try_uslp_channel_of(frame_len: usize) -> Result<UslpChannel, aldis_core::Error> {
+    let physical = UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, frame_len, 0, true)?;
+    UslpChannel::new(
+        physical,
+        SpacecraftId::<16>::new(0x1234).unwrap(),
+        SourceOrDestination::Source,
+        VcfCountLen::NONE,
+    )
+}
+
+fn uslp_channel_of(frame_len: usize) -> UslpChannel {
+    try_uslp_channel_of(frame_len).unwrap()
+}
+
+fn uslp_channel() -> UslpChannel {
+    uslp_channel_of(32)
 }
 
 fn uslp_config(cop: bool) -> ChannelMuxConfig<Uslp, V> {
     ChannelMuxConfig::new(
         uslp_channel(),
-        32,
-        true,
         MuxPolicy::FixedPriority,
         &[uslp_vc(1, cop), uslp_vc(2, cop)],
     )
@@ -174,18 +198,16 @@ where
 fn a_configuration_the_blue_books_forbid_is_refused() {
     // req: LNK-078, LNK-031, API-040, API-071
     let invalid = |f| named(ErrorKind::InvalidConfig, f);
-    let tm = |vcs: &[VcConfig<Tm>], channel: TmChannel, frame_len, policy| {
-        ChannelMuxConfig::<Tm, V>::new(channel, frame_len, true, policy, vcs)
+    let tm = |vcs: &[VcConfig<Tm>], channel: TmChannel, policy| {
+        ChannelMuxConfig::<Tm, V>::new(channel, policy, vcs)
     };
     let fixed = MuxPolicy::FixedPriority;
     // More VCs than the capacity.
     let many: Vec<_> = (0..8).map(|i| tm_vc(i, TmRole::Packets, i)).collect();
-    assert!(tm(&many, tm_channel(), 24, fixed).is_ok());
+    assert!(tm(&many, tm_channel(), fixed).is_ok());
     assert_eq!(
         failure(ChannelMuxConfig::<Tm, 3>::new(
             tm_channel(),
-            24,
-            true,
             fixed,
             &tm_vcs()
         )),
@@ -195,34 +217,34 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     let mut twice = tm_vcs();
     twice.push(tm_vc(2, TmRole::Packets, 9));
     assert_eq!(
-        failure(tm(&twice, tm_channel(), 24, fixed)),
+        failure(tm(&twice, tm_channel(), fixed)),
         invalid(field::VC_ID)
     );
     // Equal priorities under fixed priority, and under no other policy.
     let mut equal = tm_vcs();
     equal.push(tm_vc(4, TmRole::Packets, 3));
     assert_eq!(
-        failure(tm(&equal, tm_channel(), 24, fixed)),
+        failure(tm(&equal, tm_channel(), fixed)),
         invalid(field::VC_PRIORITY)
     );
-    assert!(tm(&equal, tm_channel(), 24, MuxPolicy::RoundRobin).is_ok());
-    assert!(tm(&equal, tm_channel(), 24, MuxPolicy::WeightedRoundRobin).is_ok());
+    assert!(tm(&equal, tm_channel(), MuxPolicy::RoundRobin).is_ok());
+    assert!(tm(&equal, tm_channel(), MuxPolicy::WeightedRoundRobin).is_ok());
     // The VC dedicated to OID frames: configured, Packets, no SDLS (132.0 §4.1.4.6.3, §6.4.6.2).
     let without: Vec<_> = tm_vcs().into_iter().filter(|v| v.vc().get() != 7).collect();
     assert_eq!(
-        failure(tm(&without, tm_channel(), 24, fixed)),
+        failure(tm(&without, tm_channel(), fixed)),
         invalid(field::VC_ID)
     );
     let mut vca_oid = tm_vcs();
     vca_oid[3] = tm_vc(7, TmRole::Vca, 0);
     assert_eq!(
-        failure(tm(&vca_oid, tm_channel(), 24, fixed)),
+        failure(tm(&vca_oid, tm_channel(), fixed)),
         invalid(field::IDLE_POLICY)
     );
     let mut sdls_oid = tm_vcs();
     sdls_oid[3] = tm_vc(7, TmRole::Packets, 0).with_security(SecurityLayout::new(2, 0).unwrap());
     assert_eq!(
-        failure(tm(&sdls_oid, tm_channel(), 24, fixed)),
+        failure(tm(&sdls_oid, tm_channel(), fixed)),
         invalid(field::IDLE_POLICY)
     );
     // An MC and a VC that both have an OCF or a Secondary Header (132.0 §2.2.4 b, c).
@@ -237,10 +259,7 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
         },
     )
     .with_priority(1);
-    assert_eq!(
-        failure(tm(&vcs, both_ocf, 24, fixed)),
-        invalid(field::OCF_FLAG)
-    );
+    assert_eq!(failure(tm(&vcs, both_ocf, fixed)), invalid(field::OCF_FLAG));
     let mut both_fsh = tm_channel();
     both_fsh.mc_fsh = Some(Fsh::new(&[1]).unwrap());
     vcs[0] = VcConfig::<Tm>::new(
@@ -251,16 +270,13 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
         },
     )
     .with_priority(1);
-    assert_eq!(
-        failure(tm(&vcs, both_fsh, 24, fixed)),
-        invalid(field::FSH_LEN)
-    );
+    assert_eq!(failure(tm(&vcs, both_fsh, fixed)), invalid(field::FSH_LEN));
     // A frame that leaves no data field to some VC: 6 header + 2 FECF + 4 + 2 security.
     let mut secured = tm_vcs();
     secured[0] = tm_vc(1, TmRole::Packets, 1).with_security(SecurityLayout::new(4, 2).unwrap());
-    assert!(tm(&secured, tm_channel(), 15, fixed).is_ok());
+    assert!(tm(&secured, tm_channel_of(15, true), fixed).is_ok());
     assert_eq!(
-        failure(tm(&secured, tm_channel(), 14, fixed)),
+        failure(tm(&secured, tm_channel_of(14, true), fixed)),
         invalid(field::FRAME_LEN)
     );
     // A header or trailer above the limits of API-071 is refused when the layout is built.
@@ -282,43 +298,55 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     );
     // No Insert Zone on TM, none of 0 octets, and one that takes the whole data field.
     assert_eq!(
-        failure(tm_config(fixed).with_insert_zone(2, 0)),
+        failure(tm_config(fixed).with_insert_zone_fill(0)),
         invalid(field::INSERT_ZONE_LEN)
     );
     assert_eq!(
-        failure(aos_config().with_insert_zone(0, 0)),
+        failure(aos_config().with_insert_zone_fill(0)),
         invalid(field::INSERT_ZONE_LEN)
     );
+    // The physical channel's managed parameters refuse an Insert Zone that takes the whole
+    // data field, and the mux one that leaves no data field to a VC.
     assert_eq!(
-        failure(aos_config().with_insert_zone(20, 0)),
+        failure(AosPhysicalChannelConfig::new(
+            28,
+            false,
+            20,
+            true,
+            AosEdition::Issue5
+        )),
         invalid(field::FRAME_LEN)
     );
-    assert!(aos_config().with_insert_zone(19, 0).is_ok());
+    assert!(
+        ChannelMuxConfig::<Aos, V>::new(aos_channel_of(28, 19), fixed, &[aos_vc(1, 1)])
+            .unwrap()
+            .with_insert_zone_fill(0)
+            .is_ok()
+    );
     // AOS and USLP: VCID 63 is the OID VC; Issue 4 has an 8-bit SCID; USLP frames are at most
     // 65 536 octets.
-    let aos = |vcs: &[VcConfig<Aos>], channel| {
-        ChannelMuxConfig::<Aos, V>::new(channel, 28, true, fixed, vcs)
-    };
+    let aos = |vcs: &[VcConfig<Aos>], channel| ChannelMuxConfig::<Aos, V>::new(channel, fixed, vcs);
     assert_eq!(
         failure(aos(&[aos_vc(63, 1)], aos_channel())),
         invalid(field::VC_ID)
     );
     let issue4 = |scid| {
-        AosChannel::new(
-            SpacecraftId::<10>::new(scid).unwrap(),
-            AosEdition::Issue4Compatible,
-            false,
-            false,
-        )
+        let physical =
+            AosPhysicalChannelConfig::new(28, false, 0, true, AosEdition::Issue4Compatible)
+                .unwrap();
+        AosChannel::new(physical, SpacecraftId::<10>::new(scid).unwrap(), false)
     };
     assert_eq!(failure(issue4(256)), invalid(field::SPACECRAFT_ID));
     assert!(aos(&[aos_vc(1, 1)], issue4(255).unwrap()).is_ok());
     // A TM frame is at most 4 095 octets (TM-001, OI-51, HZ-TM-04).
-    let long = |len| ChannelMuxConfig::<Tm, V>::new(tm_channel(), len, true, fixed, &tm_vcs());
-    assert!(long(4095).is_ok());
-    assert_eq!(failure(long(4096)), invalid(field::FRAME_LEN));
+    // The physical channel's managed parameters check the length (WP-2c).
+    assert!(TmPhysicalChannelConfig::new(4095, true).is_ok());
+    assert_eq!(
+        failure(TmPhysicalChannelConfig::new(4096, true)),
+        invalid(field::FRAME_LEN)
+    );
     let uslp = |vcs: &[VcConfig<Uslp>], frame_len| {
-        ChannelMuxConfig::<Uslp, V>::new(uslp_channel(), frame_len, true, fixed, vcs)
+        ChannelMuxConfig::<Uslp, V>::new(try_uslp_channel_of(frame_len)?, fixed, vcs)
     };
     assert_eq!(
         failure(uslp(&[uslp_vc(63, false)], 32)),
@@ -326,11 +354,17 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     );
     assert!(uslp(&[uslp_vc(1, false)], 65_536).is_ok());
     assert_eq!(
-        failure(uslp(&[uslp_vc(1, false)], 65_537)),
+        failure(UslpPhysicalChannelConfig::new(
+            TransferFrameType::Fixed,
+            65_537,
+            0,
+            true
+        )),
         invalid(field::FRAME_LEN)
     );
     // An OID frame needs a data field longer than the TFDF Header.
     assert_eq!(failure(uslp(&[], 8)), invalid(field::FRAME_LEN));
+    assert_eq!(failure(uslp(&[], 9)), invalid(field::FRAME_LEN));
     assert_eq!(failure(uslp(&[], 12)), invalid(field::FRAME_LEN));
     assert!(uslp(&[], 13).is_ok());
 }
@@ -361,42 +395,57 @@ fn the_configuration_reports_what_it_holds() {
     let mut shuffled = tm_vcs();
     shuffled.reverse();
     let again =
-        ChannelMuxConfig::<Tm, V>::new(tm_channel(), 24, true, MuxPolicy::FixedPriority, &shuffled)
-            .unwrap();
+        ChannelMuxConfig::<Tm, V>::new(tm_channel(), MuxPolicy::FixedPriority, &shuffled).unwrap();
     assert_eq!(again, tm_config(MuxPolicy::FixedPriority));
     let channel = aos_channel();
     assert_eq!(channel.scid().get(), 421);
     assert_eq!(channel.edition(), AosEdition::Issue5);
     assert!(!channel.fhec() && !channel.cycle_in_use());
     let flagged = AosChannel::new(
+        AosPhysicalChannelConfig::new(28, true, 0, true, AosEdition::Issue5).unwrap(),
         SpacecraftId::<10>::new(7).unwrap(),
-        AosEdition::Issue5,
-        true,
         true,
     )
     .unwrap();
     assert!(flagged.fhec() && flagged.cycle_in_use());
     let no_fecf = ChannelMuxConfig::<Tm, V>::new(
-        tm_channel(),
-        24,
-        false,
+        tm_channel_of(24, false),
         MuxPolicy::FixedPriority,
         &tm_vcs(),
     )
     .unwrap();
     assert!(!no_fecf.fecf());
     assert!(uslp_vc(1, true).params().cop() && !uslp_vc(1, false).params().cop());
-    let aos = aos_config().with_insert_zone(3, 0xA5).unwrap();
+    let aos = ChannelMuxConfig::<Aos, V>::new(
+        aos_channel_of(28, 3),
+        MuxPolicy::FixedPriority,
+        &[aos_vc(1, 1)],
+    )
+    .unwrap()
+    .with_insert_zone_fill(0xA5)
+    .unwrap();
     assert_eq!(aos.insert_zone_len(), 3);
+    assert_eq!(aos.channel().physical().insert_zone_len(), 3);
+    // The mux builds fixed-length frames: a variable-length USLP channel is refused.
+    let variable =
+        UslpPhysicalChannelConfig::new(TransferFrameType::Variable, 32, 0, true).unwrap();
+    assert_eq!(
+        failure(UslpChannel::new(
+            variable,
+            SpacecraftId::<16>::new(1).unwrap(),
+            SourceOrDestination::Source,
+            VcfCountLen::NONE
+        )),
+        named(ErrorKind::InvalidConfig, field::TRANSFER_FRAME_TYPE)
+    );
+    assert_eq!(uslp_channel().physical().frame_len(), 32);
 }
 
 #[test]
 fn an_engine_refuses_a_frame_longer_than_its_capacity() {
     // req: GEN-011, LNK-075
     let long = ChannelMuxConfig::<Tm, V>::new(
-        tm_channel(),
-        F + 1,
-        true,
+        tm_channel_of(F + 1, true),
         MuxPolicy::FixedPriority,
         &tm_vcs(),
     )
@@ -659,8 +708,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     let mut channel = tm_channel();
     channel.mc_fsh = Some(Fsh::new(&[1, 2]).unwrap());
     let config =
-        ChannelMuxConfig::<Tm, V>::new(channel, 24, true, MuxPolicy::FixedPriority, &tm_vcs())
-            .unwrap();
+        ChannelMuxConfig::<Tm, V>::new(channel, MuxPolicy::FixedPriority, &tm_vcs()).unwrap();
     let mut tm = TmMux::new(config).unwrap();
     assert_eq!(
         failure(tm.step(
@@ -686,7 +734,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     tm.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!(&out[6..9], [2, 8, 9]);
     // The Insert Zone of another length.
-    let mut aos = AosMux::new(aos_config().with_insert_zone(2, 0xEE).unwrap()).unwrap();
+    let mut aos = AosMux::new(aos_config_iz(2).with_insert_zone_fill(0xEE).unwrap()).unwrap();
     assert_eq!(
         failure(aos.step(MuxInput::SetInsert(&[1]), &mut out)),
         named(ErrorKind::LengthMismatch, field::INSERT_ZONE_LEN)
@@ -741,7 +789,7 @@ fn the_worst_case_of_an_input_is_the_bound() {
     // req: LNK-074, LNK-075, API-057, LNK-034
     assert_eq!(CHANNEL_MUX_MAX_ACTIONS, 2);
     // An Opportunity with an Insert Zone that repeats returns the frame and the notification.
-    let mut aos = AosMux::new(aos_config().with_insert_zone(3, 0).unwrap()).unwrap();
+    let mut aos = AosMux::new(aos_config_iz(3)).unwrap();
     let mut out = [0; F];
     let a = aos.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!(a.len(), CHANNEL_MUX_MAX_ACTIONS);
@@ -757,10 +805,7 @@ fn the_worst_case_of_an_input_is_the_bound() {
     aos.step(MuxInput::Offer(offer(2, &[0; 17], None)), &mut out)
         .unwrap();
     let a = aos
-        .step(
-            MuxInput::Reconfigure(aos_config().with_insert_zone(3, 0).unwrap()),
-            &mut out,
-        )
+        .step(MuxInput::Reconfigure(aos_config_iz(3)), &mut out)
         .unwrap();
     assert_eq!(
         a.iter().copied().collect::<Vec<_>>(),
@@ -781,8 +826,7 @@ fn a_reconfiguration_keeps_the_counts_and_the_oid_generator_and_starts_the_walk_
     let weighted = |w: u16| {
         let mut vcs = tm_vcs();
         vcs[0] = vcs[0].with_weight(Weight::new(w).unwrap());
-        ChannelMuxConfig::<Tm, V>::new(tm_channel(), 24, true, MuxPolicy::WeightedRoundRobin, &vcs)
-            .unwrap()
+        ChannelMuxConfig::<Tm, V>::new(tm_channel(), MuxPolicy::WeightedRoundRobin, &vcs).unwrap()
     };
     let mut mux = TmMux::new(weighted(3)).unwrap();
     let mut out = [0; F];
@@ -940,22 +984,18 @@ fn the_protocols_without_cop_have_no_vcf_count_to_take() {
 fn a_frame_of_the_capacity_is_accepted() {
     // req: GEN-011, LNK-075
     let tm =
-        ChannelMuxConfig::<Tm, V>::new(tm_channel(), F, true, MuxPolicy::FixedPriority, &tm_vcs())
+        ChannelMuxConfig::<Tm, V>::new(tm_channel_of(F, true), MuxPolicy::FixedPriority, &tm_vcs())
             .unwrap();
     assert!(TmMux::new(tm).is_ok() && TmMux::new_head(tm).is_ok());
     let aos = ChannelMuxConfig::<Aos, V>::new(
-        aos_channel(),
-        F,
-        true,
+        aos_channel_of(F, 0),
         MuxPolicy::FixedPriority,
         &[aos_vc(1, 1)],
     )
     .unwrap();
     assert!(AosMux::new(aos).is_ok());
     let uslp = ChannelMuxConfig::<Uslp, V>::new(
-        uslp_channel(),
-        F,
-        true,
+        uslp_channel_of(F),
         MuxPolicy::FixedPriority,
         &[uslp_vc(1, false)],
     )
@@ -967,12 +1007,12 @@ fn a_frame_of_the_capacity_is_accepted() {
 fn a_tm_frame_carries_all_ten_bits_of_the_scid() {
     // req: LNK-032
     let channel = TmChannel::new(
+        TmPhysicalChannelConfig::new(24, true).unwrap(),
         SpacecraftId::<10>::new(0x2A5).unwrap(),
         VcId::<3>::new(7).unwrap(),
     );
     let config =
-        ChannelMuxConfig::<Tm, V>::new(channel, 24, true, MuxPolicy::FixedPriority, &tm_vcs())
-            .unwrap();
+        ChannelMuxConfig::<Tm, V>::new(channel, MuxPolicy::FixedPriority, &tm_vcs()).unwrap();
     let mut mux = TmMux::new(config).unwrap();
     let mut out = [0; F];
     step_ok(&mut mux, offer(1, &[1; 16], Some(0)));
@@ -984,18 +1024,11 @@ fn a_tm_frame_carries_all_ten_bits_of_the_scid() {
 #[test]
 fn a_uslp_frame_names_the_destination_when_the_channel_is_one() {
     // req: LNK-032
-    let channel = UslpChannel {
-        source_or_destination: SourceOrDestination::Destination,
-        ..uslp_channel()
-    };
-    let config = ChannelMuxConfig::<Uslp, V>::new(
-        channel,
-        32,
-        true,
-        MuxPolicy::FixedPriority,
-        &[uslp_vc(1, false)],
-    )
-    .unwrap();
+    let mut channel = uslp_channel();
+    channel.source_or_destination = SourceOrDestination::Destination;
+    let config =
+        ChannelMuxConfig::<Uslp, V>::new(channel, MuxPolicy::FixedPriority, &[uslp_vc(1, false)])
+            .unwrap();
     let mut mux = UslpMux::new(config).unwrap();
     let mut out = [0; F];
     mux.step(MuxInput::Offer(offer(1, &[0x22; 21], None)), &mut out)
@@ -1010,20 +1043,14 @@ fn a_uslp_frame_names_the_destination_when_the_channel_is_one() {
 fn an_issue_4_aos_frame_has_an_8_bit_scid_and_zero_spare_bits() {
     // req: LNK-032, AOS-002
     let channel = AosChannel::new(
+        AosPhysicalChannelConfig::new(28, false, 0, true, AosEdition::Issue4Compatible).unwrap(),
         SpacecraftId::<10>::new(255).unwrap(),
-        AosEdition::Issue4Compatible,
-        false,
         false,
     )
     .unwrap();
-    let config = ChannelMuxConfig::<Aos, V>::new(
-        channel,
-        28,
-        true,
-        MuxPolicy::FixedPriority,
-        &[aos_vc(1, 1)],
-    )
-    .unwrap();
+    let config =
+        ChannelMuxConfig::<Aos, V>::new(channel, MuxPolicy::FixedPriority, &[aos_vc(1, 1)])
+            .unwrap();
     let mut mux = AosMux::new(config).unwrap();
     let mut out = [0; F];
     mux.step(MuxInput::Offer(offer(1, &[0; 20], None)), &mut out)
@@ -1063,8 +1090,7 @@ fn a_reconfiguration_puts_the_slots_back_to_the_configured_values() {
     let config = || {
         let mut channel = tm_channel();
         channel.mc_ocf = Some([0xA1; 4]);
-        ChannelMuxConfig::<Tm, V>::new(channel, 24, true, MuxPolicy::FixedPriority, &tm_vcs())
-            .unwrap()
+        ChannelMuxConfig::<Tm, V>::new(channel, MuxPolicy::FixedPriority, &tm_vcs()).unwrap()
     };
     let mut mux = TmMux::new(config()).unwrap();
     let mut out = [0; F];
@@ -1122,9 +1148,7 @@ fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
     );
     // An oversize configuration is refused whatever the protocol, and changes nothing.
     let oversize = ChannelMuxConfig::<Aos, V>::new(
-        aos_channel(),
-        F + 1,
-        true,
+        aos_channel_of(F + 1, 0),
         MuxPolicy::FixedPriority,
         &[aos_vc(1, 1)],
     )
@@ -1138,9 +1162,7 @@ fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
         named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
     );
     let oversize = ChannelMuxConfig::<Uslp, V>::new(
-        uslp_channel(),
-        F + 1,
-        true,
+        uslp_channel_of(F + 1),
         MuxPolicy::FixedPriority,
         &[uslp_vc(1, false)],
     )

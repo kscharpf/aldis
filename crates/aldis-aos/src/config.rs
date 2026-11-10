@@ -18,6 +18,7 @@
 //! Security Header or Trailer (Table 6-1); the Insert Zone and the FECF, physical channel
 //! parameters, are present when configured (§4.1.3.3, §4.1.6.1.3; OI-43 item 1).
 
+use aldis_core::PhysicalChannel;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::lookup::ChannelLookup;
@@ -145,6 +146,24 @@ impl AosPhysicalChannelConfig {
     #[must_use]
     pub const fn primary_header_len(&self) -> usize {
         primary_header_len(self.fhec)
+    }
+}
+
+impl PhysicalChannel for AosPhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        self.insert_zone_len
+    }
+
+    fn variable_length(&self) -> bool {
+        false
     }
 }
 
@@ -832,5 +851,22 @@ pub(crate) mod tests {
         );
         assert_eq!(t.frame_layout(scid(8), vcid(63)), None);
         assert_eq!(t.frame_layout(scid(9), vcid(3)), None);
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::AosPhysicalChannelConfig::new(24, false, 3, true, super::AosEdition::Issue5)
+            .unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 3);
+        assert!(!PhysicalChannel::variable_length(&p));
     }
 }

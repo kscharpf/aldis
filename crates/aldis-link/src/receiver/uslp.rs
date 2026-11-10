@@ -6,6 +6,7 @@ use aldis_core::FrameFormat;
 use aldis_core::engine::OutRange;
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::{Error, ErrorKind, Result, field};
+use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 
 use super::{
     ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
@@ -21,32 +22,32 @@ const OID_VC: u8 = 63;
 /// The parameters of a USLP physical channel that the receiver needs (732.1 §5 Table 5-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UslpChannel {
-    insert_zone_len: usize,
+    physical: UslpPhysicalChannelConfig,
     ocf: DeliveryService,
-    variable: bool,
 }
 
 impl UslpChannel {
-    /// The channel with an Insert Zone of `insert_zone_len` octets (0 for none) whose OCF is
-    /// delivered by `ocf` (732.1 §3.11.2.4).
-    #[must_use]
-    pub const fn new(insert_zone_len: usize, ocf: DeliveryService) -> UslpChannel {
-        UslpChannel {
-            insert_zone_len,
-            ocf,
-            variable: false,
+    /// The channel of the physical channel `physical`, whose frame type, frame length, Insert
+    /// Zone and FECF are the receiver's (a variable-length channel has frames of any length up
+    /// to the maximum and no Insert Zone, 732.1 §4.1.2.7, §4.1.3.2), whose OCF is delivered by
+    /// `ocf` (732.1 §3.11.2.4).
+    ///
+    /// # Errors
+    /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
+    /// after the header, the Insert Zone and the FECF (CMN-041).
+    pub fn new(physical: UslpPhysicalChannelConfig, ocf: DeliveryService) -> Result<UslpChannel> {
+        let channel = UslpChannel { physical, ocf };
+        if <Uslp as ReceiveProtocol>::fits(physical.frame_len(), &channel, None) {
+            Ok(channel)
+        } else {
+            Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN))
         }
     }
 
-    /// A variable-length channel, whose frames are of any length up to the configured maximum
-    /// and have no Insert Zone (732.1 §4.1.2.7, §4.1.3.2). Its OCF is delivered by `ocf`.
+    /// The managed parameters of the physical channel.
     #[must_use]
-    pub const fn variable(ocf: DeliveryService) -> UslpChannel {
-        UslpChannel {
-            insert_zone_len: 0,
-            ocf,
-            variable: true,
-        }
+    pub const fn physical(&self) -> &UslpPhysicalChannelConfig {
+        &self.physical
     }
 
     /// Whether the frames vary in length.
@@ -54,7 +55,7 @@ impl UslpChannel {
     /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn is_variable(&self) -> bool {
-        self.variable
+        matches!(self.physical.frame_type(), TransferFrameType::Variable)
     }
 
     /// The octets of the Insert Zone.
@@ -62,7 +63,7 @@ impl UslpChannel {
     /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn insert_zone_len(&self) -> usize {
-        self.insert_zone_len
+        self.physical.insert_zone_len()
     }
 
     /// How the OCF is delivered.
@@ -149,13 +150,14 @@ impl ReceiveProtocol for Uslp {
         frame.octets()
     }
 
-    fn insert_zone_len(channel: &UslpChannel) -> usize {
-        channel.insert_zone_len
+    fn physical(channel: &UslpChannel) -> &UslpPhysicalChannelConfig {
+        &channel.physical
     }
 
-    fn fits(frame_len: usize, fecf: bool, channel: &UslpChannel, _: Option<&UslpVc>) -> bool {
+    fn fits(frame_len: usize, channel: &UslpChannel, _: Option<&UslpVc>) -> bool {
+        let fecf = channel.physical.fecf();
         let needed = PRIMARY_HEADER_LEN
-            .saturating_add(channel.insert_zone_len)
+            .saturating_add(channel.physical.insert_zone_len())
             .saturating_add(if fecf { 2 } else { 0 })
             .saturating_add(1);
         frame_len >= needed
@@ -169,10 +171,6 @@ impl ReceiveProtocol for Uslp {
                 .with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)),
             _ => Ok(()),
         }
-    }
-
-    fn variable_length(channel: &UslpChannel) -> bool {
-        channel.variable
     }
 
     fn raw_insert_zone_offset(_: &UslpChannel, frame: &[u8]) -> Result<usize> {
@@ -213,7 +211,7 @@ impl ReceiveProtocol for Uslp {
             spec(
                 frame.len(),
                 PRIMARY_HEADER_LEN.saturating_add(usize::from(count_len)),
-                channel.insert_zone_len,
+                channel.physical.insert_zone_len(),
                 ocf_flag,
                 cx.cfg().fecf(),
             ),

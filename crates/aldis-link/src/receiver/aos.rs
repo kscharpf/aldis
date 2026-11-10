@@ -1,7 +1,7 @@
 //! The `FrameReceiver` procedure for AOS frames (732.0 §4.3.3–§4.3.7; LNK-050…LNK-054, LNK-077;
 //! OI-70, OI-77, OI-78).
 
-use aldis_aos::{BitstreamPointer, Bpdu};
+use aldis_aos::{AosPhysicalChannelConfig, BitstreamPointer, Bpdu};
 use aldis_core::bits::be_uint;
 use aldis_core::ids::VcId;
 use aldis_core::{FrameFormat, Result};
@@ -33,8 +33,7 @@ mod layout {
 /// The parameters of an AOS physical channel that the receiver needs (732.0 §5 Table 5-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AosChannel {
-    insert_zone_len: usize,
-    fhec: bool,
+    physical: AosPhysicalChannelConfig,
 }
 
 impl AosChannel {
@@ -43,11 +42,14 @@ impl AosChannel {
     ///
     /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(insert_zone_len: usize, fhec: bool) -> AosChannel {
-        AosChannel {
-            insert_zone_len,
-            fhec,
-        }
+    pub const fn new(physical: AosPhysicalChannelConfig) -> AosChannel {
+        AosChannel { physical }
+    }
+
+    /// The managed parameters of the physical channel.
+    #[must_use]
+    pub const fn physical(&self) -> &AosPhysicalChannelConfig {
+        &self.physical
     }
 
     /// The octets of the Insert Zone.
@@ -55,7 +57,7 @@ impl AosChannel {
     /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn insert_zone_len(&self) -> usize {
-        self.insert_zone_len
+        self.physical.insert_zone_len()
     }
 
     /// Whether frames have an FHEC.
@@ -63,11 +65,11 @@ impl AosChannel {
     /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
     pub const fn fhec(&self) -> bool {
-        self.fhec
+        self.physical.fhec()
     }
 
     fn header_len(&self) -> usize {
-        Aos::primary_header_len(&self.fhec)
+        Aos::primary_header_len(&self.physical.fhec())
     }
 }
 
@@ -127,22 +129,19 @@ impl ReceiveProtocol for Aos {
         frame.as_bytes()
     }
 
-    fn insert_zone_len(channel: &AosChannel) -> usize {
-        channel.insert_zone_len
+    fn physical(channel: &AosChannel) -> &AosPhysicalChannelConfig {
+        &channel.physical
     }
 
-    fn fits(frame_len: usize, fecf: bool, channel: &AosChannel, vc: Option<&AosVc>) -> bool {
+    fn fits(frame_len: usize, channel: &AosChannel, vc: Option<&AosVc>) -> bool {
+        let fecf = channel.physical.fecf();
         let needed = channel
             .header_len()
-            .saturating_add(channel.insert_zone_len)
+            .saturating_add(channel.physical.insert_zone_len())
             .saturating_add(if fecf { 2 } else { 0 })
             .saturating_add(if vc.is_some_and(|v| v.ocf) { 4 } else { 0 })
             .saturating_add(1);
         frame_len >= needed
-    }
-
-    fn variable_length(_: &AosChannel) -> bool {
-        false
     }
 
     fn raw_insert_zone_offset(channel: &AosChannel, _: &[u8]) -> Result<usize> {
@@ -170,7 +169,7 @@ impl ReceiveProtocol for Aos {
             spec(
                 frame.len(),
                 channel.header_len(),
-                channel.insert_zone_len,
+                channel.physical.insert_zone_len(),
                 ocf_present,
                 cx.cfg().fecf(),
             ),

@@ -22,7 +22,7 @@
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
 //! #240), so its field slots are not on the stack.
 
-use aldis::aos::AosEdition;
+use aldis::aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::layout::OCF_LEN;
 use aldis::core::security::SecurityLayout;
@@ -36,7 +36,10 @@ use aldis::link::mux::{
 };
 use aldis::link::policy::{MuxPolicy, Weight};
 use aldis::link::protocol::{Aos, Route, Tm, Uslp};
-use aldis::uslp::{SourceOrDestination, VcfCountLen};
+use aldis::tm::TmPhysicalChannelConfig;
+use aldis::uslp::{
+    PhysicalChannelConfig as UslpPhysical, SourceOrDestination, TransferFrameType, VcfCountLen,
+};
 
 use crate::abi::{self, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
@@ -63,7 +66,7 @@ const _: () = assert!(ALDIS_CHANNEL_MUX_MAX_ACTIONS == CHANNEL_MUX_MAX_ACTIONS);
 
 /// 64-bit words of one `aldis_channel_mux_t` (CABI-031): the tag and the largest of the engines
 /// of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
-pub const ALDIS_CHANNEL_MUX_WORDS: usize = 2653;
+pub const ALDIS_CHANNEL_MUX_WORDS: usize = 2654;
 
 const _: () =
     assert!(size_of::<crate::handle::Slot<ChannelMuxState>>() <= ALDIS_CHANNEL_MUX_WORDS * 8);
@@ -548,10 +551,10 @@ impl FlatOffer {
 
 impl MxProtocol for Tm {
     fn channel(c: &aldis_channel_mux_config_t) -> Result<TmChannel> {
-        let mut channel = TmChannel::new(
-            SpacecraftId::<10>::try_from(c.scid)?,
-            VcId::<3>::try_from(c.tm_oid_vc)?,
-        );
+        let scid = SpacecraftId::<10>::try_from(c.scid)?;
+        let oid_vc = VcId::<3>::try_from(c.tm_oid_vc)?;
+        let physical = TmPhysicalChannelConfig::new(c.frame_len, flag(c.fecf)?)?;
+        let mut channel = TmChannel::new(physical, scid, oid_vc);
         channel.mc_ocf = initial_ocf(c.mc_ocf, c.mc_ocf_init)?;
         channel.mc_fsh = initial_fsh(c.mc_fsh_len, &c.mc_fsh_init)?;
         Ok(channel)
@@ -584,12 +587,31 @@ impl MxProtocol for Tm {
 
 impl MxProtocol for Aos {
     fn channel(c: &aldis_channel_mux_config_t) -> Result<AosChannel> {
-        AosChannel::new(
-            SpacecraftId::<10>::try_from(c.scid)?,
-            aos_edition(c)?,
-            flag(c.aos_fhec)?,
-            flag(c.aos_cycle_in_use)?,
-        )
+        let scid = SpacecraftId::<10>::try_from(c.scid)?;
+        let edition = aos_edition(c)?;
+        let fhec = flag(c.aos_fhec)?;
+        let cycle_in_use = flag(c.aos_cycle_in_use)?;
+        let physical = AosPhysicalChannelConfig::new(
+            c.frame_len,
+            fhec,
+            c.insert_zone_len,
+            flag(c.fecf)?,
+            edition,
+        );
+        let physical = match physical {
+            Ok(physical) => physical,
+            Err(e) => {
+                // The channel's own checks came before the frame's: the SCID of the edition,
+                // then the OID VCID (D6 of the M6 plan).
+                if scid.get() > edition.max_scid() {
+                    return Err(
+                        Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID)
+                    );
+                }
+                return Err(oid_vc_listed(c).err().unwrap_or(e));
+            }
+        };
+        AosChannel::new(physical, scid, cycle_in_use)
     }
 
     fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<AosVc> {
@@ -605,12 +627,20 @@ impl MxProtocol for Aos {
 
 impl MxProtocol for Uslp {
     fn channel(c: &aldis_channel_mux_config_t) -> Result<UslpChannel> {
-        Ok(UslpChannel {
-            scid: SpacecraftId::<16>::try_from(c.scid)?,
-            source_or_destination: SourceOrDestination::from_bit(flag(c.uslp_destination)?),
-            oid_vcf_len: VcfCountLen::new(c.uslp_oid_vcf_len)?,
-            mc_ocf: initial_ocf(c.mc_ocf, c.mc_ocf_init)?,
-        })
+        let scid = SpacecraftId::<16>::try_from(c.scid)?;
+        let source_or_destination = SourceOrDestination::from_bit(flag(c.uslp_destination)?);
+        let oid_vcf_len = VcfCountLen::new(c.uslp_oid_vcf_len)?;
+        let mc_ocf = initial_ocf(c.mc_ocf, c.mc_ocf_init)?;
+        let physical = UslpPhysical::new(
+            TransferFrameType::Fixed,
+            c.frame_len,
+            c.insert_zone_len,
+            flag(c.fecf)?,
+        )
+        .map_err(|e| oid_vc_listed(c).err().unwrap_or(e))?;
+        let mut channel = UslpChannel::new(physical, scid, source_or_destination, oid_vcf_len)?;
+        channel.mc_ocf = mc_ocf;
+        Ok(channel)
     }
 
     fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<UslpVc> {
@@ -669,6 +699,17 @@ fn check_members(c: &aldis_channel_mux_config_t) -> Result<()> {
     Ok(())
 }
 
+/// `InvalidConfig` (`vc_id`) when VCID 63, the OID VC, is listed on an AOS or USLP channel: the
+/// error those protocols gave before the frame's length, which now comes from the physical
+/// channel's constructor (D6 of the M6 plan).
+fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
+    if c.vcs.iter().take(c.vc_count).any(|vc| vc.vc_id == 63) {
+        Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
+    } else {
+        Ok(())
+    }
+}
+
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
     check_members(c)?;
@@ -687,7 +728,6 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
         }
     }
     let channel = P::channel(c)?;
-    let fecf = flag(c.fecf)?;
     let policy = policy(c.policy)?;
     let listed = match &entries {
         None => &[],
@@ -695,9 +735,9 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
             .get(..c.vc_count)
             .ok_or(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY))?,
     };
-    let mut config = ChannelMuxConfig::<P, V>::new(channel, c.frame_len, fecf, policy, listed)?;
+    let mut config = ChannelMuxConfig::<P, V>::new(channel, policy, listed)?;
     if c.insert_zone_len > 0 {
-        config = config.with_insert_zone(c.insert_zone_len, c.insert_idle_pattern)?;
+        config = config.with_insert_zone_fill(c.insert_idle_pattern)?;
     }
     Ok(config)
 }

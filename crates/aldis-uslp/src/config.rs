@@ -15,6 +15,7 @@
 //! Parameters that only the engines use (multiplexing schemes, repetitions, delays, COP in
 //! Effect, SDU types, UPIDs supported) are not kept here (`docs/standards/uslp-frame.md` §2.1).
 
+use aldis_core::PhysicalChannel;
 use aldis_core::layout::{FrameLayout, LayoutSpec};
 use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
@@ -116,6 +117,24 @@ impl PhysicalChannelConfig {
     /// Whether frames have one length (Table 5-1).
     pub(crate) const fn is_fixed(&self) -> bool {
         matches!(self.frame_type, TransferFrameType::Fixed)
+    }
+}
+
+impl PhysicalChannel for PhysicalChannelConfig {
+    fn frame_len(&self) -> usize {
+        self.frame_len
+    }
+
+    fn fecf(&self) -> bool {
+        self.fecf
+    }
+
+    fn insert_zone_len(&self) -> usize {
+        self.insert_zone_len
+    }
+
+    fn variable_length(&self) -> bool {
+        !self.is_fixed()
     }
 }
 
@@ -1102,5 +1121,22 @@ pub(crate) mod tests {
         );
         let room = PhysicalChannelConfig::new(Variable, 15, 0, true).unwrap();
         assert!(VcTable::<4, 4>::new(room, &[ocf], &[]).is_ok());
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod physical_channel_tests {
+    use aldis_core::PhysicalChannel;
+
+    #[test]
+    fn the_physical_set_reports_its_managed_parameters() {
+        // req: LNK-001, LNK-078
+        let p = super::PhysicalChannelConfig::new(super::TransferFrameType::Fixed, 24, 3, true)
+            .unwrap();
+        assert_eq!(PhysicalChannel::frame_len(&p), 24);
+        assert!(PhysicalChannel::fecf(&p));
+        assert_eq!(PhysicalChannel::insert_zone_len(&p), 3);
+        assert!(!PhysicalChannel::variable_length(&p));
     }
 }
