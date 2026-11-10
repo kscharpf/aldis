@@ -42,7 +42,7 @@ Protocol: [docs/process/review.md](docs/process/review.md).
 
 ## Checks
 
-Run `cargo xtask check --quick` after each edit and `cargo xtask check` before each commit, with zero warnings. Which tier ends a round and what `--full` adds: [agent-brief.md](docs/process/agent-brief.md) item 3; the tiers and resuming a failed run (`--from`): item 2. Report which tier passed; no tier is the gate.
+Run `cargo xtask check --quick` after each edit, with zero warnings. The default or `--full` tier runs only in the first round and the final round; an intermediate fix round or merge-only round runs `--quick` plus `cargo test` of what changed. Which tier, what `--full` adds, and when: [agent-brief.md](docs/process/agent-brief.md) item 3; the tiers and resuming a failed run (`--from`): item 2. Report which tier passed; no tier is the gate.
 
 **Implementation agents commit and stop**, unless the brief grants the gate ([agent brief](docs/process/agent-brief.md)). The coordinator runs the merge gate and the merge trains ([coordinator.md](docs/process/coordinator.md)).
 
