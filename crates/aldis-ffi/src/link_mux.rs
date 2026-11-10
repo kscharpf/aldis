@@ -648,8 +648,15 @@ const fn fsh_len_error() -> Error {
     Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN)
 }
 
+/// The members of an AOS VC.
+#[derive(Debug, Clone, Copy)]
+struct AosMembers {
+    content: AosContent,
+    ocf: Option<[u8; OCF_LEN]>,
+}
+
 impl MxProtocol for Aos {
-    type Members = Option<[u8; OCF_LEN]>;
+    type Members = AosMembers;
 
     fn channel(c: &aldis_channel_mux_config_t) -> Result<AosChannel> {
         let scid = SpacecraftId::<10>::try_from(c.scid)?;
@@ -679,8 +686,19 @@ impl MxProtocol for Aos {
         AosChannel::new(physical, scid, cycle_in_use)
     }
 
-    fn members(vc: &aldis_channel_mux_vc_t) -> Result<Option<[u8; OCF_LEN]>> {
-        initial_ocf(vc.ocf, vc.ocf_init)
+    fn members(vc: &aldis_channel_mux_vc_t) -> Result<AosMembers> {
+        // The role was range-checked by `check_members`; the mux takes any of them for AOS.
+        let content = match parse::<aldis_link_content>(vc.role)? {
+            aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => AosContent::Mpdu,
+            aldis_link_content::ALDIS_LINK_CONTENT_VCA => AosContent::VcaSdu,
+            aldis_link_content::ALDIS_LINK_CONTENT_BITSTREAM => AosContent::Bpdu,
+            // The mux has no "unserved" VC; its frames then carry whatever is offered.
+            aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED => AosContent::IdleData,
+        };
+        Ok(AosMembers {
+            content,
+            ocf: initial_ocf(vc.ocf, vc.ocf_init)?,
+        })
     }
 
     fn vc_params(
@@ -688,16 +706,16 @@ impl MxProtocol for Aos {
         channel: &AosChannel,
         id: VcId<6>,
         security: SecurityLayout,
-        ocf: Option<[u8; OCF_LEN]>,
+        members: AosMembers,
     ) -> Result<AosVc> {
-        // The content is opaque to the mux: the field of an offer is whatever the VC carries.
-        let mut config = AosVirtualChannelConfig::new(channel.scid(), id, AosContent::VcaSdu)?
+        // The content comes from the VC's `role`; the mux does not read it.
+        let mut config = AosVirtualChannelConfig::new(channel.scid(), id, members.content)?
             .with_security(security);
-        if ocf.is_some() {
+        if members.ocf.is_some() {
             config = config.with_ocf();
         }
         let params = AosVc::new(config);
-        match ocf {
+        match members.ocf {
             Some(ocf) => params.with_initial_ocf(ocf),
             None => Ok(params),
         }
@@ -857,7 +875,8 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
     check_members(c)?;
     // Only the first `vc_count` entries are read. They are read once for their members, before
     // the channel, and again for the codec's configuration of each, which needs the channel
-    // (D6 of the M6 plan keeps the order of the refusals); the second read cannot fail.
+    // (D6 of the M6 plan keeps the order of the refusals). The second `mx_read` cannot fail; `mx_vc`
+    // can, with what the codec's constructors refuse of a VC that passed the first read.
     for vc in c.vcs.iter().take(c.vc_count) {
         mx_read::<P>(vc)?;
     }

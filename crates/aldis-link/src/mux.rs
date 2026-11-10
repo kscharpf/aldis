@@ -1728,7 +1728,8 @@ mod aos_impl {
             }
         }
 
-        /// The codec's configuration of the VC.
+        /// The codec's configuration of the VC. Its data field content means nothing to the mux,
+        /// which treats the field of an offer as opaque.
         ///
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
@@ -1867,8 +1868,9 @@ mod uslp_impl {
         /// names) on the fixed-length physical channel `physical`, with VCID 63 frames that have
         /// a VCF Count of `oid_vcf_len`, and the initial `MC_OCF` `mc_ocf` if given: "Inclusion
         /// of OCF Required" is then true for the master channel, and every frame has an OCF, OID
-        /// frames included (LNK-033, OI-76). The VCs of the mux must say the same
-        /// ([`OcfUse::Required`], 732.1 §4.1.5.3), which `ChannelMuxConfig::new` checks.
+        /// frames included (LNK-033, OI-76; 732.1 Table 5-2, §4.1.5.3). The VCs of the mux must
+        /// say the same ([`OcfUse::Required`], Table 5-3), because the mux has no `VC_OCF` slot
+        /// for USLP; `ChannelMuxConfig::new` checks it.
         ///
         /// # Errors
         /// `InvalidConfig` (`transfer_frame_type`) for a physical channel of variable-length
@@ -2141,8 +2143,11 @@ mod uslp_impl {
             if vcs.iter().flatten().any(spacecraft) {
                 return Err(bad(field::SPACECRAFT_ID));
             }
-            // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
-            // §4.1.5.3).
+            // 732.1 has two "Inclusion of OCF Required" parameters, one of the master channel
+            // (Table 5-2, §4.1.5.3) and one of each VC (Table 5-3). The mux fills an OCF only
+            // from `MC_OCF` (`vc_ocf` is `None` for USLP), so a VC that requires one is refused
+            // without an `MC_OCF`, and a VC that does not is refused beside one, so that the
+            // codec configuration describes the frames the mux builds.
             let ocf = |v: &VcConfig<Uslp>| {
                 (v.params.config.ocf() == OcfUse::Required) != channel.mc_ocf.is_some()
             };
