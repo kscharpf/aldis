@@ -27,8 +27,8 @@ use aldis_core::time::{Duration, Instant};
 use aldis_link::common::Qos;
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::segmenter::{
-    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, MapService, SegmentedFdu, SegmenterInput,
-    SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, SegmentedFdu, SegmenterInput,
+    SegmenterOutput, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_tc::{TcSpacecraftId, TcVcId};
 use aldis_uslp::{
@@ -221,7 +221,7 @@ fn uslp_tfdfs_of_whole_sdus_are_the_requests_of_fop1() {
         target.max_fdu_len() + 1,
         &[MapEntry::<Uslp>::new(
             MapId::<4>::new(2).unwrap(),
-            MapService::Sdu,
+            SegmenterService::Sdu,
             Upid::OctetStream,
         )],
     )

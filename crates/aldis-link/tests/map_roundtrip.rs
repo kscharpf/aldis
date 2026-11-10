@@ -22,8 +22,8 @@ use aldis_link::reassembler::{
     ReassemblerOutput, TcReassemblerParams, UslpFdu,
 };
 use aldis_link::segmenter::{
-    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, MapService, SegmenterInput,
-    SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput,
+    SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
@@ -143,7 +143,7 @@ fn expected(items: &[Item]) -> Delivered {
 }
 
 fn tc_trip(fdu_len: usize, items: &[Item], qos_bits: &[bool]) -> Result<Delivered, String> {
-    let map = |id: u8| MapEntry::<Tc>::new(MapId::<6>::new(id).unwrap(), MapService::Any, ());
+    let map = |id: u8| MapEntry::<Tc>::new(MapId::<6>::new(id).unwrap(), SegmenterService::Any, ());
     let maps = [
         map(1).with_segmentation(MAX_SDU).unwrap(),
         map(2).with_segmentation(MAX_SDU).unwrap().with_blocking(),
@@ -233,16 +233,16 @@ fn uslp_trip(
     };
     let two = VcfCountLen::new(2).unwrap();
     let maps = [
-        map(1, MapService::Packets, 0)
+        map(1, SegmenterService::Packets, 0)
             .with_segmentation(MAX_SDU)
             .unwrap()
             .with_blocking(),
-        map(2, MapService::Sdu, 5)
+        map(2, SegmenterService::Sdu, 5)
             .with_segmentation(MAX_SDU)
             .unwrap(),
         map(
             3,
-            MapService::OctetStream {
+            SegmenterService::OctetStream {
                 release_deadline: Duration::from_micros(100),
             },
             4,
@@ -405,9 +405,9 @@ proptest! {
             )
         };
         let maps = [
-            map(1, MapService::Packets, 0).with_segmentation(24).unwrap().with_blocking(),
-            map(2, MapService::Sdu, 5).with_segmentation(24).unwrap(),
-            map(3, MapService::OctetStream { release_deadline: Duration::from_micros(50) }, 4),
+            map(1, SegmenterService::Packets, 0).with_segmentation(24).unwrap().with_blocking(),
+            map(2, SegmenterService::Sdu, 5).with_segmentation(24).unwrap(),
+            map(3, SegmenterService::OctetStream { release_deadline: Duration::from_micros(50) }, 4),
         ];
         let config = MapSegmenterConfig::<Uslp, 4>::new(
             vc(),

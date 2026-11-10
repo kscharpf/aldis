@@ -124,9 +124,25 @@ pub struct Clcw {
     pub report_value: FrameSeqNum,
 }
 
-/// `mask` if `set`, else 0: one flag bit of the CLCW.
-const fn flag(set: bool, mask: u8) -> u8 {
-    if set { mask } else { 0 }
+/// The fields of the CLCW by bit position (232.0 §4.2.1; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+    use aldis_core::ocf::OCF_LEN as N;
+
+    pub(super) type ControlWordType = Field<N, 0, 1>;
+    pub(super) type Version = Field<N, 1, 2>;
+    pub(super) type Status = Field<N, 3, 3>;
+    pub(super) type CopInEffect = Field<N, 6, 2>;
+    pub(super) type VcId = Field<N, 8, 6>;
+    pub(super) type Spare14_15 = Field<N, 14, 2>;
+    pub(super) type NoRfAvailable = Field<N, 16, 1>;
+    pub(super) type NoBitLock = Field<N, 17, 1>;
+    pub(super) type Lockout = Field<N, 18, 1>;
+    pub(super) type Wait = Field<N, 19, 1>;
+    pub(super) type Retransmit = Field<N, 20, 1>;
+    pub(super) type FarmBCounter = Field<N, 21, 2>;
+    pub(super) type Spare23 = Field<N, 23, 1>;
+    pub(super) type ReportValue = Field<N, 24, 8>;
 }
 
 /// `InvalidField` or `UnsupportedVersion` naming `field`, a fixed CLCW field that holds
@@ -168,11 +184,11 @@ impl Clcw {
 
     /// The decode of both modes.
     fn parse(octets: [u8; OCF_LEN], mode: DecodeMode) -> Result<(Clcw, AnomalySet<TcAnomaly>)> {
-        let [b0, b1, b2, b3] = octets;
-        if b0 & 0x80 != 0 {
+        let h = &octets;
+        if layout::ControlWordType::flag(h) {
             return Err(fixed(ErrorKind::InvalidField, field::CONTROL_WORD_TYPE, 1));
         }
-        let version = (b0 >> 5) & 0b11;
+        let version = layout::Version::get_u8(h);
         if version != 0 {
             return Err(fixed(
                 ErrorKind::UnsupportedVersion,
@@ -182,8 +198,8 @@ impl Clcw {
         }
         let mut anomalies = AnomalySet::empty();
         for (set, fld) in [
-            (b1 & 0b11 != 0, field::CLCW_SPARE_14_15),
-            (b2 & 0x01 != 0, field::CLCW_SPARE_23),
+            (layout::Spare14_15::get_u8(h) != 0, field::CLCW_SPARE_14_15),
+            (layout::Spare23::flag(h), field::CLCW_SPARE_23),
         ] {
             if set {
                 match mode {
@@ -192,19 +208,19 @@ impl Clcw {
                 }
             }
         }
-        TcVcId::new(b1 >> 2)
+        TcVcId::new(layout::VcId::get_u8(h))
             .map(|vc_id| {
                 let clcw = Clcw {
-                    status: ClcwStatus::masked(b0 >> 2),
-                    cop_in_effect: CopInEffect::masked(b0),
+                    status: ClcwStatus::masked(layout::Status::get_u8(h)),
+                    cop_in_effect: CopInEffect::masked(layout::CopInEffect::get_u8(h)),
                     vc_id,
-                    no_rf_available: b2 & 0x80 != 0,
-                    no_bit_lock: b2 & 0x40 != 0,
-                    lockout: b2 & 0x20 != 0,
-                    wait: b2 & 0x10 != 0,
-                    retransmit: b2 & 0x08 != 0,
-                    farm_b_counter: FarmBCounter::masked(b2 >> 1),
-                    report_value: FrameSeqNum::new(b3),
+                    no_rf_available: layout::NoRfAvailable::flag(h),
+                    no_bit_lock: layout::NoBitLock::flag(h),
+                    lockout: layout::Lockout::flag(h),
+                    wait: layout::Wait::flag(h),
+                    retransmit: layout::Retransmit::flag(h),
+                    farm_b_counter: FarmBCounter::masked(layout::FarmBCounter::get_u8(h)),
+                    report_value: FrameSeqNum::new(layout::ReportValue::get_u8(h)),
                 };
                 (clcw, anomalies)
             })
@@ -232,17 +248,18 @@ impl Clcw {
     /// TC-030, TC-031, GEN-052).
     #[must_use]
     pub const fn to_octets(&self) -> [u8; OCF_LEN] {
-        [
-            (self.status.get() << 2) | self.cop_in_effect.get(),
-            self.vc_id.get() << 2,
-            flag(self.no_rf_available, 0x80)
-                | flag(self.no_bit_lock, 0x40)
-                | flag(self.lockout, 0x20)
-                | flag(self.wait, 0x10)
-                | flag(self.retransmit, 0x08)
-                | (self.farm_b_counter.get() << 1),
-            self.report_value.get(),
-        ]
+        let mut h = [0; OCF_LEN];
+        layout::Status::put_u8(&mut h, self.status.get());
+        layout::CopInEffect::put_u8(&mut h, self.cop_in_effect.get());
+        layout::VcId::put_u8(&mut h, self.vc_id.get());
+        layout::NoRfAvailable::put_flag(&mut h, self.no_rf_available);
+        layout::NoBitLock::put_flag(&mut h, self.no_bit_lock);
+        layout::Lockout::put_flag(&mut h, self.lockout);
+        layout::Wait::put_flag(&mut h, self.wait);
+        layout::Retransmit::put_flag(&mut h, self.retransmit);
+        layout::FarmBCounter::put_u8(&mut h, self.farm_b_counter.get());
+        layout::ReportValue::put_u8(&mut h, self.report_value.get());
+        h
     }
 
     /// The CLCW as a 32-bit word, bit 0 the most significant (232.0 §4.2.1; M2 plan D14).

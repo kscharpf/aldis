@@ -192,7 +192,11 @@ impl FshLen {
     /// §4.1.3.2.2–3; TM-009).
     #[must_use]
     pub const fn id_octet(self) -> u8 {
-        (FSH_VERSION << 6) | self.0.saturating_sub(1)
+        let mut id = [0];
+        fsh::Version::put_u8(&mut id, FSH_VERSION);
+        fsh::LengthLess1::put_u8(&mut id, self.0.saturating_sub(1));
+        let [id] = id;
+        id
     }
 }
 
@@ -443,6 +447,23 @@ impl TmPrimaryHeader {
         layout::Pointer::put_u16(&mut h, self.first_header_pointer.0);
         h
     }
+}
+
+/// The Transfer Frame Version Number in the first octet of the Primary Header (132.0 §4.1.2.2;
+/// GEN-051).
+pub(crate) mod first_octet {
+    use aldis_core::bits::Field;
+
+    pub(crate) type Version = Field<1, 0, 2>;
+}
+
+/// The fields of the Secondary Header Identification Field by bit position (132.0 §4.1.3.2;
+/// GEN-051).
+pub(crate) mod fsh {
+    use aldis_core::bits::Field;
+
+    pub(crate) type Version = Field<1, 0, 2>;
+    pub(crate) type LengthLess1 = Field<1, 2, 6>;
 }
 
 /// The fields of the Primary Header by bit position (132.0 §4.1.2, Figure 4-2; GEN-051).

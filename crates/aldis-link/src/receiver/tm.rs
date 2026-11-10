@@ -19,6 +19,26 @@ const OID_POINTER: u16 = 0x7FE;
 /// The longest Secondary Header: the ID octet and 63 octets of data (132.0 §4.1.3.2).
 const MAX_FSH_LEN: usize = 64;
 
+/// The fields the receiver reads of the TM Primary Header and the first octet of the Secondary
+/// Header, by bit position (132.0 §4.1.2, §4.1.3.2; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::PRIMARY_HEADER_LEN as N;
+
+    /// The octets of the Primary Header and the Identification Field of the Secondary Header.
+    const LEN: usize = N + 1;
+
+    pub(super) type Vcid = Field<LEN, 12, 3>;
+    pub(super) type OcfFlag = Field<LEN, 15, 1>;
+    pub(super) type McCount = Field<LEN, 16, 8>;
+    pub(super) type VcCount = Field<LEN, 24, 8>;
+    pub(super) type FshFlag = Field<LEN, 32, 1>;
+    pub(super) type SyncFlag = Field<LEN, 33, 1>;
+    pub(super) type Pointer = Field<LEN, 37, 11>;
+    pub(super) type FshLengthLess1 = Field<LEN, 50, 6>;
+}
+
 /// The parameters of a TM physical channel that the receiver needs: where the OCF and the
 /// Secondary Header are delivered (132.0 §3.5–3.9; LNK-053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -169,14 +189,16 @@ impl ReceiveProtocol for Tm {
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         let frame = Self::plain_octets(plain);
-        let [_, b1, mc, vcc, s0, s1, id] = header::<{ PRIMARY_HEADER_LEN + 1 }>(frame)?;
-        let vc: VcId<3> = vc_of::<Tm>((b1 >> 1) & 0x07)?;
-        let ocf_flag = b1 & 1 == 1;
-        let fsh_flag = s0 & 0x80 != 0;
-        let sync = s0 & 0x40 != 0;
-        let pointer = u16::from_be_bytes([s0 & 0x07, s1]);
+        let h = header::<{ PRIMARY_HEADER_LEN + 1 }>(frame)?;
+        let vc: VcId<3> = vc_of::<Tm>(layout::Vcid::get_u8(&h))?;
+        let ocf_flag = layout::OcfFlag::flag(&h);
+        let fsh_flag = layout::FshFlag::flag(&h);
+        let sync = layout::SyncFlag::flag(&h);
+        let pointer = layout::Pointer::get_u16(&h);
+        let mc = layout::McCount::get_u8(&h);
+        let vcc = layout::VcCount::get_u8(&h);
         let fsh_len = if fsh_flag {
-            usize::from(id & 0x3F).saturating_add(1)
+            usize::from(layout::FshLengthLess1::get_u8(&h)).saturating_add(1)
         } else {
             0
         };
