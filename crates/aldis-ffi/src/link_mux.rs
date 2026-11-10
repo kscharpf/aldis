@@ -22,7 +22,11 @@
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
 //! #240), so its field slots are not on the stack.
 
-use aldis::aos::{AosEdition, AosPhysicalChannelConfig};
+use core::fmt::Debug;
+
+use aldis::aos::{
+    AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
+};
 use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::layout::OCF_LEN;
 use aldis::core::security::SecurityLayout;
@@ -31,14 +35,15 @@ use aldis::link::common::Qos;
 use aldis::link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig,
     ChannelMuxHead, Cop, FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput,
-    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer,
-    UslpVc, VcConfig,
+    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel, UslpOffer, UslpVc,
+    VcConfig,
 };
 use aldis::link::policy::{MuxPolicy, Weight};
 use aldis::link::protocol::{Aos, Route, Tm, Uslp};
-use aldis::tm::TmPhysicalChannelConfig;
+use aldis::tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis::uslp::{
-    PhysicalChannelConfig as UslpPhysical, SourceOrDestination, TransferFrameType, VcfCountLen,
+    OcfUse, PhysicalChannelConfig as UslpPhysical, SecurityScope, SourceOrDestination,
+    TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
 use crate::abi::{self, flag};
@@ -66,7 +71,7 @@ const _: () = assert!(ALDIS_CHANNEL_MUX_MAX_ACTIONS == CHANNEL_MUX_MAX_ACTIONS);
 
 /// 64-bit words of one `aldis_channel_mux_t` (CABI-031): the tag and the largest of the engines
 /// of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
-pub const ALDIS_CHANNEL_MUX_WORDS: usize = 2654;
+pub const ALDIS_CHANNEL_MUX_WORDS: usize = 2658;
 
 const _: () =
     assert!(size_of::<crate::handle::Slot<ChannelMuxState>>() <= ALDIS_CHANNEL_MUX_WORDS * 8);
@@ -514,11 +519,29 @@ fn aos_edition(c: &aldis_channel_mux_config_t) -> Result<AosEdition> {
 
 /// A protocol of the `ChannelMux` in the C ABI: its configuration from the flat struct.
 trait MxProtocol: MuxProtocol {
+    /// The members of a VC that the protocol reads before it has the identifiers of the VC and
+    /// the channel: the codec's configuration of the VC is built from them and those (D6 of the
+    /// M6 plan keeps the order in which the members are refused).
+    type Members: Copy + Debug;
+
     /// The channel parameters of `c`.
     fn channel(c: &aldis_channel_mux_config_t) -> Result<Self::Channel>;
 
-    /// The parameters of the VC `vc`.
-    fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<Self::VcParams>;
+    /// The protocol's members of the VC `vc`.
+    fn members(vc: &aldis_channel_mux_vc_t) -> Result<Self::Members>;
+
+    /// The parameters of the VC `id` of the channel `channel` with the Security Header and
+    /// Trailer lengths `security`: the codec's configuration of the VC with the engine's extras.
+    ///
+    /// # Errors
+    /// What the codec's constructors refuse of the VC: for AOS, VCID 63, the OID VC.
+    fn vc_params(
+        c: &aldis_channel_mux_config_t,
+        channel: &Self::Channel,
+        id: Self::Vc,
+        security: SecurityLayout,
+        members: Self::Members,
+    ) -> Result<Self::VcParams>;
 
     /// The metadata of an offer from the members of the flat input: those the protocol has.
     ///
@@ -549,7 +572,17 @@ impl FlatOffer {
     }
 }
 
+/// The members of a TM VC.
+#[derive(Debug, Clone, Copy)]
+struct TmMembers {
+    content: DataFieldContent,
+    ocf: Option<[u8; OCF_LEN]>,
+    fsh: Option<Fsh>,
+}
+
 impl MxProtocol for Tm {
+    type Members = TmMembers;
+
     fn channel(c: &aldis_channel_mux_config_t) -> Result<TmChannel> {
         let scid = SpacecraftId::<10>::try_from(c.scid)?;
         let oid_vc = VcId::<3>::try_from(c.tm_oid_vc)?;
@@ -560,10 +593,10 @@ impl MxProtocol for Tm {
         Ok(channel)
     }
 
-    fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<TmVc> {
-        let role = match parse::<aldis_link_content>(vc.role)? {
-            aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => TmRole::Packets,
-            aldis_link_content::ALDIS_LINK_CONTENT_VCA => TmRole::Vca,
+    fn members(vc: &aldis_channel_mux_vc_t) -> Result<TmMembers> {
+        let content = match parse::<aldis_link_content>(vc.role)? {
+            aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => DataFieldContent::Packets,
+            aldis_link_content::ALDIS_LINK_CONTENT_VCA => DataFieldContent::VcaSdu,
             aldis_link_content::ALDIS_LINK_CONTENT_BITSTREAM
             | aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED => {
                 return Err(
@@ -571,9 +604,34 @@ impl MxProtocol for Tm {
                 );
             }
         };
-        let mut params = TmVc::new(role);
-        params.ocf = initial_ocf(vc.ocf, vc.ocf_init)?;
-        params.fsh = initial_fsh(vc.fsh_len, &vc.fsh_init)?;
+        Ok(TmMembers {
+            content,
+            ocf: initial_ocf(vc.ocf, vc.ocf_init)?,
+            fsh: initial_fsh(vc.fsh_len, &vc.fsh_init)?,
+        })
+    }
+
+    fn vc_params(
+        _: &aldis_channel_mux_config_t,
+        _: &TmChannel,
+        id: VcId<3>,
+        security: SecurityLayout,
+        members: TmMembers,
+    ) -> Result<TmVc> {
+        let mut config = TmVirtualChannelConfig::new(id, members.content).with_security(security);
+        if members.ocf.is_some() {
+            config = config.with_ocf();
+        }
+        if let Some(fsh) = members.fsh {
+            config = config.with_fsh(fsh.fsh_len().ok_or(fsh_len_error())?);
+        }
+        let mut params = TmVc::new(config);
+        if let Some(ocf) = members.ocf {
+            params = params.with_initial_ocf(ocf)?;
+        }
+        if let Some(fsh) = members.fsh {
+            params = params.with_initial_fsh(fsh)?;
+        }
         Ok(params)
     }
 
@@ -585,7 +643,14 @@ impl MxProtocol for Tm {
     }
 }
 
+/// `InvalidConfig` (`fsh_len`).
+const fn fsh_len_error() -> Error {
+    Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN)
+}
+
 impl MxProtocol for Aos {
+    type Members = Option<[u8; OCF_LEN]>;
+
     fn channel(c: &aldis_channel_mux_config_t) -> Result<AosChannel> {
         let scid = SpacecraftId::<10>::try_from(c.scid)?;
         let edition = aos_edition(c)?;
@@ -614,10 +679,28 @@ impl MxProtocol for Aos {
         AosChannel::new(physical, scid, cycle_in_use)
     }
 
-    fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<AosVc> {
-        Ok(AosVc {
-            ocf: initial_ocf(vc.ocf, vc.ocf_init)?,
-        })
+    fn members(vc: &aldis_channel_mux_vc_t) -> Result<Option<[u8; OCF_LEN]>> {
+        initial_ocf(vc.ocf, vc.ocf_init)
+    }
+
+    fn vc_params(
+        _: &aldis_channel_mux_config_t,
+        channel: &AosChannel,
+        id: VcId<6>,
+        security: SecurityLayout,
+        ocf: Option<[u8; OCF_LEN]>,
+    ) -> Result<AosVc> {
+        // The content is opaque to the mux: the field of an offer is whatever the VC carries.
+        let mut config = AosVirtualChannelConfig::new(channel.scid(), id, AosContent::VcaSdu)?
+            .with_security(security);
+        if ocf.is_some() {
+            config = config.with_ocf();
+        }
+        let params = AosVc::new(config);
+        match ocf {
+            Some(ocf) => params.with_initial_ocf(ocf),
+            None => Ok(params),
+        }
     }
 
     fn offer_meta(flat: FlatOffer) -> Result<()> {
@@ -625,7 +708,19 @@ impl MxProtocol for Aos {
     }
 }
 
+/// The members of a USLP VC.
+#[derive(Debug, Clone, Copy)]
+struct UslpMembers {
+    map: MapId<4>,
+    qos: Qos,
+    vcf_len_sc: VcfCountLen,
+    vcf_len_exp: VcfCountLen,
+    cop: bool,
+}
+
 impl MxProtocol for Uslp {
+    type Members = UslpMembers;
+
     fn channel(c: &aldis_channel_mux_config_t) -> Result<UslpChannel> {
         let scid = SpacecraftId::<16>::try_from(c.scid)?;
         let source_or_destination = SourceOrDestination::from_bit(flag(c.uslp_destination)?);
@@ -638,19 +733,40 @@ impl MxProtocol for Uslp {
             flag(c.fecf)?,
         )
         .map_err(|e| oid_vc_listed(c).err().unwrap_or(e))?;
-        let mut channel = UslpChannel::new(physical, scid, source_or_destination, oid_vcf_len)?;
-        channel.mc_ocf = mc_ocf;
-        Ok(channel)
+        UslpChannel::new(physical, scid, source_or_destination, oid_vcf_len, mc_ocf)
     }
 
-    fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<UslpVc> {
-        UslpVc::new(
-            MapId::<4>::try_from(vc.uslp_map)?,
-            qos(vc.uslp_qos)?,
-            VcfCountLen::new(vc.uslp_vcf_len_sc)?,
-            VcfCountLen::new(vc.uslp_vcf_len_exp)?,
-            flag(vc.uslp_cop)?,
-        )
+    fn members(vc: &aldis_channel_mux_vc_t) -> Result<UslpMembers> {
+        let members = UslpMembers {
+            map: MapId::<4>::try_from(vc.uslp_map)?,
+            qos: qos(vc.uslp_qos)?,
+            vcf_len_sc: VcfCountLen::new(vc.uslp_vcf_len_sc)?,
+            vcf_len_exp: VcfCountLen::new(vc.uslp_vcf_len_exp)?,
+            cop: flag(vc.uslp_cop)?,
+        };
+        // The first check of `UslpVc::new`, which the identifiers of the VC come after.
+        UslpVc::check_count_len(members.cop, members.vcf_len_sc)?;
+        Ok(members)
+    }
+
+    fn vc_params(
+        c: &aldis_channel_mux_config_t,
+        channel: &UslpChannel,
+        id: VcId<6>,
+        security: SecurityLayout,
+        members: UslpMembers,
+    ) -> Result<UslpVc> {
+        let mut params = VcParams::new(TransferFrameType::Fixed);
+        params.vcf_count_len_sequence = members.vcf_len_sc;
+        params.vcf_count_len_expedited = members.vcf_len_exp;
+        params.security = SecurityScope::Vc(security);
+        // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
+        // §4.1.5.3).
+        if flag(c.mc_ocf)? {
+            params.ocf = OcfUse::Required;
+        }
+        let config = UslpVcConfig::new(channel.scid, id, params)?;
+        UslpVc::new(config, members.map, members.qos, members.cop)
     }
 
     fn offer_meta(flat: FlatOffer) -> Result<UslpOffer> {
@@ -661,14 +777,40 @@ impl MxProtocol for Uslp {
     }
 }
 
-/// The VC `vc` in the protocol `P` (LNK-031, LNK-035).
-fn mx_vc<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<VcConfig<P>> {
-    // The members were read by `check_members`; these are the protocol's conversions.
-    let params = P::vc_params(vc)?;
-    Ok(VcConfig::<P>::new(P::Vc::try_from(vc.vc_id)?, params)
-        .with_priority(vc.priority)
-        .with_weight(Weight::new(vc.weight)?)
-        .with_security(SecurityLayout::new(vc.sec_header_len, vc.sec_trailer_len)?))
+/// A VC of `c` as it was read, before the channel is: the members of the protocol, the VC, and
+/// the policy's parameters.
+#[derive(Debug, Clone, Copy)]
+struct RawVc<P: MxProtocol> {
+    members: P::Members,
+    id: P::Vc,
+    priority: u8,
+    weight: Weight,
+    security: SecurityLayout,
+}
+
+/// The VC `vc` as it was read: its members, then its identifier, weight, and Security Header and
+/// Trailer lengths, in the order in which they are refused (LNK-031, LNK-035).
+fn mx_read<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<RawVc<P>> {
+    let members = P::members(vc)?;
+    Ok(RawVc {
+        members,
+        id: P::Vc::try_from(vc.vc_id)?,
+        priority: vc.priority,
+        weight: Weight::new(vc.weight)?,
+        security: SecurityLayout::new(vc.sec_header_len, vc.sec_trailer_len)?,
+    })
+}
+
+/// The VC `raw` of the channel `channel` in the protocol `P`.
+fn mx_vc<P: MxProtocol>(
+    c: &aldis_channel_mux_config_t,
+    channel: &P::Channel,
+    raw: &RawVc<P>,
+) -> Result<VcConfig<P>> {
+    let params = P::vc_params(c, channel, raw.id, raw.security, raw.members)?;
+    Ok(VcConfig::<P>::new(params)
+        .with_priority(raw.priority)
+        .with_weight(raw.weight))
 }
 
 /// Reads every member of `c` and of its `vc_count` entries whatever the protocol (CABI-040): a
@@ -713,22 +855,30 @@ fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
     check_members(c)?;
-    // The first entry fills the array; only the first `vc_count` of it are given on. Without an
-    // entry there is nothing to list.
+    // Only the first `vc_count` entries are read. They are read once for their members, before
+    // the channel, and again for the codec's configuration of each, which needs the channel
+    // (D6 of the M6 plan keeps the order of the refusals); the second read cannot fail.
+    for vc in c.vcs.iter().take(c.vc_count) {
+        mx_read::<P>(vc)?;
+    }
+    let channel = P::channel(c)?;
+    let policy = policy(c.policy)?;
+    if c.vc_count > V {
+        return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY));
+    }
+    // The first entry fills the array; without an entry there is nothing to list.
     let first = c
         .vcs
         .first()
         .filter(|_| c.vc_count > 0)
-        .map(mx_vc::<P>)
+        .map(|vc| mx_read::<P>(vc).and_then(|raw| mx_vc::<P>(c, &channel, &raw)))
         .transpose()?;
     let mut entries = first.map(|filler| [filler; V]);
     if let Some(array) = entries.as_mut() {
         for (dst, src) in array.iter_mut().zip(&c.vcs).take(c.vc_count) {
-            *dst = mx_vc::<P>(src)?;
+            *dst = mx_read::<P>(src).and_then(|raw| mx_vc::<P>(c, &channel, &raw))?;
         }
     }
-    let channel = P::channel(c)?;
-    let policy = policy(c.policy)?;
     let listed = match &entries {
         None => &[],
         Some(array) => array

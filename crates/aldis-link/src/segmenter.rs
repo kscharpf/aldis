@@ -1212,7 +1212,7 @@ mod tc_impl {
     use aldis_core::ids::MapId;
     use aldis_core::layout::FECF_LEN;
     use aldis_core::{FrameFormat, Result};
-    use aldis_tc::{MAX_FRAME_LEN, SegmentHeader, SequenceFlags, TcMapId};
+    use aldis_tc::{MAX_FRAME_LEN, PhysicalChannelConfig, SegmentHeader, SequenceFlags, TcMapId};
 
     use super::{Framing, MapEntry, SegmenterProtocol, SegmenterService};
     use crate::common::Qos;
@@ -1224,33 +1224,41 @@ mod tc_impl {
 
     /// The parameters of a TC VC that the `MapSegmenter` needs (232.0 §5.1 Table 5-1, §5.3
     /// Table 5-3).
+    ///
+    /// Whether its FDUs have a Segment Header and whether they are blocked, and the managed
+    /// parameters of the physical channel, whose FECF takes two octets of the data field's limit
+    /// (M6 plan WP-2c).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct TcSegmenterParams {
         segment_header: bool,
-        fecf: bool,
+        physical: PhysicalChannelConfig,
         blocking: bool,
     }
 
     impl TcSegmenterParams {
-        /// A VC with a Segment Header on every FDU; blocking is a parameter of each MAP.
-        /// `fecf`: the Physical Channel has a FECF, which takes two octets of the data field's
-        /// limit (232.0 §4.1.3.1.2).
+        /// A VC of the physical channel `physical` with a Segment Header on every FDU; blocking
+        /// is a parameter of each MAP. The FECF of the physical channel takes two octets of the
+        /// data field's limit (232.0 §4.1.3.1.2).
         #[must_use]
-        pub const fn with_segment_header(fecf: bool) -> TcSegmenterParams {
+        pub const fn with_segment_header(physical: PhysicalChannelConfig) -> TcSegmenterParams {
             TcSegmenterParams {
                 segment_header: true,
-                fecf,
+                physical,
                 blocking: false,
             }
         }
 
-        /// A VC without a Segment Header: one implicit MAP 0, whose FDU is packets (blocked when
-        /// `blocking`) or a `VCA_SDU`, never segmented (232.0 §4.1.3.2.1.3, §5.3 Table 5-3).
+        /// A VC of the physical channel `physical` without a Segment Header: one implicit MAP 0,
+        /// whose FDU is packets (blocked when `blocking`) or a `VCA_SDU`, never segmented (232.0
+        /// §4.1.3.2.1.3, §5.3 Table 5-3).
         #[must_use]
-        pub const fn without_segment_header(fecf: bool, blocking: bool) -> TcSegmenterParams {
+        pub const fn without_segment_header(
+            physical: PhysicalChannelConfig,
+            blocking: bool,
+        ) -> TcSegmenterParams {
             TcSegmenterParams {
                 segment_header: false,
-                fecf,
+                physical,
                 blocking,
             }
         }
@@ -1263,12 +1271,20 @@ mod tc_impl {
             self.segment_header
         }
 
+        /// The managed parameters of the physical channel.
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
+        #[must_use]
+        pub const fn physical(&self) -> &PhysicalChannelConfig {
+            &self.physical
+        }
+
         /// Whether the Physical Channel has a FECF.
         ///
         /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn fecf(&self) -> bool {
-            self.fecf
+            self.physical.fecf()
         }
     }
 
@@ -1283,7 +1299,7 @@ mod tc_impl {
         }
 
         fn max_fdu_len(channel: &TcSegmenterParams) -> usize {
-            MAX_DATA_FIELD.saturating_sub(if channel.fecf { FECF_LEN } else { 0 })
+            MAX_DATA_FIELD.saturating_sub(if channel.fecf() { FECF_LEN } else { 0 })
         }
 
         fn implicit_map(channel: &TcSegmenterParams) -> Option<MapEntry<Tc>> {
@@ -1340,7 +1356,7 @@ pub use tc_impl::TcSegmenterParams;
 mod uslp_impl {
     use aldis_core::ids::MapId;
     use aldis_core::{Error, ErrorKind, Result, field};
-    use aldis_uslp::{TfdfHeader, TfdzRule, Upid, VcfCountLen};
+    use aldis_uslp::{TfdfHeader, TfdzRule, TransferFrameType, Upid, VcParams, VcfCountLen};
 
     use super::{Framing, MapEntry, SegmenterProtocol};
     use crate::common::Qos;
@@ -1349,25 +1365,40 @@ mod uslp_impl {
     /// The longest TFDF the 16-bit Frame Length of a USLP frame allows (732.1 §4.1.2.7).
     const MAX_TFDF: usize = 0xFFFF;
 
-    /// The parameters of a variable-length USLP VC that the `MapSegmenter` needs: the VCF Count
-    /// Length for each `QoS` (732.1 §4.1.2.11–12, Table 4-2; LNK-078).
+    /// The parameters of a variable-length USLP VC that the `MapSegmenter` needs (LNK-078).
+    ///
+    /// The VCF Count Length of each `QoS` comes from the codec's [`VcParams`] of the VC (732.1
+    /// §4.1.2.11–12, Table 4-2; M6 plan WP-2c).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct UslpSegmenterParams {
-        vcf_len_sc: VcfCountLen,
-        vcf_len_exp: VcfCountLen,
+        vc: VcParams,
     }
 
     impl UslpSegmenterParams {
-        /// A VC whose frames carry a VCF Count of `vcf_len_sc` octets on the
-        /// sequence-controlled service and `vcf_len_exp` on the expedited service.
+        /// A VC with the parameters `vc`: its frames carry the VCF Count of
+        /// `vc.vcf_count_len_sequence` octets on the sequence-controlled service and
+        /// `vc.vcf_count_len_expedited` on the expedited service.
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`transfer_frame_type`) for a VC of fixed-length frames: the
+        /// segmenter serves the variable-length TFDZ (732.1 §4.1.4.2.2.1.1).
+        ///
+        /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
+        pub const fn new(vc: VcParams) -> Result<UslpSegmenterParams> {
+            match vc.frame_type {
+                TransferFrameType::Variable => Ok(UslpSegmenterParams { vc }),
+                TransferFrameType::Fixed => {
+                    Err(Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSFER_FRAME_TYPE))
+                }
+            }
+        }
+
+        /// The VC's managed parameters in the codec.
         ///
         /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
-        pub const fn new(vcf_len_sc: VcfCountLen, vcf_len_exp: VcfCountLen) -> UslpSegmenterParams {
-            UslpSegmenterParams {
-                vcf_len_sc,
-                vcf_len_exp,
-            }
+        pub const fn vc(&self) -> &VcParams {
+            &self.vc
         }
 
         /// The VCF Count Length of the sequence-controlled service.
@@ -1375,7 +1406,7 @@ mod uslp_impl {
         /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn vcf_len_sc(&self) -> VcfCountLen {
-            self.vcf_len_sc
+            self.vc.vcf_count_len_sequence
         }
 
         /// The VCF Count Length of the expedited service.
@@ -1383,13 +1414,13 @@ mod uslp_impl {
         /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
         #[must_use]
         pub const fn vcf_len_exp(&self) -> VcfCountLen {
-            self.vcf_len_exp
+            self.vc.vcf_count_len_expedited
         }
 
         const fn count_len(self, qos: Qos) -> VcfCountLen {
             match qos {
-                Qos::SequenceControlled => self.vcf_len_sc,
-                Qos::Expedited => self.vcf_len_exp,
+                Qos::SequenceControlled => self.vc.vcf_count_len_sequence,
+                Qos::Expedited => self.vc.vcf_count_len_expedited,
             }
         }
     }
@@ -1421,7 +1452,7 @@ mod uslp_impl {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::UPID));
             }
             let counted = map.segmentation().is_some() || map.blocking();
-            if counted && channel.vcf_len_sc.get() == 0 {
+            if counted && channel.vcf_len_sc().get() == 0 {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VCF_COUNT_LEN));
             }
             Ok(())

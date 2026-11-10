@@ -24,6 +24,20 @@ use aldis_uslp::{Upid, VcfCountLen};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
+/// The physical channel of a TC VC: the longest frame the standard allows.
+fn tc_physical(fecf: bool) -> aldis_tc::PhysicalChannelConfig {
+    aldis_tc::PhysicalChannelConfig::new(1024, fecf).unwrap()
+}
+
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 const T0: Instant = Instant::from_micros(0);
 const MAX_SDU: usize = 60;
 const Q: usize = 1024;
@@ -134,7 +148,7 @@ fn tc_trip(u: &mut Unstructured<'_>) -> Result<()> {
     ];
     let config = MapSegmenterConfig::<Tc, 4>::new(
         vc(),
-        TcSegmenterParams::with_segment_header(false),
+        TcSegmenterParams::with_segment_header(tc_physical(false)),
         fdu_len,
         &maps,
     )
@@ -238,13 +252,8 @@ fn uslp_trip(u: &mut Unstructured<'_>) -> Result<()> {
             4,
         ),
     ];
-    let config = MapSegmenterConfig::<Uslp, 4>::new(
-        vc(),
-        UslpSegmenterParams::new(two, two),
-        fdu_len,
-        &maps,
-    )
-    .unwrap();
+    let config =
+        MapSegmenterConfig::<Uslp, 4>::new(vc(), uslp_params(two, two), fdu_len, &maps).unwrap();
     let mut seg = MapSegmenter::<Uslp, 4, Q>::new(config).unwrap();
     let mut area = vec![0_u8; AREA];
     let mut sent = Vec::new();

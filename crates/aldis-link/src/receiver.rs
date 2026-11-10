@@ -352,6 +352,13 @@ pub trait ReceiveProtocol: Protocol {
     /// not the length of every frame (LNK-050; M6 plan WP-2c).
     fn physical(channel: &Self::Channel) -> &Self::Physical;
 
+    /// Whether the VC `vc` of an entry is the VC the parameters are of, for a protocol whose
+    /// parameters embed the codec's VC configuration with its identifier (TM; M6 plan WP-2c).
+    #[must_use]
+    fn agrees(_: Self::Vc, _: &Self::VcParams) -> bool {
+        true
+    }
+
     /// Whether a frame of `frame_len` octets (with a FECF if the physical channel has one)
     /// leaves a data field octet on the channel, with the OCF and Secondary Header of the VC
     /// when `vc` is given (CMN-041).
@@ -407,8 +414,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
     /// on the channel, or with the OCF and Secondary Header of a VC, or (TC) more than the 1 024
     /// octets of the Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3); `InvalidConfig`
-    /// (`vc_id`)
-    /// for a VC given twice; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
+    /// (`vc_id`) for a VC given twice or an entry whose VC is not the one its parameters are of; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
     pub fn new(channel: P::Channel, vcs: &[VcEntry<P>]) -> Result<FrameReceiverConfig<P, V>> {
         // The channel's constructor has checked that a frame leaves a data field octet.
         let bad_len = Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN);
@@ -419,6 +425,9 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
         let mut table = [None; V];
         for (slot, entry) in table.iter_mut().zip(vcs) {
             if vcs.iter().filter(|other| other.vc == entry.vc).count() > 1 {
+                return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+            }
+            if !P::agrees(entry.vc, &entry.params) {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
             }
             if !P::fits(frame_len, &channel, Some(&entry.params)) {

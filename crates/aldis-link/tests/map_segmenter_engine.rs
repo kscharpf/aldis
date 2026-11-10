@@ -22,6 +22,20 @@ use aldis_link::segmenter::{
 };
 use aldis_uslp::{Upid, VcfCountLen};
 
+/// The physical channel of a TC VC: the longest frame the standard allows.
+fn tc_physical(fecf: bool) -> aldis_tc::PhysicalChannelConfig {
+    aldis_tc::PhysicalChannelConfig::new(1024, fecf).unwrap()
+}
+
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 const T0: Instant = Instant::from_micros(0);
 const SC: Qos = Qos::SequenceControlled;
 const EXP: Qos = Qos::Expedited;
@@ -43,7 +57,7 @@ const fn vc() -> VcId<6> {
 fn tc_config() -> TcCfg {
     TcCfg::new(
         vc(),
-        TcSegmenterParams::with_segment_header(true),
+        TcSegmenterParams::with_segment_header(tc_physical(true)),
         16,
         &[
             tc_map(1).with_segmentation(60).unwrap(),
@@ -62,7 +76,7 @@ const fn uslp_map(id: u8, service: SegmenterService, upid: u8) -> MapEntry<Uslp>
 }
 
 fn counts(sc: u8, exp: u8) -> UslpSegmenterParams {
-    UslpSegmenterParams::new(
+    uslp_params(
         VcfCountLen::new(sc).unwrap(),
         VcfCountLen::new(exp).unwrap(),
     )
@@ -148,7 +162,7 @@ fn next<P: aldis_link::segmenter::SegmenterProtocol, const M: usize, const Q: us
 #[test]
 fn configurations_are_checked() {
     // req: LNK-078, LNK-040, API-040
-    let header = TcSegmenterParams::with_segment_header(true);
+    let header = TcSegmenterParams::with_segment_header(tc_physical(true));
     let bad = |len| {
         TcCfg::new(vc(), header, len, &[tc_map(1)])
             .err()
@@ -164,12 +178,12 @@ fn configurations_are_checked() {
     );
     assert_eq!(bad(2), None);
     assert_eq!(bad(1017), None);
-    let plain = TcSegmenterParams::with_segment_header(false);
+    let plain = TcSegmenterParams::with_segment_header(tc_physical(false));
     assert!(header.segment_header() && header.fecf());
     assert!(plain.segment_header() && !plain.fecf());
-    assert!(!TcSegmenterParams::without_segment_header(true, true).segment_header());
-    assert!(TcSegmenterParams::without_segment_header(true, true).fecf());
-    assert!(!TcSegmenterParams::without_segment_header(false, true).fecf());
+    assert!(!TcSegmenterParams::without_segment_header(tc_physical(true), true).segment_header());
+    assert!(TcSegmenterParams::without_segment_header(tc_physical(true), true).fecf());
+    assert!(!TcSegmenterParams::without_segment_header(tc_physical(false), true).fecf());
     assert!(TcCfg::new(vc(), plain, 1019, &[tc_map(1)]).is_ok());
     assert!(TcCfg::new(vc(), plain, 1020, &[tc_map(1)]).is_err());
     // A TC MAP that permits segmentation needs a maximum MAP_SDU length (232.0 Table 5-4).
@@ -194,7 +208,7 @@ fn configurations_are_checked() {
         cfg(&five),
         Some((ErrorKind::CapacityExceeded, Some(field::MAP_ID)))
     );
-    let bare = TcSegmenterParams::without_segment_header(false, true);
+    let bare = TcSegmenterParams::without_segment_header(tc_physical(false), true);
     let e = TcCfg::new(vc(), bare, 16, &[tc_map(1)]).unwrap_err();
     assert_eq!(
         (e.kind(), e.field()),
@@ -263,7 +277,7 @@ fn the_queue_must_hold_the_longest_sdu() {
     let cfg = |m: MapEntry<Tc>| {
         TcCfg::new(
             vc(),
-            TcSegmenterParams::with_segment_header(false),
+            TcSegmenterParams::with_segment_header(tc_physical(false)),
             16,
             &[m],
         )
@@ -641,7 +655,7 @@ fn a_tc_vc_without_a_segment_header_has_one_implicit_map() {
     // req: LNK-040, LNK-078
     let cfg = TcCfg::new(
         vc(),
-        TcSegmenterParams::without_segment_header(false, false),
+        TcSegmenterParams::without_segment_header(tc_physical(false), false),
         12,
         &[],
     )
@@ -950,7 +964,7 @@ fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segme
     // complete packets or a complete VCA_SDU, so a longer SDU cannot be divided (§4.1.3.2.1.4: a
     // VC that sends SDUs larger than one frame needs the Segment Header).
     for (fecf, limit) in [(false, 1019), (true, 1017)] {
-        let params = TcSegmenterParams::without_segment_header(fecf, false);
+        let params = TcSegmenterParams::without_segment_header(tc_physical(fecf), false);
         assert!(TcCfg::new(vc(), params, limit, &[]).is_ok(), "fecf {fecf}");
         let e = TcCfg::new(vc(), params, limit + 1, &[]).unwrap_err();
         assert_eq!(
@@ -960,7 +974,7 @@ fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segme
     }
     let cfg = TcCfg::new(
         vc(),
-        TcSegmenterParams::without_segment_header(true, false),
+        TcSegmenterParams::without_segment_header(tc_physical(true), false),
         1017,
         &[],
     )
@@ -1005,3 +1019,29 @@ fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segme
 }
 
 type TcSegmenter1017 = MapSegmenter<Tc, 4, 1100>;
+
+#[test]
+fn the_uslp_segmenter_takes_the_count_lengths_of_the_codecs_vc_parameters() {
+    // req: LNK-078, LNK-040, RS-020
+    // The FECF is the physical channel's (M6 plan WP-2c).
+    let tc = TcSegmenterParams::with_segment_header(tc_physical(true));
+    assert_eq!(tc.physical(), &tc_physical(true));
+    let params = counts(2, 1);
+    assert_eq!(
+        (params.vcf_len_sc().get(), params.vcf_len_exp().get()),
+        (2, 1)
+    );
+    assert_eq!(
+        params.vc().frame_type,
+        aldis_uslp::TransferFrameType::Variable
+    );
+    // The segmenter serves the variable-length TFDZ (732.1 §4.1.4.2.2.1.1).
+    let e = UslpSegmenterParams::new(aldis_uslp::VcParams::new(
+        aldis_uslp::TransferFrameType::Fixed,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::InvalidConfig, Some(field::TRANSFER_FRAME_TYPE))
+    );
+}

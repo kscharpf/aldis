@@ -32,6 +32,8 @@ use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
+#[cfg(feature = "tm")]
+use aldis_tm::FshLen;
 
 use crate::common::{Counter, Occupancy, Qos};
 use crate::policy::{MuxPolicy, Selector, Weight};
@@ -81,6 +83,16 @@ impl Fsh {
         Ok(Fsh { len, data: buf })
     }
 
+    /// The Secondary Header of the length `len` (the Identification Field and the data) with
+    /// every data octet 0: the initial value of a slot whose caller gave none.
+    #[cfg(feature = "tm")]
+    const fn zeroed(len: FshLen) -> Fsh {
+        Fsh {
+            len: len.get().saturating_sub(1),
+            data: [0; MAX_FSH_DATA],
+        }
+    }
+
     /// Replaces the data with `data` of the same length.
     fn overwrite(&mut self, data: &[u8]) {
         for (d, s) in self.data.iter_mut().zip(data) {
@@ -94,6 +106,16 @@ impl Fsh {
     #[must_use]
     pub fn len(&self) -> usize {
         usize::from(self.len)
+    }
+
+    /// The length of the whole Secondary Header as the codec's configuration states it: the
+    /// Identification Field and the data, 2 to 64 octets (132.0 §4.1.3.1.3).
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+    #[cfg(feature = "tm")]
+    #[must_use]
+    pub fn fsh_len(&self) -> Option<FshLen> {
+        u8::try_from(self.total_len()).ok().and_then(FshLen::new)
     }
 
     /// Always `false`: the data holds at least one octet.
@@ -387,6 +409,12 @@ pub trait MuxProtocol: Protocol {
     fn mc_ocf(channel: &Self::Channel) -> Option<[u8; OCF_LEN]>;
     /// The initial `MC_FSH`, if the master channel has one (TM).
     fn mc_fsh(channel: &Self::Channel) -> Option<Fsh>;
+    /// The VC the parameters are of: the identifier of the codec's VC configuration (M6 plan
+    /// WP-2c).
+    fn vc_id(vc: &Self::VcParams) -> Self::Vc;
+    /// The lengths of the Security Header and Trailer of the VC, which the codec's VC
+    /// configuration sets (LNK-035, API-070).
+    fn security(vc: &Self::VcParams) -> SecurityLayout;
     /// The initial `VC_OCF`, if the VC has one (LNK-033).
     fn vc_ocf(vc: &Self::VcParams) -> Option<[u8; OCF_LEN]>;
     /// The initial `VC_FSH`, if the VC has one (TM).
@@ -427,27 +455,28 @@ pub trait MuxProtocol: Protocol {
     ) -> Result<Self::PrimaryHeader>;
 }
 
-/// The parameters of one VC of a `ChannelMux` (LNK-031, LNK-035, LNK-078).
+/// The parameters of one VC of a `ChannelMux` (LNK-031, LNK-035, LNK-078): the codec's VC
+/// configuration with the engine's own extras, the priority and the weight of the multiplexing
+/// policy (M6 plan WP-2c).
+///
+/// The VC and the Security Header and Trailer lengths are those of the codec's configuration in
+/// [`params`](Self::params); the mux restates neither (RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VcConfig<P: MuxProtocol> {
-    vc: P::Vc,
     priority: u8,
     weight: Weight,
-    security: SecurityLayout,
     params: P::VcParams,
 }
 
 impl<P: MuxProtocol> VcConfig<P> {
-    /// A VC with priority 0, weight 1, and no Security Header or Trailer.
+    /// A VC with the parameters `params`, priority 0, and weight 1.
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn new(vc: P::Vc, params: P::VcParams) -> VcConfig<P> {
+    pub const fn new(params: P::VcParams) -> VcConfig<P> {
         VcConfig {
-            vc,
             priority: 0,
             weight: Weight::ONE,
-            security: SecurityLayout::NONE,
             params,
         }
     }
@@ -464,18 +493,12 @@ impl<P: MuxProtocol> VcConfig<P> {
         VcConfig { weight, ..self }
     }
 
-    /// The same VC with the lengths of its Security Header and Trailer (LNK-035, API-071).
-    #[must_use]
-    pub const fn with_security(self, security: SecurityLayout) -> VcConfig<P> {
-        VcConfig { security, ..self }
-    }
-
     /// The VC.
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn vc(&self) -> P::Vc {
-        self.vc
+    pub fn vc(&self) -> P::Vc {
+        P::vc_id(&self.params)
     }
 
     /// The priority (LNK-031).
@@ -492,8 +515,8 @@ impl<P: MuxProtocol> VcConfig<P> {
 
     /// The Security Header and Trailer lengths (LNK-035).
     #[must_use]
-    pub const fn security(&self) -> SecurityLayout {
-        self.security
+    pub fn security(&self) -> SecurityLayout {
+        P::security(&self.params)
     }
 
     /// The protocol's parameters of the VC.
@@ -505,7 +528,7 @@ impl<P: MuxProtocol> VcConfig<P> {
     }
 
     fn id(&self) -> u8 {
-        self.vc.into()
+        self.vc().into()
     }
 }
 
@@ -659,7 +682,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
                 bypass,
             )),
             secondary_len: self.secondary_len(vc),
-            security: vc.map_or(SecurityLayout::NONE, |v| v.security),
+            security: vc.map_or(SecurityLayout::NONE, VcConfig::security),
             ocf: self.has_ocf(vc),
             fecf: self.fecf(),
         }
@@ -1201,7 +1224,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         let vc = pick
             .vc
             .as_ref()
-            .map_or_else(|| P::oid_vc(&cfg.channel), |v| v.vc);
+            .map_or_else(|| P::oid_vc(&cfg.channel), VcConfig::vc);
         let kind = pick.held.map_or(
             if P::OID_BYPASS {
                 CopFrameKind::Bd
@@ -1343,23 +1366,16 @@ fn out_range(r: &Range<usize>) -> OutRange {
 mod tm_impl {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::layout::OCF_LEN;
+    use aldis_core::security::SecurityLayout;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
     use aldis_tm::TmPhysicalChannelConfig;
-    use aldis_tm::{FirstHeaderPointer, SegmentLengthId, TmPrimaryHeader};
+    use aldis_tm::{
+        DataFieldContent, FirstHeaderPointer, FshLen, SegmentLengthId, TmPrimaryHeader,
+        TmVirtualChannelConfig,
+    };
 
     use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
     use crate::protocol::Tm;
-
-    /// What a TM VC carries, which sets the data field status of its frames (LNK-082).
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum TmRole {
-        /// Packets: Synchronization Flag 0, Segment Length Identifier `11`, and the First Header
-        /// Pointer of the field (132.0 §4.1.2.7).
-        Packets,
-        /// `VCA_SDUs`: Synchronization Flag 1, Packet Order Flag 0, Segment Length Identifier
-        /// `11`, First Header Pointer 0 (LNK-082).
-        Vca,
-    }
 
     /// The parameters of the physical channel and master channel of a TM mux (132.0 §5.1,
     /// §5.2; LNK-030, LNK-033).
@@ -1401,27 +1417,71 @@ mod tm_impl {
     }
 
     /// The parameters of a TM VC (132.0 §5.4 Table 5-3; LNK-033, LNK-082).
+    ///
+    /// The codec's configuration of the VC says what it carries (the Synchronization Flag of its
+    /// frames, LNK-082), whether and how long its Secondary Header is, whether it has a `VC_OCF`,
+    /// and its SDLS lengths (M6 plan WP-2c); the engine adds the initial value of the slots.
+    ///
+    /// Built only by [`new`](Self::new) and the `with_initial_` methods, which relate the initial
+    /// values to the configuration (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TmVc {
-        /// What the VC carries.
-        pub role: TmRole,
-        /// The initial `VC_OCF`: every frame of the VC has an OCF.
-        pub ocf: Option<[u8; OCF_LEN]>,
-        /// The initial `VC_FSH`: every frame of the VC has a Secondary Header.
-        pub fsh: Option<Fsh>,
+        config: TmVirtualChannelConfig,
+        ocf: [u8; OCF_LEN],
+        fsh: Option<Fsh>,
     }
 
     impl TmVc {
-        /// A VC with no `VC_OCF` and no `VC_FSH`.
+        /// The VC of the configuration `config`, whose `VC_OCF` (if it has one) and `VC_FSH` data
+        /// (of the length it gives) start as 0.
         ///
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
-        pub const fn new(role: TmRole) -> TmVc {
+        pub const fn new(config: TmVirtualChannelConfig) -> TmVc {
             TmVc {
-                role,
-                ocf: None,
-                fsh: None,
+                config,
+                ocf: [0; OCF_LEN],
+                fsh: match config.fsh() {
+                    Some(len) => Some(Fsh::zeroed(len)),
+                    None => None,
+                },
             }
+        }
+
+        /// The same VC with the initial `VC_OCF` `ocf`.
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`ocf_flag`) if the configuration has no `VC_OCF`.
+        pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<TmVc> {
+            if self.config.ocf() {
+                Ok(TmVc { ocf, ..self })
+            } else {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::OCF_FLAG))
+            }
+        }
+
+        /// The same VC with the initial `VC_FSH` `fsh`.
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`fsh_len`) unless the configuration has a `VC_FSH` of the length of
+        /// `fsh`.
+        pub fn with_initial_fsh(self, fsh: Fsh) -> Result<TmVc> {
+            if self.config.fsh().map(FshLen::octets) == Some(fsh.total_len()) {
+                Ok(TmVc {
+                    fsh: Some(fsh),
+                    ..self
+                })
+            } else {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN))
+            }
+        }
+
+        /// The codec's configuration of the VC.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+        #[must_use]
+        pub const fn config(&self) -> &TmVirtualChannelConfig {
+            &self.config
         }
     }
 
@@ -1459,8 +1519,16 @@ mod tm_impl {
             channel.mc_fsh
         }
 
+        fn vc_id(vc: &TmVc) -> VcId<3> {
+            vc.config.vcid()
+        }
+
+        fn security(vc: &TmVc) -> SecurityLayout {
+            vc.config.security()
+        }
+
         fn vc_ocf(vc: &TmVc) -> Option<[u8; OCF_LEN]> {
-            vc.ocf
+            vc.config.ocf().then_some(vc.ocf)
         }
 
         fn vc_fsh(vc: &TmVc) -> Option<Fsh> {
@@ -1468,16 +1536,16 @@ mod tm_impl {
         }
 
         fn admit(vc: &TmVc, meta: &TmOffer) -> Result<Admitted<FirstHeaderPointer>> {
-            let pointer = match (vc.role, meta.pointer) {
-                (TmRole::Packets, Some(raw)) => {
+            let pointer = match (vc.config.content(), meta.pointer) {
+                (DataFieldContent::Packets, Some(raw)) => {
                     FirstHeaderPointer::new(raw).ok_or(Error::out_of_range(
                         field::FIRST_HEADER_POINTER,
                         u64::from(FirstHeaderPointer::MAX),
                         u64::from(raw),
                     ))?
                 }
-                (TmRole::Vca, None) => FirstHeaderPointer::ZERO,
-                (TmRole::Packets, None) | (TmRole::Vca, Some(_)) => {
+                (DataFieldContent::VcaSdu, None) => FirstHeaderPointer::ZERO,
+                (DataFieldContent::Packets, None) | (DataFieldContent::VcaSdu, Some(_)) => {
                     return Err(
                         Error::new(ErrorKind::InvalidField).with_field(field::FIRST_HEADER_POINTER)
                     );
@@ -1497,7 +1565,8 @@ mod tm_impl {
                 .flatten()
                 .find(|v| v.id() == channel.oid_vc.get())
                 .ok_or(bad(field::VC_ID))?;
-            if oid.params.role == TmRole::Packets && oid.security.is_none() {
+            if oid.params.config.content() == DataFieldContent::Packets && oid.security().is_none()
+            {
                 Ok(())
             } else {
                 Err(bad(field::IDLE_POLICY))
@@ -1522,7 +1591,7 @@ mod tm_impl {
                 fsh_flag: f.secondary,
                 // Synchronization Flag 1 for a `VCA_SDU`; Packet Order Flag 0 and Segment Length
                 // Identifier 11 (132.0 §4.1.2.7).
-                sync_flag: !f.oid && vc.is_some_and(|v| v.role == TmRole::Vca),
+                sync_flag: !f.oid && vc.is_some_and(|v| v.config.content().sync_flag()),
                 packet_order_flag: false,
                 segment_length_id: SegmentLengthId::NO_SEGMENTS,
                 first_header_pointer: f.pointer.unwrap_or(FirstHeaderPointer::ONLY_IDLE_DATA),
@@ -1532,13 +1601,17 @@ mod tm_impl {
 }
 
 #[cfg(feature = "tm")]
-pub use tm_impl::{TmChannel, TmOffer, TmRole, TmVc};
+pub use tm_impl::{TmChannel, TmOffer, TmVc};
 
 #[cfg(feature = "aos")]
 mod aos_impl {
-    use aldis_aos::{AosEdition, AosPhysicalChannelConfig, AosPrimaryHeader, VcFrameCount};
-    use aldis_core::ids::SpacecraftId;
+    use aldis_aos::{
+        AosEdition, AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig,
+        VcFrameCount,
+    };
+    use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::layout::OCF_LEN;
+    use aldis_core::security::SecurityLayout;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
 
     use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
@@ -1619,10 +1692,49 @@ mod aos_impl {
     }
 
     /// The parameters of an AOS VC (732.0 §5.4 Table 5-3; LNK-033).
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    ///
+    /// The codec's configuration of the VC says whether it has a `VC_OCF` and its SDLS lengths
+    /// (M6 plan WP-2c); the engine adds the initial value of the `VC_OCF`.
+    ///
+    /// Built only by [`new`](Self::new) and [`with_initial_ocf`](Self::with_initial_ocf), which
+    /// relate the initial value to the configuration (RS-020).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct AosVc {
-        /// The initial `VC_OCF`: every frame of the VC has an OCF (the OID frame has none).
-        pub ocf: Option<[u8; OCF_LEN]>,
+        config: AosVirtualChannelConfig,
+        ocf: [u8; OCF_LEN],
+    }
+
+    impl AosVc {
+        /// The VC of the configuration `config`, whose `VC_OCF` (if it has one) starts as 0.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+        #[must_use]
+        pub const fn new(config: AosVirtualChannelConfig) -> AosVc {
+            AosVc {
+                config,
+                ocf: [0; OCF_LEN],
+            }
+        }
+
+        /// The same VC with the initial `VC_OCF` `ocf`.
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`ocf_flag`) if the configuration has no `VC_OCF`.
+        pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<AosVc> {
+            if self.config.ocf() {
+                Ok(AosVc { ocf, ..self })
+            } else {
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::OCF_FLAG))
+            }
+        }
+
+        /// The codec's configuration of the VC.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+        #[must_use]
+        pub const fn config(&self) -> &AosVirtualChannelConfig {
+            &self.config
+        }
     }
 
     impl MuxProtocol for Aos {
@@ -1650,8 +1762,16 @@ mod aos_impl {
             None
         }
 
+        fn vc_id(vc: &AosVc) -> VcId<6> {
+            vc.config.vcid()
+        }
+
+        fn security(vc: &AosVc) -> SecurityLayout {
+            vc.config.security()
+        }
+
         fn vc_ocf(vc: &AosVc) -> Option<[u8; OCF_LEN]> {
-            vc.ocf
+            vc.config.ocf().then_some(vc.ocf)
         }
 
         fn vc_fsh(_: &AosVc) -> Option<Fsh> {
@@ -1666,13 +1786,15 @@ mod aos_impl {
             })
         }
 
-        fn check_channel(_: &AosChannel, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
+        // VCID 63 is no VC of the codec's configuration (`AosVirtualChannelConfig::new`), so the
+        // OID VC cannot be listed; each VC belongs to the master channel of the physical channel.
+        fn check_channel(channel: &AosChannel, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
             if vcs
                 .iter()
                 .flatten()
-                .any(|v| v.id() == aldis_aos::OID_VCID.get())
+                .any(|v| v.params.config.scid() != channel.scid)
             {
-                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
+                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID))
             } else {
                 Ok(())
             }
@@ -1710,11 +1832,13 @@ mod uslp_impl {
     use aldis_core::PhysicalChannel;
     use aldis_core::ids::{MapId, SpacecraftId};
     use aldis_core::layout::OCF_LEN;
+    use aldis_core::security::SecurityLayout;
     use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
     use aldis_uslp::PhysicalChannelConfig as UslpPhysicalChannelConfig;
+    use aldis_uslp::VcConfig as UslpVcConfig;
     use aldis_uslp::{
-        ChannelFields, FrameKind, SourceOrDestination, UslpPrimaryHeader, UslpVcId, VcfCount,
-        VcfCountLen,
+        ChannelFields, FrameKind, OcfUse, SecurityScope, SourceOrDestination, TransferFrameType,
+        UslpPrimaryHeader, UslpVcId, VcfCount, VcfCountLen,
     };
 
     use super::{Admitted, Cop, FrameFields, Fsh, MuxProtocol, VcConfig};
@@ -1735,15 +1859,16 @@ mod uslp_impl {
         pub source_or_destination: SourceOrDestination,
         /// The VCF Count Length of VCID 63 (none by default; LNK-032).
         pub oid_vcf_len: VcfCountLen,
-        /// The initial `MC_OCF`: "Inclusion of OCF Required" is true for the master channel, and
-        /// every frame has an OCF, OID frames included (LNK-033, OI-76).
-        pub mc_ocf: Option<[u8; OCF_LEN]>,
+        mc_ocf: Option<[u8; OCF_LEN]>,
     }
 
     impl UslpChannel {
         /// A channel of the Spacecraft Identifier `scid` (`source_or_destination` says what it
         /// names) on the fixed-length physical channel `physical`, with VCID 63 frames that have
-        /// a VCF Count of `oid_vcf_len` and no `MC_OCF`.
+        /// a VCF Count of `oid_vcf_len`, and the initial `MC_OCF` `mc_ocf` if given: "Inclusion
+        /// of OCF Required" is then true for the master channel, and every frame has an OCF, OID
+        /// frames included (LNK-033, OI-76). The VCs of the mux must say the same
+        /// ([`OcfUse::Required`], 732.1 §4.1.5.3), which `ChannelMuxConfig::new` checks.
         ///
         /// # Errors
         /// `InvalidConfig` (`transfer_frame_type`) for a physical channel of variable-length
@@ -1753,6 +1878,7 @@ mod uslp_impl {
             scid: SpacecraftId<16>,
             source_or_destination: SourceOrDestination,
             oid_vcf_len: VcfCountLen,
+            mc_ocf: Option<[u8; OCF_LEN]>,
         ) -> Result<UslpChannel> {
             if physical.variable_length() {
                 return Err(
@@ -1764,7 +1890,7 @@ mod uslp_impl {
                 scid,
                 source_or_destination,
                 oid_vcf_len,
-                mc_ocf: None,
+                mc_ocf,
             })
         }
 
@@ -1773,49 +1899,95 @@ mod uslp_impl {
         pub const fn physical(&self) -> &UslpPhysicalChannelConfig {
             &self.physical
         }
+
+        /// The initial `MC_OCF`, if the master channel has one.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+        #[must_use]
+        pub const fn mc_ocf(&self) -> Option<[u8; OCF_LEN]> {
+            self.mc_ocf
+        }
     }
 
     /// The parameters of a USLP VC (732.1 §5.4 Table 5-3; LNK-032, LNK-076).
     ///
-    /// Built only by [`new`](Self::new), which relates COP-1 to the VCF Count Length (RS-020).
+    /// The codec's configuration of the VC gives its VCF Count Lengths, its OCF, and its SDLS
+    /// lengths (M6 plan WP-2c); the engine adds the MAP and `QoS` of its frames and whether COP-1
+    /// is in effect.
+    ///
+    /// Built only by [`new`](Self::new), which relates the extras to the configuration (RS-020).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct UslpVc {
+        config: UslpVcConfig,
+        security: SecurityLayout,
         map: MapId<4>,
         qos: Qos,
-        vcf_len_sc: VcfCountLen,
-        vcf_len_exp: VcfCountLen,
         cop: bool,
     }
 
     impl UslpVc {
-        /// A VC whose frames have the MAP ID `map`, and `qos` for an offered field that names
-        /// none, the VCF Count Lengths `vcf_len_sc` for sequence-controlled and `vcf_len_exp`
-        /// for expedited frames, and COP-1 in effect if `cop`, so that an offer may carry the
-        /// `cop` block (LNK-076).
+        /// A VC of the configuration `config` whose frames have the MAP ID `map`, and `qos` for
+        /// an offered field that names none, with COP-1 in effect if `cop`, so that an offer may
+        /// carry the `cop` block (LNK-076).
         ///
         /// # Errors
-        /// `InvalidConfig` (`vcf_count_len`) for COP-1 in effect with a sequence-controlled
-        /// VCF Count Length of 0: FOP-1 puts the Frame Sequence Number of a Type-AD frame in
-        /// the VCF Count field, which a length of `000` leaves out (732.1 §4.1.2.12.1,
-        /// §4.2.7.4 note 3; WP-4's reading, OI-78).
+        /// `InvalidConfig`, checked in this order:
+        /// - (`vcf_count_len`) for COP-1 in effect with a sequence-controlled VCF Count Length of
+        ///   0: FOP-1 puts the Frame Sequence Number of a Type-AD frame in the VCF Count field,
+        ///   which a length of `000` leaves out (732.1 §4.1.2.12.1, §4.2.7.4 note 3; WP-4's
+        ///   reading, OI-78; LNK-078);
+        /// - (`transfer_frame_type`) for a VC of variable-length frames, which the mux does not
+        ///   build;
+        /// - (`security_header_len`) for SDLS lengths set per MAP, which the mux has no MAP
+        ///   configuration for.
         pub const fn new(
+            config: UslpVcConfig,
             map: MapId<4>,
             qos: Qos,
-            vcf_len_sc: VcfCountLen,
-            vcf_len_exp: VcfCountLen,
             cop: bool,
         ) -> Result<UslpVc> {
+            if let Err(e) = UslpVc::check_count_len(cop, config.vcf_count_len(false)) {
+                return Err(e);
+            }
+            if !matches!(config.frame_type(), TransferFrameType::Fixed) {
+                return Err(
+                    Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSFER_FRAME_TYPE)
+                );
+            }
+            let SecurityScope::Vc(security) = config.security() else {
+                return Err(
+                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN)
+                );
+            };
+            Ok(UslpVc {
+                config,
+                security,
+                map,
+                qos,
+                cop,
+            })
+        }
+
+        /// The first check of [`new`](Self::new), for a caller that reads the members of a VC
+        /// before it can build the codec's configuration of it: COP-1 in effect needs a VCF
+        /// Count Length `vcf_len_sc` above 0 (LNK-078).
+        ///
+        /// # Errors
+        /// `InvalidConfig` (`vcf_count_len`).
+        pub const fn check_count_len(cop: bool, vcf_len_sc: VcfCountLen) -> Result<()> {
             if cop && vcf_len_sc.get() == 0 {
                 Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VCF_COUNT_LEN))
             } else {
-                Ok(UslpVc {
-                    map,
-                    qos,
-                    vcf_len_sc,
-                    vcf_len_exp,
-                    cop,
-                })
+                Ok(())
             }
+        }
+
+        /// The codec's configuration of the VC.
+        ///
+        /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+        #[must_use]
+        pub const fn config(&self) -> &UslpVcConfig {
+            &self.config
         }
 
         /// The MAP ID of the VC's frames.
@@ -1839,7 +2011,7 @@ mod uslp_impl {
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn vcf_len_sc(&self) -> VcfCountLen {
-            self.vcf_len_sc
+            self.config.vcf_count_len(false)
         }
 
         /// The VCF Count Length for expedited frames.
@@ -1847,7 +2019,7 @@ mod uslp_impl {
         /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
         #[must_use]
         pub const fn vcf_len_exp(&self) -> VcfCountLen {
-            self.vcf_len_exp
+            self.config.vcf_count_len(true)
         }
 
         /// Whether COP-1 is in effect on the VC.
@@ -1861,11 +2033,7 @@ mod uslp_impl {
 
     impl UslpVc {
         const fn count_len(self, bypass: bool) -> VcfCountLen {
-            if bypass {
-                self.vcf_len_exp
-            } else {
-                self.vcf_len_sc
-            }
+            self.config.vcf_count_len(bypass)
         }
     }
 
@@ -1903,6 +2071,14 @@ mod uslp_impl {
 
         fn mc_fsh(_: &UslpChannel) -> Option<Fsh> {
             None
+        }
+
+        fn vc_id(vc: &UslpVc) -> UslpVcId {
+            vc.config.vc_id()
+        }
+
+        fn security(vc: &UslpVc) -> SecurityLayout {
+            vc.security
         }
 
         fn vc_ocf(_: &UslpVc) -> Option<[u8; OCF_LEN]> {
@@ -1954,14 +2130,26 @@ mod uslp_impl {
             })
         }
 
-        fn check_channel(_: &UslpChannel, vcs: &[Option<VcConfig<Uslp>>]) -> Result<()> {
+        fn check_channel(channel: &UslpChannel, vcs: &[Option<VcConfig<Uslp>>]) -> Result<()> {
             // The frame length is at most `MAX_FRAME_LEN`, which the physical channel's
             // constructor checks.
+            let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
             if vcs.iter().flatten().any(|v| v.id() == aldis_uslp::OID_VCID) {
-                Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
-            } else {
-                Ok(())
+                return Err(bad(field::VC_ID));
             }
+            let spacecraft = |v: &VcConfig<Uslp>| v.params.config.spacecraft_id() != channel.scid;
+            if vcs.iter().flatten().any(spacecraft) {
+                return Err(bad(field::SPACECRAFT_ID));
+            }
+            // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
+            // §4.1.5.3).
+            let ocf = |v: &VcConfig<Uslp>| {
+                (v.params.config.ocf() == OcfUse::Required) != channel.mc_ocf.is_some()
+            };
+            if vcs.iter().flatten().any(ocf) {
+                return Err(bad(field::OCF_FLAG));
+            }
+            Ok(())
         }
 
         fn header_extension(
@@ -2007,7 +2195,9 @@ pub use uslp_impl::{UslpChannel, UslpOffer, UslpVc};
     reason = "test helpers fail loudly by design (RS-018)"
 )]
 mod tests {
-    use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
+    use aldis_aos::{
+        AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent,
+    };
     use aldis_core::ids::{SpacecraftId, VcId};
 
     use super::{
@@ -2025,7 +2215,13 @@ mod tests {
             cycle_in_use,
         )
         .unwrap();
-        let vc = VcConfig::<Aos>::new(VcId::<6>::new(1).unwrap(), AosVc::default());
+        let config = AosVirtualChannelConfig::new(
+            SpacecraftId::<10>::new(421).unwrap(),
+            VcId::<6>::new(1).unwrap(),
+            DataFieldContent::VcaSdu,
+        )
+        .unwrap();
+        let vc = VcConfig::<Aos>::new(AosVc::new(config));
         ChannelMux::new(ChannelMuxConfig::new(channel, MuxPolicy::RoundRobin, &[vc]).unwrap())
             .unwrap()
     }
