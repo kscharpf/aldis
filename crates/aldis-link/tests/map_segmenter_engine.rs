@@ -14,11 +14,11 @@ use aldis_core::ErrorKind;
 use aldis_core::field;
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::time::{Duration, Instant};
-use aldis_link::common::Qos;
+use aldis_link::common::{MapService, Qos};
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::segmenter::{
-    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, MapService,
-    SegmentedFdu, SegmenterInput, SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, SegmentedFdu,
+    SegmenterInput, SegmenterOutput, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_uslp::{Upid, VcfCountLen};
 
@@ -32,7 +32,7 @@ type UslpCfg = MapSegmenterConfig<Uslp, 4>;
 type UslpSeg = MapSegmenter<Uslp, 4, 128>;
 
 const fn tc_map(id: u8) -> MapEntry<Tc> {
-    MapEntry::<Tc>::new(MapId::<6>::new(id).unwrap(), MapService::Any, ())
+    MapEntry::<Tc>::new(MapId::<6>::new(id).unwrap(), SegmenterService::Any, ())
 }
 
 const fn vc() -> VcId<6> {
@@ -53,7 +53,7 @@ fn tc_config() -> TcCfg {
     .unwrap()
 }
 
-const fn uslp_map(id: u8, service: MapService, upid: u8) -> MapEntry<Uslp> {
+const fn uslp_map(id: u8, service: SegmenterService, upid: u8) -> MapEntry<Uslp> {
     MapEntry::<Uslp>::new(
         MapId::<4>::new(id).unwrap(),
         service,
@@ -75,12 +75,12 @@ fn uslp_config() -> UslpCfg {
         counts(2, 2),
         12,
         &[
-            uslp_map(2, MapService::Sdu, 5)
+            uslp_map(2, SegmenterService::Sdu, 5)
                 .with_segmentation(40)
                 .unwrap(),
             uslp_map(
                 4,
-                MapService::OctetStream {
+                SegmenterService::OctetStream {
                     release_deadline: Duration::from_micros(500),
                 },
                 4,
@@ -205,7 +205,7 @@ fn configurations_are_checked() {
     assert!(bare_cfg.maps().all(|m| m.blocking() && m.id().get() == 0));
     assert_eq!(bare_cfg.zone_len(), 16);
     // A stream is a USLP service, and it neither blocks nor segments.
-    let stream = MapService::OctetStream {
+    let stream = SegmenterService::OctetStream {
         release_deadline: Duration::from_micros(1),
     };
     let e = TcCfg::new(
@@ -236,11 +236,11 @@ fn configurations_are_checked() {
     );
     // The UPID "Only Idle Data" labels no user data.
     assert_eq!(
-        uslp(uslp_map(1, MapService::Packets, 31)),
+        uslp(uslp_map(1, SegmenterService::Packets, 31)),
         Some((ErrorKind::InvalidConfig, Some(field::UPID)))
     );
     // A USLP VC that segments, or a MAP that blocks, needs a VCF Count (LNK-078).
-    let counted = uslp_map(1, MapService::Packets, 0);
+    let counted = uslp_map(1, SegmenterService::Packets, 0);
     let without = |m: MapEntry<Uslp>| {
         UslpCfg::new(vc(), counts(0, 1), 12, &[m])
             .err()
@@ -277,7 +277,7 @@ fn the_queue_must_hold_the_longest_sdu() {
     );
     assert!(TcSeg::new(cfg(tc_map(1).with_segmentation(124).unwrap())).is_ok());
     // A stream needs a TFDZ in the queue.
-    let stream = MapService::OctetStream {
+    let stream = SegmenterService::OctetStream {
         release_deadline: Duration::from_micros(1),
     };
     let wide = UslpCfg::new(vc(), counts(1, 1), 200, &[uslp_map(1, stream, 4)]).unwrap();
@@ -445,8 +445,8 @@ fn a_usl_service_serves_its_own_content() {
             counts(2, 2),
             12,
             &[
-                uslp_map(1, MapService::Packets, 0),
-                uslp_map(2, MapService::Sdu, 5),
+                uslp_map(1, SegmenterService::Packets, 0),
+                uslp_map(2, SegmenterService::Sdu, 5),
             ],
         )
         .unwrap(),
@@ -586,7 +586,7 @@ fn an_fdu_needs_a_vcf_count_of_its_qos() {
         vc(),
         counts(2, 0),
         12,
-        &[uslp_map(1, MapService::Packets, 0)
+        &[uslp_map(1, SegmenterService::Packets, 0)
             .with_blocking()
             .with_segmentation(40)
             .unwrap()],
@@ -753,7 +753,7 @@ fn a_stream_that_waits_does_not_hold_the_sdus_behind_it_and_does_not_interrupt_o
 #[test]
 fn two_streams_report_the_earlier_deadline_and_octets_join_their_entry() {
     // req: LNK-012, API-053
-    let stream = |us| MapService::OctetStream {
+    let stream = |us| SegmenterService::OctetStream {
         release_deadline: Duration::from_micros(us),
     };
     let cfg = UslpCfg::new(
@@ -800,7 +800,7 @@ fn two_streams_report_the_earlier_deadline_and_octets_join_their_entry() {
 #[test]
 fn a_stream_entry_cannot_outgrow_its_length_or_the_queue() {
     // req: API-052, LNK-042
-    let stream = MapService::OctetStream {
+    let stream = SegmenterService::OctetStream {
         release_deadline: Duration::from_micros(1),
     };
     let cfg = UslpCfg::new(vc(), counts(1, 1), 6, &[uslp_map(1, stream, 4)]).unwrap();
@@ -856,10 +856,22 @@ fn the_accessors_report_the_configuration() {
     let c = tc.config();
     assert_eq!((c.vc(), c.max_fdu_len()), (vc(), 16));
     assert!(c.channel().segment_header() && c.channel().fecf());
-    assert_eq!(c.map(1).map(MapEntry::service), Some(MapService::Any));
+    assert_eq!(c.map(1).map(MapEntry::service), Some(SegmenterService::Any));
     let uslp = UslpSeg::new(uslp_config()).unwrap();
     let ch = uslp.config().channel();
     assert_eq!((ch.vcf_len_sc().get(), ch.vcf_len_exp().get()), (2, 2));
+}
+
+#[test]
+fn a_segmenter_service_names_the_kind_it_carries() {
+    // req: LNK-040, LNK-042
+    let stream = SegmenterService::OctetStream {
+        release_deadline: Duration::from_micros(5),
+    };
+    assert_eq!(SegmenterService::Any.kind(), None);
+    assert_eq!(SegmenterService::Packets.kind(), Some(MapService::Packets));
+    assert_eq!(SegmenterService::Sdu.kind(), Some(MapService::Sdu));
+    assert_eq!(stream.kind(), Some(MapService::OctetStream));
 }
 
 // ---- OI-79: cases that no vector pins, read against the Blue Books ----
@@ -877,7 +889,7 @@ fn only_the_pvns_of_the_two_packet_standards_are_packets() {
         vc(),
         counts(1, 1),
         12,
-        &[uslp_map(1, MapService::Packets, 0)],
+        &[uslp_map(1, SegmenterService::Packets, 0)],
     )
     .unwrap();
     let mut us = UslpSeg::new(cfg).unwrap();

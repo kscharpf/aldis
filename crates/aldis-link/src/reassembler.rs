@@ -46,7 +46,7 @@ use core::fmt::Debug;
 use aldis_core::engine::{Actions, OutRange};
 use aldis_core::{Error, ErrorKind, Result, field};
 
-use crate::common::{Counter, Occupancy};
+use crate::common::{Counter, MapService, Occupancy};
 use crate::packet::{self, Length};
 use crate::protocol::Protocol;
 
@@ -68,18 +68,6 @@ pub type ReassemblerActions = Actions<ReassemblerOutput, MAP_REASSEMBLER_MAX_ACT
 /// The raw identifier.
 fn raw<I: Into<u8>>(id: I) -> u8 {
     id.into()
-}
-
-/// What a MAP carries and so how its SDUs are delivered (232.0 §4.4.1–2; 732.1 §4.3.2–4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ReassemblyService {
-    /// Packets: whole packets are split by their length fields (LNK-071), a segmented packet is
-    /// delivered once.
-    Packets,
-    /// `MAP_SDUs` or `MAPA_SDUs` (and the `VCA_SDU` of a TC VC without a Segment Header).
-    Sdu,
-    /// An octet stream (USLP rule `011`), delivered as it arrives (LNK-072).
-    OctetStream,
 }
 
 /// How an FDU relates to its SDU, whichever rule or flags said so (232.0 Table 4-2; 732.1
@@ -139,7 +127,7 @@ pub trait ReassemblerProtocol: Protocol {
 pub struct ReassemblerMap<P: ReassemblerProtocol> {
     vc: P::Vc,
     id: P::Map,
-    service: ReassemblyService,
+    service: MapService,
     max_sdu_len: usize,
 }
 
@@ -150,7 +138,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
     pub const fn packets(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, ReassemblyService::Packets, max_sdu_len)
+        ReassemblerMap::checked(vc, id, MapService::Packets, max_sdu_len)
     }
 
     /// A MAP of SDUs of at most `max_sdu_len` octets, the maximum `MAP_SDU` length (232.0 Table
@@ -159,7 +147,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
     pub const fn sdu(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, ReassemblyService::Sdu, max_sdu_len)
+        ReassemblerMap::checked(vc, id, MapService::Sdu, max_sdu_len)
     }
 
     /// An octet-stream MAP: no SDU is assembled, so it has no maximum.
@@ -170,7 +158,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
         ReassemblerMap {
             vc,
             id,
-            service: ReassemblyService::OctetStream,
+            service: MapService::OctetStream,
             max_sdu_len: 0,
         }
     }
@@ -178,7 +166,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     const fn checked(
         vc: P::Vc,
         id: P::Map,
-        service: ReassemblyService,
+        service: MapService,
         max_sdu_len: usize,
     ) -> Result<ReassemblerMap<P>> {
         if max_sdu_len == 0 {
@@ -213,7 +201,7 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     ///
     /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
-    pub const fn service(&self) -> ReassemblyService {
+    pub const fn service(&self) -> MapService {
         self.service
     }
 
@@ -223,8 +211,8 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     #[must_use]
     pub const fn max_sdu_len(&self) -> Option<usize> {
         match self.service {
-            ReassemblyService::OctetStream => None,
-            ReassemblyService::Packets | ReassemblyService::Sdu => Some(self.max_sdu_len),
+            MapService::OctetStream => None,
+            MapService::Packets | MapService::Sdu => Some(self.max_sdu_len),
         }
     }
 }
@@ -633,14 +621,14 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         let data = match parsed.unit {
             Unit::Idle => return Ok(()),
             Unit::Stream(data) => {
-                if map.service != ReassemblyService::OctetStream {
+                if map.service != MapService::OctetStream {
                     return Err(rule);
                 }
                 data
             }
             Unit::Whole(data) | Unit::First(data) | Unit::Continuing(data) | Unit::Last(data) => {
-                let fixed_ok = !parsed.fixed_length || map.service == ReassemblyService::Sdu;
-                if map.service == ReassemblyService::OctetStream || !fixed_ok {
+                let fixed_ok = !parsed.fixed_length || map.service == MapService::Sdu;
+                if map.service == MapService::OctetStream || !fixed_ok {
                     return Err(rule);
                 }
                 data
@@ -649,14 +637,14 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         // An octet stream assembles nothing: it needs the octets of the FDU only.
         let held_max = match map.max_sdu_len() {
             Some(max) => max.saturating_sub(1),
-            None if map.service == ReassemblyService::OctetStream => 0,
+            None if map.service == MapService::OctetStream => 0,
             None => return Err(Error::new(ErrorKind::InternalError)),
         };
         let needed = held_max.saturating_add(data.len());
         if area < needed {
             return Err(Error::buffer_too_small(needed));
         }
-        if map.service == ReassemblyService::Packets {
+        if map.service == MapService::Packets {
             match parsed.unit {
                 Unit::Whole(data) => {
                     count_packets(data)?;
@@ -852,7 +840,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// Delivers `head` then `tail` as an SDU or as packets, by the service of the MAP.
     fn deliver(
         &mut self,
-        service: ReassemblyService,
+        service: MapService,
         vc: u8,
         map: u8,
         head: &[u8],
@@ -864,7 +852,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
 
     fn deliver_from(
         status: &mut ReassemblerStatus,
-        service: ReassemblyService,
+        service: MapService,
         (vc, map): (u8, u8),
         head: &[u8],
         tail: &[u8],
@@ -872,7 +860,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     ) -> Result<()> {
         let range = cx.write(head, tail)?;
         match service {
-            ReassemblyService::Packets => {
+            MapService::Packets => {
                 let count = count_packets_of(head, tail)?;
                 status.delivered.add(count);
                 cx.actions.push(ReassemblerOutput::Packets {
@@ -882,7 +870,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                     count,
                 })
             }
-            ReassemblyService::Sdu | ReassemblyService::OctetStream => {
+            MapService::Sdu | MapService::OctetStream => {
                 status.delivered.incr();
                 cx.actions.push(ReassemblerOutput::Sdu {
                     vc,

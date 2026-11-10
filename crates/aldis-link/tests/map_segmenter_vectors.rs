@@ -13,8 +13,8 @@ use aldis_core::time::{Duration, Instant};
 use aldis_link::common::Qos;
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::segmenter::{
-    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, MapService, SegmenterInput,
-    SegmenterOutput, SegmenterProtocol, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput,
+    SegmenterProtocol, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
 use aldis_uslp::{Upid, VcfCountLen};
@@ -74,7 +74,7 @@ impl Proto for Tc {
         };
         let entries = maps::<Tc>(c, |m| {
             let id = MapId::<6>::new(u8::try_from(num(&m["map_id"])).unwrap()).unwrap();
-            let mut e = MapEntry::<Tc>::new(id, MapService::Any, ());
+            let mut e = MapEntry::<Tc>::new(id, SegmenterService::Any, ());
             if m["segmentation"].as_bool().unwrap() {
                 e = e.with_segmentation(usize_of(&m["max_sdu_len"])).unwrap();
             }
@@ -111,9 +111,9 @@ impl Proto for Uslp {
             let id = MapId::<4>::new(u8::try_from(num(&m["map_id"])).unwrap()).unwrap();
             let upid = Upid::from_bits(u8::try_from(num(&m["upid"])).unwrap()).unwrap();
             let service = match m["service"].as_str().unwrap() {
-                "packets" => MapService::Packets,
-                "mapa" => MapService::Sdu,
-                "octet_stream" => MapService::OctetStream {
+                "packets" => SegmenterService::Packets,
+                "mapa" => SegmenterService::Sdu,
+                "octet_stream" => SegmenterService::OctetStream {
                     release_deadline: Duration::from_micros(num(&m["release_deadline_us"])),
                 },
                 other => panic!("unknown service {other}"),

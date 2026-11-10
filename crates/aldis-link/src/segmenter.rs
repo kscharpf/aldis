@@ -40,7 +40,7 @@ use aldis_core::engine::{Actions, OutRange};
 use aldis_core::time::{Duration, Instant};
 use aldis_core::{Error, ErrorKind, Result, field};
 
-use crate::common::{Counter, Occupancy, Qos};
+use crate::common::{Counter, MapService, Occupancy, Qos};
 use crate::packet::{self, Length};
 use crate::protocol::Protocol;
 
@@ -78,9 +78,11 @@ pub enum Framing {
     Stream,
 }
 
-/// What a MAP carries (232.0 §5.3 Table 5-3; 732.1 §5.4 Table 5-4).
+/// What a MAP of the segmenter carries (232.0 §5.3 Table 5-3; 732.1 §5.4 Table 5-4): a
+/// [`MapService`] plus what only the segmenter has, the TC MAP that carries either and the release
+/// deadline of a stream (OI-96).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MapService {
+pub enum SegmenterService {
     /// Packets and SDUs alike: a TC MAP (the Segment Header does not say which), or a TC VC
     /// without a Segment Header, whose data field content is packets or a `VCA_SDU`.
     Any,
@@ -94,6 +96,20 @@ pub enum MapService {
         /// The release deadline of a started TFDZ.
         release_deadline: Duration,
     },
+}
+
+impl SegmenterService {
+    /// The kind of SDU the MAP carries, or `None` for a MAP that carries packets and SDUs alike
+    /// (LNK-040…LNK-043).
+    #[must_use]
+    pub const fn kind(self) -> Option<MapService> {
+        match self {
+            SegmenterService::Any => None,
+            SegmenterService::Packets => Some(MapService::Packets),
+            SegmenterService::Sdu => Some(MapService::Sdu),
+            SegmenterService::OctetStream { .. } => Some(MapService::OctetStream),
+        }
+    }
 }
 
 /// A frame protocol whose VCs the `MapSegmenter` serves (LNK-001): TC and USLP.
@@ -145,7 +161,7 @@ pub trait SegmenterProtocol: Protocol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MapEntry<P: SegmenterProtocol> {
     id: P::Map,
-    service: MapService,
+    service: SegmenterService,
     max_sdu_len: Option<usize>,
     blocking: bool,
     params: P::MapParams,
@@ -155,7 +171,7 @@ impl<P: SegmenterProtocol> MapEntry<P> {
     /// A MAP `id` of `service` that neither segments nor blocks: an SDU longer than one FDU is
     /// refused (LNK-040).
     #[must_use]
-    pub const fn new(id: P::Map, service: MapService, params: P::MapParams) -> MapEntry<P> {
+    pub const fn new(id: P::Map, service: SegmenterService, params: P::MapParams) -> MapEntry<P> {
         MapEntry {
             id,
             service,
@@ -203,7 +219,7 @@ impl<P: SegmenterProtocol> MapEntry<P> {
     ///
     /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     #[must_use]
-    pub const fn service(&self) -> MapService {
+    pub const fn service(&self) -> SegmenterService {
         self.service
     }
 
@@ -303,7 +319,7 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
     }
 
     fn check_map(channel: &P::Channel, map: &MapEntry<P>) -> Result<()> {
-        if let MapService::OctetStream { .. } = map.service {
+        if let SegmenterService::OctetStream { .. } = map.service {
             if !P::STREAMS {
                 return Err(
                     Error::new(ErrorKind::InvalidConfig).with_field(field::DATA_FIELD_CONTENT)
@@ -634,12 +650,14 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         let zone = config.zone_len();
         for map in config.maps() {
             let (longest, f) = match map.service {
-                MapService::OctetStream { .. } => (zone, field::MAX_FDU_LEN),
-                MapService::Any | MapService::Packets | MapService::Sdu => match map.max_sdu_len {
-                    Some(max) => (max, field::MAX_SDU_LEN),
-                    // No segmentation: one FDU holds the longest SDU.
-                    None => (zone, field::MAX_SDU_LEN),
-                },
+                SegmenterService::OctetStream { .. } => (zone, field::MAX_FDU_LEN),
+                SegmenterService::Any | SegmenterService::Packets | SegmenterService::Sdu => {
+                    match map.max_sdu_len {
+                        Some(max) => (max, field::MAX_SDU_LEN),
+                        // No segmentation: one FDU holds the longest SDU.
+                        None => (zone, field::MAX_SDU_LEN),
+                    }
+                }
             };
             if longest.saturating_add(PREFIX) > Q {
                 return Err(Error::new(ErrorKind::CapacityExceeded).with_field(f));
@@ -673,7 +691,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// The instant at which the TFDZ of the stream MAP at position `i` is due, if it is waiting.
     fn deadline_of(&self, i: usize) -> Option<Instant> {
         let map = self.head.config.maps.get(i)?.as_ref()?;
-        let MapService::OctetStream { release_deadline } = map.service else {
+        let SegmenterService::OctetStream { release_deadline } = map.service else {
             return None;
         };
         let timer = self.head.streams.get(i)?;
@@ -861,10 +879,10 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
             .map(map)
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
         let content = Error::new(ErrorKind::InvalidField).with_field(field::DATA_FIELD_CONTENT);
-        let served = match (kind, entry.service) {
-            (Kind::Packet, MapService::Any | MapService::Packets)
-            | (Kind::Sdu, MapService::Any | MapService::Sdu)
-            | (Kind::Octets, MapService::OctetStream { .. }) => true,
+        let served = match (kind, entry.service.kind()) {
+            (Kind::Packet, None | Some(MapService::Packets))
+            | (Kind::Sdu, None | Some(MapService::Sdu))
+            | (Kind::Octets, Some(MapService::OctetStream)) => true,
             (Kind::Packet | Kind::Sdu | Kind::Octets, _) => false,
         };
         if !served {
@@ -1193,7 +1211,7 @@ mod tc_impl {
     use aldis_core::{FrameFormat, Result};
     use aldis_tc::{MAX_FRAME_LEN, SegmentHeader, SequenceFlags, TcMapId};
 
-    use super::{Framing, MapEntry, MapService, SegmenterProtocol};
+    use super::{Framing, MapEntry, SegmenterProtocol, SegmenterService};
     use crate::common::Qos;
     use crate::protocol::Tc;
 
@@ -1269,7 +1287,7 @@ mod tc_impl {
             if channel.segment_header {
                 return None;
             }
-            let entry = MapEntry::<Tc>::new(MapId::<6>::new(0)?, MapService::Any, ());
+            let entry = MapEntry::<Tc>::new(MapId::<6>::new(0)?, SegmenterService::Any, ());
             Some(if channel.blocking {
                 entry.with_blocking()
             } else {
