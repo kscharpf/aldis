@@ -56,7 +56,7 @@ branch b fb 1
 branch c shared "changed by c"
 branch d shared "changed by d"
 
-mkdir "$work/bin" "$work/stub"
+mkdir "$work/bin" "$work/stub" "$work/tmp"
 # A stub cargo: `metadata` appends a line to the Cargo.lock of the current directory; with
 # --locked it fails while the lockfile still has conflict markers.
 cat >"$work/bin/cargo" <<'STUB'
@@ -154,6 +154,12 @@ lbranch k2 Cargo.lock two refapp/Cargo.lock two
 lbranch k3 Cargo.lock three refapp/Cargo.lock three
 lbranch s1 Cargo.lock "stale
 $(pkg x 0.9)"
+lbranch w1 Cargo.lock "version = 3
+$(pkg x 1.1)
+# w1"
+lbranch w2 Cargo.lock "version = 4
+$(pkg x 1.1)
+# w2"
 lbranch v1 Cargo.lock "$(pkg x 1.1)
 # v1"
 lbranch v2 Cargo.lock "$(pkg x 1.2)
@@ -179,6 +185,8 @@ pr 20 f "feat: reply names no current head" OPEN false "" 1
 pr 31 k1 "feat: lock one"
 pr 32 k2 "feat: lock two"
 pr 33 k3 "feat: lock three"
+pr 44 w1 "feat: lockfile format 3"
+pr 45 w2 "feat: lockfile format 4"
 pr 41 v1 "feat: bump x to 1.1"
 pr 42 v2 "feat: bump x to 1.2"
 pr 43 v3 "feat: bump x to 1.1 too"
@@ -190,7 +198,7 @@ branch g fg 1
 BASE=a pr 21 g "feat: stacked on a"
 
 failures=0
-run() { (cd "$repo" && : >"$STUB/cargo-calls" && PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
+run() { (cd "$repo" && : >"$STUB/cargo-calls" && TMPDIR="$work/tmp" PATH="$work/bin:$PATH" "$script" "$@" 2>&1); }
 check() { # check <case> <condition exit status>
     if [ "$2" -eq 0 ]; then echo "ok: $1"; else echo "FAIL: $1"; failures=$((failures + 1)); fi
 }
@@ -465,6 +473,18 @@ out="$(run 41 43)"
 status=$?
 { [ "$status" -eq 0 ] && contains "$out" "#43: Cargo.lock regenerated"; }
 check "the build accepts the same bump on both sides" $?
+
+# The format `version = N` of the lockfile is no package: v3 against v4 loses nothing.
+out="$(run --plan 44 45)"
+status=$?
+{ [ "$status" -eq 0 ] && ! contains "$out" "bump lost"; }
+check "--plan: lockfile formats 3 and 4 are no lost version" $?
+out="$(run 44 45)"
+status=$?
+{ [ "$status" -eq 0 ] && contains "$out" "#45: Cargo.lock regenerated"; }
+check "the build: lockfile formats 3 and 4 are no lost version" $?
+t [ -z "$(ls -A "$work/tmp")" ]
+check "the temp dirs of a run are removed" $?
 
 # A merged result whose lockfile is stale, though nothing conflicted.
 out="$(run --plan 36 37)"

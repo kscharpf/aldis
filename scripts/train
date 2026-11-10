@@ -44,6 +44,10 @@
 # result lacks, such as a deliberate `cargo update`, makes the PR a conflict (named on stderr,
 # merge undone, as below). Otherwise it commits the merge and prints `#<pr>: <path> regenerated`.
 # Any other conflict stops as above.
+# The check fails safe, not exact: a new dependency whose version in the regenerated lock differs
+# from the version the PR locked (a newer cached one, or the one another PR already locked) also
+# makes the PR a conflict, though nothing was lost; the coordinator reads the diff and either
+# fixes the lock in the PR or builds the train without it.
 # After the merges the script checks every lockfile against the merged manifests
 # (`cargo metadata --locked --offline` in the root, refapp/, exerciser/, fuzz/, crosscheck/; a
 # merged result can have a stale lock though nothing conflicted: one PR changes a Cargo.toml,
@@ -119,6 +123,8 @@ main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-di
 g() { git -C "$main_checkout" "$@"; }
 
 g fetch --quiet origin
+tmproot="$(mktemp -d "${TMPDIR:-/tmp}/train.XXXXXX")" || { echo "cannot make a temp dir" >&2; exit 2; }
+trap 'rm -rf "$tmproot"' EXIT
 die2() { echo "$*" >&2; exit 2; }
 
 # conflicts <a> <b>: trial-merge commit b into a with no worktree. Sets `mt_tree` (the merged
@@ -148,9 +154,11 @@ verdict() { # verdict <paths>: "clean", "lock" (lockfiles only) or "conflict"
 }
 
 # lock_pairs <file>: the `name version` of every package of a Cargo.lock, sorted.
+# Only the `[[package]]` tables count, not the format `version = N` at the top of the file.
 lock_pairs() {
-    awk '/^name = /{n=$3; gsub(/"/,"",n)} /^version = /{v=$3; gsub(/"/,"",v); print n " " v}' \
-        "$1" | sort -u
+    awk '/^\[\[package\]\]/ {pkg = 1; next} /^\[/ {pkg = 0}
+        pkg && /^name = / {n = $3; gsub(/"/, "", n)}
+        pkg && /^version = / {v = $3; gsub(/"/, "", v); print n " " v}' "$1" | sort -u
 }
 # lost_versions <base> <theirs> <result> <bumps only: 0|1>: the `name version` pairs that the
 # PR's side (theirs) introduced against the merge base and the result lacks, one line each. With
@@ -178,7 +186,7 @@ classify() {
     mt_v="$(verdict "$mt_paths")"
     [ "$mt_v" = lock ] || return 0
     mb="$(g merge-base "$1" "$2")" || return 2
-    tmp="$(mktemp -d "${TMPDIR:-/tmp}/train-lock.XXXXXX")" || return 2
+    tmp="$(mktemp -d "$tmproot/lock.XXXXXX")" || return 2
     for p in $mt_paths; do
         blob "$main_checkout" "$mb:$p" "$tmp/base"
         blob "$main_checkout" "$2:$p" "$tmp/theirs"
@@ -296,8 +304,7 @@ if [ "$plan" -eq 1 ]; then
                 echo "  #${planned[i]} x #${planned[j]}: $mt_paths"
         done
     done
-    scratch="$(mktemp -d "${TMPDIR:-/tmp}/train-plan.XXXXXX")" || die2 "cannot make a temp dir"
-    trap 'rm -rf "$scratch"' EXIT
+    scratch="$(mktemp -d "$tmproot/plan.XXXXXX")" || die2 "cannot make a temp dir"
     if g archive "$cur" | tar -x -C "$scratch"; then
         while IFS= read -r l; do
             case "$l" in
@@ -410,7 +417,7 @@ resolve_lockfiles() {
     paths="$(git -C "$wt" diff --name-only --diff-filter=U)"
     [ -n "$paths" ] || return 1
     while IFS= read -r p; do is_lockfile "$p" || return 1; done <<<"$paths"
-    tmp="$(mktemp -d "${TMPDIR:-/tmp}/train-lock.XXXXXX")" || return 1
+    tmp="$(mktemp -d "$tmproot/lock.XXXXXX")" || return 1
     while IFS= read -r p; do
         dir="$(dirname "$p")"
         blob "$wt" ":1:$p" "$tmp/base"
