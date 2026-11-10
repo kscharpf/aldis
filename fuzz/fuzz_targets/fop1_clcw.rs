@@ -68,8 +68,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     let target = Fop1Target::tc(
         TcSpacecraftId::new(7).unwrap(),
         TcVcId::new(VCID).unwrap(),
-        F,
-        u.arbitrary()?,
+        aldis_tc::PhysicalChannelConfig::new(F, u.arbitrary()?).unwrap(),
     )
     .unwrap();
     let mut f = Rig::<Q, F, N>::new(Fop1Config {

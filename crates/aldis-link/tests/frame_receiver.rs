@@ -795,18 +795,18 @@ fn a_channel_without_an_insert_zone_delivers_none() {
     assert!(matches!(out[..], [ReceiverOutput::DataField { .. }]));
     assert!(config.with_raw_frames(true).is_err());
     // Only a protocol with an Insert Zone has an offset for a raw frame.
-    let tm_channel = tm_channel(LEN, false, DeliveryService::None, DeliveryService::None);
-    let tc_channel = tc_channel(LEN, false);
+    let rx_tm = tm_channel(LEN, false, DeliveryService::None, DeliveryService::None);
+    let rx_tc = tc_channel(LEN, false);
     for e in [
-        Tm::raw_insert_zone_offset(&tm_channel, &[]).unwrap_err(),
-        Tc::raw_insert_zone_offset(&tc_channel, &[]).unwrap_err(),
+        Tm::raw_insert_zone_offset(&rx_tm, &[]).unwrap_err(),
+        Tc::raw_insert_zone_offset(&rx_tc, &[]).unwrap_err(),
     ] {
         assert_eq!(e.field(), Some(field::RAW_FRAMES));
     }
-    assert!(!Tm::physical(&tm_channel).variable_length());
-    assert!(Tc::physical(&tc_channel).variable_length());
-    assert_eq!(Tm::physical(&tm_channel).insert_zone_len(), 0);
-    assert_eq!(Tc::physical(&tc_channel).insert_zone_len(), 0);
+    assert!(!Tm::physical(&rx_tm).variable_length());
+    assert!(Tc::physical(&rx_tc).variable_length());
+    assert_eq!(Tm::physical(&rx_tm).insert_zone_len(), 0);
+    assert_eq!(Tc::physical(&rx_tc).insert_zone_len(), 0);
 }
 
 // ---- LNK-050: frames of varying length ----
