@@ -817,6 +817,8 @@ cargo xtask consistency
 cargo xtask rs020
 # Every loop of the library code is bounded by construction or carries a `// bound:` comment (GEN-022).
 cargo xtask loops
+# Every test module of a coverage-measured crate carries coverage(off) (VER-024).
+cargo xtask coverage-off
 # Every restricted type of a codec crate has a property test naming it (RS-020, VER-023).
 cargo xtask restricted
 # Every reference of the hazard analysis and the assurance case resolves (VER-065, VER-066).

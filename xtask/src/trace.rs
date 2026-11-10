@@ -54,7 +54,10 @@ pub const CHECK_REQUIREMENTS: [(&str, &str); 16] = [
     ("clippy", "VER-001, VER-002, GEN-070, GEN-071"),
     ("deny", "VER-003"),
     ("fmt", "VER-004"),
-    ("spec", "VER-020, VER-066, VER-072, TV-023, TV-024, APP-108"),
+    (
+        "spec",
+        "VER-020, VER-024, VER-066, VER-072, TV-023, TV-024, APP-108",
+    ),
     ("coverage", "VER-024"),
     ("big-endian", "VER-030, GEN-007"),
     ("stack", "VER-011"),
