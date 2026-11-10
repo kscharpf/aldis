@@ -12,7 +12,7 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
+use aldis_core::{AnomalySet, Check, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::TmAnomaly;
 use aldis_tm::{
@@ -289,7 +289,7 @@ fn run(case: &CodecCase) -> Result<Value, Error> {
                 || TmFrame::decode_with(&bytes, &pc, mc()),
                 || TmFrame::decode_with_lenient(&bytes, &pc, mc()),
             )?;
-            f.validate(mc()).map(|_| json!({}))
+            f.check(mc()).map(|_| json!({})).map_err(Error::from)
         }
         "encode" => encode_case(case, mc()),
         "encode_oid" => encode_oid(case, mc()),

@@ -7,7 +7,7 @@ use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{Anomaly as _, AnomalySet, DecodeMode, ErrorKind};
+use aldis_core::{Anomaly as _, AnomalySet, Check, DecodeMode, Error, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
@@ -173,7 +173,7 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
                 f.data_field_status() == fields.status
                     && f.header().first_header_pointer.get() == 3,
             );
-            t.check(f.validate(bb(mc)).is_ok_and(|v| v.len() == 32));
+            t.check(f.check(bb(mc)).is_ok_and(|v| v.len() == 32));
         }
         Err(_) => t.check(false),
     }
@@ -497,7 +497,7 @@ pub fn vector(case: &Case, out: &mut Out, scratch: &mut Scratch) -> Run {
                 || TmFrame::decode_with(input, &pc, mc),
                 || TmFrame::decode_with_lenient(input, &pc, mc),
             )?;
-            f.validate(mc)?;
+            f.check(mc).map_err(Error::from)?;
         }
         "encode" => encode_case(case.params, need(mc.as_ref())?, out, scratch)?,
         "encode_oid" => encode_oid(case.params, need(mc.as_ref())?, out, scratch)?,

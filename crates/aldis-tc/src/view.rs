@@ -8,6 +8,7 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, Lenient, Result};
 
 use crate::anomaly::TcAnomaly;
+use crate::checked::Reason;
 use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig, VcLookup};
 use crate::control::ControlCommand;
 use crate::field;
@@ -15,7 +16,7 @@ use crate::header::{
     FrameFields, FrameType, PRIMARY_HEADER_LEN, RawHeader, SEGMENT_HEADER_LEN, SegmentHeader,
     TcFrameHeader, TcSpacecraftId, TcVcId, invalid, len_u64, reserved, unknown,
 };
-use crate::validate::{Reason, Rejection};
+use aldis_core::Rejection;
 
 /// A decoded TC Transfer Frame borrowing its fields from the input (232.0 §4.1; TC-001…TC-006,
 /// API-010, GEN-013).
@@ -40,13 +41,13 @@ pub(crate) struct Parsed<'a> {
 }
 
 /// Shorthand for a failed check.
-const fn fail(reason: Reason, error: Error) -> Rejection {
+const fn fail(reason: Reason, error: Error) -> Rejection<Reason> {
     Rejection::new(reason, error)
 }
 
 /// `Incomplete` while decoding (`needed` = `len`), `LengthMismatch` (`frame_len`) while
 /// validating, which needs exactly one frame (232.0 §4.4.9.3.3 d).
-const fn length(exact: bool, len: usize) -> Rejection {
+const fn length(exact: bool, len: usize) -> Rejection<Reason> {
     let error = if exact {
         Error::new(aldis_core::ErrorKind::LengthMismatch).with_field(field::FRAME_LEN)
     } else {
@@ -74,7 +75,7 @@ pub(crate) enum Channels {
     Required,
     /// The decoder: a frame of an unknown Spacecraft ID or VCID is read as the Physical Channel
     /// allows, with no Segment Header and no SDLS fields;
-    /// [`validate_frame`](crate::validate::validate_frame) rejects it.
+    /// [`check_frame`](crate::checked::check_frame) rejects it.
     Open,
 }
 
@@ -87,7 +88,7 @@ pub(crate) fn check_head<L: VcLookup + ?Sized>(
     mode: DecodeMode,
     exact: bool,
     anomalies: &mut AnomalySet<TcAnomaly>,
-) -> core::result::Result<Head, Rejection> {
+) -> core::result::Result<Head, Rejection<Reason>> {
     let raw = RawHeader::parse(bytes).ok_or(length(exact, PRIMARY_HEADER_LEN))?;
     raw.check_version()
         .map_err(|e| fail(Reason::UnexpectedVersion, e))?;
@@ -144,7 +145,7 @@ pub(crate) fn check_head<L: VcLookup + ?Sized>(
 }
 
 /// `InvalidField` (`frame_data_field`): the frame has no data octet (CMN-041).
-const fn too_short() -> Rejection {
+const fn too_short() -> Rejection<Reason> {
     fail(Reason::FrameTooShort, invalid(field::FRAME_DATA_FIELD))
 }
 
@@ -153,7 +154,7 @@ fn control_command(
     data: &[u8],
     mode: DecodeMode,
     anomalies: &mut AnomalySet<TcAnomaly>,
-) -> core::result::Result<Option<ControlCommand>, Rejection> {
+) -> core::result::Result<Option<ControlCommand>, Rejection<Reason>> {
     let command = ControlCommand::parse(data);
     if command.is_none() {
         match mode {
@@ -180,7 +181,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     known: Channels,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<Parsed<'a>, Rejection> {
+) -> core::result::Result<Parsed<'a>, Rejection<Reason>> {
     let mut anomalies = AnomalySet::empty();
     let head = check_head(bytes, channels, known, mode, exact, &mut anomalies)?;
     let (raw, total) = (head.raw, head.raw.frame_len);
@@ -257,14 +258,14 @@ impl<'a> TcFrame<'a> {
     /// parameters; any octets after it are ignored, so a stream can be parsed frame by frame with
     /// [`len`](Self::len) (232.0 §4.1; TC-001…TC-006, API-011).
     ///
-    /// The checks are those of [`validate_frame`](crate::validate::validate_frame), in its
+    /// The checks are those of [`check_frame`](crate::checked::check_frame), in its
     /// order, except that the input may be longer than the frame and that a Spacecraft ID
     /// or VCID the channels do not hold is not an error: the frame is read as the Physical
     /// Channel allows (no Segment Header, no SDLS fields) so that an engine can count it, and
-    /// `validate_frame` rejects it (RS-023, TC-022). A MAP ID the channels do not hold is no
+    /// `check_frame` rejects it (RS-023, TC-022). A MAP ID the channels do not hold is no
     /// error of either: the Segment Header is read, and the frame has no SDLS fields.
     ///
-    /// A receiver of delimited frames must run `validate_frame`, or compare
+    /// A receiver of delimited frames must run `check_frame`, or compare
     /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
     /// field can make `decode` accept a shorter frame (API-011, TC-021; VER-064).
     ///
@@ -439,7 +440,7 @@ mod tests {
     use crate::field;
     use crate::header::{FrameType, SequenceFlags};
     use aldis_core::crc::crc16;
-    use aldis_core::{ErrorDetail, ErrorKind};
+    use aldis_core::{DecodeMode, ErrorDetail, ErrorKind};
 
     /// `body` followed by its FECF, in an `N`-octet array (`N` = body length + 2).
     fn with_fecf<const N: usize>(body: &[u8]) -> [u8; N] {
@@ -571,7 +572,7 @@ mod tests {
         for (bytes, fld) in cases {
             let f = TcFrame::decode(bytes, &t).unwrap();
             assert_eq!(f.octets(), bytes, "{bytes:02X?}");
-            let e = crate::validate::validate_frame(bytes, &t).unwrap_err();
+            let e = crate::checked::check_frame(bytes, &t, DecodeMode::Strict).unwrap_err();
             assert_eq!(
                 (e.error().kind(), e.error().field()),
                 (ErrorKind::UnknownChannel, fld),
@@ -584,7 +585,7 @@ mod tests {
         let f = TcFrame::decode(&unknown_map, &t).unwrap();
         assert_eq!(f.segment_header().map(|s| s.map_id.get()), Some(7));
         assert_eq!(f.data_field(), [0]);
-        let v = crate::validate::validate_frame(&unknown_map, &t).unwrap();
+        let v = crate::checked::check_frame(&unknown_map, &t, DecodeMode::Strict).unwrap();
         assert_eq!(v.as_frame().segment_header(), f.segment_header());
         // On a VC that is not configured there is no Segment Header: its octet is data.
         let f = TcFrame::decode(&[0x01, 0x55, 0x14, 0x06, 0, 0xC7, 0], &t).unwrap();

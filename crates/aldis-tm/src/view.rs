@@ -68,7 +68,7 @@ impl<'a> TmFrame<'a> {
     /// virtual channel from `vcs` (132.0 §4.1, §6.3; TM-001…TM-008, API-012, API-070).
     ///
     /// The Secondary Header and the OCF are placed by the frame's own flags; whether they match
-    /// the configuration is checked by [`validate`](Self::validate) (TM-011).
+    /// the configuration is checked by [`check`](aldis_core::Check::check) (TM-011).
     ///
     /// # Errors
     /// In this order:

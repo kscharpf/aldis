@@ -19,8 +19,7 @@ use aldis_uslp::{
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
     Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig,
-    VcParams, VcTable, VcfCountLen, encode, encode_oid, encode_truncated, validate_frame,
-    validate_frame_lenient,
+    VcParams, VcTable, VcfCountLen, check_frame, encode, encode_oid, encode_truncated,
 };
 use serde_json::{Map, Value, json};
 
@@ -314,8 +313,8 @@ fn validate_case(case: &CodecCase) -> Result<Value, Error> {
     let t = table(case)?;
     let bytes = input(case);
     let validated = match mode(case) {
-        DecodeMode::Strict => validate_frame(&bytes, &t).map(|f| f.len()),
-        DecodeMode::Lenient => validate_frame_lenient(&bytes, &t).map(|f| f.len()),
+        DecodeMode::Strict => check_frame(&bytes, &t, DecodeMode::Strict).map(|f| f.len()),
+        DecodeMode::Lenient => check_frame(&bytes, &t, DecodeMode::Lenient).map(|f| f.len()),
     };
     Ok(match validated {
         Ok(len) => json!({ "accepted": true, "frame_len": len }),

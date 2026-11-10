@@ -619,6 +619,8 @@ mod tests {
     extern crate std;
     use std::vec;
 
+    use aldis_core::Check;
+
     use super::{
         TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,
     };
@@ -729,7 +731,7 @@ mod tests {
             f.data_field_status(),
             DataFieldStatus::Packets(starts_at(3))
         );
-        f.validate(&mc).unwrap();
+        f.check(&mc).unwrap();
     }
 
     /// A hook that checks the frame state it is called in, and fills the Security fields.

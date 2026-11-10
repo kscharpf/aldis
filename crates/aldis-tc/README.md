@@ -9,7 +9,7 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_tc::{
     FrameData, FrameDelimiter, FrameFields, FrameType, PhysicalChannelConfig, SegmentHeaderUse,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, check_frame,
 };
 
 let scid = TcSpacecraftId::new(0x155).unwrap();
@@ -32,7 +32,7 @@ assert_eq!(n, 10);
 // At the receiving end: delimit the data unit, then validate each frame (232.0 §4.4.9).
 let mut frames = FrameDelimiter::new(&unit, 6);
 let frame = frames.next().unwrap();
-let tc = validate_frame(frame.octets(), &channels).unwrap();
+let tc = check_frame(frame.octets(), &channels, DecodeMode::Strict).unwrap();
 assert_eq!(tc.data_field(), [1, 2, 3]);
 assert_eq!(frames.count(), 1); // the six octets of 0x55 fill
 ```

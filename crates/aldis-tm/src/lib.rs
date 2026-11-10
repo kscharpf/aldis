@@ -10,7 +10,7 @@
 //! | [`anomaly`] | `TmAnomaly` lenient-mode flags | 132.0 §4.1.2.7.4–5 | TM-007, API-032, API-033, GEN-043 |
 //! | [`writer`] | One-shot `encode` and `encode_oid`, two-phase `TmFrameWriter`, OID frames | 132.0 §4.1, §4.1.4.6, §6.3 | TM-009, TM-010, API-020…API-023, API-072, GEN-014 |
 //! | [`plain`] | `TmFrame::into_plain` through `NoSecurity`, returning a `PlainTmFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
-//! | [`validate`] | `TmFrame::validate` against the master channel's managed parameters, returning a `ValidatedTmFrame` | 132.0 §5 | TM-011, API-016 |
+//! | `checked` | `TmFrame::check` (`aldis_core::Check`) against the master channel's managed parameters, returning an `aldis_core::Checked<TmFrame>` | 132.0 §5 | TM-011, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 132.0 §4.1, §5 | API-082, GEN-041 |
 //!
 //! The OCF is returned as an [`Ocf`](aldis_core::ocf::Ocf); a Type-1 Report (CLCW) is decoded
@@ -27,11 +27,11 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod anomaly;
+mod checked;
 pub mod config;
 pub mod field;
 pub mod header;
 pub mod plain;
-pub mod validate;
 pub mod view;
 pub mod writer;
 
@@ -45,7 +45,6 @@ pub use header::{
     TmPrimaryHeader,
 };
 pub use plain::PlainTmFrame;
-pub use validate::ValidatedTmFrame;
 pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{
     TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,

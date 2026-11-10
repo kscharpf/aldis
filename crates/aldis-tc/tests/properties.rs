@@ -6,11 +6,11 @@
     reason = "test bookkeeping on lengths the strategies bound (RS-018)"
 )]
 
-use aldis_core::ErrorKind;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
+use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
-    Clcw, Delimited, FrameDelimiter, Reason, TcAnomaly, TcFrame, TcFrameWriter, encode, next_frame,
-    validate_frame, validate_frame_lenient,
+    Clcw, Delimited, FrameDelimiter, Reason, TcAnomaly, TcFrame, TcFrameWriter, check_frame,
+    encode, next_frame,
 };
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{clcw, data_unit, tc_frame, tc_frame_decoder_input};
@@ -47,7 +47,7 @@ proptest! {
         prop_assert!(d.security_header().iter().chain(d.security_trailer()).all(|&b| b == 0));
         prop_assert_eq!(d.header().primary_header_octets(), <[u8; 5]>::try_from(&f.octets[..5]).unwrap());
         // The same frame passes the Frame Validation Checks (TC-021, TC-023).
-        prop_assert_eq!(validate_frame(&f.octets, t).map(|v| v.len()), Ok(f.octets.len()));
+        prop_assert_eq!(check_frame(&f.octets, t, DecodeMode::Strict).map(|v| v.len()), Ok(f.octets.len()));
     }
 
     #[test]
@@ -88,7 +88,7 @@ proptest! {
             // Exactly the frame passes validation in the same mode (TC-021 d), unless its
             // channel is not configured: the decoder reads such a frame, validation rejects it
             // (TC-022, RS-023).
-            if let Err(r) = validate_frame_lenient(f.octets(), t) {
+            if let Err(r) = check_frame(f.octets(), t, DecodeMode::Lenient) {
                 prop_assert!(unknown_channel(r.reason()), "{:?}", r);
             }
             if !f.anomalies().contains(TcAnomaly::UnknownControlCommand) {
@@ -96,7 +96,7 @@ proptest! {
             }
         }
         // Validation of exactly the input agrees with decoding when the input is one frame.
-        match (validate_frame(&v, t), TcFrame::decode(&v, t)) {
+        match (check_frame(&v, t, DecodeMode::Strict), TcFrame::decode(&v, t)) {
             (Ok(a), Ok(b)) => prop_assert_eq!(a.into_frame(), b),
             (Err(r), Ok(b)) => prop_assert!(b.len() < v.len() || unknown_channel(r.reason()), "{:?}", r),
             (Ok(_), Err(e)) => prop_assert!(false, "validated but not decoded: {:?}", e),

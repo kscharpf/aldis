@@ -14,7 +14,7 @@
 //! | [`anomaly`] | `UslpAnomaly` lenient-mode flags | 732.1 §4.1.2.9, §4.1.4.1.8–9 | API-032, API-033 |
 //! | [`delimit`] | Frame Delimiting and Fill Data Removal: stateless `next_frame`, `FrameDelimiter` | 732.1 §4.3.11.2 | USLP-015 |
 //! | [`plain`] | `UslpFrame::into_plain` through `NoSecurity`, returning a `PlainUslpFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
-//! | [`validate`] | USLP Frame Validation Checks: `validate_frame` (strict and lenient), `ValidatedUslpFrame`, `Reason`, `Rejection` | 732.1 §4.3.11.3 | USLP-014, API-016 |
+//! | [`checked`] | USLP Frame Validation Checks: `check_frame` (strict and lenient) returning a `Checked<UslpFrame>`, `Reason` | 732.1 §4.3.11.3 | USLP-014, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.1 §4.1, §5 | API-082, GEN-041 |
 //!
 //! The Frame Length field holds the frame length minus one (732.1 §4.1.2.7); the API works in
@@ -35,6 +35,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod anomaly;
+pub mod checked;
 pub mod config;
 pub mod delimit;
 pub mod field;
@@ -44,11 +45,11 @@ pub mod stream;
 pub mod tfdf;
 pub mod truncated;
 pub mod upid;
-pub mod validate;
 pub mod view;
 pub mod writer;
 
 pub use anomaly::UslpAnomaly;
+pub use checked::{Reason, check_frame};
 pub use config::{
     MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen,
     VcConfig, VcLookup, VcParams, VcTable,
@@ -67,7 +68,6 @@ pub use tfdf::{
 };
 pub use truncated::UslpTruncatedFrame;
 pub use upid::{UnassignedUpid, Upid};
-pub use validate::{Reason, Rejection, ValidatedUslpFrame, validate_frame, validate_frame_lenient};
 pub use view::{UslpFrame, UslpFullFrame};
 pub use writer::{
     FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,

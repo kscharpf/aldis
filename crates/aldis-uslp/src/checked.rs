@@ -1,18 +1,17 @@
 //! USLP Frame Validation Check Procedure (732.1 §4.3.11.3; USLP-014, M2 plan D14, D17).
 //!
 //! When the Synchronization and Channel Coding Sublayer below is TC Synchronization and Channel
-//! Coding (§4.3.11.1.6), [`validate_frame`] applies the tests of §4.3.11.3.4 a–e to the octets
+//! Coding (§4.3.11.1.6), [`check_frame`] applies the tests of §4.3.11.3.4 a–e to the octets
 //! of one frame, as the Frame Delimiting and Fill Data Removal Procedure delimits them
 //! ([`delimit`](crate::delimit)), together with the decoder's checks of the TFDF Header. It runs
 //! the same code as [`UslpFrame::decode`] and reports each failure with a [`Reason`] whose
 //! numeric code is stable (`docs/standards/uslp-frame.md` §3.1).
 
-use core::ops::Deref;
-
-use aldis_core::{DecodeMode, Error, Lenient};
+use aldis_core::checked::check_bytes;
+use aldis_core::{AnomalySet, CheckBytes, Checked, DecodeMode, Lenient, Rejection};
 
 use crate::anomaly::UslpAnomaly;
-use crate::config::VcLookup;
+use crate::config::{MapConfig, VcConfig, VcLookup};
 use crate::view::{Channels, UslpFrame, parse};
 
 /// Why a frame failed the USLP Frame Validation Checks or the decoder (USLP-014).
@@ -125,122 +124,55 @@ impl Reason {
     }
 }
 
-/// A frame that failed the checks: the [`Reason`] and the decoder's [`Error`] (USLP-014,
-/// GEN-041).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Rejection {
-    reason: Reason,
-    error: Error,
-}
-
-impl Rejection {
-    /// A rejection for `reason`, with the error the decoder reports for it.
-    pub(crate) const fn new(reason: Reason, error: Error) -> Rejection {
-        Rejection { reason, error }
-    }
-
-    /// Why the frame was discarded (USLP-014).
-    #[must_use]
-    pub const fn reason(&self) -> Reason {
-        self.reason
-    }
-
-    /// The error of the failed check, with the field it names (GEN-041).
-    #[must_use]
-    pub const fn error(&self) -> Error {
-        self.error
-    }
-}
-
-impl From<Rejection> for Error {
-    fn from(r: Rejection) -> Error {
-        r.error
-    }
-}
-
-/// A frame that passed the USLP Frame Validation Checks (732.1 §4.3.11.3; USLP-014, API-016).
-///
-/// [`validate_frame`] returns it. It dereferences to the [`UslpFrame`]; holding one is the proof
-/// that the octets were exactly one frame and passed tests a–e (RS-023 `Checked`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidatedUslpFrame<'a> {
-    frame: UslpFrame<'a>,
-}
-
-impl<'a> ValidatedUslpFrame<'a> {
-    /// The frame that exact-length parsing returned.
-    pub(crate) const fn new(frame: UslpFrame<'a>) -> ValidatedUslpFrame<'a> {
-        ValidatedUslpFrame { frame }
-    }
-
-    /// The frame, without the proof.
-    #[must_use]
-    pub const fn into_frame(self) -> UslpFrame<'a> {
-        self.frame
-    }
-}
-
-impl<'a> Deref for ValidatedUslpFrame<'a> {
-    type Target = UslpFrame<'a>;
-
-    fn deref(&self) -> &UslpFrame<'a> {
-        &self.frame
-    }
-}
-
 /// Applies the USLP Frame Validation Checks to `frame`, the octets of exactly one frame (732.1
-/// §4.3.11.3; USLP-014, API-016), in strict mode.
+/// §4.3.11.3; USLP-014, API-016), in `mode`.
 ///
 /// The checks run in the order of `docs/standards/uslp-frame.md` §3.1: (a) the TFVN; (b) the
 /// SCID; (c) the flags, the Reserve Spares, the VCID and MAP ID, a truncated frame
 /// on its VC, the VCF Count Length, the OCF Flag, and the Frame Length against the channel;
-/// (d) the octets present against the Frame Length, or a truncated frame's against its VC's
-/// truncated frame length; (e) the FECF; then the TFDF Header's rule and pointer and the OID
-/// header. A frame that passes is returned as a [`ValidatedUslpFrame`].
+/// (d) the octets present against the Frame Length (732.1 §4.3.11.3.4 d)1)), or a truncated
+/// frame's against its VC's Truncated Transfer Frame Length (d)2)); (e) the FECF; then the
+/// TFDF Header's rule and pointer and the OID header. A frame that passes is returned as a
+/// [`Checked`] frame.
+///
+/// In lenient mode nonzero Reserve Spares and a deviating OID header are tolerated and reported
+/// as [`UslpAnomaly`] flags (API-032); the anomaly set is empty after a strict check.
 ///
 /// # Errors
 /// The first check that fails, as a [`Rejection`].
-pub fn validate_frame<'a, L: VcLookup + ?Sized>(
+pub fn check_frame<'a, L: VcLookup + ?Sized>(
     frame: &'a [u8],
     channels: &L,
-) -> Result<ValidatedUslpFrame<'a>, Rejection> {
-    parse(
-        frame,
-        channels,
-        Channels::Required,
-        DecodeMode::Strict,
-        true,
-    )
-    .map(|p| ValidatedUslpFrame::new(p.frame))
+    mode: DecodeMode,
+) -> Result<Lenient<Checked<UslpFrame<'a>>, UslpAnomaly>, Rejection<Reason>> {
+    check_bytes(frame, channels, mode)
 }
 
-/// Applies the checks of [`validate_frame`] in lenient mode: nonzero Reserve Spares and a
-/// deviating OID header are tolerated and reported as [`UslpAnomaly`] flags (USLP-014,
-/// API-016, API-032).
-///
-/// # Errors
-/// The first check that fails, as a [`Rejection`].
-pub fn validate_frame_lenient<'a, L: VcLookup + ?Sized>(
-    frame: &'a [u8],
-    channels: &L,
-) -> Result<Lenient<ValidatedUslpFrame<'a>, UslpAnomaly>, Rejection> {
-    parse(
-        frame,
-        channels,
-        Channels::Required,
-        DecodeMode::Lenient,
-        true,
-    )
-    .map(|p| Lenient::new(ValidatedUslpFrame::new(p.frame), p.anomalies))
+/// The USLP Frame Validation Checks of [`check_frame`], through the pipeline of
+/// `aldis_core::checked` (USLP-014, API-016). What it matches besides the frame is the Virtual
+/// Channel and MAP configuration.
+impl<'a, L: VcLookup + ?Sized> CheckBytes<'a, L> for UslpFrame<'a> {
+    type Reason = Reason;
+    type Anomaly = UslpAnomaly;
+    type Matched = (VcConfig, Option<MapConfig>);
+
+    fn parse_exact(
+        bytes: &'a [u8],
+        channels: &L,
+        mode: DecodeMode,
+    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>> {
+        parse(bytes, channels, Channels::Required, mode, true)
+            .map(|p| (p.frame, p.anomalies, (p.vc, p.map)))
+    }
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Reason, Rejection, validate_frame};
+    use super::{Reason, Rejection, check_frame};
     use crate::config::tests::variable;
     use crate::field;
-    use aldis_core::{Error, ErrorKind};
+    use aldis_core::{DecodeMode, Error, ErrorKind};
 
     #[test]
     fn reason_codes_are_stable() {
@@ -258,7 +190,7 @@ mod tests {
     fn rejections_carry_reason_and_error() {
         // req: USLP-014, GEN-041
         let t = variable();
-        let r = validate_frame(&[0xC1, 0x55], &t).unwrap_err();
+        let r = check_frame(&[0xC1, 0x55], &t, DecodeMode::Strict).unwrap_err();
         assert_eq!(r.reason(), Reason::LengthMismatch);
         assert_eq!(
             (r.error().kind(), r.error().field()),
