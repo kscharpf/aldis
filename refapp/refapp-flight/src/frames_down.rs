@@ -29,6 +29,7 @@ use aldis::link::mux::{
 };
 use aldis::link::policy::MuxPolicy;
 use aldis::link::protocol::{Tm, TmParams};
+use aldis::tm::TmPhysicalChannelConfig;
 use refapp_scenario::generated::{SPACECRAFT_ID, tm};
 use refapp_scenario::{Duration, Instant, Output};
 
@@ -119,7 +120,8 @@ fn generator(vc: VcId<3>, deadline_us: u64) -> Result<Generator> {
 fn mux() -> Result<Mux> {
     let scid =
         SpacecraftId::<10>::new(SPACECRAFT_ID).ok_or(Error::new(ErrorKind::InvalidConfig))?;
-    let mut channel = TmChannel::new(scid, VcId::<3>::from_const::<{ tm::VCID_IDLE }>());
+    let physical = TmPhysicalChannelConfig::new(usize::from(tm::FRAME_LENGTH), tm::FECF)?;
+    let mut channel = TmChannel::new(physical, scid, VcId::<3>::from_const::<{ tm::VCID_IDLE }>());
     channel.mc_ocf = Some(tm::OCF_INITIAL.to_be_bytes());
     let vc = |id: VcId<3>| VcConfig::<Tm>::new(id, TmVc::new(TmRole::Packets));
     let vcs = [
@@ -129,13 +131,7 @@ fn mux() -> Result<Mux> {
             .with_priority(mux_priority(tm::PRIORITY_PAYLOAD)),
         vc(VcId::<3>::from_const::<{ tm::VCID_IDLE }>()),
     ];
-    let config = ChannelMuxConfig::<Tm, 3>::new(
-        channel,
-        usize::from(tm::FRAME_LENGTH),
-        tm::FECF,
-        MuxPolicy::FixedPriority,
-        &vcs,
-    )?;
+    let config = ChannelMuxConfig::<Tm, 3>::new(channel, MuxPolicy::FixedPriority, &vcs)?;
     Mux::new(config)
 }
 

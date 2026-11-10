@@ -27,6 +27,7 @@ use aldis::link::segmenter::{
     MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput, SegmenterService,
     TcSegmenterParams,
 };
+use aldis::tc::PhysicalChannelConfig;
 use refapp_scenario::generated::{apid, cop1, tc};
 use refapp_scenario::{Apid, Output};
 
@@ -100,7 +101,11 @@ impl Uplink {
         let spacecraft =
             SpacecraftId::<10>::new(refapp_scenario::generated::SPACECRAFT_ID).ok_or(bad)?;
         let vc = VcId::<6>::new(tc::VCID).ok_or(bad)?;
-        let target = Fop1Target::tc(spacecraft, vc, usize::from(tc::MAX_FRAME_LENGTH), tc::FECF)?;
+        let target = Fop1Target::tc(
+            spacecraft,
+            vc,
+            PhysicalChannelConfig::new(usize::from(tc::MAX_FRAME_LENGTH), tc::FECF)?,
+        )?;
         // The capacities are constants of this module; the scenario's values must agree.
         let max_fdu = usize::from(tc::MAX_FDU_LENGTH);
         if usize::from(cop1::K) != SENT

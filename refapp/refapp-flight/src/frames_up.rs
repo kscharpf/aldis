@@ -105,15 +105,14 @@ impl FrameUplink {
         } else {
             SegmentHeaderUse::Absent(SecurityLayout::NONE)
         };
+        let physical = PhysicalChannelConfig::new(frame_len, tc::FECF)?;
         let table = VcTable::new(
-            PhysicalChannelConfig::new(frame_len, tc::FECF)?,
+            physical,
             &[VcConfig::new(scid, vc, frame_len, header)?],
             &[map(tc::MAP_COMMANDS)?, map(tc::MAP_TABLE_UPLOAD)?],
         )?;
         let receiver = FrameReceiver::new(FrameReceiverConfig::new(
-            frame_len,
-            tc::FECF,
-            TcChannel,
+            TcChannel::new(physical),
             &[VcEntry::new(vc, TcVc::SERVED)],
         )?);
         let farm = Farm1::new(
