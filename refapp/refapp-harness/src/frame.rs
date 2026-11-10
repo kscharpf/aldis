@@ -5,9 +5,7 @@
 //! (the check over the golden traces is WP-6).
 
 use aldis::core::security::SecurityLayout;
-use aldis::tc::{
-    MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, VcConfig, VcLookup, VcTable,
-};
+use aldis::tc::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, VcConfig, VcTable};
 use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
 
 use crate::scenario::{Level, Scenario};
@@ -92,7 +90,7 @@ pub fn decode_frame(
             let vc = VcConfig::new(scid_t, vc_t, max, header).map_err(|e| id_err("VC", &e))?;
             let table: VcTable<1, 2> =
                 VcTable::new(physical, &[vc], &maps).map_err(|e| id_err("channels", &e))?;
-            let frame = TcFrame::decode(octets, &table as &dyn VcLookup)
+            let frame = TcFrame::decode(octets, &table)
                 .map_err(|e| format!("not a strict TC frame: {e:?}"))?;
             if frame.spacecraft_id() != scid_t {
                 return Err(format!(
