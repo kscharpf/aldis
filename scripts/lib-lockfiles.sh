@@ -38,6 +38,7 @@ blob() { # blob <git dir> <spec> <out>: the file at <spec> (rev:path or :stage:p
 # merge base (`:3:` against `:1:`) and the result lacks, such as a deliberate `cargo update`, is
 # a conflict: it is named on stderr and the merge is left for the caller to abort. Returns 1,
 # merge left in place, on that and on anything else.
+# shellcheck disable=SC2154 # tmproot is set by the sourcing script
 resolve_lockfiles() {
     local wt="$1" paths p dir tmp lost
     paths="$(git -C "$wt" diff --name-only --diff-filter=U)"
