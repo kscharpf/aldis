@@ -176,7 +176,7 @@ impl Delimiter for TcIntake {
         // Check (a) version, (b) spacecraft, and (c) flags, spares, VCID, FrameTooLong,
         // FrameTooShort take precedence before the length consistency check (d)
         // (232.0 §4.4.9.3; docs/standards/tc-frame.md §2.1).
-        if RawHeader::parse(rest)?.version != 0 {
+        if !matches!(RawHeader::parse(rest), Some(h) if h.version == 0) {
             return None;
         }
         let mut anomalies = AnomalySet::empty();

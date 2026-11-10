@@ -218,7 +218,7 @@ where
                     vc: v2,
                     map: m2,
                 },
-            ) => frame == f2 && vc == v2 && map == m2,
+            ) => (frame, vc, map) == (f2, v2, m2),
             (
                 IntakeItem::Discarded {
                     reason,
@@ -230,7 +230,7 @@ where
                     octets: o2,
                     error: e2,
                 },
-            ) => reason == r2 && octets == o2 && error == e2,
+            ) => (reason, octets, error) == (r2, o2, e2),
             _ => false,
         }
     }
@@ -741,6 +741,34 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn items_clone_compare_and_print() {
+        // req: TC-020, USLP-014
+        let mut s = FrameStream::<Proto, _>::new(&[4, 1, 1, 1, 3, 0, 0, 5, 5, 5, 5, 5], &Any, 6);
+        let bad = s.next().unwrap();
+        let good = s.next().unwrap();
+        let fill = s.next().unwrap();
+        assert!(s.next().is_none());
+        for item in [&bad, &good, &fill] {
+            assert_eq!(item, &item.clone());
+            core::fmt::write(&mut Sink, format_args!("{item:?}")).unwrap();
+        }
+        assert_ne!(bad, fill);
+        assert_ne!(bad, good);
+        let other = FrameStream::<Proto, _>::new(&[3, 0, 1], &Any, 6)
+            .next()
+            .unwrap();
+        assert_ne!(good, other);
+        let mut again = FrameStream::<Proto, _>::new(&[3, 0, 0, 4, 1, 1, 1], &Any, 6);
+        let _ = again.next();
+        let bad2 = again.next().unwrap();
+        assert_eq!(bad, bad2);
+        let other_reason = FrameStream::<Proto, _>::new(&[9, 5], &Any, 6)
+            .next()
+            .unwrap();
+        assert_ne!(bad, other_reason);
     }
 
     #[test]
