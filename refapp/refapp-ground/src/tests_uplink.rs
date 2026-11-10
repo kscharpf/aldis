@@ -6,10 +6,11 @@
 )]
 
 use crate::{Call, Execution, GroundNode, OpsEntry};
+use aldis::core::DecodeMode;
 use aldis::core::crc::Crc16;
 use aldis::core::ids::{Apid, SpacecraftId, VcId};
 use aldis::tc::{
-    FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, VcConfig, VcTable, validate_frame,
+    FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, VcConfig, VcTable, check_frame,
 };
 use refapp_scenario::generated::{SPACECRAFT_ID, tc};
 use refapp_scenario::{
@@ -173,7 +174,10 @@ fn the_uplink_frames_have_the_fields_of_the_schedule() {
         assert_eq!(frame[..5], head);
         assert_eq!(frame[5], segment);
         // Strict decoding with the FECF (TC-021): Type-BD, VC 0, N(S) = 0.
-        assert!(validate_frame(frame, &table).is_ok(), "frame at {when}");
+        assert!(
+            check_frame(frame, &table, DecodeMode::Strict).is_ok(),
+            "frame at {when}"
+        );
         let decoded = TcFrame::decode(frame, &table).unwrap();
         assert_eq!(decoded.frame_type(), FrameType::Bd);
         assert_eq!(decoded.spacecraft_id().get(), SPACECRAFT_ID);
