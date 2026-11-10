@@ -912,3 +912,41 @@ proptest! {
         prop_assert!(UslpFrame::decode(&f.octets, t).is_ok());
     }
 }
+
+/// `UslpPrimaryHeader::for_writer` accepts a frame length of 1 to 65 536 octets, the range of
+/// the 16-bit Frame Length field plus one, and rejects each other with `OutOfRange`
+/// (`frame_len`); the header it builds reads back as the same fields (732.1 §4.1.2.7; USLP-003,
+/// GEN-053).
+#[test]
+fn primary_header_for_writer_takes_the_frame_length_of_the_field() {
+    // restricted: UslpPrimaryHeader
+    // req: USLP-003, GEN-053, VER-023
+    let channel = ChannelFields {
+        spacecraft_id: UslpSpacecraftId::new(0x1234).unwrap(),
+        source_or_destination: SourceOrDestination::Destination,
+        vc_id: UslpVcId::new(5).unwrap(),
+        map_id: UslpMapId::new(2).unwrap(),
+    };
+    let count = VcfCount::new(VcfCountLen::new(1).unwrap(), 7).unwrap();
+    for len in [0_usize, 1, 2, 255, 256, 65_535, 65_536, 65_537, usize::MAX] {
+        let made = aldis_uslp::UslpPrimaryHeader::for_writer(
+            channel,
+            len,
+            FrameKind::Expedited,
+            true,
+            count,
+        );
+        if (1..=65_536).contains(&len) {
+            let h = made.unwrap();
+            assert_eq!(h.frame_len(), len);
+            assert_eq!(
+                (h.channel(), h.kind(), h.ocf_flag(), h.vcf_count()),
+                (channel, FrameKind::Expedited, true, count)
+            );
+        } else {
+            let e = made.unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::OutOfRange);
+            assert_eq!(e.field(), Some(field::FRAME_LEN));
+        }
+    }
+}

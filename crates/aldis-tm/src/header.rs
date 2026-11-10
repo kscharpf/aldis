@@ -103,6 +103,9 @@ pub struct FirstHeaderPointer(u16);
 impl FirstHeaderPointer {
     /// Largest value, `11111111111` (132.0 §4.1.2.7.6.1).
     pub const MAX: u16 = 0x7FF;
+    /// `00000000000`: the value LNK-082 gives the First Header Pointer of a `VCA_SDU` frame,
+    /// whose pointer is undefined (132.0 §4.1.2.7.6.2 note).
+    pub const ZERO: FirstHeaderPointer = FirstHeaderPointer(0);
     /// `11111111111`: no Packet starts in the data field (132.0 §4.1.2.7.6.4).
     pub const NO_PACKET_START: FirstHeaderPointer = FirstHeaderPointer(0x7FF);
     /// `11111111110`: the data field holds only idle data, an OID frame (132.0 §4.1.2.7.6.5,
@@ -397,10 +400,10 @@ impl TmPrimaryHeader {
     /// `Incomplete` (`needed` = 6) if `prefix` is shorter than the header; `UnsupportedVersion`
     /// (`frame_version`) if the Transfer Frame Version Number is not `00` (TM-002).
     pub fn decode(prefix: &[u8]) -> Result<TmPrimaryHeader> {
-        let Some(&[o0, o1, o2, o3, o4, o5]) = prefix.first_chunk::<PRIMARY_HEADER_LEN>() else {
+        let Some(h) = prefix.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
-        let version = o0 >> 6;
+        let version = layout::Version::get_u8(h);
         if version != VERSION {
             return Err(mismatch(
                 ErrorKind::UnsupportedVersion,
@@ -409,41 +412,56 @@ impl TmPrimaryHeader {
                 u64::from(version),
             ));
         }
-        let scid = (u16::from(o0 & 0x3F) << 4) | u16::from(o1 >> 4);
-        let fhp = (u16::from(o4 & 0b111) << 8) | u16::from(o5);
         Ok(TmPrimaryHeader {
-            scid: SpacecraftId::new(scid).unwrap_or(SCID_ZERO),
-            vcid: VcId::new((o1 >> 1) & 0b111).unwrap_or(VCID_ZERO),
-            ocf_flag: o1 & 1 == 1,
-            mc_frame_count: o2,
-            vc_frame_count: o3,
-            fsh_flag: o4 & 0x80 != 0,
-            sync_flag: o4 & 0x40 != 0,
-            packet_order_flag: o4 & 0x20 != 0,
-            segment_length_id: SegmentLengthId((o4 >> 3) & 0b11),
-            first_header_pointer: FirstHeaderPointer(fhp),
+            scid: SpacecraftId::new(layout::Scid::get_u16(h)).unwrap_or(SCID_ZERO),
+            vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
+            ocf_flag: layout::OcfFlag::flag(h),
+            mc_frame_count: layout::McCount::get_u8(h),
+            vc_frame_count: layout::VcCount::get_u8(h),
+            fsh_flag: layout::FshFlag::flag(h),
+            sync_flag: layout::SyncFlag::flag(h),
+            packet_order_flag: layout::OrderFlag::flag(h),
+            segment_length_id: SegmentLengthId(layout::SegmentLength::get_u8(h)),
+            first_header_pointer: FirstHeaderPointer(layout::Pointer::get_u16(h)),
         })
     }
 
     /// The six header octets (132.0 §4.1.2; API-014, API-020).
     #[must_use]
     pub const fn to_octets(&self) -> [u8; PRIMARY_HEADER_LEN] {
-        let [scid_hi, scid_lo] = self.scid.get().to_be_bytes();
-        let [fhp_hi, fhp_lo] = self.first_header_pointer.0.to_be_bytes();
-        let o0 = (VERSION << 6) | ((scid_hi & 0b11) << 4) | (scid_lo >> 4);
-        let o1 = (scid_lo << 4) | (self.vcid.get() << 1) | flag(self.ocf_flag, 0);
-        let o4 = flag(self.fsh_flag, 7)
-            | flag(self.sync_flag, 6)
-            | flag(self.packet_order_flag, 5)
-            | (self.segment_length_id.0 << 3)
-            | (fhp_hi & 0b111);
-        [o0, o1, self.mc_frame_count, self.vc_frame_count, o4, fhp_lo]
+        let mut h = [0_u8; PRIMARY_HEADER_LEN];
+        layout::Version::put_u8(&mut h, VERSION);
+        layout::Scid::put_u16(&mut h, self.scid.get());
+        layout::Vcid::put_u8(&mut h, self.vcid.get());
+        layout::OcfFlag::put_flag(&mut h, self.ocf_flag);
+        layout::McCount::put_u8(&mut h, self.mc_frame_count);
+        layout::VcCount::put_u8(&mut h, self.vc_frame_count);
+        layout::FshFlag::put_flag(&mut h, self.fsh_flag);
+        layout::SyncFlag::put_flag(&mut h, self.sync_flag);
+        layout::OrderFlag::put_flag(&mut h, self.packet_order_flag);
+        layout::SegmentLength::put_u8(&mut h, self.segment_length_id.0);
+        layout::Pointer::put_u16(&mut h, self.first_header_pointer.0);
+        h
     }
 }
 
-/// `1 << bit` if `set`, else 0.
-const fn flag(set: bool, bit: u32) -> u8 {
-    if set { 1 << bit } else { 0 }
+/// The fields of the Primary Header by bit position (132.0 §4.1.2, Figure 4-2; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::PRIMARY_HEADER_LEN as N;
+
+    pub(super) type Version = Field<N, 0, 2>;
+    pub(super) type Scid = Field<N, 2, 10>;
+    pub(super) type Vcid = Field<N, 12, 3>;
+    pub(super) type OcfFlag = Field<N, 15, 1>;
+    pub(super) type McCount = Field<N, 16, 8>;
+    pub(super) type VcCount = Field<N, 24, 8>;
+    pub(super) type FshFlag = Field<N, 32, 1>;
+    pub(super) type SyncFlag = Field<N, 33, 1>;
+    pub(super) type OrderFlag = Field<N, 34, 1>;
+    pub(super) type SegmentLength = Field<N, 35, 2>;
+    pub(super) type Pointer = Field<N, 37, 11>;
 }
 
 #[cfg(test)]
