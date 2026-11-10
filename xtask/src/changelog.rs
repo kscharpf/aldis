@@ -110,7 +110,8 @@ struct Merges {
 }
 
 /// Reads the merges from `git log --first-parent --merges --format=%s%x1f%b%x1e` output, oldest
-/// first.
+/// first. A pull request merged more than once (a train constituent updated before the train
+/// merged) is listed once, at its first merge's place, with its newest title.
 fn parse_merges(log: &str) -> Merges {
     let mut out = Merges {
         prs: Vec::new(),
@@ -136,7 +137,15 @@ fn parse_merges(log: &str) -> Merges {
             (None, _) => out.skipped.push(format!("not a pull request: {subject}")),
         }
     }
-    out.prs.reverse();
+    let mut deduped: Vec<Merge> = Vec::with_capacity(out.prs.len());
+    for m in out.prs.into_iter().rev() {
+        if let Some(existing) = deduped.iter_mut().find(|e| e.number == m.number) {
+            existing.title = m.title;
+        } else {
+            deduped.push(m);
+        }
+    }
+    out.prs = deduped;
     out
 }
 
@@ -657,6 +666,32 @@ mod tests {
         );
         assert_eq!(m.total, 3);
         assert!(expand_trains(log, |_| Err("no".to_owned()), |_, _| None).is_err());
+
+        // A constituent updated in place on the train (merged twice) is listed once, at its
+        // first merge's place, with the newer merge's title.
+        let updated = expand_trains(
+            log,
+            |_| {
+                Ok(
+                    "p5 p6\x1fMerge pull request #4 from a/f\x1ffeat: a (updated)\x1e\
+                    p1 p2\x1fMerge pull request #5 from a/e\x1ffix: b\x1e\
+                    p3 p4\x1fMerge pull request #4 from a/f\x1ffeat: a\x1e"
+                        .to_owned(),
+                )
+            },
+            |_, _| None,
+        )
+        .unwrap();
+        let m2 = parse_merges(&updated);
+        assert_eq!(
+            m2.prs,
+            [
+                merge(2, "feat: solo"),
+                merge(4, "feat: a (updated)"),
+                merge(5, "fix: b")
+            ]
+        );
+        assert_eq!(m2.total, 4);
     }
 
     #[test]

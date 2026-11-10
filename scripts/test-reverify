@@ -101,7 +101,31 @@ cat >"$work/bin/gh" <<'EOF'
 case "$1 $2" in
 "pr view")
     [ ! -e "$STUB/pr-view-fails" ] || exit 1
-    echo "$(cat "$STUB/pr-state" 2>/dev/null || echo OPEN) $(cat "$STUB/pr-$3")"
+    if [ -e "$STUB/pr-$3.json" ]; then
+        filter=""
+        prev=""
+        for a in "$@"; do
+            [ "$prev" = --jq ] && filter="$a"
+            prev="$a"
+        done
+        jq -r "$filter" "$STUB/pr-$3.json"
+    elif [[ "$*" == *"--json body"* ]]; then
+        cat "$STUB/pr-$3-body" 2>/dev/null || true
+    else
+        echo "$(cat "$STUB/pr-state" 2>/dev/null || echo OPEN) $(cat "$STUB/pr-$3")"
+    fi
+    ;;
+"api "*)
+    filter=""
+    prev=""
+    for a in "$@"; do
+        [ "$prev" = --jq ] && filter="$a"
+        prev="$a"
+    done
+    case "$2" in
+    */protection) echo '{}' | jq -r "$filter" ;;
+    *) echo '[]' | jq -r "$filter" ;;
+    esac
     ;;
 "pr list")
     # $STUB/open-prs holds `<number> <branch>` lines; the stub prints them as the JSON that gh
@@ -942,6 +966,133 @@ reset ok
 run --all-behind
 expect "--alone --all-behind covers every PR" said "behind origin/main: 7 50"
 rv=("$script")
+
+# The train cases need jq (the gh stub runs --jq filters): missing jq is a failure, not a skip.
+command -v jq >/dev/null 2>&1 || bad "the train cases need jq (not installed)"
+if command -v jq >/dev/null 2>&1; then
+    echo "# a train PR merges updated constituent branches and checks READY FOR TRAIN"
+    marker='🤖 Generated with [Claude Code](https://claude.com/claude-code)'
+    c_pr() { # c_pr <n> <branch> <title> <reviewed: 1|0>
+        local sha reviews='[]' comments='[]'
+        sha="$(git -C "$work/origin.git" rev-parse "refs/heads/$2")"
+        if [ "$4" = 1 ]; then
+            reviews='[{"author":{"login":"rev"},"state":"COMMENTED","body":"ok",
+                       "submittedAt":"2026-01-02T00:00:00Z"}]'
+            comments="$(jq -nc --arg m "$marker" --arg s "$sha" '[{author:{login:"me"},
+                createdAt:"2026-01-03T00:00:00Z",
+                body:("Fixed in " + ($s | .[0:9]) + ".\n\n" + $m)}]')"
+        fi
+        jq -nc --arg b "$2" --arg t "$3" --arg sha "$sha" \
+            --argjson reviews "$reviews" --argjson comments "$comments" '{
+            state:"OPEN", isDraft:false, headRefName:$b, headRepositoryOwner:{login:"o"},
+            baseRefName:"main", headRefOid:$sha, reviewDecision:"", title:$t, body:"",
+            statusCheckRollup:[], labels:[], reviews:$reviews, comments:$comments
+        }' >"$stub/pr-$1.json"
+    }
+    git -C "$work/other" fetch -q origin
+    for b in c-a c-b; do
+        git -C "$work/other" checkout -q -B "$b" origin/main
+        echo "v1" >"$work/other/$b.txt"
+        git -C "$work/other" add "$b.txt"
+        git -C "$work/other" commit -q -m "$b v1"
+        git -C "$work/other" push -q -f origin "$b" >/dev/null 2>&1
+    done
+    git -C "$work/other" checkout -q -B train/2026-11-08-1 origin/main
+    git -C "$work/other" merge -q --no-ff -m "Merge pull request #61 from o/c-a" \
+        -m "feat(m1/wp-1): add a" origin/c-a
+    git -C "$work/other" merge -q --no-ff -m "Merge pull request #62 from o/c-b" \
+        -m "fix(spp): fix b" origin/c-b
+    git -C "$work/other" push -q -f origin train/2026-11-08-1 >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    echo train/2026-11-08-1 >"$stub/pr-60"
+    printf '%s\n' "- #61 feat(m1/wp-1): add a" "- #62 fix(spp): fix b" >"$stub/pr-60-body"
+    c_pr 61 c-a "feat(m1/wp-1): add a" 1
+    c_pr 62 c-b "fix(spp): fix b" 1
+
+    # Constituent #61 gets a new commit, reviewed and answered at the new head.
+    git -C "$work/other" checkout -q c-a
+    echo "v2" >"$work/other/c-a.txt"
+    git -C "$work/other" commit -q -am "c-a v2"
+    git -C "$work/other" push -q origin c-a >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    c_pr 61 c-a "feat(m1/wp-1): add a" 1
+    sha_a2="$(tip c-a)"
+    reset ok
+    run 60
+    expect "the updated constituent is merged into the train" \
+        said "#60: merged constituent #61 (c-a ${sha_a2:0:7})"
+    expect "the unchanged constituent is not merged again" \
+        bash -c '! printf "%s\n" "$0" | grep -Fq "merged constituent #62"' "$out"
+    expect "the train verifies and succeeds" said "#60 train/2026-11-08-1 local success"
+    expect "the pushed train head contains the updated constituent head" \
+        git -C "$work/origin.git" merge-base --is-ancestor "$sha_a2" refs/heads/train/2026-11-08-1
+    expect "the merge commit carries the PR number and title" \
+        bash -c 'git -C "$0" log --first-parent --format="%s|%b" -n 2 \
+            refs/heads/train/2026-11-08-1 |
+            grep -Fq "Merge pull request #61 from o/c-a|feat(m1/wp-1): add a"' "$work/origin.git"
+
+    # Constituent #62 gets a new commit that is not reviewed yet: refused, nothing pushed.
+    head_before="$(tip train/2026-11-08-1)"
+    git -C "$work/other" checkout -q c-b
+    echo "v2" >"$work/other/c-b.txt"
+    git -C "$work/other" commit -q -am "c-b v2"
+    git -C "$work/other" push -q origin c-b >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    c_pr 62 c-b "fix(spp): fix b" 0
+    reset ok
+    run 60
+    expect "an unreviewed constituent update is refused" said "#62 cannot ride a train"
+    expect "refusal exits 1" status_is 1
+    expect "nothing pushed when a constituent is not ready" \
+        test "$(tip train/2026-11-08-1)" = "$head_before"
+
+    # Both constituents move, #61 merges cleanly and #62 conflicts with #61: aborted and reset.
+    git -C "$work/other" checkout -q c-a
+    echo "from-a" >"$work/other/clash.txt"
+    git -C "$work/other" add clash.txt
+    git -C "$work/other" commit -q -m "c-a clash"
+    git -C "$work/other" push -q origin c-a >/dev/null 2>&1
+    git -C "$work/other" checkout -q c-b
+    echo "from-b" >"$work/other/clash.txt"
+    git -C "$work/other" add clash.txt
+    git -C "$work/other" commit -q -m "c-b clash"
+    git -C "$work/other" push -q origin c-b >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    c_pr 61 c-a "feat(m1/wp-1): add a" 1
+    c_pr 62 c-b "fix(spp): fix b" 1
+    reset ok
+    run 60
+    expect "a constituent conflict fails" said "merge conflict with #62 (c-b)"
+    expect "nothing pushed on a constituent conflict" \
+        test "$(tip train/2026-11-08-1)" = "$head_before"
+    wt60="$repo/.claude/worktrees/reverify-60"
+    expect "the train worktree is reset to origin's head after a conflict" \
+        test "$(git -C "$wt60" rev-parse HEAD)" = "$head_before"
+
+    # Constituent #62 is rebased onto main and force-pushed: the train holds its old commits, so
+    # merging the new head would land commits the PR no longer has. Refused, nothing pushed.
+    old_b="$(tip c-b)"
+    git -C "$work/other" checkout -q -B c-b origin/main
+    echo "rebased" >"$work/other/c-b.txt"
+    git -C "$work/other" add c-b.txt
+    git -C "$work/other" commit -q -m "c-b rebased"
+    git -C "$work/other" push -q -f origin c-b >/dev/null 2>&1
+    git -C "$work/other" checkout -q main
+    c_pr 61 c-a "feat(m1/wp-1): add a" 1
+    c_pr 62 c-b "fix(spp): fix b" 1
+    reset ok
+    run 60
+    expect "a rewritten constituent is refused" said "#62 was rewritten"
+    expect "the refusal names the rebuild command" said "scripts/train --rebuild 60 --without 62"
+    expect "refusal of a rewritten constituent exits 1" status_is 1
+    expect "nothing pushed for a rewritten constituent" \
+        test "$(tip train/2026-11-08-1)" = "$head_before"
+    expect "the train worktree is reset after a rewritten constituent" \
+        test "$(git -C "$wt60" rev-parse HEAD)" = "$head_before"
+    expect "the rewritten head is not the one the train holds" \
+        bash -c '! git -C "$0" merge-base --is-ancestor "$1" "$2"' \
+        "$work/origin.git" "$old_b" "$(tip c-b)"
+fi
 
 if [ "$failures" -eq 0 ]; then
     echo "reverify: every case holds"

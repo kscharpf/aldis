@@ -507,9 +507,10 @@ constituent. Reviews: each constituent pull request.
 
 Merge with a merge commit, never squash or rebase: \`cargo xtask changelog\` reads the
 constituents from the merges between the first and the second parent of the merge commit.
-The constituents become merged when this one does; a
-failure drops the pull request that caused it and rebuilds the train
-(\`scripts/train --rebuild <this PR> --without <PR>\`).
+The constituents become merged when this one does; on a
+failure, either fix the constituent PR and run \`scripts/reverify <this PR>\` to merge the
+updated constituent branch and verify again, or drop the pull request that caused it and
+rebuild the train (\`scripts/train --rebuild <this PR> --without <PR>\`).
 
 $marker"
 title="chore(train): $name, $(joined "${prs[@]}")"
