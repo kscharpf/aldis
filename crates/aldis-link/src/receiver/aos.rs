@@ -2,6 +2,7 @@
 //! OI-70, OI-77, OI-78).
 
 use aldis_aos::{BitstreamPointer, Bpdu};
+use aldis_core::bits::be_uint;
 use aldis_core::ids::VcId;
 use aldis_core::{FrameFormat, Result};
 
@@ -15,6 +16,19 @@ use crate::protocol::Aos;
 const PRIMARY_HEADER_LEN: usize = Aos::PRIMARY_HEADER_LEN;
 /// The VCID of an OID frame, all ones (732.0 §4.1.2.3.3, §4.1.4.1.5.1).
 const OID_VC: u8 = 63;
+
+/// The fields the receiver reads of the AOS Primary Header by bit position (732.0 §4.1.2;
+/// GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::PRIMARY_HEADER_LEN as N;
+
+    pub(super) type Vcid = Field<N, 10, 6>;
+    pub(super) type Replay = Field<N, 40, 1>;
+    pub(super) type CycleUse = Field<N, 41, 1>;
+    pub(super) type Cycle = Field<N, 44, 4>;
+}
 
 /// The parameters of an AOS physical channel that the receiver needs (732.0 §5 Table 5-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -140,10 +154,11 @@ impl ReceiveProtocol for Aos {
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         let frame = Self::plain_octets(plain);
-        let [_, b1, c0, c1, c2, sig] = header::<PRIMARY_HEADER_LEN>(frame)?;
-        let vc: VcId<6> = vc_of::<Aos>(b1 & 0x3F)?;
-        let replay = sig & 0x80 != 0;
-        let cycle_use = sig & 0x40 != 0;
+        let h = header::<PRIMARY_HEADER_LEN>(frame)?;
+        let [_, _, c0, c1, c2, _] = h;
+        let vc: VcId<6> = vc_of::<Aos>(layout::Vcid::get_u8(&h))?;
+        let replay = layout::Replay::flag(&h);
+        let cycle_use = layout::CycleUse::flag(&h);
         let oid = vc.get() == OID_VC;
         let params = cx.params(vc);
         let channel = *cx.cfg().channel();
@@ -177,9 +192,9 @@ impl ReceiveProtocol for Aos {
         let mut raised = false;
         if !oid && !replay {
             let (value, bits) = if cycle_use {
-                (u64::from(u32::from_be_bytes([sig & 0x0F, c0, c1, c2])), 28)
+                (be_uint(&[layout::Cycle::get_u8(&h), c0, c1, c2]), 28)
             } else {
-                (u64::from(u32::from_be_bytes([0, c0, c1, c2])), 24)
+                (be_uint(&[c0, c1, c2]), 24)
             };
             // A change of the Cycle Use Flag restarts the count: a discontinuity (OI-78).
             let changed = cx.change_cycle_use(vc, cycle_use);

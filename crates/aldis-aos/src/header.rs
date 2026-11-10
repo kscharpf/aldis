@@ -102,10 +102,10 @@ impl VcFrameCount {
     /// reduced modulo the field, which is how a counter that wraps is written (LNK-032).
     #[must_use]
     pub const fn wrapping(running: u64) -> (VcFrameCount, FrameCountCycle) {
-        let [.., c0, c1, c2, c3] = running.to_be_bytes();
+        let h = running.to_be_bytes();
         (
-            VcFrameCount(u32::from_be_bytes([0, c1, c2, c3])),
-            FrameCountCycle(c0 & FrameCountCycle::MAX),
+            VcFrameCount(running_layout::Count::get_u32(&h)),
+            FrameCountCycle(running_layout::Cycle::get_u8(&h)),
         )
     }
 }
@@ -237,7 +237,7 @@ pub(crate) fn correct(prefix: &[u8], pc: &AosPhysicalChannelConfig) -> Result<Re
 /// `UnsupportedVersion` (`frame_version`) unless the first header octet has version `01`
 /// (732.0 §4.1.2.2.2.2; AOS-011).
 pub(crate) const fn check_version(octet0: u8) -> Result<()> {
-    let version = octet0 >> 6;
+    let version = layout::FirstOctetVersion::get_u8(&[octet0]);
     if version == VERSION {
         Ok(())
     } else {
@@ -285,11 +285,11 @@ impl AosPrimaryHeader {
     /// The fields of corrected header octets whose version is checked.
     pub(crate) fn parse(received: &Received, edition: AosEdition) -> AosPrimaryHeader {
         let h = &received.octets;
-        let lsb = layout::ScidLow::get_u16(h);
+        let lsb = layout::ScidLow::get_u8(h);
         let bits_42_43 = layout::ScidHigh::get_u8(h);
         let (scid, spare) = match edition {
-            AosEdition::Issue5 => ((u16::from(bits_42_43) << 8) | lsb, 0),
-            AosEdition::Issue4Compatible => (lsb, bits_42_43),
+            AosEdition::Issue5 => (u16::from_be_bytes([bits_42_43, lsb]), 0),
+            AosEdition::Issue4Compatible => (u16::from(lsb), bits_42_43),
         };
         AosPrimaryHeader {
             edition,
@@ -470,9 +470,10 @@ impl AosPrimaryHeader {
     #[must_use]
     pub const fn to_octets(&self) -> [u8; 8] {
         let [hi, lo] = self.scid.get().to_be_bytes();
+        // The field takes the low two bits of the value.
         let bits_42_43 = match self.edition {
-            AosEdition::Issue5 => hi & 0b11,
-            AosEdition::Issue4Compatible => self.spare & 0b11,
+            AosEdition::Issue5 => hi,
+            AosEdition::Issue4Compatible => self.spare,
         };
         let mut h = [0_u8; 8];
         layout::Version::put_u8(&mut h, VERSION);
@@ -490,6 +491,15 @@ impl AosPrimaryHeader {
     }
 }
 
+/// The low 28 bits of a running count as the 8 octets of its big-endian form: the VC Frame Count
+/// in the low 24 bits and the cycle in the 4 above (732.0 §4.1.2.4, §4.1.2.5.5; GEN-051).
+mod running_layout {
+    use aldis_core::bits::Field;
+
+    pub(super) type Cycle = Field<8, 36, 4>;
+    pub(super) type Count = Field<8, 40, 24>;
+}
+
 /// The fields of the Primary Header by bit position (732.0 §4.1.2, Figure 4-2; GEN-051).
 mod layout {
     use aldis_core::bits::Field;
@@ -497,6 +507,7 @@ mod layout {
     /// The header with its FHEC.
     const N: usize = 8;
 
+    pub(super) type FirstOctetVersion = Field<1, 0, 2>;
     pub(super) type Version = Field<N, 0, 2>;
     pub(super) type ScidLow = Field<N, 2, 8>;
     pub(super) type Vcid = Field<N, 10, 6>;

@@ -70,6 +70,22 @@ fn raw<I: Into<u8>>(id: I) -> u8 {
     id.into()
 }
 
+/// The fields of the Segment Header octet of a TC FDU by bit position (232.0 §4.1.3.2.2;
+/// GEN-051).
+mod segment {
+    use aldis_core::bits::Field;
+
+    pub(super) type Flags = Field<1, 0, 2>;
+    pub(super) type MapId = Field<1, 2, 6>;
+}
+
+/// The first octet of a USLP TFDF header by bit position (732.1 §4.1.4.2; GEN-051).
+mod tfdf {
+    use aldis_core::bits::Field;
+
+    pub(super) type Rule = Field<1, 0, 3>;
+}
+
 /// How an FDU relates to its SDU, whichever rule or flags said so (232.0 Table 4-2; 732.1
 /// Table 4-3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1002,14 +1018,14 @@ mod tc_impl {
             if user.is_empty() {
                 return Err(no_data);
             }
-            let unit = match SequenceFlags::from_bits(header >> 6) {
+            let unit = match SequenceFlags::from_bits(segment::Flags::get_u8(&[header])) {
                 SequenceFlags::First => Unit::First(user),
                 SequenceFlags::Continuing => Unit::Continuing(user),
                 SequenceFlags::Last => Unit::Last(user),
                 SequenceFlags::Unsegmented => Unit::Whole(user),
             };
             Ok(Parsed {
-                map: header & 0x3F,
+                map: segment::MapId::get_u8(&[header]),
                 gap: false,
                 fixed_length: false,
                 unit,
@@ -1048,7 +1064,10 @@ mod uslp_impl {
             let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
             let &first = data.first().ok_or(invalid(field::FRAME_DATA_FIELD))?;
             let map = meta.map.get();
-            let (gap, rule) = (meta.gap, ConstructionRule::from_bits(first >> 5));
+            let (gap, rule) = (
+                meta.gap,
+                ConstructionRule::from_bits(tfdf::Rule::get_u8(&[first])),
+            );
             let parsed = |fixed_length, unit| Parsed {
                 map,
                 gap,
