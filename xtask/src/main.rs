@@ -150,8 +150,8 @@ commands:
                                time per worktree; --from <step> skips the steps before the
                                named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
-                               spec-lint, links, layers, consistency, rs020, loops, coverage-off,
-                               restricted, assurance --strict, refapp-deps, vectors validate,
+                               spec-lint, links, layers, consistency, rs020, loops,
+                               coverage-off, restricted, assurance --strict, refapp-deps, vectors validate,
                                vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
