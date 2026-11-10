@@ -97,7 +97,7 @@ mod tests {
         const SDU_HEADER_LEN: usize = 0;
 
         fn extension_len(extension: &bool) -> usize {
-            usize::from(*extension) * 2
+            if *extension { 2 } else { 0 }
         }
 
         fn write_primary_header((): &(), _: &mut [u8]) -> Result<()> {
