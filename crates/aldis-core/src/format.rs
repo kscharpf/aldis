@@ -83,8 +83,38 @@ pub fn put_header(octets: &[u8], len: usize, out: &mut [u8]) -> Result<()> {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::put_header;
-    use crate::error::{ErrorDetail, ErrorKind};
+    use super::{FrameFormat, put_header};
+    use crate::error::{ErrorDetail, ErrorKind, Result};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Two;
+
+    impl FrameFormat for Two {
+        type HeaderExtension = bool;
+        type PrimaryHeader = ();
+        const PRIMARY_HEADER_LEN: usize = 5;
+        const PACKET_HEADER_LEN: usize = 0;
+        const SDU_HEADER_LEN: usize = 0;
+
+        fn extension_len(extension: &bool) -> usize {
+            usize::from(*extension) * 2
+        }
+
+        fn write_primary_header((): &(), _: &mut [u8]) -> Result<()> {
+            Ok(())
+        }
+
+        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
+    }
+
+    #[test]
+    fn the_header_length_adds_the_extension() {
+        // req: LNK-001
+        assert_eq!(Two::primary_header_len(&false), 5);
+        assert_eq!(Two::primary_header_len(&true), 7);
+        assert!(Two::write_primary_header(&(), &mut []).is_ok());
+        Two::write_oid_data_header(0, &mut []);
+    }
 
     #[test]
     fn a_header_goes_to_the_start_of_the_buffer_or_nowhere() {

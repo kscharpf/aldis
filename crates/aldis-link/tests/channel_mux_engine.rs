@@ -1182,3 +1182,13 @@ fn a_uslp_frame_length_beyond_the_header_field_is_an_error_not_a_clamped_length(
     assert_eq!(e.kind(), ErrorKind::OutOfRange);
     assert_eq!(e.field(), Some(field::FRAME_LEN));
 }
+
+#[test]
+fn an_offer_the_adapter_refuses_is_counted_and_returned() {
+    // req: LNK-002, LNK-076
+    let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
+    let e = aldis_core::Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID);
+    assert_eq!(mux.refuse(e), e);
+    assert_eq!(mux.status().refused.get(), 1);
+    assert_eq!(mux.status().offers.get(), 0);
+}
