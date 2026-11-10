@@ -30,8 +30,10 @@ use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig,
     ChannelMuxHead, Cop, FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput,
-    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmRole, TmVc, UslpChannel, UslpVc, VcConfig,
+    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
+    UslpOffer, UslpVc, VcConfig,
 };
+use aldis::link::common::Qos;
 use aldis::link::policy::{MuxPolicy, Weight};
 use aldis::link::protocol::{Aos, Route, Tm, Uslp};
 use aldis::uslp::{SourceOrDestination, VcfCountLen};
@@ -514,6 +516,34 @@ trait MxProtocol: MuxProtocol {
 
     /// The parameters of the VC `vc`.
     fn vc_params(vc: &aldis_channel_mux_vc_t) -> Result<Self::VcParams>;
+
+    /// The metadata of an offer from the members of the flat input: those the protocol has.
+    ///
+    /// # Errors
+    /// `InvalidField` for a member the protocol's frames cannot have (LNK-076): the route
+    /// (`map_id`) or the COP-1 block (`cop_in_effect`) of a TM or AOS offer.
+    fn offer_meta(flat: FlatOffer) -> Result<Self::OfferMeta>;
+}
+
+/// The members of the flat input of an offer, whichever protocol reads it.
+#[derive(Debug, Clone, Copy)]
+struct FlatOffer {
+    pointer: Option<u16>,
+    route: Option<Route>,
+    cop: Option<Cop>,
+}
+
+impl FlatOffer {
+    /// `InvalidField` for a route or a COP-1 block, for a protocol that has neither.
+    fn refuse_route_and_cop(self) -> Result<()> {
+        if self.route.is_some() {
+            Err(Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID))
+        } else if self.cop.is_some() {
+            Err(Error::new(ErrorKind::InvalidField).with_field(field::COP_IN_EFFECT))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl MxProtocol for Tm {
@@ -543,6 +573,13 @@ impl MxProtocol for Tm {
         params.fsh = initial_fsh(vc.fsh_len, &vc.fsh_init)?;
         Ok(params)
     }
+
+    fn offer_meta(flat: FlatOffer) -> Result<TmOffer> {
+        flat.refuse_route_and_cop()?;
+        Ok(TmOffer {
+            pointer: flat.pointer,
+        })
+    }
 }
 
 impl MxProtocol for Aos {
@@ -559,6 +596,10 @@ impl MxProtocol for Aos {
         Ok(AosVc {
             ocf: initial_ocf(vc.ocf, vc.ocf_init)?,
         })
+    }
+
+    fn offer_meta(flat: FlatOffer) -> Result<()> {
+        flat.refuse_route_and_cop()
     }
 }
 
@@ -580,6 +621,13 @@ impl MxProtocol for Uslp {
             VcfCountLen::new(vc.uslp_vcf_len_exp)?,
             flag(vc.uslp_cop)?,
         )
+    }
+
+    fn offer_meta(flat: FlatOffer) -> Result<UslpOffer> {
+        Ok(UslpOffer {
+            route: flat.route,
+            cop: flat.cop,
+        })
     }
 }
 
@@ -750,8 +798,8 @@ fn scope(input: &aldis_channel_mux_input_t) -> Result<Scope> {
     })
 }
 
-/// The offered field of `input`, with `data` as its octets (LNK-076).
-fn offer<'a>(input: &aldis_channel_mux_input_t, data: &'a [u8]) -> Result<Offer<'a>> {
+/// The members of the offer in `input` (LNK-076).
+fn flat_offer(input: &aldis_channel_mux_input_t) -> Result<FlatOffer> {
     let pointer = flag(input.pointer_present)?.then_some(input.pointer);
     let route = if flag(input.route_present)? {
         Some(Route {
@@ -770,12 +818,30 @@ fn offer<'a>(input: &aldis_channel_mux_input_t, data: &'a [u8]) -> Result<Offer<
     } else {
         None
     };
+    Ok(FlatOffer { pointer, route, cop })
+}
+
+/// The offered field of `input`, with `data` as its octets (LNK-076).
+///
+/// A member the protocol has not is refused here, but only for a VC that is configured: for
+/// another VC the engine says `UnknownChannel`, as it does for any offer.
+fn offer<'a, P: MxProtocol>(
+    engine: &mut Mx<P>,
+    input: &aldis_channel_mux_input_t,
+    data: &'a [u8],
+) -> Result<Offer<'a, P>> {
+    let flat = flat_offer(input)?;
+    let meta = match P::offer_meta(flat) {
+        Ok(meta) => meta,
+        Err(e) if engine.config().field_len(input.vc_id, Qos::SequenceControlled).is_some() => {
+            return Err(engine.refuse(e));
+        }
+        Err(_) => P::OfferMeta::default(),
+    };
     Ok(Offer {
         vc: input.vc_id,
         field: data,
-        pointer,
-        route,
-        cop,
+        meta,
     })
 }
 
@@ -816,7 +882,8 @@ fn mx_run<P: MxProtocol>(
 ) -> Result<aldis_channel_mux_actions_t> {
     let list: MuxActions = match parse::<aldis_channel_mux_input>(input.kind)? {
         aldis_channel_mux_input::ALDIS_CHANNEL_MUX_INPUT_OFFER => {
-            engine.step(MuxInput::Offer(offer(input, data)?), area)?
+            let offered = offer(engine, input, data)?;
+            engine.step(MuxInput::Offer(offered), area)?
         }
         aldis_channel_mux_input::ALDIS_CHANNEL_MUX_INPUT_SET_OCF => engine.step(
             MuxInput::SetOcf {

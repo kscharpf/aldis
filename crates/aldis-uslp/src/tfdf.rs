@@ -273,6 +273,35 @@ pub struct TfdfHeader {
     pub upid: Upid,
 }
 
+/// A data field of a VC of packets, read by [`TfdfHeader::parse_packet_field`] (732.1
+/// §4.1.4.2; LNK-060).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PacketField<'a> {
+    /// The TFDF is of only idle data (UPID "Only Idle Data").
+    OnlyIdle {
+        /// The TFDZ.
+        zone: &'a [u8],
+    },
+    /// Packets, rule `000`: the First Header Pointer, below the TFDZ length if it is an offset.
+    Packets {
+        /// The pointer.
+        pointer: FirstHeaderPointer,
+        /// The TFDZ.
+        zone: &'a [u8],
+    },
+}
+
+/// The fields of the TFDF Header by bit position (732.1 §4.1.4.2, Figure 4-5; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    const N: usize = 3;
+
+    pub(super) type Rule = Field<N, 0, 3>;
+    pub(super) type Upid = Field<N, 3, 5>;
+    pub(super) type Pointer = Field<N, 8, 16>;
+}
+
 /// Length of the TFDF Header of a fixed-length TFDZ, and of the VCA SDU and OID data of a
 /// fixed-length frame: 3 octets (§4.1.4.2.1.2; USLP-005).
 pub const FIXED_TFDF_HEADER_LEN: usize = 3;
@@ -305,12 +334,29 @@ impl TfdfHeader {
     /// API-020).
     #[must_use]
     pub const fn octets(&self) -> [u8; 3] {
-        let first = (self.rule.rule().bits() << 5) | (self.upid.bits() & 0x1F);
-        let [p0, p1] = match self.rule.pointer() {
-            Some(p) => p.to_be_bytes(),
-            None => [0, 0],
-        };
-        [first, p0, p1]
+        let mut h = [0_u8; FIXED_TFDF_HEADER_LEN];
+        layout::Rule::put_u8(&mut h, self.rule.rule().bits());
+        layout::Upid::put_u8(&mut h, self.upid.bits());
+        if let Some(pointer) = self.rule.pointer() {
+            layout::Pointer::put_u16(&mut h, pointer);
+        }
+        h
+    }
+
+    /// The header of an Only Idle Data frame whose data field has `data_len` octets: rule `001`,
+    /// UPID "Only Idle Data", and the Last Valid Octet Pointer at the last octet of the TFDZ
+    /// (732.1 §4.1.4.1.9–11; USLP-009, LNK-030).
+    ///
+    /// A data field has at most 65 536 octets, so the pointer fits its 16 bits.
+    #[must_use]
+    pub const fn only_idle_data(data_len: usize) -> TfdfHeader {
+        let [.., a, b] = data_len
+            .saturating_sub(FIXED_TFDF_HEADER_LEN.saturating_add(1))
+            .to_be_bytes();
+        TfdfHeader {
+            rule: TfdzRule::SduStart(LastValidOctet::from_raw(u16::from_be_bytes([a, b]))),
+            upid: Upid::OnlyIdleData,
+        }
     }
 
     /// Reads the header at the start of `tfdf`, whose type the VC sets: `fixed_tfdz` for a
@@ -326,7 +372,7 @@ impl TfdfHeader {
         let &first = data_field
             .first()
             .ok_or_else(|| invalid(field::FRAME_DATA_FIELD))?;
-        let rule = ConstructionRule::from_bits(first >> 5);
+        let rule = ConstructionRule::from_bits(layout::Rule::get_u8(&[first, 0, 0]));
         if rule.is_fixed_length() != fixed_tfdz {
             return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
         }
@@ -348,6 +394,52 @@ impl TfdfHeader {
             upid,
         };
         Ok((header, zone))
+    }
+
+    /// Reads the data field of a VC of packets, whose frames are fixed in length (732.1
+    /// §4.1.4.2; USLP-005, USLP-006, LNK-060, LNK-064).
+    ///
+    /// The UPID is read before the rule: an Only Idle Data TFDF, which an OID frame carries on a
+    /// VC that has packets, has rule `001` there (§4.1.4.1.9), and its zone is idle whatever the
+    /// rule, so the field is idle data and not an error. Any other UPID is not compared with the
+    /// VC's: the receiver routes a TFDF to its service by the UPID. Then the rule must be `000`.
+    ///
+    /// # Errors
+    /// `InvalidField` (`frame_data_field`) if the field holds no TFDZ octet after the three
+    /// octets of the header; `InvalidField` (`tfdz_construction_rule`) for a rule other than
+    /// `000` on a field that is not idle data; `Malformed` (`fhp_lvo_pointer`) for a pointer
+    /// other than `0xFFFF` that is not below the TFDZ length.
+    pub fn parse_packet_field(data_field: &[u8]) -> Result<PacketField<'_>, Error> {
+        let [first, p0, p1, zone @ ..] = data_field else {
+            return Err(invalid(field::FRAME_DATA_FIELD));
+        };
+        if zone.is_empty() {
+            return Err(invalid(field::FRAME_DATA_FIELD));
+        }
+        let head = [*first, 0, 0];
+        if Upid::from_field(layout::Upid::get_u8(&head)) == Upid::OnlyIdleData {
+            return Ok(PacketField::OnlyIdle { zone });
+        }
+        if ConstructionRule::from_bits(layout::Rule::get_u8(&head))
+            != ConstructionRule::PacketsSpanningFrames
+        {
+            return Err(invalid(field::TFDZ_CONSTRUCTION_RULE));
+        }
+        match FirstHeaderPointer::from_raw(u16::from_be_bytes([*p0, *p1])) {
+            FirstHeaderPointer::PacketStartsAt(n) if usize::from(n.get()) < zone.len() => {
+                Ok(PacketField::Packets {
+                    pointer: FirstHeaderPointer::PacketStartsAt(n),
+                    zone,
+                })
+            }
+            FirstHeaderPointer::PacketStartsAt(_) => {
+                Err(Error::new(ErrorKind::Malformed).with_field(field::FHP_LVO_POINTER))
+            }
+            FirstHeaderPointer::NoPacketStartOrEnd => Ok(PacketField::Packets {
+                pointer: FirstHeaderPointer::NoPacketStartOrEnd,
+                zone,
+            }),
+        }
     }
 
     /// `OutOfRange` (`fhp_lvo_pointer`) unless the pointer is `0xFFFF` or below `tfdz_len`
@@ -374,6 +466,59 @@ pub(crate) mod tests {
     use crate::field;
     use crate::upid::Upid;
     use aldis_core::{ErrorDetail, ErrorKind};
+
+    #[test]
+    fn packet_field_reads_the_upid_before_the_rule() {
+        // req: USLP-005, USLP-006, USLP-009, LNK-064
+        use super::PacketField;
+        let idle = Upid::OnlyIdleData.bits();
+        // An Only Idle Data TFDF has rule `001` in an OID frame: idle, not a rule error.
+        let oid = [(0b001 << 5) | idle, 0x00, 0x05, 1, 2];
+        assert_eq!(
+            TfdfHeader::parse_packet_field(&oid),
+            Ok(PacketField::OnlyIdle { zone: &[1, 2] })
+        );
+        let packets = |rule: u8, p: u16, zone: [u8; 2]| {
+            let [a, b] = p.to_be_bytes();
+            [(rule << 5) | Upid::Packets.bits(), a, b, zone[0], zone[1]]
+        };
+        let ok = packets(0b000, 1, [9, 9]);
+        assert_eq!(
+            TfdfHeader::parse_packet_field(&ok),
+            Ok(PacketField::Packets {
+                pointer: FirstHeaderPointer::PacketStartsAt(TfdzOffset::new(1).unwrap()),
+                zone: &[9, 9]
+            })
+        );
+        let none = packets(0b000, POINTER_NONE, [9, 8]);
+        assert_eq!(
+            TfdfHeader::parse_packet_field(&none),
+            Ok(PacketField::Packets {
+                pointer: FirstHeaderPointer::NoPacketStartOrEnd,
+                zone: &[9, 8]
+            })
+        );
+        let e = TfdfHeader::parse_packet_field(&packets(0b000, 2, [9, 9])).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::Malformed);
+        assert_eq!(e.field(), Some(field::FHP_LVO_POINTER));
+        let e = TfdfHeader::parse_packet_field(&packets(0b111, 0, [9, 9])).unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::InvalidField);
+        assert_eq!(e.field(), Some(field::TFDZ_CONSTRUCTION_RULE));
+        for short in [&[][..], &[0, 0][..], &[0, 0, 0][..]] {
+            let e = TfdfHeader::parse_packet_field(short).unwrap_err();
+            assert_eq!(e.field(), Some(field::FRAME_DATA_FIELD));
+        }
+    }
+
+    #[test]
+    fn the_oid_header_points_at_the_last_octet_of_the_zone() {
+        // req: USLP-009, LNK-030
+        let h = TfdfHeader::only_idle_data(20);
+        assert_eq!(h.upid, Upid::OnlyIdleData);
+        assert_eq!(h.rule.rule(), ConstructionRule::SduStart);
+        assert_eq!(h.rule.pointer(), Some(16));
+        assert_eq!(TfdfHeader::only_idle_data(0).rule.pointer(), Some(0));
+    }
 
     #[test]
     fn rules_and_types() {

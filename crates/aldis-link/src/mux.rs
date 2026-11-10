@@ -30,11 +30,11 @@ use aldis_core::engine::{Actions, OutRange};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{Error, ErrorKind, Result, field};
+use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
 
 use crate::common::{Counter, Occupancy, Qos};
 use crate::policy::{MuxPolicy, Selector, Weight};
-use crate::protocol::{Protocol, Route};
+use crate::protocol::Protocol;
 
 /// The most actions one input of the `ChannelMux` returns (LNK-074).
 ///
@@ -167,12 +167,24 @@ impl Cop {
         }
     }
 
+    /// The kind of the frame, shared with the codecs and FOP-1 (OI-96).
+    ///
+    /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+    #[must_use]
+    pub const fn kind(self) -> CopFrameKind {
+        match self {
+            Cop::TypeAd { .. } => CopFrameKind::Ad,
+            Cop::TypeBd => CopFrameKind::Bd,
+            Cop::TypeBc => CopFrameKind::Bc,
+        }
+    }
+
     /// The Bypass/Sequence Control Flag.
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn bypass(self) -> bool {
-        !matches!(self, Cop::TypeAd { .. })
+        self.kind().bypass_flag()
     }
 
     /// The Protocol Control Command Flag.
@@ -180,7 +192,7 @@ impl Cop {
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
     pub const fn protocol_control(self) -> bool {
-        matches!(self, Cop::TypeBc)
+        self.kind().control_command_flag()
     }
 
     /// The VCF Count the mux takes as given: the Frame Sequence Number of a Type-AD frame.
@@ -195,29 +207,24 @@ impl Cop {
     }
 }
 
-/// A data field offered for a VC (LNK-076): what a generator returns with its octets.
+/// A data field offered for a VC (LNK-076): what a generator returns with its octets, and the
+/// metadata of the protocol `P` (M6 plan WP-2b).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Offer<'a> {
+pub struct Offer<'a, P: MuxProtocol> {
     /// The VCID of the field.
     pub vc: u8,
     /// The field: the TM data field, the AOS `M_PDU`, `B_PDU`, or `VCA_SDU`, the USLP TFDF.
     pub field: &'a [u8],
-    /// The raw First Header Pointer that TM carries in the frame header: required on a TM VC
-    /// of Packets, refused on a TM VC of `VCA_SDUs`, and ignored by AOS and USLP, which carry
-    /// the pointer in the field.
-    pub pointer: Option<u16>,
-    /// The MAP and `QoS` of the field (USLP): the MAP must be the VC's; without a route the VC's
-    /// `QoS` applies. TM and AOS have none.
-    pub route: Option<Route>,
-    /// The COP-1 block, for a USLP VC with COP-1 in effect.
-    pub cop: Option<Cop>,
+    /// What the protocol's frames need besides the field: the pointer of TM, the route and the
+    /// COP-1 block of USLP, nothing of AOS (`()`).
+    pub meta: P::OfferMeta,
 }
 
 /// An input of the `ChannelMux` (docs/04-engines.md §4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MuxInput<'a, P: MuxProtocol, const V: usize> {
     /// A data field for a VC (LNK-076).
-    Offer(Offer<'a>),
+    Offer(Offer<'a, P>),
     /// Replace the OCF slot of the MC or a VC (LNK-033).
     SetOcf {
         /// Whose slot.
@@ -309,13 +316,9 @@ pub struct MuxStatus {
 
 /// The per-frame values the protocol writes into the primary header (LNK-032, LNK-082).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "plain values for the header writers: each is one flag of a header, 132.0 §4.1.2.4, §4.1.2.7; 732.1 §4.1.2.8"
-)]
-pub struct FrameFields {
-    /// The VCID of the frame.
-    pub vc: u8,
+pub struct FrameFields<P: MuxProtocol> {
+    /// The VC of the frame: the OID VC of the protocol for an OID frame.
+    pub vc: P::Vc,
     /// Whether the frame is an OID frame.
     pub oid: bool,
     /// The frame length in octets.
@@ -328,25 +331,44 @@ pub struct FrameFields {
     pub ocf: bool,
     /// Whether the frame has a TM Secondary Header.
     pub secondary: bool,
-    /// The First Header Pointer of a TM frame of Packets or `VCA_SDUs`; unused by an OID frame
-    /// and by the other protocols.
-    pub pointer: u16,
-    /// The Bypass/Sequence Control Flag (USLP); also the `QoS` that selects the count.
-    pub bypass: bool,
-    /// The Protocol Control Command Flag (USLP).
-    pub protocol_control: bool,
+    /// What the offered field gave the header (TM: the First Header Pointer); none of an OID
+    /// frame.
+    pub pointer: Option<P::Pointer>,
+    /// The kind of the frame: the Bypass/Sequence Control and Protocol Control Command Flags of
+    /// USLP, which also select the count; Type-AD for TM and AOS.
+    pub kind: CopFrameKind,
+}
+
+/// What a protocol makes of the metadata of an offer: the kind of the frame, the VCF Count the
+/// offer gave, and the pointer of the header (LNK-076, LNK-082).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Admitted<T> {
+    /// The kind of the frame (Type-AD unless COP-1 or the VC's quality of service says
+    /// otherwise).
+    pub kind: CopFrameKind,
+    /// The VCF Count the offer gives for a Type-AD frame, which the mux counts nothing for.
+    pub given_count: Option<u64>,
+    /// The protocol's own value for the header.
+    pub pointer: T,
 }
 
 /// A frame protocol the `ChannelMux` serves: TM, AOS, or USLP with fixed-length frames
 /// (LNK-001, D3 of the M4 plan).
 ///
-/// The differences between the protocols are the parameters the two associated types hold and
-/// the functions below; the engine has no runtime check of the protocol.
+/// The differences between the protocols are the parameters the associated types hold and
+/// the functions below; the engine has no runtime check of the protocol. The octets of the
+/// primary header and of the data field header of an OID frame come from the codec's
+/// [`FrameFormat`](aldis_core::FrameFormat) (M6 plan WP-2b).
 pub trait MuxProtocol: Protocol {
     /// The parameters of the physical channel and its master channel.
     type Channel: Copy + Debug + Eq;
     /// The parameters of a VC.
     type VcParams: Copy + Debug + Eq;
+    /// What an [`Offer`] carries besides its field (LNK-076).
+    type OfferMeta: Copy + Debug + Eq + Default;
+    /// The value an offer gives the header of its frame: the First Header Pointer of TM, `()`
+    /// where the header has none.
+    type Pointer: Copy + Debug + Eq;
 
     /// Whether the physical channel has an Insert Zone (AOS, USLP; LNK-034).
     const INSERT_ZONE: bool;
@@ -355,8 +377,8 @@ pub trait MuxProtocol: Protocol {
     /// Whether OID frames are expedited (USLP; LNK-030).
     const OID_BYPASS: bool;
 
-    /// The VCID of OID frames: the dedicated VC (TM) or 63 (AOS, USLP; LNK-030).
-    fn oid_vcid(channel: &Self::Channel) -> u8;
+    /// The VC of OID frames: the dedicated VC (TM) or 63 (AOS, USLP; LNK-030).
+    fn oid_vc(channel: &Self::Channel) -> Self::Vc;
     /// The initial `MC_OCF`, if the master channel has one (LNK-033).
     fn mc_ocf(channel: &Self::Channel) -> Option<[u8; OCF_LEN]>;
     /// The initial `MC_FSH`, if the master channel has one (TM).
@@ -365,19 +387,14 @@ pub trait MuxProtocol: Protocol {
     fn vc_ocf(vc: &Self::VcParams) -> Option<[u8; OCF_LEN]>;
     /// The initial `VC_FSH`, if the VC has one (TM).
     fn vc_fsh(vc: &Self::VcParams) -> Option<Fsh>;
-    /// The MAP and `QoS` of a VC (USLP); none on the others.
-    fn vc_route(vc: &Self::VcParams) -> Option<Route>;
-    /// Whether COP-1 is in effect on the VC (USLP, LNK-076).
-    fn vc_cop(vc: &Self::VcParams) -> bool;
-    /// The largest VCF Count the VC's count field holds for the flag `bypass` (USLP).
-    fn vcf_max(vc: &Self::VcParams, bypass: bool) -> u64;
-    /// The First Header Pointer to put in the header for the offered `pointer` (LNK-076,
-    /// LNK-082); 0 where the header has none.
+    /// Checks the metadata of an offer against the VC and says what the frame is (LNK-076,
+    /// LNK-082).
     ///
     /// # Errors
-    /// `InvalidField` or `OutOfRange` (`first_header_pointer`) for a pointer the VC cannot
-    /// have.
-    fn check_pointer(vc: &Self::VcParams, pointer: Option<u16>) -> Result<u16>;
+    /// `InvalidField` (`first_header_pointer`, `map_id`, `cop_in_effect`, `qos`) or
+    /// `OutOfRange` (`first_header_pointer`, `vcf_count`) for a pointer, route, or COP block the
+    /// VC cannot have; `UnknownChannel` (`map_id`) for a MAP the VC does not have.
+    fn admit(vc: &Self::VcParams, meta: &Self::OfferMeta) -> Result<Admitted<Self::Pointer>>;
     /// The relations between the channel and its VCs (LNK-078): called with the VCs in ascending
     /// VCID order.
     ///
@@ -397,22 +414,17 @@ pub trait MuxProtocol: Protocol {
         vc: Option<&Self::VcParams>,
         bypass: bool,
     ) -> Self::HeaderExtension;
-    /// Writes the primary header into `header`, which holds
-    /// [`primary_header_len`](aldis_core::FrameFormat::primary_header_len) of
-    /// [`header_extension`](Self::header_extension) octets (LNK-032, LNK-082).
+    /// The primary header of a frame, as the codec's writer takes it (LNK-032, LNK-082): the
+    /// counts are masked to their fields, and an error-control field is left zero (LNK-035).
     ///
     /// # Errors
-    /// `InternalError` for a frame length the header cannot hold; `check_channel` rules it out.
-    fn write_header(
+    /// `OutOfRange` (`frame_len`) for a USLP frame length above the 16-bit field, a length
+    /// `check_channel` rules out: it is an error, not a clamped length.
+    fn primary_header(
         channel: &Self::Channel,
         vc: Option<&Self::VcParams>,
-        fields: &FrameFields,
-        header: &mut [u8],
-    ) -> Result<()>;
-    /// Writes the data header of an OID frame into `header`, which holds
-    /// [`SDU_HEADER_LEN`](aldis_core::FrameFormat::SDU_HEADER_LEN) octets (the TFDF Header of
-    /// USLP), for a data field of `data_len` octets (LNK-030).
-    fn write_oid_data_header(data_len: usize, header: &mut [u8]);
+        fields: &FrameFields<Self>,
+    ) -> Result<Self::PrimaryHeader>;
 }
 
 /// The parameters of one VC of a `ChannelMux` (LNK-031, LNK-035, LNK-078).
@@ -620,7 +632,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
 
     /// The frame an OID frame is built as: the dedicated VC (TM) or none (AOS, USLP).
     fn oid_vc(&self) -> Option<(usize, &VcConfig<P>)> {
-        self.find(P::oid_vcid(&self.channel))
+        self.find(P::oid_vc(&self.channel).into())
     }
 
     /// The Transfer Frame Secondary Header of a frame of `vc`: its own, else the MC's (TM).
@@ -751,11 +763,10 @@ impl VcCounts {
 
 /// What the mux keeps of an offered field besides its octets (LNK-076).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Held {
+struct Held<T> {
     len: usize,
-    bypass: bool,
-    protocol_control: bool,
-    pointer: u16,
+    kind: CopFrameKind,
+    pointer: T,
     given_count: Option<u64>,
 }
 
@@ -780,7 +791,7 @@ pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
     config: ChannelMuxConfig<P, V>,
-    held: [Option<Held>; V],
+    held: [Option<Held<P::Pointer>>; V],
     vc_ocf: [Option<[u8; OCF_LEN]>; V],
     vc_fsh: [Option<Fsh>; V],
     mc_ocf: Option<[u8; OCF_LEN]>,
@@ -928,6 +939,15 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         &self.head.status
     }
 
+    /// Counts a refused offer that an adapter could not form as an [`Offer`] of this protocol
+    /// (the C ABI's flat input carries a route that a TM offer has no member for) and returns
+    /// `error`, so that `refused` counts what the engine would have refused (LNK-002, LNK-076).
+    #[must_use]
+    pub fn refuse(&mut self, error: Error) -> Error {
+        self.head.status.refused.incr();
+        error
+    }
+
     /// Runs one input (API-057).
     ///
     /// An input that fails leaves the slots, the counts, the policy, and the OID generator as
@@ -977,7 +997,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// `Offer` (LNK-076, LNK-082).
-    fn offer(&mut self, offer: &Offer<'_>) -> Result<()> {
+    fn offer(&mut self, offer: &Offer<'_, P>) -> Result<()> {
         match self.try_offer(offer) {
             Ok(()) => {
                 self.head.status.offers.incr();
@@ -994,41 +1014,14 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         }
     }
 
-    fn try_offer(&mut self, offer: &Offer<'_>) -> Result<()> {
-        let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
+    fn try_offer(&mut self, offer: &Offer<'_, P>) -> Result<()> {
         let (pos, vc) = self
             .head
             .config
             .find(offer.vc)
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
-        let default = P::vc_route(&vc.params);
-        let route_qos = match (offer.route, default) {
-            (Some(r), Some(d)) if r.map == d.map => Some(r.qos),
-            (Some(_), Some(_)) => {
-                return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::MAP_ID));
-            }
-            (Some(_), None) => return Err(invalid(field::MAP_ID)),
-            (None, d) => d.map(|d| d.qos),
-        };
-        let (bypass, protocol_control, given_count) = match offer.cop {
-            None => (route_qos == Some(Qos::Expedited), false, None),
-            Some(_) if !P::vc_cop(&vc.params) => return Err(invalid(field::COP_IN_EFFECT)),
-            Some(c)
-                if offer.route.is_some() && (route_qos == Some(Qos::Expedited)) != c.bypass() =>
-            {
-                return Err(invalid(field::QOS));
-            }
-            Some(Cop::TypeAd { vcf_count }) if vcf_count > P::vcf_max(&vc.params, false) => {
-                return Err(Error::out_of_range(
-                    field::VCF_COUNT,
-                    P::vcf_max(&vc.params, false),
-                    vcf_count,
-                ));
-            }
-            Some(c) => (c.bypass(), c.protocol_control(), c.vcf_count()),
-        };
-        let pointer = P::check_pointer(&vc.params, offer.pointer)?;
-        if offer.field.len() != self.head.config.data_len(Some(vc), bypass) {
+        let admitted = P::admit(&vc.params, &offer.meta)?;
+        if offer.field.len() != self.head.config.data_len(Some(vc), admitted.kind.bypass_flag()) {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FIELD_LEN));
         }
         let Some((slot, held)) = self
@@ -1048,10 +1041,9 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         }
         *held = Some(Held {
             len: offer.field.len(),
-            bypass,
-            protocol_control,
-            pointer,
-            given_count,
+            kind: admitted.kind,
+            pointer: admitted.pointer,
+            given_count: admitted.given_count,
         });
         self.refresh_occupancy();
         Ok(())
@@ -1135,7 +1127,12 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         }
         let (selector, pick) = self.pick()?;
         let fields = self.fields(&pick);
-        let layout = FrameLayout::compute(&self.head.config.spec(pick.vc.as_ref(), fields.bypass))?;
+        let layout = FrameLayout::compute(
+            &self
+                .head
+                .config
+                .spec(pick.vc.as_ref(), fields.kind.bypass_flag()),
+        )?;
         let frame = out
             .get_mut(..frame_len)
             .ok_or(Error::new(ErrorKind::InternalError))?;
@@ -1149,7 +1146,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             } else {
                 FrameClass::Data
             },
-            vc: fields.vc,
+            vc: fields.vc.into(),
             frame: OutRange::new(0, frame_len),
             security_header: out_range(&layout.security_header()),
             data: out_range(&layout.data()),
@@ -1201,41 +1198,47 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// The values of the primary header: the counts are those of the frame selected (LNK-032).
-    fn fields(&self, pick: &Pick<P>) -> FrameFields {
+    fn fields(&self, pick: &Pick<P>) -> FrameFields<P> {
         let cfg = &self.head.config;
-        let id = pick
+        let vc = pick
             .vc
             .as_ref()
-            .map_or_else(|| P::oid_vcid(&cfg.channel), VcConfig::id);
-        let bypass = pick.held.map_or(P::OID_BYPASS, |h| h.bypass);
+            .map_or_else(|| P::oid_vc(&cfg.channel), |v| v.vc);
+        let kind = pick.held.map_or(
+            if P::OID_BYPASS {
+                CopFrameKind::Bd
+            } else {
+                CopFrameKind::Ad
+            },
+            |h| h.kind,
+        );
         let counted = self
             .bufs
             .counts
-            .get(usize::from(id))
-            .map_or(0, |c| c.get(bypass));
+            .get(usize::from(vc.into()))
+            .map_or(0, |c| c.get(kind.bypass_flag()));
         FrameFields {
-            vc: id,
+            vc,
             oid: pick.held.is_none(),
             frame_len: cfg.frame_len,
             mc_count: self.head.mc_count,
             vc_count: pick.held.and_then(|h| h.given_count).unwrap_or(counted),
             ocf: cfg.has_ocf(pick.vc.as_ref()),
             secondary: cfg.has_fsh(pick.vc.as_ref()),
-            pointer: pick.held.map_or(0, |h| h.pointer),
-            bypass,
-            protocol_control: pick.held.is_some_and(|h| h.protocol_control),
+            pointer: pick.held.map(|h| h.pointer),
+            kind,
         }
     }
 
     /// Takes the offered field, counts the frame, and keeps the policy state (LNK-032).
-    fn commit(&mut self, selector: Selector, pick: &Pick<P>, fields: &FrameFields) {
+    fn commit(&mut self, selector: Selector, pick: &Pick<P>, fields: &FrameFields<P>) {
         self.head.selector = selector;
         if let Some(slot) = pick.selected.and_then(|p| self.head.held.get_mut(p)) {
             *slot = None;
         }
         let given = pick.held.is_some_and(|h| h.given_count.is_some());
-        if !given && let Some(c) = self.bufs.counts.get_mut(usize::from(fields.vc)) {
-            c.bump(fields.bypass);
+        if !given && let Some(c) = self.bufs.counts.get_mut(usize::from(fields.vc.into())) {
+            c.bump(fields.kind.bypass_flag());
         }
         if P::MC_COUNT {
             self.head.mc_count = self.head.mc_count.wrapping_add(1);
@@ -1254,15 +1257,17 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         frame: &mut [u8],
         layout: &FrameLayout,
         pick: &Pick<P>,
-        fields: &FrameFields,
+        fields: &FrameFields<P>,
     ) -> Result<()> {
         let header = frame
             .get_mut(layout.primary_header())
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        P::write_header(
-            &self.head.config.channel,
-            pick.vc.as_ref().map(|v| &v.params),
-            fields,
+        P::write_primary_header(
+            &P::primary_header(
+                &self.head.config.channel,
+                pick.vc.as_ref().map(|v| &v.params),
+                fields,
+            )?,
             header,
         )?;
         let secondary = frame
@@ -1328,7 +1333,7 @@ struct Pick<P: MuxProtocol> {
     /// frame).
     vc_pos: Option<usize>,
     vc: Option<VcConfig<P>>,
-    held: Option<Held>,
+    held: Option<Held<P::Pointer>>,
 }
 
 /// A range of the frame as an action range.
@@ -1340,12 +1345,12 @@ fn out_range(r: &Range<usize>) -> OutRange {
 mod tm_impl {
     use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::layout::OCF_LEN;
-    use aldis_core::{Error, ErrorKind, Result, field};
-    use aldis_tm::FirstHeaderPointer;
+    use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
     use aldis_tm::config::TmPhysicalChannelConfig;
+    use aldis_tm::{FirstHeaderPointer, SegmentLengthId, TmPrimaryHeader};
 
-    use super::{FrameFields, Fsh, MuxProtocol, VcConfig};
-    use crate::protocol::{Route, Tm};
+    use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
+    use crate::protocol::Tm;
 
     /// What a TM VC carries, which sets the data field status of its frames (LNK-082).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1414,20 +1419,26 @@ mod tm_impl {
         }
     }
 
-    /// `1 << bit` if `set`, else 0.
-    const fn flag(set: bool, bit: u32) -> u8 {
-        if set { 1 << bit } else { 0 }
+    /// What a TM offer carries besides its field: the raw First Header Pointer of the frame
+    /// header (LNK-076, LNK-082).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub struct TmOffer {
+        /// The raw First Header Pointer: required on a TM VC of Packets and refused on a TM VC
+        /// of `VCA_SDUs`.
+        pub pointer: Option<u16>,
     }
 
     impl MuxProtocol for Tm {
         type Channel = TmChannel;
         type VcParams = TmVc;
+        type OfferMeta = TmOffer;
+        type Pointer = FirstHeaderPointer;
         const INSERT_ZONE: bool = false;
         const MC_COUNT: bool = true;
         const OID_BYPASS: bool = false;
 
-        fn oid_vcid(channel: &TmChannel) -> u8 {
-            channel.oid_vc.get()
+        fn oid_vc(channel: &TmChannel) -> VcId<3> {
+            channel.oid_vc
         }
 
         fn mc_ocf(channel: &TmChannel) -> Option<[u8; OCF_LEN]> {
@@ -1446,32 +1457,27 @@ mod tm_impl {
             vc.fsh
         }
 
-        fn vc_route(_: &TmVc) -> Option<Route> {
-            None
-        }
-
-        fn vc_cop(_: &TmVc) -> bool {
-            false
-        }
-
-        fn vcf_max(_: &TmVc, _: bool) -> u64 {
-            0
-        }
-
-        fn check_pointer(vc: &TmVc, pointer: Option<u16>) -> Result<u16> {
-            match (vc.role, pointer) {
-                (TmRole::Packets, Some(raw)) => FirstHeaderPointer::new(raw)
-                    .map(FirstHeaderPointer::get)
-                    .ok_or(Error::out_of_range(
+        fn admit(vc: &TmVc, meta: &TmOffer) -> Result<Admitted<FirstHeaderPointer>> {
+            let pointer = match (vc.role, meta.pointer) {
+                (TmRole::Packets, Some(raw)) => FirstHeaderPointer::new(raw).ok_or(
+                    Error::out_of_range(
                         field::FIRST_HEADER_POINTER,
                         u64::from(FirstHeaderPointer::MAX),
                         u64::from(raw),
-                    )),
-                (TmRole::Vca, None) => Ok(0),
+                    ),
+                )?,
+                (TmRole::Vca, None) => FirstHeaderPointer::ZERO,
                 (TmRole::Packets, None) | (TmRole::Vca, Some(_)) => {
-                    Err(Error::new(ErrorKind::InvalidField).with_field(field::FIRST_HEADER_POINTER))
+                    return Err(
+                        Error::new(ErrorKind::InvalidField).with_field(field::FIRST_HEADER_POINTER)
+                    );
                 }
-            }
+            };
+            Ok(Admitted {
+                kind: CopFrameKind::Ad,
+                given_count: None,
+                pointer,
+            })
         }
 
         fn check_channel(
@@ -1497,53 +1503,43 @@ mod tm_impl {
 
         fn header_extension(_: &TmChannel, _: Option<&TmVc>, _: bool) {}
 
-        fn write_header(
+        fn primary_header(
             channel: &TmChannel,
             vc: Option<&TmVc>,
-            f: &FrameFields,
-            header: &mut [u8],
-        ) -> Result<()> {
-            let [s_hi, s_lo] = channel.scid.get().to_be_bytes();
-            let vca = !f.oid && vc.is_some_and(|v| v.role == TmRole::Vca);
-            let pointer = if f.oid {
-                FirstHeaderPointer::ONLY_IDLE_DATA.get()
-            } else {
-                f.pointer
-            };
-            let [p_hi, p_lo] = pointer.to_be_bytes();
+            f: &FrameFields<Tm>,
+        ) -> Result<TmPrimaryHeader> {
             let [.., mc] = f.mc_count.to_be_bytes();
             let [.., count] = f.vc_count.to_be_bytes();
-            let octets = [
-                ((s_hi & 0b11) << 4) | (s_lo >> 4),
-                (s_lo << 4) | ((f.vc & 0b111) << 1) | flag(f.ocf, 0),
-                mc,
-                count,
-                // Packet Order Flag 0, Segment Length Identifier 11 (132.0 §4.1.2.7).
-                flag(f.secondary, 7) | flag(vca, 6) | (0b11 << 3) | (p_hi & 0b111),
-                p_lo,
-            ];
-            for (d, s) in header.iter_mut().zip(octets) {
-                *d = s;
-            }
-            Ok(())
+            Ok(TmPrimaryHeader {
+                scid: channel.scid,
+                vcid: f.vc,
+                ocf_flag: f.ocf,
+                mc_frame_count: mc,
+                vc_frame_count: count,
+                fsh_flag: f.secondary,
+                // Synchronization Flag 1 for a `VCA_SDU`; Packet Order Flag 0 and Segment Length
+                // Identifier 11 (132.0 §4.1.2.7).
+                sync_flag: !f.oid && vc.is_some_and(|v| v.role == TmRole::Vca),
+                packet_order_flag: false,
+                segment_length_id: SegmentLengthId::NO_SEGMENTS,
+                first_header_pointer: f.pointer.unwrap_or(FirstHeaderPointer::ONLY_IDLE_DATA),
+            })
         }
-
-        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
     }
 }
 
 #[cfg(feature = "tm")]
-pub use tm_impl::{TmChannel, TmRole, TmVc};
+pub use tm_impl::{TmChannel, TmOffer, TmRole, TmVc};
 
 #[cfg(feature = "aos")]
 mod aos_impl {
-    use aldis_aos::AosEdition;
+    use aldis_aos::{AosEdition, AosPrimaryHeader, VcFrameCount};
     use aldis_core::ids::SpacecraftId;
     use aldis_core::layout::OCF_LEN;
-    use aldis_core::{Error, ErrorKind, Result, field};
+    use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
 
-    use super::{FrameFields, Fsh, MuxProtocol, VcConfig};
-    use crate::protocol::{Aos, Route};
+    use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
+    use crate::protocol::Aos;
 
     /// The parameters of the physical channel of an AOS mux (732.0 §5.2 Table 5-1; LNK-030,
     /// LNK-032, LNK-035).
@@ -1622,20 +1618,17 @@ mod aos_impl {
         pub ocf: Option<[u8; OCF_LEN]>,
     }
 
-    /// `1 << bit` if `set`, else 0.
-    const fn flag(set: bool, bit: u32) -> u8 {
-        if set { 1 << bit } else { 0 }
-    }
-
     impl MuxProtocol for Aos {
         type Channel = AosChannel;
         type VcParams = AosVc;
+        type OfferMeta = ();
+        type Pointer = ();
         const INSERT_ZONE: bool = true;
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = false;
 
-        fn oid_vcid(_: &AosChannel) -> u8 {
-            aldis_aos::OID_VCID.get()
+        fn oid_vc(_: &AosChannel) -> aldis_core::ids::VcId<6> {
+            aldis_aos::OID_VCID
         }
 
         fn mc_ocf(_: &AosChannel) -> Option<[u8; OCF_LEN]> {
@@ -1654,20 +1647,12 @@ mod aos_impl {
             None
         }
 
-        fn vc_route(_: &AosVc) -> Option<Route> {
-            None
-        }
-
-        fn vc_cop(_: &AosVc) -> bool {
-            false
-        }
-
-        fn vcf_max(_: &AosVc, _: bool) -> u64 {
-            0
-        }
-
-        fn check_pointer(_: &AosVc, _: Option<u16>) -> Result<u16> {
-            Ok(0)
+        fn admit(_: &AosVc, (): &()) -> Result<Admitted<()>> {
+            Ok(Admitted {
+                kind: CopFrameKind::Ad,
+                given_count: None,
+                pointer: (),
+            })
         }
 
         fn check_channel(_: &AosChannel, _: usize, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
@@ -1686,42 +1671,23 @@ mod aos_impl {
             channel.fhec
         }
 
-        fn write_header(
+        fn primary_header(
             channel: &AosChannel,
             _: Option<&AosVc>,
-            f: &FrameFields,
-            header: &mut [u8],
-        ) -> Result<()> {
-            // The SCID: its low 8 bits in the first two octets, the two most significant of the
-            // 10 in bits 42–43 of Issue 5 (732.0 §4.1.2.2.3, §4.1.2.5.4; AOS-002).
-            let [s_hi, scid8] = channel.scid.get().to_be_bytes();
-            let spare = match channel.edition {
-                AosEdition::Issue5 => s_hi & 0b11,
-                AosEdition::Issue4Compatible => 0,
-            };
-            let [.., c2, c3, c4] = f.vc_count.to_be_bytes();
-            let [.., cycle] = (f.vc_count >> 24).to_be_bytes();
-            let cycle = if channel.cycle_in_use {
-                cycle & 0x0F
-            } else {
-                0
-            };
-            let octets = [
-                (aldis_aos::header::VERSION << 6) | (scid8 >> 2),
-                ((scid8 & 0b11) << 6) | (f.vc & 0x3F),
-                c2,
-                c3,
-                c4,
-                // Replay Flag 0.
-                flag(channel.cycle_in_use, 6) | (spare << 4) | cycle,
-            ];
-            for (d, s) in header.iter_mut().zip(octets) {
-                *d = s;
-            }
-            Ok(())
+            f: &FrameFields<Aos>,
+        ) -> Result<AosPrimaryHeader> {
+            // The count and, where the cycle is in use, the cycle of the running count (732.0
+            // §4.1.2.5.5; LNK-032).
+            let (count, cycle) = VcFrameCount::wrapping(f.vc_count);
+            Ok(AosPrimaryHeader::unsealed(
+                channel.edition,
+                channel.scid,
+                f.vc,
+                count,
+                channel.cycle_in_use.then_some(cycle),
+                channel.fhec,
+            ))
         }
-
-        fn write_oid_data_header(_: usize, _: &mut [u8]) {}
     }
 }
 
@@ -1732,12 +1698,13 @@ pub use aos_impl::{AosChannel, AosVc};
 mod uslp_impl {
     use aldis_core::ids::{MapId, SpacecraftId};
     use aldis_core::layout::OCF_LEN;
-    use aldis_core::{Error, ErrorKind, FrameFormat, Result, field};
+    use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
     use aldis_uslp::{
-        LastValidOctet, SourceOrDestination, TfdfHeader, TfdzRule, Upid, VcfCountLen,
+        ChannelFields, FrameKind, SourceOrDestination, UslpPrimaryHeader, UslpVcId, VcfCount,
+        VcfCountLen,
     };
 
-    use super::{FrameFields, Fsh, MuxProtocol, VcConfig};
+    use super::{Admitted, Cop, FrameFields, Fsh, MuxProtocol, VcConfig};
     use crate::common::Qos;
     use crate::protocol::{Route, Uslp};
 
@@ -1850,15 +1817,28 @@ mod uslp_impl {
         }
     }
 
+    /// What a USLP offer carries besides its field: the MAP and `QoS` it is sent on, and the
+    /// COP-1 block (LNK-076).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct UslpOffer {
+        /// The MAP and `QoS` of the field: the MAP must be the VC's; without a route the VC's
+        /// `QoS` applies.
+        pub route: Option<Route>,
+        /// The COP-1 block, for a VC with COP-1 in effect.
+        pub cop: Option<Cop>,
+    }
+
     impl MuxProtocol for Uslp {
         type Channel = UslpChannel;
         type VcParams = UslpVc;
+        type OfferMeta = UslpOffer;
+        type Pointer = ();
         const INSERT_ZONE: bool = true;
         const MC_COUNT: bool = false;
         const OID_BYPASS: bool = true;
 
-        fn oid_vcid(_: &UslpChannel) -> u8 {
-            aldis_uslp::OID_VCID
+        fn oid_vc(_: &UslpChannel) -> UslpVcId {
+            aldis_uslp::OID_VC
         }
 
         fn mc_ocf(channel: &UslpChannel) -> Option<[u8; OCF_LEN]> {
@@ -1877,23 +1857,45 @@ mod uslp_impl {
             None
         }
 
-        fn vc_route(vc: &UslpVc) -> Option<Route> {
-            Some(Route {
-                map: vc.map,
-                qos: vc.qos,
+        fn admit(vc: &UslpVc, meta: &UslpOffer) -> Result<Admitted<()>> {
+            let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
+            let route_qos = match meta.route {
+                Some(r) if r.map == vc.map => r.qos,
+                Some(_) => {
+                    return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::MAP_ID));
+                }
+                None => vc.qos,
+            };
+            let (kind, given_count) = match meta.cop {
+                None => (
+                    if route_qos == Qos::Expedited {
+                        CopFrameKind::Bd
+                    } else {
+                        CopFrameKind::Ad
+                    },
+                    None,
+                ),
+                Some(_) if !vc.cop => return Err(invalid(field::COP_IN_EFFECT)),
+                Some(c)
+                    if meta.route.is_some()
+                        && (route_qos == Qos::Expedited) != c.kind().bypass_flag() =>
+                {
+                    return Err(invalid(field::QOS));
+                }
+                Some(Cop::TypeAd { vcf_count }) if vcf_count > vc.count_len(false).max_count() => {
+                    return Err(Error::out_of_range(
+                        field::VCF_COUNT,
+                        vc.count_len(false).max_count(),
+                        vcf_count,
+                    ));
+                }
+                Some(c) => (c.kind(), c.vcf_count()),
+            };
+            Ok(Admitted {
+                kind,
+                given_count,
+                pointer: (),
             })
-        }
-
-        fn vc_cop(vc: &UslpVc) -> bool {
-            vc.cop
-        }
-
-        fn vcf_max(vc: &UslpVc, bypass: bool) -> u64 {
-            vc.count_len(bypass).max_count()
-        }
-
-        fn check_pointer(_: &UslpVc, _: Option<u16>) -> Result<u16> {
-            Ok(0)
         }
 
         fn check_channel(
@@ -1919,63 +1921,33 @@ mod uslp_impl {
             vc.map_or(channel.oid_vcf_len, |v| v.count_len(bypass))
         }
 
-        fn write_header(
+        fn primary_header(
             channel: &UslpChannel,
             vc: Option<&UslpVc>,
-            f: &FrameFields,
-            header: &mut [u8],
-        ) -> Result<()> {
-            let count_len = vc.map_or(channel.oid_vcf_len, |v| v.count_len(f.bypass));
-            let map = vc.map_or(0, |v| v.map.get());
-            // TFVN `1100`, SCID, Source-or-Destination, VCID, MAP ID, End of Primary Header
-            // Flag 0 (732.1 §4.1.2.2–6).
-            let word = (0b1100_u32 << 28)
-                | (u32::from(channel.scid.get()) << 12)
-                | (u32::from(channel.source_or_destination.bit()) << 11)
-                | (u32::from(f.vc & 0x3F) << 5)
-                | (u32::from(map & 0x0F) << 1);
-            // The Frame Length field holds the length less one (732.1 §4.1.2.7). `check_channel` holds
-            // the frame length to `MAX_FRAME_LEN`, so the conversion cannot fail; if it does, it is
-            // an error, not a clamped length.
-            let [l0, l1] = u16::try_from(f.frame_len.saturating_sub(1))
-                .map_err(|_| Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))?
-                .to_be_bytes();
-            let flags = (u8::from(f.bypass) << 7)
-                | (u8::from(f.protocol_control) << 6)
-                | (u8::from(f.ocf) << 3)
-                | (count_len.get() & 0b111);
-            let count = (f.vc_count & count_len.max_count()).to_be_bytes();
-            let skip = 8_usize.saturating_sub(count_len.octets());
-            let [w0, w1, w2, w3] = word.to_be_bytes();
-            let head = [w0, w1, w2, w3, l0, l1, flags];
-            for (d, s) in header
-                .iter_mut()
-                .zip(head.iter().chain(count.iter().skip(skip)))
-            {
-                *d = *s;
-            }
-            Ok(())
-        }
-
-        fn write_oid_data_header(data_len: usize, header: &mut [u8]) {
-            // Rule `001`, UPID "Only Idle Data", and the Last Valid Octet Pointer at the last
-            // octet of the TFDZ (732.1 §4.1.4.1.9–11; LNK-030).
-            let [.., a, b] = data_len
-                .saturating_sub(Uslp::SDU_HEADER_LEN.saturating_add(1))
-                .to_be_bytes();
-            let tfdf = TfdfHeader {
-                rule: TfdzRule::SduStart(LastValidOctet::from_raw(u16::from_be_bytes([a, b]))),
-                upid: Upid::OnlyIdleData,
-            };
-            for (d, s) in header.iter_mut().zip(tfdf.octets()) {
-                *d = s;
-            }
+            f: &FrameFields<Uslp>,
+        ) -> Result<UslpPrimaryHeader> {
+            let bypass = f.kind.bypass_flag();
+            let count_len = vc.map_or(channel.oid_vcf_len, |v| v.count_len(bypass));
+            // The OID frame has MAP ID 0 (732.1 §4.1.4.1.9).
+            let map_id = vc.map_or(MapId::<4>::from_const::<0>(), |v| v.map);
+            UslpPrimaryHeader::for_writer(
+                ChannelFields {
+                    spacecraft_id: channel.scid,
+                    source_or_destination: channel.source_or_destination,
+                    vc_id: f.vc,
+                    map_id,
+                },
+                f.frame_len,
+                FrameKind::from(f.kind),
+                f.ocf,
+                VcfCount::wrapping(count_len, f.vc_count),
+            )
         }
     }
 }
 
 #[cfg(feature = "uslp")]
-pub use uslp_impl::{UslpChannel, UslpVc};
+pub use uslp_impl::{UslpChannel, UslpOffer, UslpVc};
 
 #[cfg(all(test, feature = "aos"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2017,9 +1989,7 @@ mod tests {
                 MuxInput::Offer(Offer {
                     vc: 1,
                     field: &field,
-                    pointer: None,
-                    route: None,
-                    cop: None,
+                    meta: (),
                 }),
                 &mut out,
             )

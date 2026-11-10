@@ -29,6 +29,9 @@ pub const MAX_FRAME_LEN: usize = 65_536;
 /// The VCID of OID frames, `all ones` (732.1 §4.1.4.1.6; USLP-009).
 pub const OID_VCID: u8 = 63;
 
+/// The VCID of OID frames as the identifier type (732.1 §4.1.4.1.6; USLP-009).
+pub const OID_VC: UslpVcId = UslpVcId::new(OID_VCID).expect("63 fits in 6 bits");
+
 /// Transfer Frame Version Number of a USLP frame, `1100` (732.1 §4.1.2.2.2.2).
 pub(crate) const VERSION: u8 = 0b1100;
 
@@ -184,6 +187,16 @@ impl VcfCount {
         Some(VcfCount { len, value })
     }
 
+    /// `value` modulo the field of `len` octets: the count of a counter that wraps (732.1
+    /// §4.1.2.12.3; LNK-032).
+    #[must_use]
+    pub fn wrapping(len: VcfCountLen, value: u64) -> VcfCount {
+        VcfCount {
+            len,
+            value: value & len.max_count(),
+        }
+    }
+
     /// The length of the field (732.1 §4.1.2.11).
     #[must_use]
     pub const fn len(self) -> VcfCountLen {
@@ -240,6 +253,31 @@ impl UslpPrimaryHeader {
             ocf_flag,
             vcf_count,
         }
+    }
+
+    /// The header a writer puts in a frame of `frame_len` octets: the Reserve Spares `00`
+    /// (732.1 §4.1.2; USLP-001, GEN-052, GEN-053).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`frame_len`) for a length above [`MAX_FRAME_LEN`] or 0: the 16-bit Frame
+    /// Length field holds neither, and a length is an error, not a clamped value.
+    pub fn for_writer(
+        channel: ChannelFields,
+        frame_len: usize,
+        kind: FrameKind,
+        ocf_flag: bool,
+        vcf_count: VcfCount,
+    ) -> Result<UslpPrimaryHeader, Error> {
+        if frame_len == 0 || frame_len > MAX_FRAME_LEN {
+            return Err(Error::out_of_range(
+                field::FRAME_LEN,
+                len_u64(MAX_FRAME_LEN),
+                len_u64(frame_len),
+            ));
+        }
+        Ok(UslpPrimaryHeader::new(
+            channel, frame_len, kind, ocf_flag, vcf_count,
+        ))
     }
 
     /// The fields the truncated header shares (732.1 §4.1.2.2–5).
@@ -336,24 +374,21 @@ pub(crate) struct RawStart {
 impl RawStart {
     /// Reads the first four octets; `None` if `bytes` is shorter.
     pub(crate) fn parse(bytes: &[u8]) -> Option<RawStart> {
-        let [b0, b1, b2, b3] = *bytes.first_chunk::<TRUNCATED_HEADER_LEN>()?;
-        let word = u32::from_be_bytes([b0, b1, b2, b3]);
-        let version = u8::try_from(word >> 28).unwrap_or(0);
-        let scid = u16::try_from((word >> 12) & 0xFFFF).unwrap_or(0);
-        let vcid = u8::try_from((word >> 5) & 0x3F).unwrap_or(0);
-        let map = u8::try_from((word >> 1) & 0x0F).unwrap_or(0);
-        let ids = UslpSpacecraftId::new(scid)
-            .zip(UslpVcId::new(vcid))
-            .zip(UslpMapId::new(map));
+        let h = bytes.first_chunk::<TRUNCATED_HEADER_LEN>()?;
+        let ids = UslpSpacecraftId::new(layout::Scid::<4>::get_u16(h))
+            .zip(UslpVcId::new(layout::Vcid::<4>::get_u8(h)))
+            .zip(UslpMapId::new(layout::Map::<4>::get_u8(h)));
         ids.map(|((spacecraft_id, vc_id), map_id)| RawStart {
-            version,
+            version: layout::Version::<4>::get_u8(h),
             channel: ChannelFields {
                 spacecraft_id,
-                source_or_destination: SourceOrDestination::from_bit(word & 0x800 != 0),
+                source_or_destination: SourceOrDestination::from_bit(
+                    layout::SourceOrDestination::<4>::flag(h),
+                ),
                 vc_id,
                 map_id,
             },
-            truncated: word & 1 != 0,
+            truncated: layout::EndOfPrimaryHeader::<4>::flag(h),
         })
     }
 
@@ -387,14 +422,15 @@ pub(crate) struct RawRest {
 impl RawRest {
     /// Reads octets 4–6; `None` if `bytes` is shorter than seven octets.
     pub(crate) fn parse(bytes: &[u8]) -> Option<RawRest> {
-        let &[_, _, _, _, l0, l1, b6] = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
+        let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
         Some(RawRest {
-            frame_len: usize::from(u16::from_be_bytes([l0, l1])).saturating_add(1),
-            bypass: b6 & 0x80 != 0,
-            protocol_control: b6 & 0x40 != 0,
-            spare: (b6 >> 4) & 0b11,
-            ocf_flag: b6 & 0x08 != 0,
-            vcf_count_len: VcfCountLen(b6 & 0b111),
+            frame_len: usize::from(layout::FrameLength::<PRIMARY_HEADER_LEN>::get_u16(h))
+                .saturating_add(1),
+            bypass: layout::Bypass::<PRIMARY_HEADER_LEN>::flag(h),
+            protocol_control: layout::ProtocolControl::<PRIMARY_HEADER_LEN>::flag(h),
+            spare: layout::Spare::<PRIMARY_HEADER_LEN>::get_u8(h),
+            ocf_flag: layout::OcfFlag::<PRIMARY_HEADER_LEN>::flag(h),
+            vcf_count_len: VcfCountLen(layout::CountLength::<PRIMARY_HEADER_LEN>::get_u8(h)),
         })
     }
 
@@ -424,19 +460,32 @@ pub(crate) fn read_vcf_count(
         Reason::LengthMismatch,
         Error::incomplete(end),
     ))?;
-    let value = octets.iter().fold(0_u64, |v, &o| (v << 8) | u64::from(o));
-    Ok(VcfCount { len, value })
+    Ok(VcfCount {
+        len,
+        value: aldis_core::bits::be_uint(octets),
+    })
 }
 
 /// The first four octets of a header (732.1 §4.1.2.2–6, Annex D1.3.1).
 pub(crate) fn start_octets(version: u8, channel: ChannelFields, truncated: bool) -> [u8; 4] {
-    let word = (u32::from(version & 0x0F) << 28)
-        | (u32::from(channel.spacecraft_id.get()) << 12)
-        | (u32::from(channel.source_or_destination.bit()) << 11)
-        | (u32::from(channel.vc_id.get() & 0x3F) << 5)
-        | (u32::from(channel.map_id.get() & 0x0F) << 1)
-        | u32::from(truncated);
-    word.to_be_bytes()
+    let mut h = [0_u8; TRUNCATED_HEADER_LEN];
+    put_start(&mut h, version, channel, truncated);
+    h
+}
+
+/// Writes the fields of the first four octets into a header of `N` octets.
+fn put_start<const N: usize>(
+    h: &mut [u8; N],
+    version: u8,
+    channel: ChannelFields,
+    truncated: bool,
+) {
+    layout::Version::<N>::put_u8(h, version & 0x0F);
+    layout::Scid::<N>::put_u16(h, channel.spacecraft_id.get());
+    layout::SourceOrDestination::<N>::put_flag(h, channel.source_or_destination.bit());
+    layout::Vcid::<N>::put_u8(h, channel.vc_id.get());
+    layout::Map::<N>::put_u8(h, channel.map_id.get());
+    layout::EndOfPrimaryHeader::<N>::put_flag(h, truncated);
 }
 
 /// The non-truncated header, `PRIMARY_HEADER_LEN` + the VCF Count Length octets of a 14-octet
@@ -450,25 +499,47 @@ pub(crate) fn primary_octets(
     ocf_flag: bool,
     count: VcfCount,
 ) -> [u8; 14] {
-    let mut out = [0_u8; 14];
-    let [s0, s1, s2, s3] = start_octets(version, channel, false);
-    let [l0, l1] = u16::try_from(frame_len.saturating_sub(1))
-        .unwrap_or(u16::MAX)
-        .to_be_bytes();
-    let b6 = (u8::from(kind.bypass_flag()) << 7)
-        | (u8::from(kind.protocol_control_flag()) << 6)
-        | (u8::from(ocf_flag) << 3)
-        | (count.len.get() & 0b111);
+    const N: usize = MAX_HEADER_LEN;
+    let mut out = [0_u8; N];
+    put_start(&mut out, version, channel, false);
+    // The Frame Length field holds the length less one (732.1 §4.1.2.7).
+    layout::FrameLength::<N>::put_u16(
+        &mut out,
+        u16::try_from(frame_len.saturating_sub(1)).unwrap_or(u16::MAX),
+    );
+    layout::Bypass::<N>::put_flag(&mut out, kind.bypass_flag());
+    layout::ProtocolControl::<N>::put_flag(&mut out, kind.protocol_control_flag());
+    layout::OcfFlag::<N>::put_flag(&mut out, ocf_flag);
+    layout::CountLength::<N>::put_u8(&mut out, count.len.get());
     let count_octets = count.value.to_be_bytes();
     let skip = 8_usize.saturating_sub(count.len.octets());
-    let head = [s0, s1, s2, s3, l0, l1, b6];
-    for (d, s) in out
-        .iter_mut()
-        .zip(head.iter().chain(count_octets.iter().skip(skip)))
-    {
+    let [_, _, _, _, _, _, _, tail @ ..] = &mut out;
+    for (d, s) in tail.iter_mut().zip(count_octets.iter().skip(skip)) {
         *d = *s;
     }
     out
+}
+
+/// The longest non-truncated Primary Header: seven octets and a VCF Count of seven.
+const MAX_HEADER_LEN: usize = 14;
+
+/// The fields of the Primary Header by bit position in a header of `N` octets (732.1 §4.1.2,
+/// Figure 4-2; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    pub(super) type Version<const N: usize> = Field<N, 0, 4>;
+    pub(super) type Scid<const N: usize> = Field<N, 4, 16>;
+    pub(super) type SourceOrDestination<const N: usize> = Field<N, 20, 1>;
+    pub(super) type Vcid<const N: usize> = Field<N, 21, 6>;
+    pub(super) type Map<const N: usize> = Field<N, 27, 4>;
+    pub(super) type EndOfPrimaryHeader<const N: usize> = Field<N, 31, 1>;
+    pub(super) type FrameLength<const N: usize> = Field<N, 32, 16>;
+    pub(super) type Bypass<const N: usize> = Field<N, 48, 1>;
+    pub(super) type ProtocolControl<const N: usize> = Field<N, 49, 1>;
+    pub(super) type Spare<const N: usize> = Field<N, 50, 2>;
+    pub(super) type OcfFlag<const N: usize> = Field<N, 52, 1>;
+    pub(super) type CountLength<const N: usize> = Field<N, 53, 3>;
 }
 
 /// `InvalidField` naming `field`.

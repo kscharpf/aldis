@@ -96,6 +96,20 @@ impl TryFrom<u32> for VcFrameCount {
     }
 }
 
+impl VcFrameCount {
+    /// The count and the cycle of a running count that wraps: its low 24 bits, and the next 4
+    /// bits for the VC Frame Count Cycle (732.0 §4.1.2.4, §4.1.2.5.5; AOS-019). The count is
+    /// reduced modulo the field, which is how a counter that wraps is written (LNK-032).
+    #[must_use]
+    pub const fn wrapping(running: u64) -> (VcFrameCount, FrameCountCycle) {
+        let [.., c0, c1, c2, c3] = running.to_be_bytes();
+        (
+            VcFrameCount(u32::from_be_bytes([0, c1, c2, c3])),
+            FrameCountCycle(c0 & FrameCountCycle::MAX),
+        )
+    }
+}
+
 impl From<VcFrameCount> for u32 {
     fn from(count: VcFrameCount) -> u32 {
         count.0
@@ -270,9 +284,9 @@ impl AosPrimaryHeader {
 
     /// The fields of corrected header octets whose version is checked.
     pub(crate) fn parse(received: &Received, edition: AosEdition) -> AosPrimaryHeader {
-        let [o0, o1, o2, o3, o4, o5, o6, o7] = received.octets;
-        let lsb = (u16::from(o0 & 0x3F) << 2) | u16::from(o1 >> 6);
-        let bits_42_43 = (o5 >> 4) & 0b11;
+        let h = &received.octets;
+        let lsb = layout::ScidLow::get_u16(h);
+        let bits_42_43 = layout::ScidHigh::get_u8(h);
         let (scid, spare) = match edition {
             AosEdition::Issue5 => ((u16::from(bits_42_43) << 8) | lsb, 0),
             AosEdition::Issue4Compatible => (lsb, bits_42_43),
@@ -280,13 +294,13 @@ impl AosPrimaryHeader {
         AosPrimaryHeader {
             edition,
             scid: SpacecraftId::new(scid).unwrap_or(SCID_ZERO),
-            vcid: VcId::new(o1 & 0x3F).unwrap_or(VCID_ZERO),
-            vc_frame_count: VcFrameCount(u32::from_be_bytes([0, o2, o3, o4])),
-            replay_flag: o5 & 0x80 != 0,
-            cycle_use_flag: o5 & 0x40 != 0,
-            cycle: FrameCountCycle(o5 & 0x0F),
+            vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
+            vc_frame_count: VcFrameCount(layout::Count::get_u32(h)),
+            replay_flag: layout::Replay::flag(h),
+            cycle_use_flag: layout::CycleUse::flag(h),
+            cycle: FrameCountCycle(layout::Cycle::get_u8(h)),
             spare,
-            fhec: (received.len > PRIMARY_HEADER_LEN).then_some(u16::from_be_bytes([o6, o7])),
+            fhec: (received.len > PRIMARY_HEADER_LEN).then_some(layout::Fhec::get_u16(h)),
             corrected: received.corrected,
         }
     }
@@ -320,6 +334,37 @@ impl AosPrimaryHeader {
             header.fhec = Some(u16::from_be_bytes(fhec::encode(&[o0, o1, o2, o3, o4, o5])));
         }
         header
+    }
+
+    /// The header a multiplexer puts in a frame before the FHEC is computed: spare bits zero,
+    /// no replay, the Use Flag and the cycle as given, and the FHEC field, if there is one, zero
+    /// (732.0 §4.1.2, §4.2.7.3; AOS-002, LNK-035, GEN-052).
+    ///
+    /// The caller has checked that `scid` fits the `edition`.
+    #[must_use]
+    pub const fn unsealed(
+        edition: AosEdition,
+        scid: SpacecraftId<10>,
+        vcid: VcId<6>,
+        vc_frame_count: VcFrameCount,
+        cycle: Option<FrameCountCycle>,
+        fhec: bool,
+    ) -> AosPrimaryHeader {
+        AosPrimaryHeader {
+            edition,
+            scid,
+            vcid,
+            vc_frame_count,
+            replay_flag: false,
+            cycle_use_flag: cycle.is_some(),
+            cycle: match cycle {
+                Some(cycle) => cycle,
+                None => FrameCountCycle(0),
+            },
+            spare: 0,
+            fhec: if fhec { Some(0) } else { None },
+            corrected: CorrectedSymbols::Zero,
+        }
     }
 
     /// The edition the header was read in (AOS-001).
@@ -424,42 +469,43 @@ impl AosPrimaryHeader {
     /// rest zero (732.0 §4.1.2; API-014).
     #[must_use]
     pub const fn to_octets(&self) -> [u8; 8] {
-        let [_, hi, lo] = scid_octets(self.scid.get());
+        let [hi, lo] = self.scid.get().to_be_bytes();
         let bits_42_43 = match self.edition {
             AosEdition::Issue5 => hi & 0b11,
             AosEdition::Issue4Compatible => self.spare & 0b11,
         };
-        let [_, c2, c3, c4] = self.vc_frame_count.0.to_be_bytes();
-        let o5 = flag(self.replay_flag, 7)
-            | flag(self.cycle_use_flag, 6)
-            | (bits_42_43 << 4)
-            | (self.cycle.0 & 0x0F);
-        let [f0, f1] = match self.fhec {
-            Some(f) => f.to_be_bytes(),
-            None => [0, 0],
-        };
-        [
-            (VERSION << 6) | (lo >> 2),
-            ((lo & 0b11) << 6) | (self.vcid.get() & 0x3F),
-            c2,
-            c3,
-            c4,
-            o5,
-            f0,
-            f1,
-        ]
+        let mut h = [0_u8; 8];
+        layout::Version::put_u8(&mut h, VERSION);
+        layout::ScidLow::put_u8(&mut h, lo);
+        layout::Vcid::put_u8(&mut h, self.vcid.get());
+        layout::Count::put_u32(&mut h, self.vc_frame_count.0);
+        layout::Replay::put_flag(&mut h, self.replay_flag);
+        layout::CycleUse::put_flag(&mut h, self.cycle_use_flag);
+        layout::ScidHigh::put_u8(&mut h, bits_42_43);
+        layout::Cycle::put_u8(&mut h, self.cycle.0);
+        if let Some(fhec) = self.fhec {
+            layout::Fhec::put_u16(&mut h, fhec);
+        }
+        h
     }
 }
 
-/// `[0, high, low]` of a 16-bit SCID, in `const` context.
-const fn scid_octets(scid: u16) -> [u8; 3] {
-    let [hi, lo] = scid.to_be_bytes();
-    [0, hi, lo]
-}
+/// The fields of the Primary Header by bit position (732.0 §4.1.2, Figure 4-2; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
 
-/// `1 << bit` if `set`, else 0.
-const fn flag(set: bool, bit: u32) -> u8 {
-    if set { 1 << bit } else { 0 }
+    /// The header with its FHEC.
+    const N: usize = 8;
+
+    pub(super) type Version = Field<N, 0, 2>;
+    pub(super) type ScidLow = Field<N, 2, 8>;
+    pub(super) type Vcid = Field<N, 10, 6>;
+    pub(super) type Count = Field<N, 16, 24>;
+    pub(super) type Replay = Field<N, 40, 1>;
+    pub(super) type CycleUse = Field<N, 41, 1>;
+    pub(super) type ScidHigh = Field<N, 42, 2>;
+    pub(super) type Cycle = Field<N, 44, 4>;
+    pub(super) type Fhec = Field<N, 48, 16>;
 }
 
 #[cfg(test)]
