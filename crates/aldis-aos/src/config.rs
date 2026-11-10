@@ -373,6 +373,13 @@ impl<const N: usize> VcTable<N> {
         self.pc
     }
 
+    /// The slots of the virtual channels, the lookup that
+    /// [`Check`](aldis_core::Check) for `AosFrame` checks a frame against (AOS-010, AOS-016).
+    #[must_use]
+    pub const fn slots(&self) -> &[Option<AosVirtualChannelConfig>] {
+        &self.vcs
+    }
+
     /// The virtual channels, in the order given (Table 5-3).
     pub fn vcs(&self) -> impl Iterator<Item = &AosVirtualChannelConfig> {
         self.vcs.iter().flatten()
@@ -409,7 +416,7 @@ fn fill(
 }
 
 /// The virtual channel (`scid`, `vcid`) of `slots`.
-fn find(
+pub(crate) fn find(
     slots: &[Option<AosVirtualChannelConfig>],
     scid: SpacecraftId<10>,
     vcid: VcId<6>,
@@ -422,7 +429,7 @@ fn find(
 }
 
 /// Whether `slots` hold a virtual channel of `scid`.
-fn has(slots: &[Option<AosVirtualChannelConfig>], scid: SpacecraftId<10>) -> bool {
+pub(crate) fn has(slots: &[Option<AosVirtualChannelConfig>], scid: SpacecraftId<10>) -> bool {
     slots.iter().flatten().any(|vc| vc.scid == scid)
 }
 

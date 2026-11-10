@@ -45,7 +45,7 @@ fn strict_re_encode_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestC
     // octets (API-017).
     let Some(f) = AosFrame::decode(bytes, &pc, table)
         .ok()
-        .and_then(|f| f.check(table).ok())
+        .and_then(|f| f.check(table.slots()).ok())
     else {
         return Ok(());
     };
