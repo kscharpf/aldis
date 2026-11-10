@@ -275,12 +275,16 @@ impl EppConfig {
     }
 }
 
-/// A data field length that [`EppConfig::check`] accepted for the configuration's managed
-/// parameters (133.1 §5 Table 5-1, EPP-010, RS-020).
+/// A data field length that [`EppConfig::check`] returned for a configuration (133.1 §5
+/// Table 5-1, EPP-010, RS-020).
 ///
-/// The field is private and only the checks in this module build one, so code that takes it
-/// (the header sizing of [`EppConfig::header`]) does not compare against the limits again. An
-/// Idle Packet's length is carried unchecked, as `check` lets it pass (133.1 §4.1.3.1.3).
+/// For a non-idle EPI it is within the managed parameters `min_data_len..=max_data_len`. For an
+/// Idle EPI it is **not**: an Idle Packet carries no user data unit and is exempt from Table 5-1
+/// (133.1 §4.1.3.1.3, OI-17 (3)), so `check` carries its length through unchecked and the format
+/// limit of `EncapsulationHeader::for_data` is the only bound. The field is private and only the
+/// checks in this module build one, so code that takes it (the header sizing of
+/// [`EppConfig::header`]) does not compare against the limits again for a non-idle EPI; code that
+/// needs the managed-parameter guarantee must not accept it for an idle packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CheckedDataLen(usize);
 
