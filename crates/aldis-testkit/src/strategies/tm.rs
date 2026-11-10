@@ -318,6 +318,7 @@ pub fn tm_frame_decoder_input() -> BoxedStrategy<(TmMasterChannelConfig, Vec<u8>
 mod tests {
     use super::{master_channel, packet_offset, tm_frame, tm_frame_decoder_input};
     use crate::strategies::config;
+    use aldis_core::Check;
     use aldis_tm::{PacketOffset, TmFrame};
     use proptest::prelude::*;
 
@@ -335,7 +336,7 @@ mod tests {
             let d = TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc).unwrap();
             prop_assert_eq!(d.vcid(), f.fields.vcid);
             prop_assert_eq!(d.data_field(), f.data.as_slice());
-            prop_assert!(d.validate(&f.mc).is_ok());
+            prop_assert!(d.check(&f.mc).is_ok());
         }
 
         #[test]

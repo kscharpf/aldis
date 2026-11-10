@@ -312,11 +312,12 @@ pub(crate) fn unknown_channel<L: VcLookup + ?Sized>(vcs: &L, scid: SpacecraftId<
 
 /// The lookup of the virtual channels a frame may belong to (AOS-010, GEN-060, API-040).
 ///
-/// An [`aldis_core::lookup::ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is an
-/// [`AosVirtualChannelConfig`] (M2 plan D14). A bound alias, implemented for every such lookup; implement `ChannelLookup`. [`VcTable`]
-/// implements it. Another implementation must answer consistently: a virtual channel that
-/// `vc` finds belongs to a Spacecraft ID that `has_spacecraft` accepts, and has the VCID it was
-/// asked for; `vc` never finds a virtual channel for VCID 63 (732.0 Table 5-2, Table 5-3).
+/// A [`ChannelLookup`] by Spacecraft ID and VCID whose virtual channel is an
+/// [`AosVirtualChannelConfig`] (M2 plan D14). A bound alias, implemented for every such lookup;
+/// implement `ChannelLookup`. [`VcTable`] implements it. Another implementation must answer
+/// consistently: a virtual channel that `vc` finds belongs to a Spacecraft ID that
+/// `has_spacecraft` accepts, and has the VCID it was asked for; `vc` never finds a virtual
+/// channel for VCID 63 (732.0 Table 5-2, Table 5-3).
 pub trait VcLookup: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> {}
 
 impl<T: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized> VcLookup

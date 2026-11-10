@@ -28,6 +28,7 @@
 //! [`aldis_tm_encode`] and [`aldis_tm_encode_oid`] take the frame's variable fields and write
 //! the headers and the FECF. The C ABI has no two-phase writer (OI-57).
 
+use aldis::core::Check;
 use aldis::core::field;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::layout::{FrameLayout, OCF_LEN};
@@ -895,7 +896,7 @@ pub unsafe extern "C" fn aldis_tm_decode_unchecked_with(
 /// 5-3, §6.6 Table 6-1; TM-011, API-070).
 ///
 /// The frame is decoded as [`aldis_tm_decode_with`] decodes it, with the security layout of its
-/// virtual channel from `mc`, and checked as `TmFrame::validate` checks it. A call that takes a
+/// virtual channel from `mc`, and checked as `TmFrame::check` checks it. A call that takes a
 /// master channel always uses its layouts (c-abi.md §11). `*anomalies` receives the
 /// `ALDIS_TM_ANOMALY_*` flags of the frame that passed, `0` in strict mode (API-032).
 ///
@@ -930,10 +931,13 @@ pub unsafe extern "C" fn aldis_tm_validate(
             let bytes = abi::bytes(bytes, len)?;
             let anomalies = abi::out(anomalies)?;
             let (_, found) = abi::mode(mode)?.dispatch(
-                || TmFrame::decode_with(bytes, mc.pc(), &mc).and_then(|f| f.validate(&mc)),
+                || {
+                    TmFrame::decode_with(bytes, mc.pc(), &mc)
+                        .and_then(|f| f.check(&mc).map_err(Error::from))
+                },
                 || {
                     TmFrame::decode_with_lenient(bytes, mc.pc(), &mc)
-                        .and_then(|l| l.try_map(|f| f.validate(&mc)))
+                        .and_then(|l| l.try_map(|f| f.check(&mc).map_err(Error::from)))
                 },
             )?;
             anomalies.write(found.bits());

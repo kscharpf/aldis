@@ -20,6 +20,7 @@
 //! | [`security`] | SDLS reservation hooks | API-070…API-075 |
 //! | [`layout`] | Frame field layout | CMN-040, CMN-041 |
 //! | [`lookup`] | `ChannelLookup`, `MapLookup`, `PhysicalLookup` | GEN-060, API-040 |
+//! | [`checked`] | `Checked`, `Rejection`, the `Check` and `CheckBytes` pipeline | GEN-060, API-015, API-016, RS-020 |
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //!
@@ -31,6 +32,7 @@
 
 pub mod anomaly;
 pub mod bits;
+pub mod checked;
 pub mod container;
 pub mod counter;
 pub mod crc;
@@ -52,6 +54,7 @@ pub mod time;
 mod proofs;
 
 pub use anomaly::{Anomaly, AnomalySet};
+pub use checked::{Check, CheckBytes, Checked, Rejection};
 pub use error::{Error, ErrorDetail, ErrorKind, FieldId, Result};
 pub use mode::{DecodeMode, Lenient};
 

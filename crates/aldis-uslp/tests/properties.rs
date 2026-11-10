@@ -6,6 +6,7 @@
     reason = "test bookkeeping on lengths the strategies bound (RS-018)"
 )]
 
+use aldis_core::DecodeMode;
 use aldis_core::ErrorKind;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
@@ -16,7 +17,7 @@ use aldis_testkit::strategies::uslp::{
 use aldis_testkit::strategies::{self, octets};
 use aldis_uslp::{
     Delimited, FrameContent, FrameDelimiter, Reason, UslpAnomaly, UslpFrame, UslpFrameWriter,
-    encode, encode_oid, next_frame, validate_frame, validate_frame_lenient,
+    check_frame, encode, encode_oid, next_frame,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -72,7 +73,7 @@ proptest! {
             }
         }
         // The same frame passes the USLP Frame Validation Checks (USLP-014).
-        prop_assert_eq!(validate_frame(&f.octets, t).map(|v| v.len()), Ok(f.octets.len()));
+        prop_assert_eq!(check_frame(&f.octets, t, DecodeMode::Strict).map(|v| v.len()), Ok(f.octets.len()));
     }
 
     #[test]
@@ -130,15 +131,15 @@ proptest! {
             prop_assert!(f.layout().data().len() > f.tfdz().len());
             prop_assert_eq!(UslpFrame::peek_length(&v, t), Ok(f.len()));
             // Unless its channel is not configured: the decoder reads such a frame (API-017).
-            if let Err(r) = validate_frame_lenient(f.octets(), t) {
+            if let Err(r) = check_frame(f.octets(), t, DecodeMode::Lenient) {
                 prop_assert!(unknown_channel(r.reason()), "{:?}", r);
             }
             if f.anomalies().contains(UslpAnomaly::OidHeaderMismatch) {
                 prop_assert_eq!(f.vc_id().get(), 63);
             }
         }
-        match (validate_frame(&v, t), UslpFrame::decode(&v, t)) {
-            (Ok(a), Ok(b)) => prop_assert_eq!(a.into_frame(), b),
+        match (check_frame(&v, t, DecodeMode::Strict), UslpFrame::decode(&v, t)) {
+            (Ok(a), Ok(b)) => prop_assert_eq!(a.into_view().into_frame(), b),
             (Err(r), Ok(b)) => prop_assert!(b.len() < v.len() || unknown_channel(r.reason()), "{:?}", r),
             (Ok(_), Err(e)) => prop_assert!(false, "validated but not decoded: {:?}", e),
             (Err(_), Err(_)) => {}

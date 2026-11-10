@@ -2,7 +2,7 @@
 //! CMN-001, VER-023).
 //!
 //! Every single-bit error and every double-bit error of a set of valid frames with the FECF is
-//! rejected by the Frame Validation Checks, [`validate_frame`] (TC-021), and never accepted as
+//! rejected by the Frame Validation Checks, [`check_frame`] (TC-021), and never accepted as
 //! another frame. A TC frame is at most 1 024 octets (232.0 §4.1.2.7.3), within the 4 095 octets
 //! up to which the CRC-16 detects every double-bit error ([`aldis_testkit::bitflip`]), so the
 //! double-bit property holds for every TC frame.
@@ -10,16 +10,16 @@
 //! The outcome depends on where the error is:
 //!
 //! - **Outside the Frame Length field** (bits 22–31, 232.0 §4.1.2.7.1) the frame keeps its
-//!   length, so the CRC sees the error: both [`validate_frame`] and [`TcFrame::decode`] reject
+//!   length, so the CRC sees the error: both [`check_frame`] and [`TcFrame::decode`] reject
 //!   it (the FECF or an earlier header check, 232.0 §4.4.9.3).
-//! - **In the Frame Length field** the frame claims another length. [`validate_frame`] compares
+//! - **In the Frame Length field** the frame claims another length. [`check_frame`] compares
 //!   it with the octets present (check (d), TC-021) and rejects it. [`TcFrame::decode`] reads a
 //!   frame from the start of a longer input and ignores what follows (API-011): a shorter claimed
 //!   length makes it check the FECF of a shorter frame, whose last two octets are data, so the
 //!   CRC guarantee does not apply, and such a prefix passes when those octets happen to be its
 //!   CRC (`decode_may_accept_a_frame_length_error_as_a_shorter_frame` builds one). So for those
 //!   errors the property is only that `decode` never returns a frame of the input's whole
-//!   length; a receiver of delimited frames must use [`validate_frame`] or compare
+//!   length; a receiver of delimited frames must use [`check_frame`] or compare
 //!   [`TcFrame::len`] with the octets it gave.
 //!
 //! The frames are fixed, not drawn: the shortest Type-BD frame with the FECF, a Type-BC Unlock
@@ -41,29 +41,25 @@ use core::ops::Range;
 use aldis_core::crc::crc16;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
-use aldis_core::{DecodeMode, Error, Lenient};
+use aldis_core::{Checked, DecodeMode, Error, Lenient, Rejection};
 use aldis_tc::delimit::{Delimited, FrameDelimiter, next_frame};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MAX_FRAME_LEN, MapConfig,
-    PhysicalChannelConfig, Reason, Rejection, SegmentHeader, SegmentHeaderUse, SequenceFlags,
-    TcFrame, TcMapId, TcSpacecraftId, TcVcId, ValidatedTcFrame, VcConfig, VcTable, encode,
-    validate_frame, validate_frame_lenient,
+    PhysicalChannelConfig, Reason, SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame,
+    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 use aldis_testkit::bitflip::{
     CRC16_DOUBLE_BIT_OCTETS, each_double, each_pair, each_single, filler, find_double,
     sampled_pairs,
 };
 
-/// `validate_frame` or `validate_frame_lenient`, as `mode` says (API-030).
+/// `check_frame` in `mode`, without the anomalies (API-030).
 fn validated<'a>(
     bytes: &'a [u8],
     t: &Channels,
     mode: DecodeMode,
-) -> Result<ValidatedTcFrame<'a>, Rejection> {
-    match mode {
-        DecodeMode::Strict => validate_frame(bytes, t),
-        DecodeMode::Lenient => validate_frame_lenient(bytes, t).map(Lenient::into_view),
-    }
+) -> Result<Checked<TcFrame<'a>>, Rejection<Reason>> {
+    check_frame(bytes, t, mode).map(Lenient::into_view)
 }
 
 /// `TcFrame::decode` or `TcFrame::decode_lenient`, as `mode` says (API-030).
@@ -179,7 +175,7 @@ fn short_frames(t: &Channels) -> [Vec<u8>; 3] {
 }
 
 /// Whether `bytes`, a valid frame with bit errors, is rejected as the module docs state: by
-/// `validate_frame` in both modes, and by `decode` unless it returns a frame shorter than
+/// `check_frame` in both modes, and by `decode` unless it returns a frame shorter than
 /// `bytes` from an error in the Frame Length field.
 fn rejected(t: &Channels, bytes: &[u8], bits: &[usize]) -> bool {
     let in_length = bits.iter().any(|b| FRAME_LENGTH_BITS.contains(b));
@@ -264,7 +260,7 @@ fn decode_may_accept_a_frame_length_error_as_a_shorter_frame() {
     f[3] ^= 0x20;
     let short = TcFrame::decode(&f, &t).unwrap();
     assert_eq!(short.len(), 32);
-    let rejection = validate_frame(&f, &t).unwrap_err();
+    let rejection = check_frame(&f, &t, DecodeMode::Strict).unwrap_err();
     assert_eq!(rejection.reason(), Reason::LengthMismatch);
 }
 
@@ -305,7 +301,7 @@ fn first_frame(unit: &[u8]) -> Option<&[u8]> {
 fn without_the_fecf_a_shortened_frame_is_delimited_and_accepted() {
     // req: TC-001, TC-006, TC-020, TC-021, API-011, VER-064
     // hazard: HZ-TC-01 (P-TC-03). Without the FECF, the Frame Length error that lowers the
-    // length yields a frame of the shorter length from `next_frame`, and `validate_frame` of
+    // length yields a frame of the shorter length from `next_frame`, and `check_frame` of
     // those octets accepts it in both modes (check (d) reads the same field).
     let t = channels_with(false);
     let f = segmented(&t, 64, 1);
@@ -330,7 +326,9 @@ fn without_the_fecf_a_shortened_frame_is_delimited_and_accepted() {
         }
         // The whole unit as given, bounded by something other than the field, is rejected.
         assert_eq!(
-            validate_frame(&bad, &t).unwrap_err().reason(),
+            check_frame(&bad, &t, DecodeMode::Strict)
+                .unwrap_err()
+                .reason(),
             Reason::LengthMismatch
         );
         lowered += 1;
@@ -382,7 +380,7 @@ fn the_octets_a_shortened_frame_leaves_are_leftover_fill_above_the_bound() {
 fn with_the_fecf_a_shortened_frame_is_delimited_and_rejected() {
     // req: TC-001, TC-006, TC-020, TC-021, API-011, VER-064
     // hazard: HZ-TC-01 (P-TC-03). With the FECF the delimiter still yields the shorter frame,
-    // and validate_frame rejects each one of this frame (the CRC guarantee does not apply to
+    // and check_frame rejects each one of this frame (the CRC guarantee does not apply to
     // a moved codeword end, so this pins the outcome for these octets, not a bound).
     let t = channels_with(true);
     let f = segmented(&t, 64, 1);
@@ -412,7 +410,7 @@ fn without_the_fecf_a_lengthened_frame_is_delimited_and_accepted() {
     // req: TC-001, TC-006, TC-020, TC-021, API-011, VER-064
     // hazard: HZ-TC-04 (P-TC-07). Without the FECF, each Frame Length error of the first of
     // two frames that raises the length to a value within the unit yields a frame that holds
-    // the first frame and the start of the second, and validate_frame accepts it.
+    // the first frame and the start of the second, and check_frame accepts it.
     let t = channels_with(false);
     let unit = two_frames(&t);
     assert_eq!(unit.len(), 96);

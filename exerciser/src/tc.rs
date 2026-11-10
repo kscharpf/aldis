@@ -8,13 +8,12 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::lookup::{ChannelLookup as _, MapLookup as _, PhysicalLookup as _};
 use aldis_core::ocf::{Ocf, Type1Report};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
-use aldis_core::{Anomaly, AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
+use aldis_core::{Anomaly, AnomalySet, DecodeMode, Error, ErrorKind};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, Reason,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, next_frame, validate_frame,
-    validate_frame_lenient,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode, next_frame,
 };
 
 use crate::exercise::Tally;
@@ -142,8 +141,12 @@ fn frame_group(t: &mut Tally) {
     }
     t.check(TcFrame::peek_length(bb(frame)) == Ok(10));
     t.check(TcFrame::peek_header(bb(frame)).is_ok_and(|h| h.fields() == ad && h.frame_len() == 10));
-    t.check(validate_frame(bb(frame), &table).is_ok_and(|f| f.len() == 10));
-    match validate_frame(bb(frame.get(..9).unwrap_or_default()), &table) {
+    t.check(check_frame(bb(frame), &table, DecodeMode::Strict).is_ok_and(|f| f.len() == 10));
+    match check_frame(
+        bb(frame.get(..9).unwrap_or_default()),
+        &table,
+        DecodeMode::Strict,
+    ) {
         Ok(_) => t.check(false),
         Err(r) => {
             t.check(r.reason() == Reason::LengthMismatch && r.reason().code() == 8);
@@ -474,12 +477,7 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
 
 fn validate_case(case: &Case, o: &mut Out) -> Run {
     let channels = table(case)?;
-    let validated = match mode(case) {
-        DecodeMode::Strict => validate_frame(bb(case.input), &channels),
-        DecodeMode::Lenient => {
-            validate_frame_lenient(bb(case.input), &channels).map(Lenient::into_view)
-        }
-    };
+    let validated = check_frame(bb(case.input), &channels, mode(case));
     match validated {
         Ok(f) => {
             o.flag("accepted", true);

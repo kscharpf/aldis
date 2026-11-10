@@ -6,9 +6,9 @@
 
 // req: GEN-020, API-010, API-012, API-013, API-020, API-030, API-032, TM-001, TM-005, TM-008, TM-011, VER-022
 
-use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
+use aldis_core::{Check, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FshLen, PacketPointer, TmFrame, TmFrameContent,
     TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig,
@@ -100,7 +100,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         }
     }
     if let Ok(f) = strict
-        && let Ok(f) = f.validate(&mc)
+        && let Ok(f) = f.check(&mc)
     {
         let fields = TmFrameFields::new(
             f.vcid(),

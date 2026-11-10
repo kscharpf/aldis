@@ -8,6 +8,7 @@
 
 // req: USLP-003, USLP-004, USLP-005, USLP-006, USLP-009, USLP-010, USLP-014, API-020, API-021, API-022, GEN-042, VER-022
 
+use aldis_core::DecodeMode;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
@@ -15,7 +16,7 @@ use aldis_uslp::{
     ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule,
     TransferFrameType, Upid, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId, UslpVcId,
-    VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid, validate_frame,
+    VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -55,7 +56,7 @@ fn check_frame(
             assert_eq!((view.tfdf_header(), view.tfdz()), (tfdf, zone));
             assert_eq!((view.insert_zone(), view.ocf()), (content.insert_zone, ocf));
             assert_eq!(hdr.frame_len(), frame_len_out);
-            assert!(validate_frame(frame, table).is_ok());
+            assert!(aldis_uslp::check_frame(frame, table, DecodeMode::Strict).is_ok());
             let mut two = vec![!fill; frame_len_out];
             let mut writer =
                 UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();

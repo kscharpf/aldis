@@ -858,10 +858,11 @@ fn delivered_range_addresses_the_output_area() {
 #[test]
 fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
     // req: COP-002, COP-037, TC-021, API-016
+    use aldis_core::DecodeMode;
     use aldis_core::security::SecurityLayout;
     use aldis_tc::{
         FrameData, FrameFields, FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId,
-        VcConfig, VcTable, encode, validate_frame,
+        VcConfig, VcTable, check_frame, encode,
     };
 
     const F: usize = 32;
@@ -881,7 +882,7 @@ fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
     let check = |frame_type, data: FrameData<'_>, buffer_available, expected: Farm1Frame<'_>| {
         let mut bytes = [0_u8; F];
         let n = encode(&channels, fields(frame_type), data, &mut bytes).unwrap();
-        let valid = validate_frame(&bytes[..n], &channels).unwrap();
+        let valid = check_frame(&bytes[..n], &channels, DecodeMode::Strict).unwrap();
         // The frame borrows `bytes`, so it is compared inside the closure.
         assert_eq!(
             Farm1Input::from_tc(&valid, buffer_available),
