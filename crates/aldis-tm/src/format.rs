@@ -35,8 +35,8 @@ impl FrameFormat for TmFormat {
 mod tests {
     use super::{FrameFormat, TmFormat};
     use crate::header::TmPrimaryHeader;
-    use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ErrorKind;
+    use aldis_core::ids::{SpacecraftId, VcId};
 
     // req: LNK-001
     #[test]

@@ -27,13 +27,13 @@ use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::layout::OCF_LEN;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result, field};
+use aldis::link::common::Qos;
 use aldis::link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig,
     ChannelMuxHead, Cop, FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput,
-    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
-    UslpOffer, UslpVc, VcConfig,
+    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer,
+    UslpVc, VcConfig,
 };
-use aldis::link::common::Qos;
 use aldis::link::policy::{MuxPolicy, Weight};
 use aldis::link::protocol::{Aos, Route, Tm, Uslp};
 use aldis::uslp::{SourceOrDestination, VcfCountLen};
@@ -535,7 +535,7 @@ struct FlatOffer {
 
 impl FlatOffer {
     /// `InvalidField` for a route or a COP-1 block, for a protocol that has neither.
-    fn refuse_route_and_cop(self) -> Result<()> {
+    const fn refuse_route_and_cop(self) -> Result<()> {
         if self.route.is_some() {
             Err(Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID))
         } else if self.cop.is_some() {
@@ -818,7 +818,11 @@ fn flat_offer(input: &aldis_channel_mux_input_t) -> Result<FlatOffer> {
     } else {
         None
     };
-    Ok(FlatOffer { pointer, route, cop })
+    Ok(FlatOffer {
+        pointer,
+        route,
+        cop,
+    })
 }
 
 /// The offered field of `input`, with `data` as its octets (LNK-076).
@@ -833,7 +837,12 @@ fn offer<'a, P: MxProtocol>(
     let flat = flat_offer(input)?;
     let meta = match P::offer_meta(flat) {
         Ok(meta) => meta,
-        Err(e) if engine.config().field_len(input.vc_id, Qos::SequenceControlled).is_some() => {
+        Err(e)
+            if engine
+                .config()
+                .field_len(input.vc_id, Qos::SequenceControlled)
+                .is_some() =>
+        {
             return Err(engine.refuse(e));
         }
         Err(_) => P::OfferMeta::default(),

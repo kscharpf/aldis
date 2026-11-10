@@ -35,8 +35,8 @@ impl FrameFormat for TcFormat {
 mod tests {
     use super::{FrameFormat, TcFormat};
     use crate::header::{FrameFields, FrameType, TcFrameHeader};
-    use aldis_core::ids::FrameSeqNum;
     use aldis_core::ErrorKind;
+    use aldis_core::ids::FrameSeqNum;
 
     // req: LNK-001
     #[test]

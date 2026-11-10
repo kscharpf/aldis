@@ -403,35 +403,35 @@ mod tests {
         type Scid = Field<6, 2, 10>;
         type Wide = Field<9, 3, 64>;
         type Bit = Field<2, 15, 1>;
-        let h = [0x1B, 0xCD, 0xE5, 0x07, 0xFF, 0x81];
-        assert_eq!(Scid::get(&h), get(&h, 2, 10).unwrap());
-        assert_eq!(u64::from(Scid::get_u16(&h)), Scid::get(&h));
-        let w = [0xA5, 1, 2, 3, 4, 5, 6, 7, 0x9F];
-        assert_eq!(Wide::get(&w), get(&w, 3, 64).unwrap());
+        let header = [0x1B, 0xCD, 0xE5, 0x07, 0xFF, 0x81];
+        assert_eq!(Scid::get(&header), get(&header, 2, 10).unwrap());
+        assert_eq!(u64::from(Scid::get_u16(&header)), Scid::get(&header));
+        let wide = [0xA5, 1, 2, 3, 4, 5, 6, 7, 0x9F];
+        assert_eq!(Wide::get(&wide), get(&wide, 3, 64).unwrap());
         assert!(Bit::flag(&[0, 1]));
         assert_eq!(Field::<1, 2, 5>::get_u8(&[0b0011_1100]), 0b11110);
         assert_eq!(Field::<5, 8, 32>::get_u32(&[0, 1, 2, 3, 4]), 0x0102_0304);
-        let mut b = [0_u8; 2];
-        Bit::put_flag(&mut b, true);
-        assert_eq!(b, [0, 1]);
-        let mut c = [0_u8; 3];
-        Field::<3, 4, 8>::put_u8(&mut c, 0xAB);
-        Field::<3, 12, 12>::put_u16(&mut c, 0xCDE);
-        assert_eq!(c, [0x0A, 0xBC, 0xDE]);
-        let mut d = [0_u8; 5];
-        Field::<5, 4, 32>::put_u32(&mut d, 0x0102_0304);
-        assert_eq!(d, [0x00, 0x10, 0x20, 0x30, 0x40]);
+        let mut two = [0_u8; 2];
+        Bit::put_flag(&mut two, true);
+        assert_eq!(two, [0, 1]);
+        let mut three = [0_u8; 3];
+        Field::<3, 4, 8>::put_u8(&mut three, 0xAB);
+        Field::<3, 12, 12>::put_u16(&mut three, 0xCDE);
+        assert_eq!(three, [0x0A, 0xBC, 0xDE]);
+        let mut five = [0_u8; 5];
+        Field::<5, 4, 32>::put_u32(&mut five, 0x0102_0304);
+        assert_eq!(five, [0x00, 0x10, 0x20, 0x30, 0x40]);
         macro_rules! round {
             ($offset:literal, $width:literal) => {
                 type F = Field<6, $offset, $width>;
                 for value in [0_u64, 1, 0x2A5, 0xFFFF_FFFF_FFFF] {
                     let value = value & (u64::MAX >> (64 - $width));
-                    let mut a = [0xA5_u8, 0x5A, 0xFF, 0x00, 0x81, 0x7E];
-                    let mut c = a;
-                    F::put(&mut a, value);
-                    set(&mut c, $offset, $width, value).unwrap();
-                    assert_eq!(a, c);
-                    assert_eq!(F::get(&a), value);
+                    let mut got = [0xA5_u8, 0x5A, 0xFF, 0x00, 0x81, 0x7E];
+                    let mut want = got;
+                    F::put(&mut got, value);
+                    set(&mut want, $offset, $width, value).unwrap();
+                    assert_eq!(got, want);
+                    assert_eq!(F::get(&got), value);
                 }
             };
         }
@@ -455,10 +455,13 @@ mod tests {
         }
         assert_eq!(super::be_uint(&[]), 0);
         assert_eq!(super::be_uint(&[1, 2, 3]), 0x01_02_03);
-        assert_eq!(super::be_uint(&[9, 1, 2, 3, 4, 5, 6, 7, 8]), 0x0102_0304_0506_0708);
-        let mut h = [0xFF_u8; 2];
-        Field::<2, 4, 4>::put(&mut h, 0x1F5);
-        assert_eq!(h, [0xF5, 0xFF], "bits above the width are dropped");
+        assert_eq!(
+            super::be_uint(&[9, 1, 2, 3, 4, 5, 6, 7, 8]),
+            0x0102_0304_0506_0708
+        );
+        let mut ones = [0xFF_u8; 2];
+        Field::<2, 4, 4>::put(&mut ones, 0x1F5);
+        assert_eq!(ones, [0xF5, 0xFF], "bits above the width are dropped");
     }
 
     #[test]

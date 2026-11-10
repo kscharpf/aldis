@@ -38,8 +38,8 @@ mod tests {
     use super::{AosFormat, FrameFormat};
     use crate::config::AosEdition;
     use crate::header::{AosPrimaryHeader, FrameCountCycle, VcFrameCount};
-    use aldis_core::ids::{SpacecraftId, VcId};
     use aldis_core::ErrorKind;
+    use aldis_core::ids::{SpacecraftId, VcId};
 
     // req: LNK-001
     #[test]

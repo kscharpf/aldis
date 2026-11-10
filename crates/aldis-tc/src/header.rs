@@ -136,8 +136,8 @@ impl RawHeader {
     /// Reads the first five octets; `None` if `bytes` is shorter (232.0 §4.1.2).
     pub(crate) fn parse(bytes: &[u8]) -> Option<RawHeader> {
         let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
-        let ids = TcSpacecraftId::new(layout::Scid::get_u16(h))
-            .zip(TcVcId::new(layout::Vcid::get_u8(h)));
+        let ids =
+            TcSpacecraftId::new(layout::Scid::get_u16(h)).zip(TcVcId::new(layout::Vcid::get_u8(h)));
         ids.map(|(spacecraft_id, vc_id)| RawHeader {
             version: layout::Version::get_u8(h),
             bypass: layout::Bypass::flag(h),

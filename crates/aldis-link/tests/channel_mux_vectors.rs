@@ -88,7 +88,7 @@ trait Proto: MuxProtocol {
 }
 
 /// `InvalidField` for a route or a COP-1 block, which a protocol without them refuses (LNK-076).
-fn refuse_route_and_cop(route: Option<Route>, cop: Option<Cop>) -> Result<(), Error> {
+const fn refuse_route_and_cop(route: Option<Route>, cop: Option<Cop>) -> Result<(), Error> {
     if route.is_some() {
         Err(Error::new(ErrorKind::InvalidField).with_field(field::MAP_ID))
     } else if cop.is_some() {
@@ -149,7 +149,11 @@ impl Proto for Tm {
         finish(c, channel, &vcs)
     }
 
-    fn meta(pointer: Option<u16>, route: Option<Route>, cop: Option<Cop>) -> Result<TmOffer, Error> {
+    fn meta(
+        pointer: Option<u16>,
+        route: Option<Route>,
+        cop: Option<Cop>,
+    ) -> Result<TmOffer, Error> {
         refuse_route_and_cop(route, cop)?;
         Ok(TmOffer { pointer })
     }

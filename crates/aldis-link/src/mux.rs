@@ -943,7 +943,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     /// (the C ABI's flat input carries a route that a TM offer has no member for) and returns
     /// `error`, so that `refused` counts what the engine would have refused (LNK-002, LNK-076).
     #[must_use]
-    pub fn refuse(&mut self, error: Error) -> Error {
+    pub const fn refuse(&mut self, error: Error) -> Error {
         self.head.status.refused.incr();
         error
     }
@@ -1021,7 +1021,12 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .find(offer.vc)
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
         let admitted = P::admit(&vc.params, &offer.meta)?;
-        if offer.field.len() != self.head.config.data_len(Some(vc), admitted.kind.bypass_flag()) {
+        if offer.field.len()
+            != self
+                .head
+                .config
+                .data_len(Some(vc), admitted.kind.bypass_flag())
+        {
             return Err(Error::new(ErrorKind::LengthMismatch).with_field(field::FIELD_LEN));
         }
         let Some((slot, held)) = self
@@ -1459,13 +1464,13 @@ mod tm_impl {
 
         fn admit(vc: &TmVc, meta: &TmOffer) -> Result<Admitted<FirstHeaderPointer>> {
             let pointer = match (vc.role, meta.pointer) {
-                (TmRole::Packets, Some(raw)) => FirstHeaderPointer::new(raw).ok_or(
-                    Error::out_of_range(
+                (TmRole::Packets, Some(raw)) => {
+                    FirstHeaderPointer::new(raw).ok_or(Error::out_of_range(
                         field::FIRST_HEADER_POINTER,
                         u64::from(FirstHeaderPointer::MAX),
                         u64::from(raw),
-                    ),
-                )?,
+                    ))?
+                }
                 (TmRole::Vca, None) => FirstHeaderPointer::ZERO,
                 (TmRole::Packets, None) | (TmRole::Vca, Some(_)) => {
                     return Err(

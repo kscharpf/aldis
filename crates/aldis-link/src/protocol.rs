@@ -334,9 +334,7 @@ pub use aos_impl::AosParams;
 mod uslp_impl {
     use aldis_core::ids::MapId;
     use aldis_core::{Error, ErrorKind, Result, field};
-    use aldis_uslp::{
-        FirstHeaderPointer, PacketField, TfdfHeader, TfdzOffset, TfdzRule, Upid,
-    };
+    use aldis_uslp::{FirstHeaderPointer, PacketField, TfdfHeader, TfdzOffset, TfdzRule, Upid};
 
     use super::{IdleField, PacketProtocol, ParsedField, Pointer, Route, Uslp};
     use crate::common::{IdlePacketKind, Qos};

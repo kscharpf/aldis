@@ -30,7 +30,10 @@ impl FrameFormat for UslpFormat {
     }
 
     fn write_oid_data_header(data_len: usize, out: &mut [u8]) {
-        for (d, s) in out.iter_mut().zip(TfdfHeader::only_idle_data(data_len).octets()) {
+        for (d, s) in out
+            .iter_mut()
+            .zip(TfdfHeader::only_idle_data(data_len).octets())
+        {
             *d = s;
         }
     }
@@ -40,10 +43,12 @@ impl FrameFormat for UslpFormat {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{FrameFormat, UslpFormat};
-    use crate::header::{ChannelFields, FrameKind, SourceOrDestination, UslpPrimaryHeader, VcfCount};
+    use crate::header::VcfCountLen;
+    use crate::header::{
+        ChannelFields, FrameKind, SourceOrDestination, UslpPrimaryHeader, VcfCount,
+    };
     use crate::tfdf::TfdfHeader;
     use aldis_core::ErrorKind;
-    use crate::header::VcfCountLen;
 
     // req: LNK-001
     #[test]
@@ -76,7 +81,10 @@ mod tests {
         .unwrap();
         let mut out = [0xEE_u8; 10];
         UslpFormat::write_primary_header(&header, &mut out).unwrap();
-        assert_eq!(&out[..9], &[0xCF, 0x0A, 0x5F, 0xE0, 0x00, 0x63, 0x8A, 0x02, 0x03]);
+        assert_eq!(
+            &out[..9],
+            &[0xCF, 0x0A, 0x5F, 0xE0, 0x00, 0x63, 0x8A, 0x02, 0x03]
+        );
         assert_eq!(out[9], 0xEE);
         let e = UslpFormat::write_primary_header(&header, &mut out[..8]).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);

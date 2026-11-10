@@ -428,7 +428,8 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
     let mut out = [0; F];
     let field16 = [0x11; 16];
     let invalid = |f| named(ErrorKind::InvalidField, f);
-    let mut step = |mux: &mut TmMux, o: Offer<'_, Tm>| failure(mux.step(MuxInput::Offer(o), &mut out));
+    let mut step =
+        |mux: &mut TmMux, o: Offer<'_, Tm>| failure(mux.step(MuxInput::Offer(o), &mut out));
     // A VC not configured, a field of another length.
     assert_eq!(
         step(&mut mux, offer(5, &field16, Some(0))).0,
@@ -926,7 +927,10 @@ fn the_protocols_without_cop_have_no_vcf_count_to_take() {
     assert_eq!(admitted.kind, CopFrameKind::Ad);
     assert_eq!(admitted.given_count, None);
     let admitted = Tm::admit(&tm, &TmOffer { pointer: Some(5) }).unwrap();
-    assert_eq!((admitted.kind, admitted.given_count), (CopFrameKind::Ad, None));
+    assert_eq!(
+        (admitted.kind, admitted.given_count),
+        (CopFrameKind::Ad, None)
+    );
     assert_eq!(admitted.pointer.get(), 5);
     let admitted = Uslp::admit(uslp_vc(1, false).params(), &UslpOffer::default()).unwrap();
     assert_eq!(admitted.kind, CopFrameKind::Ad);
@@ -1154,8 +1158,8 @@ fn an_aos_and_a_uslp_mux_reconfigure_and_report_what_they_drop() {
 #[test]
 fn a_uslp_frame_length_beyond_the_header_field_is_an_error_not_a_clamped_length() {
     // req: LNK-032, LNK-082
-    use aldis_link::mux::FrameFields;
     use aldis_core::{CopFrameKind, FrameFormat};
+    use aldis_link::mux::FrameFields;
     let mut fields = FrameFields::<Uslp> {
         vc: VcId::<6>::new(1).unwrap(),
         oid: false,
