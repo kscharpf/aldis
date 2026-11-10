@@ -416,6 +416,14 @@ expect "main is unchanged" test "$(tip main)" = "$before"
 expect "the change is kept" grep -q dirt "$repo/init.txt"
 git -C "$repo" checkout -q -- init.txt
 
+echo "# an untracked file does not block the fast-forward"
+echo stray >"$repo/stray.txt"
+advance ff3
+run --apply nonexistent
+expect "main is at origin/main" test "$(tip main)" = "$(tip origin/main)"
+expect "the untracked file stays" test -f "$repo/stray.txt"
+rm "$repo/stray.txt"
+
 echo "# cannot fast-forward: warn, change nothing"
 echo local >"$repo/local.txt"
 git -C "$repo" add local.txt

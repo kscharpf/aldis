@@ -30,9 +30,10 @@
 # kept and the script says which.
 # Last, with --apply, the main checkout's `main` is fast-forwarded to the fetched origin/main
 # (`merge --ff-only`), because sessions and subagents read AGENTS.md and docs/ there (maintainer
-# decision, 2026-11-10). If the main checkout is not on `main`, has local changes, or cannot
-# fast-forward, the script prints a warning and changes nothing (never a reset or a merge commit);
-# that does not change the exit status.
+# decision, 2026-11-10). If the main checkout is not on `main`, has changes to tracked files, or
+# cannot fast-forward, the script prints a warning and changes nothing (never a reset or a merge
+# commit); an untracked file does not count, since git itself refuses a fast-forward that would
+# overwrite one. The warning does not change the exit status.
 # Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
@@ -223,7 +224,7 @@ fast_forward_base() {
     if [ "$head" != main ]; then
         echo "WARNING: the main checkout is on ${head:-a detached HEAD}, not main;" \
             "not fast-forwarded to origin/main"
-    elif [ -n "$(g status --porcelain)" ]; then
+    elif [ -n "$(g status --porcelain --untracked-files=no)" ]; then
         echo "WARNING: the main checkout has local changes; not fast-forwarded to origin/main"
     elif [ "$(g rev-parse main)" = "$(g rev-parse origin/main)" ]; then
         echo "main checkout: main is already at origin/main"
