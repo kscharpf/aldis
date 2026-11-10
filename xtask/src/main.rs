@@ -153,7 +153,8 @@ commands:
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
                                trace --scope m3 --strict, trace --scope m4 --strict,
-                               trace --scope m5 --strict, trace --scope a1 --strict, trace --scope a2; a step that
+                               trace --scope m5 --strict, trace --scope m6,
+                               trace --scope a1 --strict, trace --scope a2; a step that
                                cannot run counts as a problem, and the others still run
 
 ";
@@ -196,6 +197,8 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m4 --strict", || trace::run(Some("m4"), true)),
     // M5 is closed: every in-scope requirement must keep an artefact (m5 plan D1).
     ("trace --scope m5 --strict", || trace::run(Some("m5"), true)),
+    // M6 is in progress: progress is reported, not enforced, until its exit (m6 plan D7).
+    ("trace --scope m6", || trace::run(Some("m6"), false)),
     // A1 is closed: every in-scope requirement must keep an artefact (a1 plan D2).
     ("trace --scope a1 --strict", || trace::run(Some("a1"), true)),
     // A2 is in progress: progress is reported, not enforced, until its exit (a2 plan D1).
@@ -227,6 +230,7 @@ fn fix() -> Result<usize, String> {
         + vectors::generated(true)?
         + sana::run(&["--write"])?
         + header::run(true)?
+        + refapp::gen_scenario()?
         + consistency::check()?)
 }
 

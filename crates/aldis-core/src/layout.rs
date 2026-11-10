@@ -61,6 +61,18 @@ impl LayoutSpec {
             ..self
         }
     }
+
+    /// Checks that a frame of this spec has room for data: after a data-field header of
+    /// `data_header_len` octets (0 for none), at least one octet is left (CMN-041, API-070).
+    ///
+    /// # Errors
+    /// `InvalidConfig` (`frame_data_field`) if the other fields, and the header, leave no
+    /// octet for the data.
+    pub fn check_room(&self, data_header_len: usize) -> Result<()> {
+        FrameLayout::compute(self)?
+            .with_data_header(data_header_len)
+            .map(|_| ())
+    }
 }
 
 /// Contiguous, non-overlapping octet ranges covering a frame exactly, in wire order (CMN-040).
@@ -329,6 +341,29 @@ mod tests {
     use crate::error::ErrorKind;
     use crate::field;
     use crate::security::SecurityLayout;
+
+    #[test]
+    fn check_room_needs_a_data_octet_after_the_header() {
+        // req: CMN-041
+        let spec = LayoutSpec {
+            frame_len: 10,
+            primary_header_len: 6,
+            secondary_len: 0,
+            security: SecurityLayout::NONE,
+            ocf: false,
+            fecf: true,
+        };
+        // Two octets are left for the data field.
+        assert_eq!(spec.check_room(0), Ok(()));
+        assert_eq!(spec.check_room(1), Ok(()));
+        for e in [spec.check_room(2), spec.with_data_len(0).check_room(0)] {
+            let e = e.unwrap_err();
+            assert_eq!(
+                (e.kind(), e.field()),
+                (ErrorKind::InvalidConfig, Some(field::FRAME_DATA_FIELD))
+            );
+        }
+    }
 
     #[test]
     fn tm_frame_with_everything() {

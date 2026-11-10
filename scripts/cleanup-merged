@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove the worktree and branches of named branches whose pull request has merged, or whose
-# closed train pull request left no commit outside origin/main. Dry run unless --apply.
+# closed pull request left nothing outside origin/main. Dry run unless --apply.
 #
 # Usage: scripts/cleanup-merged [--apply] <branch>...
 #
@@ -9,7 +9,14 @@
 #     (never of the local main, which may be stale); or
 #   - it matches train/*, a closed pull request that did not merge has it as its head branch, and
 #     `git log --no-merges origin/main..<branch>` is empty (a rebuilt train: coordinator.md,
-#     "Failure"), for the local branch and for the remote branch alike;
+#     "Failure"), for the local branch and for the remote branch alike; or
+#   - it does not match train/*, a closed pull request that did not merge has it as its head
+#     branch, and that pull request's head commit (`headRefOid`) is an ancestor of origin/main,
+#     for the local branch (its tip is then that commit, or an ancestor of origin/main) and for
+#     the remote branch alike. A stacked pull request that GitHub could not mark merged (its base
+#     is another branch, or no new commit remains against main) qualifies: the exact commit is on
+#     main, which is as strong as a merge (maintainer decision, 2026-11-09). A closed pull request
+#     whose head is not on origin/main is kept;
 #   - its worktree, if it has one, is clean and is not the main checkout. A clean worktree locked
 #     by Claude Code for a finished agent (reason `claude agent agent-<id> (pid N)`, with an
 #     optional ` start <time>` after the pid) is unlocked first; a lock with any other reason
@@ -17,8 +24,10 @@
 # Then: the worktree is removed, the local branch deleted (-D: the ancestry test, or for a closed
 # train the no-unique-commits test, is the proof it is safe), and the remote branch deleted if it
 # still exists and meets the same test as the local branch (an ancestor of origin/main; for a
-# closed train, no commit outside origin/main). For a closed train both refs are tested before
-# anything is deleted: if either fails, both are kept and the script says which.
+# closed train, no commit outside origin/main; for a closed non-train pull request whose head is on
+# main, an ancestor of origin/main, so a remote branch with a commit main lacks is kept). For a
+# closed pull request both refs are tested before anything is deleted: if either fails, both are
+# kept and the script says which.
 # Bulk cleanup of leftovers is scripts/prune-agent-branches.
 set -euo pipefail
 
@@ -80,8 +89,15 @@ no_unique_commits() {
     [ -z "$(g log --no-merges --format=%h "origin/main..$1")" ]
 }
 
+# Whether ref $2 passes the test of closed pull request kind $1 (train, or landed: a non-train
+# branch whose PR head is on origin/main).
+ref_ok() {
+    if [ "$1" = train ]; then no_unique_commits "$2"
+    else g merge-base --is-ancestor "$2" origin/main; fi
+}
+
 clean_one() {
-    local b="$1" pr wt local_branch=0 remote_branch=0 closed=0
+    local b="$1" pr wt head_oid="" local_branch=0 remote_branch=0 closed=""
     if g show-ref --verify --quiet "refs/heads/$b"; then local_branch=1; fi
     if g show-ref --verify --quiet "refs/remotes/origin/$b"; then remote_branch=1; fi
     if [ "$local_branch" -eq 0 ] && [ "$remote_branch" -eq 0 ]; then
@@ -92,34 +108,62 @@ clean_one() {
     pr="$(gh pr list --head "$b" --state merged --json number --jq '.[0].number // empty')" \
         || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
     if [ -z "$pr" ]; then
-        case "$b" in
-            train/*)
-                pr="$(gh pr list --head "$b" --state closed --json number,mergedAt \
-                    --jq 'map(select((.mergedAt // "") == "")) | .[0].number // empty')" \
-                    || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
-                [ -z "$pr" ] || closed=1
-                ;;
-        esac
+        # The first closed, unmerged pull request: "<number> <headRefOid>".
+        pr="$(gh pr list --head "$b" --state closed --json number,mergedAt,headRefOid --jq \
+            'map(select((.mergedAt // "") == "")) | .[0] | select(. != null)
+                | "\(.number) \(.headRefOid)"')" \
+            || { echo "$b: KEEP (gh could not list its pull requests)"; return 1; }
+        if [ -n "$pr" ]; then
+            head_oid="${pr#* }"
+            pr="${pr%% *}"
+            case "$b" in
+                train/*) closed=train ;;
+                *)
+                    if [ -z "$head_oid" ]; then
+                        echo "$b: KEEP (no merged pull request has it as its head branch;" \
+                            "GitHub reported no head commit for closed PR #$pr)"
+                        return 1
+                    fi
+                    if ! g merge-base --is-ancestor "$head_oid" origin/main 2>/dev/null; then
+                        echo "$b: KEEP (no merged pull request has it as its head branch;" \
+                            "closed PR #$pr has its head ${head_oid:0:8} outside origin/main)"
+                        return 1
+                    fi
+                    closed=landed
+                    ;;
+            esac
+        fi
     fi
     if [ -z "$pr" ]; then
         echo "$b: KEEP (no merged pull request has it as its head branch)"
         return 1
     fi
 
-    if [ "$closed" -eq 1 ]; then
+    if [ -n "$closed" ]; then
+        # One test per kind of closed pull request, applied to each ref before anything is deleted.
         local failed=""
-        if [ "$local_branch" -eq 1 ] && ! no_unique_commits "refs/heads/$b"; then
+        if [ "$local_branch" -eq 1 ] && ! ref_ok "$closed" "refs/heads/$b"; then
             failed="the local branch"
         fi
-        if [ "$remote_branch" -eq 1 ] && ! no_unique_commits "refs/remotes/origin/$b"; then
+        if [ "$remote_branch" -eq 1 ] && ! ref_ok "$closed" "refs/remotes/origin/$b"; then
             failed="${failed:+$failed and }origin/$b"
         fi
         if [ -n "$failed" ]; then
-            echo "$b: KEEP (PR #$pr closed, but $failed has a non-merge commit" \
-                "outside origin/main; both refs kept)"
+            if [ "$closed" = train ]; then
+                echo "$b: KEEP (PR #$pr closed, but $failed has a non-merge commit" \
+                    "outside origin/main; both refs kept)"
+            else
+                echo "$b: KEEP (PR #$pr closed with head ${head_oid:0:8} on origin/main, but" \
+                    "$failed is not an ancestor of origin/main, so it has commits the pull" \
+                    "request did not land; both refs kept)"
+            fi
             return 1
         fi
-        echo "$b: PR #$pr closed train, no commits outside origin/main"
+        if [ "$closed" = train ]; then
+            echo "$b: PR #$pr closed train, no commits outside origin/main"
+        else
+            echo "$b: PR #$pr closed, head ${head_oid:0:8} on origin/main"
+        fi
     else
         if [ "$local_branch" -eq 1 ] \
             && ! g merge-base --is-ancestor "refs/heads/$b" origin/main; then
@@ -148,8 +192,12 @@ clean_one() {
         act "local branch $b" g branch -D "$b" || return 1
     fi
     if [ "$remote_branch" -eq 1 ]; then
-        if [ "$closed" -eq 1 ]; then
-            echo "  origin/$b has no commits outside origin/main"
+        if [ -n "$closed" ]; then
+            if [ "$closed" = train ]; then
+                echo "  origin/$b has no commits outside origin/main"
+            else
+                echo "  origin/$b is an ancestor of origin/main"
+            fi
             act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1
         elif g merge-base --is-ancestor "refs/remotes/origin/$b" origin/main; then
             act "remote branch origin/$b" g push --quiet origin --delete "$b" || return 1

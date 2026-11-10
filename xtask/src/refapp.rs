@@ -72,6 +72,29 @@ fn unsafe_problems(pkg: &Value) -> Vec<String> {
     problems
 }
 
+/// `xtask fix`: regenerates the scenario schema and constants of `refapp/` (APP-107) with
+/// `gen-scenario`; returns 0, or an error when the generator cannot run or fails.
+pub fn gen_scenario() -> Result<usize, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let status = Command::new(cargo)
+        .current_dir(repo::root().join("refapp"))
+        .args([
+            "run",
+            "-p",
+            "refapp-harness",
+            "--locked",
+            "--",
+            "gen-scenario",
+        ])
+        .status()
+        .map_err(|e| format!("gen-scenario: {e}"))?;
+    if status.success() {
+        Ok(0)
+    } else {
+        Err(format!("gen-scenario (refapp/) failed: {status}"))
+    }
+}
+
 /// Checks the rules; returns the number of violations.
 pub fn check() -> Result<usize, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());

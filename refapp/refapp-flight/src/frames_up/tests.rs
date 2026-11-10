@@ -16,8 +16,7 @@ use aldis::tc::{
 use refapp_scenario::generated::{SPACECRAFT_ID, apid};
 use refapp_scenario::{Delivered, Instant, Node, StepInput};
 
-use super::APP_FRAME_REJECTED;
-use super::APP_SEQUENCE_VIOLATION;
+use super::{APP_FRAME_REJECTED, APP_SEQUENCE_VIOLATION, APP_UNKNOWN_MAP};
 use crate::FlightNode;
 use crate::tests::{At, Out, Rec};
 
@@ -275,24 +274,19 @@ fn a_frame_for_another_vc_is_rejected_and_not_counted() {
 }
 
 #[test]
-fn a_frame_for_another_map_is_rejected_and_not_counted() {
+fn a_frame_for_another_map_is_accepted_counted_and_discarded_at_demultiplexing() {
     // req: APP-139, APP-041, TC-021, TC-022
-    // The strict codec refuses the MAP ID at validation, so FARM-1 does not count the frame and
-    // `unknown_map` (111) is not raised. The Blue Book reads otherwise (232.0 §4.4.3.3,
-    // §4.4.9.3.3): OI-98.
+    // The MAP ID is in the Segment Header, part of the Frame Data Unit, so validation accepts
+    // the frame; FARM-1 accepts every valid Type-BD frame (232.1 Table 6-1, E6) and the FARM-B
+    // Counter counts it (232.0 §4.2.1.9); the MAP Demultiplexing Function discards the FDU
+    // (232.0 §4.4.3.3, §4.4.9.3.3): `unknown_map` with the MAP ID (OI-98).
     let mut run = Run::new();
     run.deliver(
         1_010_000,
         &[bd_frame(0, SequenceFlags::Unsegmented, 5, &noop(0))],
     );
-    assert_eq!(
-        run.app_events(),
-        [(
-            APP_FRAME_REJECTED,
-            std::vec![code(ErrorKind::UnknownChannel)]
-        )]
-    );
-    assert_eq!(run.ocf_word(), 0x0100_0000);
+    assert_eq!(run.app_events(), [(APP_UNKNOWN_MAP, std::vec![5])]);
+    assert_eq!(run.ocf_word(), 0x0100_0200);
 }
 
 #[test]

@@ -14,6 +14,7 @@
 
 use std::collections::BTreeSet;
 
+use aldis_core::lookup::{ChannelLookup, PhysicalLookup};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId};
 use aldis_testkit::strategies;
@@ -27,7 +28,7 @@ use aldis_uslp::{
     MAX_FRAME_LEN, MapConfig, OcfUse, PRIMARY_HEADER_LEN, PhysicalChannelConfig, Reason,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
     TruncatedFrameLen, UnassignedUpid, Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId,
-    VcConfig, VcLookup, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_truncated,
+    VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, encode, encode_truncated,
 };
 
 /// `UslpFrame::decode` or `decode_lenient` as `mode` says, without the anomalies.
@@ -155,7 +156,7 @@ fn frame(
     tfdf: TfdfHeader,
     zone: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    let iz = vec![0_u8; aldis_uslp::VcLookup::physical_channel(t).insert_zone_len()];
+    let iz = vec![0_u8; PhysicalLookup::physical_channel(t).insert_zone_len()];
     let content = FrameContent {
         tfdf,
         insert_zone: &iz,
@@ -705,7 +706,7 @@ proptest! {
         let d = UslpFrame::decode(&f.octets, &f.channels.table).unwrap();
         prop_assert_eq!(d.len(), f.octets.len());
         if let Some(tr) = d.truncated() {
-            let vc = aldis_uslp::VcLookup::vc(&f.channels.table, d.spacecraft_id(), d.vc_id()).unwrap();
+            let vc = ChannelLookup::vc(&f.channels.table, d.spacecraft_id(), d.vc_id()).unwrap();
             prop_assert_eq!(Some(tr.len()), vc.truncated_frame_len().map(TruncatedFrameLen::get));
         }
     }
