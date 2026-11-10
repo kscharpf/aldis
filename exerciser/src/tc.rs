@@ -5,6 +5,7 @@ use core::fmt::Write as _;
 use core::hint::black_box as bb;
 
 use aldis_core::ids::FrameSeqNum;
+use aldis_core::lookup::{ChannelLookup as _, MapLookup as _, PhysicalLookup as _};
 use aldis_core::ocf::{Ocf, Type1Report};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly, AnomalySet, DecodeMode, Error, ErrorKind, Lenient};
@@ -12,7 +13,7 @@ use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, Reason,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcLookup, VcTable, encode, next_frame, validate_frame,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, next_frame, validate_frame,
     validate_frame_lenient,
 };
 

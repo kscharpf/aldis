@@ -4,7 +4,7 @@
 //!
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
-//! | [`config`] | `TmPhysicalChannelConfig`, `TmMasterChannelConfig`, `TmVirtualChannelConfig`, `DataFieldContent`, the `VcLookup` of a frame's security layout, `NoSdls` | 132.0 §5, §6.6 | TM-001, TM-011, API-040, API-041, API-070, GEN-060, GEN-061, RS-012, CMN-041 |
+//! | [`config`] | `TmPhysicalChannelConfig`, `TmMasterChannelConfig`, `TmVirtualChannelConfig`, `DataFieldContent`, the `VcLookup` of a frame's security layout and `security_layout`, `NoSdls` | 132.0 §5, §6.6 | TM-001, TM-011, API-040, API-041, API-070, GEN-060, GEN-061, RS-012, CMN-041 |
 //! | [`header`] | Owned `TmPrimaryHeader`, `SegmentLengthId`, `FirstHeaderPointer`, `PacketPointer`, `PacketOffset`, `DataFieldStatus`, `FshLen` | 132.0 §4.1.2, §4.1.3.2 | TM-002, TM-003, TM-007, TM-008, API-001, API-014 |
 //! | [`view`] | Zero-copy `TmFrame` decoder (strict and lenient), `UncheckedTmFrame`, `peek_length` | 132.0 §4.1, §6.3 | TM-001…TM-008, API-010, API-012…API-014, API-015, API-072, GEN-013 |
 //! | [`anomaly`] | `TmAnomaly` lenient-mode flags | 132.0 §4.1.2.7.4–5 | TM-007, API-032, API-033, GEN-043 |
@@ -38,7 +38,7 @@ pub mod writer;
 pub use anomaly::TmAnomaly;
 pub use config::{
     DataFieldContent, MAX_FRAME_LEN, NoSdls, TmMasterChannelConfig, TmPhysicalChannelConfig,
-    TmVirtualChannelConfig, VcLookup,
+    TmVirtualChannelConfig, VcLookup, security_layout,
 };
 pub use header::{
     DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,

@@ -9,9 +9,10 @@
 
 use aldis_aos::{
     AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter, CorrectedSymbols, DataUnit,
-    PduHeader, VcLookup, encode,
+    PduHeader, encode,
 };
 use aldis_core::ErrorKind;
+use aldis_core::lookup::ChannelLookup;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_testkit::strategies::aos::{

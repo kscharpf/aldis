@@ -7,7 +7,7 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan and specification | in review | — | Branch `spec/refapp-cfs`: this plan, [reference-application.md](../reference-application.md) §10, APP-110…APP-125, OI-36…OI-38, roadmap §3 row, glossary |
+| WP-0 Plan and specification | merged | #78 | Branch `spec/refapp-cfs`: this plan, [reference-application.md](../reference-application.md) §10, APP-110…APP-125, OI-36…OI-38, roadmap §3 row, glossary |
 | WP-1 cFS build skeleton | planned | — | Decisions D2–D7, D11, D12 accepted |
 | WP-2 Harness: cFS node and TCP transport | planned | — | Decisions D9, D18 accepted |
 | WP-3 Tooling: C header, trace scan, verify inputs | planned | — | Decisions D12, D15, D17 accepted |

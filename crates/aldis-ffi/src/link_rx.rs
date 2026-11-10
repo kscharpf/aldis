@@ -26,10 +26,7 @@
 //! data field of `ALDIS_LINK_MAX_FRAME_OCTETS` at most; the receiver holds
 //! `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VC entries (CABI-030).
 
-use aldis::aos::{
-    AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig,
-    VcLookup as AosVcLookup,
-};
+use aldis::aos::{AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig};
 use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::security::NoSecurity;
 use aldis::core::{Error, ErrorKind, Result, field};
@@ -47,13 +44,12 @@ use aldis::link::receiver::{
 };
 use aldis::tc::{
     MapConfig as TcMapConfig, PhysicalChannelConfig as TcPhysical, TcFrame, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig as TcVcConfig, VcLookup as TcVcLookup,
+    TcSpacecraftId, TcVcId, VcConfig as TcVcConfig,
 };
 use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
 use aldis::uslp::{
     MapConfig as UslpMapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType,
     UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig as UslpVcConfig,
-    VcLookup as UslpVcLookup,
 };
 
 use crate::abi::{self, flag};
@@ -1144,7 +1140,9 @@ impl RxProtocol for Tm {
 /// itself from its own configuration (`plain_octets`); the codec only checks FECF, FHEC, and length.
 struct NoAosVcs;
 
-impl AosVcLookup for NoAosVcs {
+impl aldis::core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs {
+    type Vc = AosVirtualChannelConfig;
+
     fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
         false
     }
@@ -1189,10 +1187,16 @@ impl RxProtocol for Aos {
 /// A lookup that holds no TC channel: as for AOS, the receiver reads the octets itself.
 struct NoTcChannels(TcPhysical);
 
-impl TcVcLookup for NoTcChannels {
+impl aldis::core::lookup::PhysicalLookup for NoTcChannels {
+    type Physical = TcPhysical;
+
     fn physical_channel(&self) -> TcPhysical {
         self.0
     }
+}
+
+impl aldis::core::lookup::ChannelLookup<TcSpacecraftId, TcVcId> for NoTcChannels {
+    type Vc = TcVcConfig;
 
     fn has_spacecraft(&self, _: TcSpacecraftId) -> bool {
         false
@@ -1201,6 +1205,10 @@ impl TcVcLookup for NoTcChannels {
     fn vc(&self, _: TcSpacecraftId, _: TcVcId) -> Option<TcVcConfig> {
         None
     }
+}
+
+impl aldis::core::lookup::MapLookup<TcSpacecraftId, TcVcId, TcMapId> for NoTcChannels {
+    type Map = TcMapConfig;
 
     fn map(&self, _: TcSpacecraftId, _: TcVcId, _: TcMapId) -> Option<TcMapConfig> {
         None
@@ -1235,10 +1243,16 @@ impl RxProtocol for Tc {
 /// A lookup that holds no USLP channel: as for AOS, the receiver reads the octets itself.
 struct NoUslpChannels(UslpPhysical);
 
-impl UslpVcLookup for NoUslpChannels {
+impl aldis::core::lookup::PhysicalLookup for NoUslpChannels {
+    type Physical = UslpPhysical;
+
     fn physical_channel(&self) -> UslpPhysical {
         self.0
     }
+}
+
+impl aldis::core::lookup::ChannelLookup<UslpSpacecraftId, UslpVcId> for NoUslpChannels {
+    type Vc = UslpVcConfig;
 
     fn has_spacecraft(&self, _: UslpSpacecraftId) -> bool {
         false
@@ -1247,6 +1261,10 @@ impl UslpVcLookup for NoUslpChannels {
     fn vc(&self, _: UslpSpacecraftId, _: UslpVcId) -> Option<UslpVcConfig> {
         None
     }
+}
+
+impl aldis::core::lookup::MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for NoUslpChannels {
+    type Map = UslpMapConfig;
 
     fn map(&self, _: UslpSpacecraftId, _: UslpVcId, _: UslpMapId) -> Option<UslpMapConfig> {
         None

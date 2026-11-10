@@ -3,9 +3,14 @@
 # requests are merged, opened as one pull request and verified once (docs/process/coordinator.md,
 # "Merge trains").
 #
-# Usage: scripts/train [--dry-run] <pr>...                   build a train from the PRs, in order
+# Usage: scripts/train [--dry-run] [--allow-open-train] <pr>...
+#                                                            build a train from the PRs, in order
 #        scripts/train [--dry-run] --rebuild <train-pr> --without <pr>...
 #                                                            build it again without those PRs
+# Only the maintainer assigns PRs to trains (coordinator.md): run this only for PRs and an order
+# the maintainer named. A second train must not overlap the first, so a real build refuses while
+# another `train/*` PR is open (the one --rebuild replaces excepted); `--allow-open-train` is the
+# override, for use when the maintainer names it. --dry-run is not refused.
 # Readiness: every PR must be `READY FOR TRAIN` by `scripts/pr-status --train` (open, not a
 # draft, reviewed, the review answered by a reply that names the head, no force-push after the
 # reply, no label `needs-maintainer`);
@@ -48,10 +53,11 @@ joined() { # joined <n>...: "#1, #2"
     printf '%s' "${out#, }"
 }
 
-dry=0 rebuild="" prs=() without=()
+dry=0 allow_open=0 rebuild="" prs=() without=()
 while [ $# -gt 0 ]; do
     case "$1" in
     --dry-run) dry=1 ;;
+    --allow-open-train) allow_open=1 ;;
     --rebuild)
         [ $# -ge 2 ] || usage
         rebuild="$2"
@@ -81,6 +87,19 @@ main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-di
 g() { git -C "$main_checkout" "$@"; }
 
 g fetch --quiet origin
+
+if [ "$dry" -eq 0 ] && [ "$allow_open" -eq 0 ]; then
+    open_trains="$(gh pr list --state open --limit 200 --json number,headRefName \
+        --jq "[.[] | select((.headRefName | startswith(\"train/\"))
+            and (.number | tostring) != \"${rebuild:-0}\") | \"#\" + (.number | tostring)]
+            | join(\" \")")" || { echo "gh could not list the open pull requests" >&2; exit 2; }
+    [ -z "$open_trains" ] || {
+        echo "train PR $open_trains is open: only the maintainer assigns PRs to trains and a" \
+            "second train must not overlap it; pass --allow-open-train when the maintainer" \
+            "names it" >&2
+        exit 1
+    }
+fi
 
 if [ -n "$rebuild" ]; then
     body="$(gh pr view "$rebuild" --json body --jq .body)" ||

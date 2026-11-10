@@ -640,10 +640,9 @@ mod tc {
 
     use aldis_core::field;
     use aldis_core::ids::FrameSeqNum;
+    use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
     use aldis_core::security::SecurityLayout;
-    use aldis_tc::config::{
-        MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig, VcLookup,
-    };
+    use aldis_tc::config::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, VcConfig};
     use aldis_tc::header::{
         FrameFields, FrameType, SegmentHeader, SequenceFlags, TcMapId, TcSpacecraftId, TcVcId,
     };
@@ -657,11 +656,17 @@ mod tc {
     /// A Physical Channel whose Virtual Channels are all valid, with no Segment Header.
     struct AnyChannel;
 
-    impl VcLookup for AnyChannel {
+    impl PhysicalLookup for AnyChannel {
+        type Physical = PhysicalChannelConfig;
+
         fn physical_channel(&self) -> PhysicalChannelConfig {
             PhysicalChannelConfig::new(1024, false)
                 .unwrap_or_else(|_| unreachable!("1024 is a valid maximum frame length"))
         }
+    }
+
+    impl ChannelLookup<TcSpacecraftId, TcVcId> for AnyChannel {
+        type Vc = VcConfig;
 
         fn has_spacecraft(&self, _: TcSpacecraftId) -> bool {
             true
@@ -676,6 +681,10 @@ mod tc {
             )
             .ok()
         }
+    }
+
+    impl MapLookup<TcSpacecraftId, TcVcId, TcMapId> for AnyChannel {
+        type Map = MapConfig;
 
         fn map(&self, _: TcSpacecraftId, _: TcVcId, _: TcMapId) -> Option<MapConfig> {
             None
@@ -979,20 +988,23 @@ FECF; the Frame Length is set through the length of the data field",
 mod aos {
     //! The AOS Transfer Frame Primary Header (732.0 §4.1.2), in the edition of Issue 5.
 
-    use aldis_aos::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent, VcLookup};
+    use aldis_aos::config::{AosEdition, AosVirtualChannelConfig, DataFieldContent};
     use aldis_aos::{
         AosFrameContent, AosFrameFields, AosPhysicalChannelConfig, AosPrimaryHeader,
         FrameCountCycle, PduHeader, VcFrameCount, encode,
     };
     use aldis_core::field;
     use aldis_core::ids::{SpacecraftId, VcId};
+    use aldis_core::lookup::ChannelLookup;
 
     use super::{Field, Header, How, encoded, flag, head, named, rejected};
 
     /// A Physical Channel whose Virtual Channels all carry a `VCA_SDU`.
     struct AnyChannel;
 
-    impl VcLookup for AnyChannel {
+    impl ChannelLookup<SpacecraftId<10>, VcId<6>> for AnyChannel {
+        type Vc = AosVirtualChannelConfig;
+
         fn has_spacecraft(&self, _: SpacecraftId<10>) -> bool {
             true
         }
@@ -1173,9 +1185,10 @@ mod uslp {
 
     use aldis_core::field;
     use aldis_core::ids::MapId;
+    use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
     use aldis_core::ocf::Ocf;
     use aldis_core::security::SecurityLayout;
-    use aldis_uslp::config::{TransferFrameType, VcLookup};
+    use aldis_uslp::config::TransferFrameType;
     use aldis_uslp::writer::{FrameContent, FrameFields, encode, encode_truncated};
     use aldis_uslp::{
         ChannelFields, FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope,
@@ -1196,11 +1209,17 @@ mod uslp {
         vcf_len: u8,
     }
 
-    impl VcLookup for AnyChannel {
+    impl PhysicalLookup for AnyChannel {
+        type Physical = PhysicalChannelConfig;
+
         fn physical_channel(&self) -> PhysicalChannelConfig {
             PhysicalChannelConfig::new(TransferFrameType::Variable, 65_536, 0, false)
                 .unwrap_or_else(|_| unreachable!("65536 is a valid maximum frame length"))
         }
+    }
+
+    impl ChannelLookup<UslpSpacecraftId, UslpVcId> for AnyChannel {
+        type Vc = VcConfig;
 
         fn has_spacecraft(&self, _: UslpSpacecraftId) -> bool {
             true
@@ -1222,6 +1241,10 @@ mod uslp {
             };
             VcConfig::new(scid, vcid, params).ok()
         }
+    }
+
+    impl MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for AnyChannel {
+        type Map = MapConfig;
 
         fn map(&self, scid: UslpSpacecraftId, vcid: UslpVcId, map: UslpMapId) -> Option<MapConfig> {
             Some(MapConfig::new(scid, vcid, map, SecurityLayout::NONE))

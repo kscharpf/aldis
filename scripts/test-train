@@ -9,7 +9,9 @@
 # pushes nothing; a closed PR, a draft, and a train PR cannot ride; --dry-run pushes nothing
 # and leaves no branch or worktree, so that a real run with the same PRs follows it;
 # a further train of the day takes the next number; --rebuild --without drops a PR, opens the
-# new train, and closes the old one.
+# new train, and closes the old one; another open train PR refuses a real build (but not
+# --dry-run, or the --rebuild of that PR while it is open, but a second open train PR still
+# refuses a --rebuild) unless --allow-open-train is given.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -58,7 +60,12 @@ for ((i = 0; i < ${#args[@]}; i++)); do
 done
 case "$1 $2" in
 "pr view") jq -r "$filter" "$STUB/pr-$3.json" ;;
-"pr list") jq -r "$filter" "$STUB/all-prs.json" ;;
+"pr list") # --state open lists only the open PRs, as gh does (the stub reads the "state"
+    # field of its data)
+    case " $* " in
+    *" --state open "*) jq -c '[.[] | select(.state == "OPEN")]' "$STUB/all-prs.json" ;;
+    *) cat "$STUB/all-prs.json" ;;
+    esac | jq -r "$filter" ;;
 "pr create")
     [ ! -e "$STUB/create-fails" ] || exit 1
     echo "https://github.test/o/r/pull/99"
@@ -268,6 +275,37 @@ git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep
 check "--rebuild leaves the dropped PR out" $?
 grep -Fq "pr close 99" "$STUB/calls" && contains "$(cat "$STUB/close-comment")" "without #11"
 check "--rebuild closes the old train PR" $?
+
+echo '[{"number":50,"headRefName":"train/other","state":"OPEN"}]' >"$STUB/all-prs.json"
+out="$(run 12)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#50 is open" && ! remote_has "train/$today-3"; }
+check "another open train PR refuses a build" $?
+out="$(run --dry-run 12)"
+status=$?
+check "--dry-run is not refused by an open train PR" "$status"
+out="$(run --allow-open-train 12)"
+status=$?
+{ [ "$status" -eq 0 ] && remote_has "train/$today-3"; }
+check "--allow-open-train builds despite an open train PR" $?
+echo '[{"number":99,"headRefName":"train/rebuilt","state":"OPEN"}]' >"$STUB/all-prs.json"
+: >"$STUB/calls"
+out="$(run --rebuild 99 --without 11)"
+status=$?
+{ [ "$status" -eq 0 ] && grep -Fq "pr close 99" "$STUB/calls"; }
+check "--rebuild of the open train is allowed while that train is open" $?
+echo '[{"number":99,"headRefName":"train/rebuilt","state":"OPEN"},
+       {"number":50,"headRefName":"train/other","state":"OPEN"}]' >"$STUB/all-prs.json"
+: >"$STUB/calls"
+out="$(run --rebuild 99 --without 11)"
+status=$?
+{ [ "$status" -eq 1 ] && contains "$out" "#50 is open" && ! grep -Fq "pr close 99" "$STUB/calls"; }
+check "--rebuild of a train is refused while a second train PR is open" $?
+out="$(run --rebuild 99 --without 11 --allow-open-train)"
+status=$?
+{ [ "$status" -eq 0 ] && grep -Fq "pr close 99" "$STUB/calls"; }
+check "--rebuild with a second train PR open is allowed with --allow-open-train" $?
+echo '[]' >"$STUB/all-prs.json"
 
 run >/dev/null
 t [ $? -eq 2 ]

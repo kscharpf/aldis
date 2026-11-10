@@ -654,7 +654,7 @@ mod tests {
             path: "writer::encode".to_owned()
         }));
         for (krate, path) in [
-            ("aldis_tc", "config::check_room"),
+            ("aldis_tc", "config::longest_frame"),
             ("aldis_aos", "config::fill"),
         ] {
             let key = Key::Free {

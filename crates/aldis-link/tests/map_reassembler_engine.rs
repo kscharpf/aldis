@@ -280,6 +280,26 @@ fn a_gap_discards_the_sdus_in_progress_of_every_map_of_the_vc() {
 }
 
 #[test]
+fn a_tc_fdu_of_an_unknown_map_is_discarded_and_leaves_the_other_maps_alone() {
+    // req: LNK-070, TC-022
+    // The FDU of a frame that passed the Frame Validation Checks with a MAP ID the channels do
+    // not hold (232.0 §4.4.9.3.3 does not check it): the Segment Header octet, then the user
+    // data. The MAP Demultiplexing Function discards it (§4.4.3.3).
+    let mut e = tc_engine();
+    tc(&mut e, &[0x41, 1, 2]).unwrap();
+    assert_eq!(
+        tc(&mut e, &[0xC7, 0x01, 0x02]),
+        Ok(vec![Got::Event(UnknownMap, 1, 7)])
+    );
+    // TC has no gap input, so the SDU of MAP 1 in progress is untouched and completes.
+    assert_eq!(
+        tc(&mut e, &[0x81, 3]),
+        Ok(vec![Got::Sdu(1, 1, vec![1, 2, 3])])
+    );
+    assert_eq!(e.status().unknown_maps.get(), 1);
+}
+
+#[test]
 fn a_gap_before_an_unknown_map_still_discards() {
     // req: LNK-070, OI-78
     let mut e = uslp_engine();
