@@ -124,7 +124,7 @@ The coordinator asked the maintainer about each of these. Those that were the ma
 
 ## Script tests
 
-The older coordinator.md named the offline tests of the scripts: `scripts/test-pr-status` (no network, a stub `gh`), `scripts/test-reverify` (no network, no container, no real `gh` or `cargo`), `scripts/test-cleanup-merged` (no network, no real `gh`), `scripts/test-train` (no network, a stub `gh`). Run the one for a script you change; the `shell` check (VER-071) runs them all.
+The older coordinator.md named the offline tests of the scripts: `scripts/test-pr-status` (no network, a stub `gh`), `scripts/test-reverify` (no network, no container, no real `gh` or `cargo`), `scripts/test-cleanup-merged` (no network, no real `gh`), `scripts/test-train` (no network, a stub `gh`). The rule to run them is in coordinator.md, "Refresh the next pull request".
 
 ## pr-body.md
 
