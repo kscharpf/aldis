@@ -1350,3 +1350,48 @@ pub unsafe extern "C" fn aldis_channel_mux_deinit(h: *mut aldis_channel_mux_t) {
     // SAFETY: forwarded from the caller; `handle::deinit` checks the tag.
     unsafe { handle::deinit(h) }
 }
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_role_of_an_aos_vc_gives_the_content_of_its_codec_configuration() {
+        // req: LNK-078, CABI-040, RS-020
+        let channel = aldis_channel_mux_config_t::default();
+        let cases = [
+            (crate::link_rx::ALDIS_LINK_CONTENT_PACKETS, AosContent::Mpdu),
+            (crate::link_rx::ALDIS_LINK_CONTENT_VCA, AosContent::VcaSdu),
+            (
+                crate::link_rx::ALDIS_LINK_CONTENT_BITSTREAM,
+                AosContent::Bpdu,
+            ),
+            (
+                crate::link_rx::ALDIS_LINK_CONTENT_UNSERVED,
+                AosContent::IdleData,
+            ),
+        ];
+        let physical =
+            AosPhysicalChannelConfig::new(28, false, 0, true, AosEdition::Issue5).unwrap();
+        let aos_channel =
+            AosChannel::new(physical, SpacecraftId::<10>::try_from(421).unwrap(), false).unwrap();
+        for (role, content) in cases {
+            let vc = aldis_channel_mux_vc_t {
+                vc_id: 1,
+                role,
+                ..aldis_channel_mux_vc_t::default()
+            };
+            let members = <Aos as MxProtocol>::members(&vc).unwrap();
+            let params = <Aos as MxProtocol>::vc_params(
+                &channel,
+                &aos_channel,
+                VcId::<6>::try_from(1).unwrap(),
+                SecurityLayout::NONE,
+                members,
+            )
+            .unwrap();
+            assert_eq!(params.config().content(), content, "{role}");
+        }
+    }
+}
