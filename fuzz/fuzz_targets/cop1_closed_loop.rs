@@ -1,6 +1,6 @@
 //! FOP-1 and FARM-1 across a link that loses, duplicates, reorders, and corrupts what it carries,
 //! every choice taken from the input (COP-040, COP-041): the FOP-1 submits Sequence-Controlled
-//! FDUs, the forward link carries its Type-AD frames to a FARM-1 behind `validate_frame`, and the
+//! FDUs, the forward link carries its Type-AD frames to a FARM-1 behind `check_frame`, and the
 //! return link carries the CLCWs the FARM-1 reports. At every instant the FDUs the FARM-1
 //! delivered are a gap-free, duplicate-free, in-order prefix of the stream submitted, with their
 //! octets intact, and the FDUs the FOP-1 confirmed are an in-order part of what was delivered
@@ -22,12 +22,13 @@ use aldis_cop1::{
     Farm1Window, FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
     TimeoutType, TransferNotification, fop1_max_actions,
 };
+use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{
     Clcw, ClcwStatus, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig,
-    VcTable, validate_frame,
+    VcTable, check_frame,
 };
 use core::num::NonZeroU8;
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
@@ -184,7 +185,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     let bit = u.int_in_range(0..=bytes.len() * 8 - 1)?;
                     bytes[bit / 8] ^= 1 << (bit % 8);
                 }
-                let input = match validate_frame(&bytes, &channels) {
+                let input = match check_frame(&bytes, &channels, DecodeMode::Strict) {
                     Ok(valid) => Farm1Input::from_tc(&valid, buffer_free),
                     Err(_) => Farm1Input::InvalidFrame,
                 };

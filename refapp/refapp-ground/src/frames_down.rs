@@ -9,7 +9,7 @@
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::NoSecurity;
-use aldis::core::{Error, ErrorKind};
+use aldis::core::{Check, Error, ErrorKind};
 use aldis::link::common::ValidPvns;
 use aldis::link::extractor::{
     ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
@@ -225,7 +225,7 @@ impl FrameDownlink {
         unit: &'a [u8],
     ) -> Result<<Tm as aldis::link::receiver::ReceiveProtocol>::Plain<'a>, Error> {
         TmFrame::decode_with(unit, self.channel.pc(), &self.channel)?
-            .validate(&self.channel)?
+            .check(&self.channel)?
             .into_frame()
             .into_plain(NoSecurity)
     }

@@ -256,7 +256,7 @@ fn with_length_delta(mut frame: Vec<u8>, delta: i16) -> Vec<u8> {
     frame
 }
 
-/// Frame octets next to the boundaries of `TcFrame::decode` and `validate_frame`, with the
+/// Frame octets next to the boundaries of `TcFrame::decode` and `check_frame`, with the
 /// channels they are decoded against (232.0 §4.1, §4.4.9.3; GEN-020, API-030, VER-023):
 ///
 /// - a valid frame, possibly followed by other octets (API-011);

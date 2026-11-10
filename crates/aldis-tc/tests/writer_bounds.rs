@@ -13,13 +13,14 @@
     reason = "test fixtures fail loudly, and bookkeeping on lengths the fixtures bound (RS-018)"
 )]
 
+use aldis_core::DecodeMode;
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
     SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode, validate_frame,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 
 /// Channels with the FECF: VC 1 without Segment Headers, VC 2 with them and MAP 3, and VC 4
@@ -123,7 +124,7 @@ fn encode_writes_only_the_frame() {
         let n = encode(&t, f, data, &mut out).unwrap();
         assert!(n < BUFFER);
         assert_eq!(out[n..], before[n..], "{f:?}");
-        assert!(validate_frame(&out[..n], &t).is_ok());
+        assert!(check_frame(&out[..n], &t, DecodeMode::Strict).is_ok());
         // The buffer exactly as long as the frame.
         let mut exact = before[..n].to_vec();
         assert_eq!(encode(&t, f, data, &mut exact), Ok(n));
@@ -216,7 +217,7 @@ fn begin_and_finish_write_only_the_reservation() {
             assert_eq!(out[total..], before[total..], "vc {vc_id}, {user_len}");
             let frame = TcFrame::decode(&out[..n], &t).unwrap();
             assert_eq!(frame.len(), n);
-            assert!(validate_frame(&out[..n], &t).is_ok());
+            assert!(check_frame(&out[..n], &t, DecodeMode::Strict).is_ok());
         }
         // `begin` alone writes within the reservation.
         let before = pattern(BUFFER);

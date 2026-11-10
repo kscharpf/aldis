@@ -16,7 +16,7 @@ use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeader,
     SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId, TcSpacecraftId,
-    TcVcId, VcConfig, VcTable, encode, validate_frame, validate_frame_lenient,
+    TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -203,8 +203,8 @@ fn validate_case(case: &CodecCase) -> Result<Value, Error> {
     let t = table(case)?;
     let bytes = input(case);
     let result = match mode(case) {
-        DecodeMode::Strict => validate_frame(&bytes, &t).map(|f| f.len()),
-        DecodeMode::Lenient => validate_frame_lenient(&bytes, &t).map(|f| f.len()),
+        DecodeMode::Strict => check_frame(&bytes, &t, DecodeMode::Strict).map(|f| f.len()),
+        DecodeMode::Lenient => check_frame(&bytes, &t, DecodeMode::Lenient).map(|f| f.len()),
     };
     Ok(match result {
         Ok(len) => json!({ "accepted": true, "frame_len": len }),

@@ -7,8 +7,8 @@
     reason = "property helpers outside #[test] fail loudly (RS-018)"
 )]
 
-use aldis_core::ErrorKind;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
+use aldis_core::{Check, ErrorKind};
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
 use aldis_testkit::strategies::tm::{tm_frame, tm_frame_decoder_input};
@@ -33,7 +33,7 @@ fn strict_re_encode_property(
     let Ok(f) = TmFrame::decode_with(bytes, mc.pc(), mc) else {
         return Ok(());
     };
-    let Ok(f) = f.validate(mc) else {
+    let Ok(f) = f.check(mc) else {
         return Ok(());
     };
     let fields = TmFrameFields::new(
@@ -129,7 +129,7 @@ proptest! {
             TmFrame::decode_unchecked(&f.octets, f.mc.pc(), &f.mc).unwrap().check_fecf(),
             Ok(d.clone())
         );
-        prop_assert_eq!(d.validate(&f.mc).map(aldis_tm::ValidatedTmFrame::into_frame), TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc));
+        prop_assert_eq!(d.check(&f.mc).map(aldis_core::Checked::into_frame).map_err(aldis_core::Error::from), TmFrame::decode_with(&f.octets, f.mc.pc(), &f.mc));
     }
 
     #[test]

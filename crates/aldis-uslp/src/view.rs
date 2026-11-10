@@ -13,6 +13,7 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Lenient, Result};
 
 use crate::anomaly::UslpAnomaly;
+use crate::checked::Reason;
 use crate::config::{MapConfig, OcfUse, VcConfig, VcLookup, frame_layout, frame_security};
 use crate::field;
 use crate::header::{
@@ -23,7 +24,7 @@ use crate::header::{
 use crate::tfdf::{LastValidOctet, TfdfHeader, TfdzRule};
 use crate::truncated::{self, UslpTruncatedFrame};
 use crate::upid::Upid;
-use crate::validate::{Reason, Rejection};
+use aldis_core::Rejection;
 
 /// Whether a Spacecraft ID, VCID, and MAP ID that the channels do not hold fail the checks
 /// (732.1 §4.3.11.3.4 b, c; USLP-014, RS-023).
@@ -32,19 +33,19 @@ pub(crate) enum Channels {
     /// The Frame Validation Checks: a frame of an unknown channel is discarded.
     Required,
     /// The decoder: a non-truncated frame of an unknown channel is read as it says itself, with
-    /// no SDLS fields; `validate_frame` rejects it. A truncated frame has no Frame Length, so
+    /// no SDLS fields; `check_frame` rejects it. A truncated frame has no Frame Length, so
     /// its channel must be known.
     Open,
 }
 
 /// Shorthand for a failed check.
-pub(crate) const fn fail(reason: Reason, error: Error) -> Rejection {
+pub(crate) const fn fail(reason: Reason, error: Error) -> Rejection<Reason> {
     Rejection::new(reason, error)
 }
 
 /// Check (d) on fewer octets than `len`: `Incomplete` (`needed` = `len`) while decoding, or
 /// `LengthMismatch` (`frame_len`) when exactly one frame is required (§4.3.11.3.4 d).
-pub(crate) const fn length(exact: bool, len: usize) -> Rejection {
+pub(crate) const fn length(exact: bool, len: usize) -> Rejection<Reason> {
     let error = if exact {
         mismatch(field::FRAME_LEN)
     } else {
@@ -61,7 +62,7 @@ fn split_full(
     frame: &[u8],
     layout: FrameLayout,
     fixed_tfdz: bool,
-) -> core::result::Result<(FramedBytes<'_>, TfdfHeader), Rejection> {
+) -> core::result::Result<(FramedBytes<'_>, TfdfHeader), Rejection<Reason>> {
     let framed = framed(frame, layout)?;
     let (tfdf_header, _) = TfdfHeader::parse(framed.data(), fixed_tfdz).map_err(tfdf_rejection)?;
     Ok((framed, tfdf_header))
@@ -72,12 +73,12 @@ fn split_full(
 pub(crate) fn framed(
     frame: &[u8],
     layout: FrameLayout,
-) -> core::result::Result<FramedBytes<'_>, Rejection> {
+) -> core::result::Result<FramedBytes<'_>, Rejection<Reason>> {
     FramedBytes::new(frame, layout).map_err(|_| internal())
 }
 
 /// The rejection for a layout that does not lie inside its frame: a broken invariant.
-pub(crate) const fn internal() -> Rejection {
+pub(crate) const fn internal() -> Rejection<Reason> {
     fail(
         Reason::LengthMismatch,
         Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN),
@@ -85,7 +86,7 @@ pub(crate) const fn internal() -> Rejection {
 }
 
 /// The reason of a TFDF Header error (USLP-006, USLP-016, CMN-041).
-pub(crate) fn tfdf_rejection(e: Error) -> Rejection {
+pub(crate) fn tfdf_rejection(e: Error) -> Rejection<Reason> {
     let reason = if e.kind() == ErrorKind::Malformed {
         Reason::PointerBeyondZone
     } else if e.field() == Some(field::TFDZ_CONSTRUCTION_RULE) {
@@ -152,7 +153,7 @@ fn check_channel<L: VcLookup + ?Sized>(
     known: Channels,
     mode: DecodeMode,
     anomalies: &mut AnomalySet<UslpAnomaly>,
-) -> core::result::Result<(VcConfig, Option<MapConfig>, FrameKind), Rejection> {
+) -> core::result::Result<(VcConfig, Option<MapConfig>, FrameKind), Rejection<Reason>> {
     let kind = rest.kind().map_err(|e| fail(Reason::ReservedFlags, e))?;
     if rest.spare != 0 {
         match mode {
@@ -216,7 +217,7 @@ fn parse_full<'a, L: VcLookup + ?Sized>(
     known: Channels,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<Parsed<UslpFullFrame<'a>>, Rejection> {
+) -> core::result::Result<Parsed<UslpFullFrame<'a>>, Rejection<Reason>> {
     let mut anomalies = AnomalySet::empty();
     let (vc, map, kind) =
         check_channel(start.channel, rest, channels, known, mode, &mut anomalies)?;
@@ -319,7 +320,7 @@ pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
     known: Channels,
     mode: DecodeMode,
     exact: bool,
-) -> core::result::Result<Parsed<UslpFrame<'a>>, Rejection> {
+) -> core::result::Result<Parsed<UslpFrame<'a>>, Rejection<Reason>> {
     let start = RawStart::parse(bytes).ok_or(length(exact, TRUNCATED_HEADER_LEN))?;
     let rest = if start.truncated {
         None
@@ -367,14 +368,14 @@ impl<'a> UslpFrame<'a> {
     /// A variable-length or truncated frame may be followed by other octets, which are ignored,
     /// so a stream can be parsed frame by frame with [`len`](Self::len) (API-011); on a
     /// fixed-length Physical Channel `bytes` must be exactly one frame (API-012). The checks are
-    /// those of [`validate_frame`](crate::validate::validate_frame), in its order, except that a
+    /// those of [`check_frame`](crate::checked::check_frame), in its order, except that a
     /// non-truncated frame of a Spacecraft ID, VCID, or MAP ID the channels do not hold is not an
     /// error: it is read as its own fields say, with no SDLS fields, so that an engine can count
-    /// it, and `validate_frame` rejects it (RS-023, USLP-014). A truncated frame has no Frame
+    /// it, and `check_frame` rejects it (RS-023, USLP-014). A truncated frame has no Frame
     /// Length, which is a parameter of its VC, so it needs its channel (Annex D1.3.2).
     /// A strict decode has no anomalies to report (API-031).
     ///
-    /// A receiver of delimited frames must run `validate_frame`, or compare
+    /// A receiver of delimited frames must run `check_frame`, or compare
     /// [`len`](Self::len) with the octets it supplied, because a bit error in the Frame Length
     /// field can make `decode` accept a shorter frame (API-011, USLP-014; VER-064).
     ///
@@ -683,6 +684,7 @@ mod tests {
     extern crate std;
     use super::{UslpFrame, framed, oid_deviation, split_full, tfdf_rejection};
     use crate::anomaly::UslpAnomaly;
+    use crate::checked::{Reason, check_frame};
     use crate::config::tests::{fixed, mapid, plain_variable, variable};
     use crate::field;
     use crate::header::{FrameKind, SourceOrDestination};
@@ -690,11 +692,10 @@ mod tests {
     use crate::tfdf::tests::offset;
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
-    use crate::validate::{Reason, validate_frame, validate_frame_lenient};
     use aldis_core::crc::crc16;
     use aldis_core::layout::FrameLayout;
     use aldis_core::ocf::Ocf;
-    use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId, Lenient};
+    use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Lenient};
     use std::vec;
     use std::vec::Vec;
 
@@ -813,8 +814,8 @@ mod tests {
             assert!(UslpFrame::decode(&bytes, &t).is_ok(), "{octet:02X}");
             assert!(UslpFrame::decode_lenient(&bytes, &t).is_ok(), "{octet:02X}");
             for r in [
-                validate_frame(&bytes, &t).map(|_| ()),
-                validate_frame_lenient(&bytes, &t).map(|_| ()),
+                check_frame(&bytes, &t, DecodeMode::Strict).map(|_| ()),
+                check_frame(&bytes, &t, DecodeMode::Lenient).map(|_| ()),
             ] {
                 let r = r.unwrap_err();
                 assert_eq!(r.reason(), reason);
@@ -936,7 +937,7 @@ mod tests {
             let b = refixed(b);
             let f = UslpFrame::decode(&b, &t).unwrap();
             assert_eq!(f.len(), b.len(), "{b:02X?}");
-            let r = validate_frame(&b, &t).unwrap_err();
+            let r = check_frame(&b, &t, DecodeMode::Strict).unwrap_err();
             assert_eq!(
                 (r.error().kind(), r.error().field()),
                 (ErrorKind::UnknownChannel, Some(fld)),
@@ -961,11 +962,9 @@ mod tests {
             err_of(UslpFrame::decode(&spare, &t)),
             ic(ErrorKind::ReservedValue, field::USLP_HEADER_SPARE)
         );
-        assert_eq!(
-            validate_frame(&spare, &t).unwrap_err().reason(),
-            Reason::ReservedSpare
-        );
-        let v = validate_frame_lenient(&spare, &t).unwrap();
+        let strict = check_frame(&spare, &t, DecodeMode::Strict);
+        assert_eq!(strict.unwrap_err().reason(), Reason::ReservedSpare);
+        let v = check_frame(&spare, &t, DecodeMode::Lenient).unwrap();
         assert!(v.anomalies().contains(UslpAnomaly::ReserveSparesSet));
         assert_eq!(v.into_view().into_frame(), f.into_view());
         let mut stream = LenientFrameStream::new(&spare, &t, 31);
@@ -1094,7 +1093,7 @@ mod tests {
     #[test]
     fn a_vc_with_a_truncated_length_refuses_non_truncated_frames() {
         // req: USLP-002, USLP-014, OI-48
-        use crate::validate::{validate_frame, validate_frame_lenient};
+        use crate::checked::check_frame;
         // VC 4 MAP 0, sequence-controlled, rule 111, UPID 5, one TFDZ octet, FECF.
         let frame = with_fecf(&[0xC0, 0x15, 0x50, 0x80, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
         let plain = plain_variable();
@@ -1125,9 +1124,9 @@ mod tests {
             }
             assert_eq!(err_of(decode(&frame, &t, lenient)), flag);
             let r = if lenient {
-                validate_frame_lenient(&frame, &t).map(drop)
+                check_frame(&frame, &t, DecodeMode::Lenient).map(drop)
             } else {
-                validate_frame(&frame, &t).map(drop)
+                check_frame(&frame, &t, DecodeMode::Strict).map(drop)
             }
             .unwrap_err();
             assert_eq!(r.reason(), Reason::NonTruncatedFrameNotAllowed);
@@ -1138,7 +1137,7 @@ mod tests {
         assert_eq!((peek.kind(), peek.field()), flag);
         // The flag is checked after the channel: an unknown MAP is reason 6, an unknown VC 5.
         let map3 = with_fecf(&[0xC0, 0x15, 0x50, 0x86, 0x00, 0x0A, 0x00, 0xE5, 0xAA]);
-        let r = validate_frame(&map3, &t).unwrap_err();
+        let r = check_frame(&map3, &t, DecodeMode::Strict).unwrap_err();
         assert_eq!(r.reason(), Reason::InvalidMapId);
         // The length peek of an unknown VC is not refused.
         let vc9 = [0xC0, 0x15, 0x51, 0x20, 0x00, 0x09];

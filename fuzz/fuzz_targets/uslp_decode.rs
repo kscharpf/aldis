@@ -1,4 +1,4 @@
-//! Arbitrary octets through `UslpFrame::decode`, `peek_length`, `validate_frame`, and the
+//! Arbitrary octets through `UslpFrame::decode`, `peek_length`, `check_frame`, and the
 //! delimiter on channels drawn from the input: no panic; the input unchanged; strict ⊆ lenient;
 //! `peek_length` agrees with `decode`; the USLP Frame Validation Checks accept the decoded frame
 //! of a configured channel and reject that of an unknown one; the delimiter's first frame is the
@@ -9,14 +9,15 @@
 
 // req: USLP-001, USLP-002, USLP-003, USLP-004, USLP-005, USLP-006, USLP-014, USLP-015, USLP-016, API-020, GEN-020, GEN-042, VER-022
 
+use aldis_core::DecodeMode;
 use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
     SecurityScope, TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId,
-    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, encode_truncated,
-    next_frame, validate_frame_lenient,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, check_frame,
+    encode_truncated, next_frame,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -195,7 +196,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.octets(), &bytes[..f.len()]);
             assert_eq!(UslpFrame::peek_length(&bytes, &table), Ok(f.len()));
             // The decoder reads a frame of an unknown channel; the checks reject it (RS-023).
-            match validate_frame_lenient(f.octets(), &table) {
+            match check_frame(f.octets(), &table, DecodeMode::Lenient) {
                 Ok(v) => assert_eq!(&**v, &**f),
                 Err(r) => assert!(
                     matches!(
@@ -206,7 +207,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 ),
             }
             if f.len() < bytes.len() {
-                assert!(validate_frame_lenient(&bytes, &table).is_err());
+                assert!(check_frame(&bytes, &table, DecodeMode::Lenient).is_err());
             }
             // The delimiter needs the channels only for truncated frames, so it finds every
             // decoded non-truncated frame, of a configured channel or not.
@@ -217,7 +218,10 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             }
         }
         Err(e) => {
-            assert!(validate_frame_lenient(&bytes, &table).is_err(), "{e:?}");
+            assert!(
+                check_frame(&bytes, &table, DecodeMode::Lenient).is_err(),
+                "{e:?}"
+            );
             if e.kind() == ErrorKind::Incomplete
                 && let Ok(n) = UslpFrame::peek_length(&bytes, &table)
             {
@@ -228,7 +232,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     // The Err arms above fail on any rejection but an unknown channel, so "validates Ok" here
     // means "a configured channel".
     if let Ok(f) = strict
-        && validate_frame_lenient(f.octets(), &table).is_ok()
+        && check_frame(f.octets(), &table, DecodeMode::Lenient).is_ok()
     {
         re_encode(&table, &f);
     }

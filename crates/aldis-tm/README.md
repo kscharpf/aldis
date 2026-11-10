@@ -11,6 +11,7 @@ Layer 1 (codecs) of the [architecture](../../docs/01-architecture.md) §2. It de
 Encode a frame on a virtual channel with an OCF and decode it again:
 
 ```rust
+use aldis_core::Check;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_tm::{
@@ -36,8 +37,8 @@ fn main() -> Result<(), aldis_core::Error> {
     let mut buf = [0_u8; 32];
     let len = encode(&mc, &fields, &content, &mut buf)?;
 
-    // The view borrows `buf`; `validate` checks it against the master channel and returns it as a `ValidatedTmFrame`.
-    let frame = TmFrame::decode_with(&buf[..len], mc.pc(), &mc)?.validate(&mc)?;
+    // The view borrows `buf`; `check` checks it against the master channel and returns it as a `Checked<TmFrame>`.
+    let frame = TmFrame::decode_with(&buf[..len], mc.pc(), &mc)?.check(&mc)?;
     assert_eq!(frame.vcid(), vc1);
     assert_eq!(frame.data_field(), &data);
     assert_eq!(frame.ocf(), content.ocf);

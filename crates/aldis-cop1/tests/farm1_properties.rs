@@ -10,10 +10,10 @@ use aldis_cop1::{
     FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1State,
     Farm1Window, FduKind,
 };
-use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
-use aldis_tc::{ClcwStatus, ControlCommand, FrameType, TcVcId, validate_frame};
+use aldis_core::{DecodeMode, ErrorKind};
+use aldis_tc::{ClcwStatus, ControlCommand, FrameType, TcVcId, check_frame};
 use aldis_testkit::strategies::common::frame_seq_num;
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{control_command, tc_frame};
@@ -222,7 +222,7 @@ proptest! {
     #[test]
     fn a_tc_frame_is_refused_by_the_farm1_of_another_vc(f in tc_frame(), w in window()) {
         // req: COP-037, COP-002, API-058, VER-023
-        let frame = validate_frame(&f.octets, &f.channels.table).unwrap();
+        let frame = check_frame(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
         let input = Farm1Input::from_tc(&frame, true);
         let vc = frame.as_frame().vc_id();
         let mut out = [0u8; 4096];
@@ -239,7 +239,7 @@ proptest! {
     #[test]
     fn tc_frames_map_to_farm1_frames(f in tc_frame()) {
         // req: COP-031, COP-002, VER-023
-        let frame = validate_frame(&f.octets, &f.channels.table).unwrap();
+        let frame = check_frame(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
         match (frame.frame_type(), Farm1Frame::from_tc(&frame)) {
             (FrameType::Ad, Farm1Frame::Ad { sequence_number, data }) => {
                 prop_assert_eq!(sequence_number, frame.sequence_number());

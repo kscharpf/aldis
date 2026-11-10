@@ -7,14 +7,15 @@ use aldis_cop1::{
     Actions, FARM1_MAX_ACTIONS, FARM1_TABLE, Farm1, Farm1Config, Farm1Event, Farm1Frame,
     Farm1Input, Farm1Notify, Farm1Output, Farm1State, Farm1Window, FduKind, OutRange,
 };
+use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_core::time::Instant;
 use aldis_core::{ErrorKind, field};
 use aldis_tc::{
     ClcwStatus, ControlCommand, CopInEffect, FrameData, FrameFields, FrameType,
-    PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
-    validate_frame,
+    PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig, VcTable,
+    check_frame, encode,
 };
 
 use crate::exercise::Tally;
@@ -70,7 +71,7 @@ fn tc_group(t: &mut Tally) {
             continue;
         };
         let octets = buf.get(..n).unwrap_or_default();
-        let Ok(frame) = validate_frame(bb(octets), &table) else {
+        let Ok(frame) = check_frame(bb(octets), &table, DecodeMode::Strict) else {
             t.check(false);
             continue;
         };

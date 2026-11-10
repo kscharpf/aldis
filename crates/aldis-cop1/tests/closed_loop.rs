@@ -38,12 +38,13 @@ use aldis_cop1::{
     Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
+use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{
     Clcw, ClcwStatus, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig,
-    VcTable, validate_frame,
+    VcTable, check_frame,
 };
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::{self};
@@ -383,7 +384,7 @@ impl World {
 
     /// A frame arrives at the flight end.
     fn frame_arrives(&mut self, bytes: &[u8]) {
-        if let Ok(valid) = validate_frame(bytes, &self.channels) {
+        if let Ok(valid) = check_frame(bytes, &self.channels, DecodeMode::Strict) {
             let input = Farm1Input::from_tc(&valid, self.buffer_free);
             self.flight_input(input);
         } else {

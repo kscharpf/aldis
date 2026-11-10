@@ -40,10 +40,9 @@
 
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
-use aldis_core::{Error, ErrorKind, Result, field};
+use aldis_core::{Checked, Error, ErrorKind, Result, field};
 use aldis_tc::{
-    Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameType, TcVcId,
-    ValidatedTcFrame,
+    Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameType, TcFrame, TcVcId,
 };
 
 use crate::farm1_table::{
@@ -247,16 +246,16 @@ pub enum Farm1Frame<'a> {
 }
 
 impl<'a> Farm1Frame<'a> {
-    /// The frame FARM-1 reads from a validated TC frame (232.0 §4.1.2.3; COP-031, API-016).
+    /// The frame FARM-1 reads from a checked TC frame (232.0 §4.1.2.3; COP-031, API-016).
     ///
-    /// It takes a [`ValidatedTcFrame`], so that TC-023 (every frame is validated before any
+    /// It takes a [`Checked`] frame, so that TC-023 (every frame is checked before any
     /// FARM-1 processing) cannot be skipped by passing a frame from `TcFrame::decode`.
     ///
     /// A Type-BC frame whose Control Command the decoder did not recognise, which only lenient
     /// decoding passes, has `command: None`.
     #[must_use]
-    pub const fn from_tc(validated: &ValidatedTcFrame<'a>) -> Farm1Frame<'a> {
-        let frame = validated.as_frame();
+    pub const fn from_tc(checked: &Checked<TcFrame<'a>>) -> Farm1Frame<'a> {
+        let frame = checked.as_frame();
         match frame.frame_type() {
             FrameType::Ad => Farm1Frame::Ad {
                 sequence_number: frame.sequence_number(),
@@ -303,19 +302,16 @@ pub enum Farm1Input<'a> {
 }
 
 impl<'a> Farm1Input<'a> {
-    /// The frame input of a validated TC frame: its Virtual Channel Identifier, the frame
+    /// The frame input of a checked TC frame: its Virtual Channel Identifier, the frame
     /// FARM-1 reads from it ([`Farm1Frame::from_tc`]), and `buffer_available` (232.0 §4.1.2.6;
     /// COP-037, COP-033, API-016).
     ///
-    /// Taking the VCID from the validated frame keeps it from being supplied by hand.
+    /// Taking the VCID from the checked frame keeps it from being supplied by hand.
     #[must_use]
-    pub const fn from_tc(
-        validated: &ValidatedTcFrame<'a>,
-        buffer_available: bool,
-    ) -> Farm1Input<'a> {
+    pub const fn from_tc(checked: &Checked<TcFrame<'a>>, buffer_available: bool) -> Farm1Input<'a> {
         Farm1Input::Frame {
-            vc_id: validated.as_frame().vc_id(),
-            frame: Farm1Frame::from_tc(validated),
+            vc_id: checked.as_frame().vc_id(),
+            frame: Farm1Frame::from_tc(checked),
             buffer_available,
         }
     }

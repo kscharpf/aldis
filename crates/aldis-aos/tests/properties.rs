@@ -11,10 +11,10 @@ use aldis_aos::{
     AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter, CorrectedSymbols, DataUnit,
     PduHeader, encode,
 };
-use aldis_core::ErrorKind;
 use aldis_core::lookup::ChannelLookup;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
+use aldis_core::{Check, ErrorKind};
 use aldis_testkit::strategies::aos::{
     AosTable, aos_frame, aos_frame_decoder_input, vc_frame_count, vc_table,
 };
@@ -43,7 +43,10 @@ fn strict_re_encode_property(table: &AosTable, bytes: &[u8]) -> Result<(), TestC
     let pc = table.physical_channel();
     // Only a frame of a configured channel is re-encoded: the decoder reads any other as opaque
     // octets (API-017).
-    let Ok(f) = AosFrame::decode(bytes, &pc, table).and_then(AosFrame::validate) else {
+    let Some(f) = AosFrame::decode(bytes, &pc, table)
+        .ok()
+        .and_then(|f| f.check(table).ok())
+    else {
         return Ok(());
     };
     let f = f.into_frame();

@@ -579,7 +579,7 @@ pub fn data_unit() -> impl Strategy<Value = UslpDataUnit> {
         })
 }
 
-/// Frame octets next to the boundaries of `UslpFrame::decode` and `validate_frame`.
+/// Frame octets next to the boundaries of `UslpFrame::decode` and `check_frame`.
 ///
 /// With the channels (GEN-020, API-030, VER-023): a valid frame, possibly followed by other octets
 /// (API-011); a proper prefix of one; its Frame Length one more or one less (USLP-003); a TFVN

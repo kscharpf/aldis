@@ -4,8 +4,9 @@
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::{Error, ErrorDetail, ErrorKind, FieldId};
 
+use crate::checked::Reason;
 use crate::field;
-use crate::validate::{Reason, Rejection};
+use aldis_core::Rejection;
 
 /// The Spacecraft Identifier of a USLP frame: 16 bits (732.1 §4.1.2.2.3; API-002).
 pub type UslpSpacecraftId = SpacecraftId<16>;
@@ -392,7 +393,10 @@ impl RawRest {
 /// # Errors
 /// A `LengthMismatch` rejection (USLP-014 check d) carrying `Incomplete` (`needed` = 7 plus
 /// `len`) if `frame` ends inside the field.
-pub(crate) fn read_vcf_count(frame: &[u8], len: VcfCountLen) -> Result<VcfCount, Rejection> {
+pub(crate) fn read_vcf_count(
+    frame: &[u8],
+    len: VcfCountLen,
+) -> Result<VcfCount, Rejection<Reason>> {
     let end = PRIMARY_HEADER_LEN.saturating_add(len.octets());
     let octets = frame.get(PRIMARY_HEADER_LEN..end).ok_or(Rejection::new(
         Reason::LengthMismatch,
@@ -473,8 +477,8 @@ mod tests {
         UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount, VcfCountLen, primary_octets,
         read_vcf_count, start_octets,
     };
+    use crate::checked::Reason;
     use crate::field;
-    use crate::validate::Reason;
     use aldis_core::{ErrorDetail, ErrorKind};
 
     fn channel() -> ChannelFields {
