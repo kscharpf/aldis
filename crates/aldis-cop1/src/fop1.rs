@@ -361,8 +361,10 @@ impl Fop1Target {
     /// §4.1.4, Table 5-1, Table 5-3; COP-010; M6 plan WP-2c).
     ///
     /// # Errors
-    /// `InvalidConfig` if a frame of the length of `physical` has no data field octet (232.0
-    /// Table 5-3, CMN-041), which its constructor has checked for the length alone.
+    /// `InvalidConfig` (`max_frame_len`) if a frame of the length of `physical` has no data
+    /// field octet (232.0 Table 5-3, CMN-041): `PhysicalChannelConfig::new` has checked the
+    /// length, 6 to 1 024 octets and 8 or more with a FECF, so this does not fail in practice;
+    /// the VC and table constructors it calls are the ones that would report it.
     pub fn tc(
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,

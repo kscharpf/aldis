@@ -597,7 +597,20 @@ impl MxProtocol for Aos {
             c.insert_zone_len,
             flag(c.fecf)?,
             edition,
-        )?;
+        );
+        let physical = match physical {
+            Ok(physical) => physical,
+            Err(e) => {
+                // The channel's own checks came before the frame's: the SCID of the edition,
+                // then the OID VCID (D6 of the M6 plan).
+                if scid.get() > edition.max_scid() {
+                    return Err(
+                        Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID)
+                    );
+                }
+                return Err(oid_vc_listed(c).err().unwrap_or(e));
+            }
+        };
         AosChannel::new(physical, scid, cycle_in_use)
     }
 
@@ -623,7 +636,8 @@ impl MxProtocol for Uslp {
             c.frame_len,
             c.insert_zone_len,
             flag(c.fecf)?,
-        )?;
+        )
+        .map_err(|e| oid_vc_listed(c).err().unwrap_or(e))?;
         let mut channel = UslpChannel::new(physical, scid, source_or_destination, oid_vcf_len)?;
         channel.mc_ocf = mc_ocf;
         Ok(channel)
@@ -683,6 +697,17 @@ fn check_members(c: &aldis_channel_mux_config_t) -> Result<()> {
         initial_fsh(vc.fsh_len, &vc.fsh_init)?;
     }
     Ok(())
+}
+
+/// `InvalidConfig` (`vc_id`) when VCID 63, the OID VC, is listed on an AOS or USLP channel: the
+/// error those protocols gave before the frame's length, which now comes from the physical
+/// channel's constructor (D6 of the M6 plan).
+fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
+    if c.vcs.iter().take(c.vc_count).any(|vc| vc.vc_id == 63) {
+        Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
+    } else {
+        Ok(())
+    }
 }
 
 /// The mux configuration of `c` for the protocol `P`.

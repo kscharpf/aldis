@@ -512,7 +512,8 @@ impl<P: MuxProtocol> VcConfig<P> {
 /// The configuration of a `ChannelMux`: the managed parameters of one physical channel with one
 /// master channel and `V` VCs at most (LNK-030…LNK-035, LNK-078).
 ///
-/// Built only by [`new`](Self::new), which checks that every frame of every VC has a data field (API-040, RS-020).
+/// Built only by [`new`](Self::new), which checks that every frame of every VC has a data
+/// field (API-040, RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelMuxConfig<P: MuxProtocol, const V: usize> {
     channel: P::Channel,

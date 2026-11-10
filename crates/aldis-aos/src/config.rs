@@ -149,7 +149,6 @@ impl AosPhysicalChannelConfig {
     }
 }
 
-/// 6 octets, or 8 with the FHEC (732.0 §4.1.1.1 a).
 impl PhysicalChannel for AosPhysicalChannelConfig {
     fn frame_len(&self) -> usize {
         self.frame_len
@@ -168,6 +167,7 @@ impl PhysicalChannel for AosPhysicalChannelConfig {
     }
 }
 
+/// 6 octets, or 8 with the FHEC (732.0 §4.1.1.1 a).
 const fn primary_header_len(fhec: bool) -> usize {
     if fhec {
         PRIMARY_HEADER_LEN.saturating_add(FHEC_LEN)
