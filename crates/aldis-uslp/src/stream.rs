@@ -10,7 +10,9 @@
 //! [`IntakeItem::Discarded`], classified by a unified [`DiscardReason`].
 
 use aldis_core::lookup::{ChannelLookup, MapLookup, PhysicalLookup};
-use aldis_core::stream::{Delimiter, Peek};
+use core::num::NonZeroUsize;
+
+use aldis_core::stream::{Cut, Delimiter, Peek};
 use aldis_core::{Checked, DecodeMode, Error, ErrorKind};
 
 use crate::anomaly::UslpAnomaly;
@@ -213,24 +215,21 @@ impl Delimiter for UslpIntake {
                 }
                 raw.frame_len
             };
-            let (frame_bytes, remaining) = rest.split_at_checked(len)?;
-            Some((frame_bytes, remaining, error))
+            let cut = Cut::new(rest, NonZeroUsize::new(len)?)?;
+            Some((cut, error))
         })();
-        if let Some((octets, remaining, error)) = unexpected_version_frame {
+        if let Some((cut, error)) = unexpected_version_frame {
             return Peek::Discard {
-                octets,
-                rest: remaining,
+                cut,
                 reason: DiscardReason::UnexpectedVersion,
                 error,
             };
         }
 
         match declared_len(rest, channels) {
-            Some(Declared::Len(len)) => Peek::Frame(len),
-            Some(Declared::TruncatedOnly) => Peek::Frame(rest.len()),
-            Some(Declared::NoTruncatedLength) => Peek::Discard {
-                octets: rest,
-                rest: &[],
+            Some(Declared::Len(len)) => Peek::frame(len),
+            Some(Declared::TruncatedOnly) => Peek::frame(rest.len()),
+            Some(Declared::NoTruncatedLength) => Peek::DiscardRest {
                 reason: DiscardReason::NoTruncatedLength,
                 error: Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID),
             },

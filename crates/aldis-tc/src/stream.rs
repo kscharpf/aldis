@@ -152,7 +152,7 @@ impl Delimiter for TcIntake {
             + ?Sized,
     {
         match RawHeader::parse(rest) {
-            Some(h) if h.frame_len >= MIN_FRAME_LEN => Peek::Frame(h.frame_len),
+            Some(h) if h.frame_len >= MIN_FRAME_LEN => Peek::frame(h.frame_len),
             // Unparseable header, frame_len < MIN_FRAME_LEN, or fill pattern (such as 0x55 with
             // TFVN 01; §4.4.9.2.6 note 2) is discarded as fill data taking the rest of the unit
             // (232.0 §4.4.9.2.6 b; OI-41).
