@@ -13,7 +13,7 @@
 
 use core::fmt::Debug;
 
-use aldis_core::ids::{MapId, VcId};
+use aldis_core::ids::MapId;
 use aldis_core::{Error, FrameFormat, Result};
 
 use crate::common::{IdlePacketKind, Qos};
@@ -63,25 +63,25 @@ pub use aldis_uslp::UslpFormat as Uslp;
 #[cfg(feature = "tm")]
 impl Protocol for Tm {
     const ID: LinkProtocol = LinkProtocol::Tm;
-    type Vc = VcId<3>;
+    type Vc = aldis_core::ids::VcId<3>;
 }
 
 #[cfg(feature = "tc")]
 impl Protocol for Tc {
     const ID: LinkProtocol = LinkProtocol::Tc;
-    type Vc = VcId<6>;
+    type Vc = aldis_core::ids::VcId<6>;
 }
 
 #[cfg(feature = "aos")]
 impl Protocol for Aos {
     const ID: LinkProtocol = LinkProtocol::Aos;
-    type Vc = VcId<6>;
+    type Vc = aldis_core::ids::VcId<6>;
 }
 
 #[cfg(feature = "uslp")]
 impl Protocol for Uslp {
     const ID: LinkProtocol = LinkProtocol::Uslp;
-    type Vc = VcId<6>;
+    type Vc = aldis_core::ids::VcId<6>;
 }
 
 /// What a First Header Pointer says about the packets of a data field (132.0 §4.1.2.7.6; 732.0
