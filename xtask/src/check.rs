@@ -1034,7 +1034,9 @@ fn verdict(
             println!("check: next: cargo xtask check");
         }
         Mode::Default => {
-            println!("check: next: cargo xtask check --full if the PR merges alone or touches Cargo.toml, a Cargo.lock, coverage-waivers.toml or xtask/");
+            println!(
+                "check: next: cargo xtask check --full if the PR merges alone or touches Cargo.toml, a Cargo.lock, coverage-waivers.toml or xtask/"
+            );
         }
         Mode::Full => {}
     }
