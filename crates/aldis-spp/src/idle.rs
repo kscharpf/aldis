@@ -39,7 +39,7 @@ impl<'p> IdlePacket<'p> {
                 len_u64(total_len),
             ));
         }
-        config.check_len(total_len)?;
+        let total_len = config.check_len(total_len)?.get();
         Ok(IdlePacket {
             total_len,
             sequence_count: SeqCount::default(),
