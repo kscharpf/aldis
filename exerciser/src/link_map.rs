@@ -12,17 +12,16 @@ use aldis_link::cltu::{
     CLTU_PACKER_MAX_ACTIONS, CltuInput, CltuOutput, CltuPacker, CltuPackerConfig, FrameIn,
     Repetitions,
 };
-use aldis_link::common::Qos;
+use aldis_link::common::{MapService, Qos};
 use aldis_link::extractor::PacketRun;
 use aldis_link::protocol::{Tc, Uslp};
 use aldis_link::reassembler::{
     FduIn, MAP_REASSEMBLER_MAX_ACTIONS, MapReassembler, MapReassemblerConfig, ReassemblerInput,
-    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, ReassemblyService, TcReassemblerParams,
-    Unit, UslpFdu,
+    ReassemblerMap, ReassemblerOutput, ReassemblyEvent, TcReassemblerParams, Unit, UslpFdu,
 };
 use aldis_link::segmenter::{
-    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, MapService,
-    SegmenterInput, SegmenterOutput, TcSegmenterParams, UslpSegmenterParams,
+    Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput,
+    SegmenterOutput, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
 use aldis_uslp::{Upid, VcfCountLen};
 
@@ -55,18 +54,19 @@ fn tc(t: &mut Tally) {
         return;
     };
     let now = Instant::from_micros(bb(0));
-    let Ok(sdu_map) = MapEntry::<Tc>::new(m1, MapService::Any, ()).with_segmentation(bb(40)) else {
+    let Ok(sdu_map) = MapEntry::<Tc>::new(m1, SegmenterService::Any, ()).with_segmentation(bb(40))
+    else {
         t.check(false);
         return;
     };
     t.check(
-        MapEntry::<Tc>::new(m1, MapService::Any, ())
+        MapEntry::<Tc>::new(m1, SegmenterService::Any, ())
             .with_segmentation(bb(0))
             .is_err(),
     );
-    let packet_map = MapEntry::<Tc>::new(m2, MapService::Any, ()).with_blocking();
+    let packet_map = MapEntry::<Tc>::new(m2, SegmenterService::Any, ()).with_blocking();
     t.check(sdu_map.id() == m1 && sdu_map.segmentation() == Some(40) && !sdu_map.blocking());
-    t.check(packet_map.blocking() && packet_map.service() == MapService::Any);
+    t.check(packet_map.blocking() && packet_map.service() == SegmenterService::Any);
     let () = *packet_map.params();
     let channel = TcSegmenterParams::with_segment_header(bb(true));
     t.check(channel.segment_header() && channel.fecf());
@@ -164,8 +164,8 @@ fn tc(t: &mut Tally) {
         return;
     };
     t.check(rconfig.channel() == &params && rconfig.maps().count() == 2);
-    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == ReassemblyService::Sdu);
-    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == ReassemblyService::Packets);
+    t.check(rm1.vc() == vc && rm1.id() == m1 && rm1.service() == MapService::Sdu);
+    t.check(rm1.max_sdu_len() == Some(S) && rm2.service() == MapService::Packets);
     let Ok(mut reas) = MapReassembler::<Tc, 2, S>::new(rconfig) else {
         t.check(false);
         return;
@@ -358,17 +358,18 @@ fn uslp(t: &mut Tally) {
     };
     let channel = UslpSegmenterParams::new(two, one);
     t.check(channel.vcf_len_sc() == two && channel.vcf_len_exp() == one);
-    let Ok(sdus) =
-        MapEntry::<Uslp>::new(m1, MapService::Sdu, Upid::OctetStream).with_segmentation(bb(30))
+    let Ok(sdus) = MapEntry::<Uslp>::new(m1, SegmenterService::Sdu, Upid::OctetStream)
+        .with_segmentation(bb(30))
     else {
         t.check(false);
         return;
     };
-    let packets = MapEntry::<Uslp>::new(m2, MapService::Packets, Upid::Packets).with_blocking();
+    let packets =
+        MapEntry::<Uslp>::new(m2, SegmenterService::Packets, Upid::Packets).with_blocking();
     let deadline = Duration::from_micros(bb(500));
     let stream = MapEntry::<Uslp>::new(
         m3,
-        MapService::OctetStream {
+        SegmenterService::OctetStream {
             release_deadline: deadline,
         },
         Upid::OctetStream,
@@ -428,7 +429,7 @@ fn uslp(t: &mut Tally) {
         return;
     };
     let rm3 = ReassemblerMap::<Uslp>::octet_stream(vc, m3);
-    t.check(rm3.max_sdu_len().is_none() && rm3.service() == ReassemblyService::OctetStream);
+    t.check(rm3.max_sdu_len().is_none() && rm3.service() == MapService::OctetStream);
     let Ok(rconfig) = MapReassemblerConfig::<Uslp, 3>::new((), &[rm1, rm2, rm3]) else {
         t.check(false);
         return;

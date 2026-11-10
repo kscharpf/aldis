@@ -91,13 +91,18 @@ impl SegmentHeader {
     /// §4.1.3.2.2; API-020).
     #[must_use]
     pub const fn octet(self) -> u8 {
-        (self.sequence_flags.bits() << 6) | (self.map_id.get() & 0x3F)
+        let mut octet = [0];
+        segment::Flags::put_u8(&mut octet, self.sequence_flags.bits());
+        segment::MapId::put_u8(&mut octet, self.map_id.get());
+        let [octet] = octet;
+        octet
     }
 
     /// Parses the Segment Header octet; every value is a Segment Header (232.0 §4.1.3.2.2).
     pub(crate) fn from_octet(octet: u8) -> Option<SegmentHeader> {
-        TcMapId::new(octet & 0x3F).map(|map_id| SegmentHeader {
-            sequence_flags: SequenceFlags::from_bits(octet >> 6),
+        let octet = [octet];
+        TcMapId::new(segment::MapId::get_u8(&octet)).map(|map_id| SegmentHeader {
+            sequence_flags: SequenceFlags::from_bits(segment::Flags::get_u8(&octet)),
             map_id,
         })
     }
@@ -229,6 +234,14 @@ mod layout {
     pub(super) type Vcid = Field<N, 16, 6>;
     pub(super) type Length = Field<N, 22, 10>;
     pub(super) type Sequence = Field<N, 32, 8>;
+}
+
+/// The fields of the Segment Header octet by bit position (232.0 §4.1.3.2.2; GEN-051).
+mod segment {
+    use aldis_core::bits::Field;
+
+    pub(super) type Flags = Field<1, 0, 2>;
+    pub(super) type MapId = Field<1, 2, 6>;
 }
 
 /// A TC frame header as plain values (232.0 §4.1.2, §4.1.3.2.2; API-014).

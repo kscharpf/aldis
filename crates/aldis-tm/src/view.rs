@@ -16,7 +16,7 @@ use crate::config::{NoSdls, TmPhysicalChannelConfig, security_layout};
 use crate::field;
 use crate::header::{
     DataFieldStatus, FSH_VERSION, FshLen, PRIMARY_HEADER_LEN, PacketPointer, SegmentLengthId,
-    TmPrimaryHeader, VERSION, len_u64, mismatch,
+    TmPrimaryHeader, VERSION, first_octet, fsh, len_u64, mismatch,
 };
 
 /// A decoded TM Transfer Frame borrowing its fields from the input (132.0 §4.1, §6.3; TM-001…
@@ -176,13 +176,14 @@ impl<'a> TmFrame<'a> {
     /// `UnsupportedVersion` (`frame_version`) if the version is not `00` (TM-002).
     pub fn peek_length(prefix: &[u8], pc: &TmPhysicalChannelConfig) -> Result<usize> {
         if let Some(&octet) = prefix.first()
-            && octet >> 6 != VERSION
+            && let version = first_octet::Version::get_u8(&[octet])
+            && version != VERSION
         {
             return Err(mismatch(
                 ErrorKind::UnsupportedVersion,
                 field::FRAME_VERSION,
                 u64::from(VERSION),
-                u64::from(octet >> 6),
+                u64::from(version),
             ));
         }
         Ok(pc.frame_len())
@@ -551,8 +552,8 @@ const fn check_len(bytes: &[u8], pc: &TmPhysicalChannelConfig) -> Result<()> {
 
 /// The Secondary Header length from its Identification Field (132.0 §4.1.3.2; TM-003).
 fn fsh_id(bytes: &[u8]) -> Result<FshLen> {
-    let id = bytes.get(PRIMARY_HEADER_LEN).copied().unwrap_or_default();
-    let version = id >> 6;
+    let id = [bytes.get(PRIMARY_HEADER_LEN).copied().unwrap_or_default()];
+    let version = fsh::Version::get_u8(&id);
     if version != FSH_VERSION {
         return Err(mismatch(
             ErrorKind::UnsupportedVersion,
@@ -561,7 +562,7 @@ fn fsh_id(bytes: &[u8]) -> Result<FshLen> {
             u64::from(version),
         ));
     }
-    let total = (id & 0x3F).saturating_add(1);
+    let total = fsh::LengthLess1::get_u8(&id).saturating_add(1);
     let len = FshLen::new(total).ok_or(mismatch(
         ErrorKind::InvalidField,
         field::FSH_LEN,

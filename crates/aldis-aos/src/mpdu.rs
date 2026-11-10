@@ -13,6 +13,17 @@ use crate::config::AosEdition;
 use crate::field;
 use crate::header::{len_u64, mismatch};
 
+/// The fields of the `M_PDU` header by bit position (732.0 §4.1.4.2; GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::MPDU_HEADER_LEN as N;
+
+    pub(super) type PointerIssue5 = Field<N, 0, 16>;
+    pub(super) type SpareIssue4 = Field<N, 0, 5>;
+    pub(super) type PointerIssue4 = Field<N, 5, 11>;
+}
+
 /// Length of the `M_PDU` Header, in octets (732.0 §4.1.4.2.1.3 a).
 pub const MPDU_HEADER_LEN: usize = 2;
 
@@ -227,16 +238,18 @@ impl<'a> Mpdu<'a> {
         edition: AosEdition,
         deviations: &mut Deviations,
     ) -> Result<Mpdu<'a>> {
-        let (Some(&[o0, o1]), Some(zone)) = (
+        let (Some(h), Some(zone)) = (
             field.first_chunk::<MPDU_HEADER_LEN>(),
             field.get(MPDU_HEADER_LEN..).filter(|z| !z.is_empty()),
         ) else {
             return Err(Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD));
         };
-        let word = u16::from_be_bytes([o0, o1]);
         let (spare, raw) = match edition {
-            AosEdition::Issue5 => (0, word),
-            AosEdition::Issue4Compatible => (o0 >> 3, word & 0x07FF),
+            AosEdition::Issue5 => (0, layout::PointerIssue5::get_u16(h)),
+            AosEdition::Issue4Compatible => (
+                layout::SpareIssue4::get_u8(h),
+                layout::PointerIssue4::get_u16(h),
+            ),
         };
         let pointer = PacketPointer::classify(raw, zone.len(), edition)?;
         if spare != 0 {

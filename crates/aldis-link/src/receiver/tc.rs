@@ -8,6 +8,16 @@ use crate::protocol::Tc;
 /// The octets of the TC Primary Header and the Frame Sequence Number (232.0 §4.1.2).
 const HEADER_LEN: usize = Tc::PRIMARY_HEADER_LEN;
 
+/// The fields of the TC Primary Header the receiver reads, by bit position (232.0 §4.1.2;
+/// GEN-051).
+mod layout {
+    use aldis_core::bits::Field;
+
+    use super::HEADER_LEN as N;
+
+    pub(super) type Vcid = Field<N, 16, 6>;
+}
+
 /// The parameters of a TC physical channel that the receiver needs: none.
 ///
 /// FARM-1 and the MAP demultiplexing decide acceptance (232.0 §4.4.5–6; LNK-050). The configured
@@ -81,9 +91,9 @@ impl ReceiveProtocol for Tc {
         // The Frame Length field gives the length of this frame, which varies up to the
         // channel's maximum (232.0 §2.3.1, §4.1.2.7); the codec has checked that it is the
         // length of the octets, a property of a `Plain<TcFrame>` (RS-023).
-        let [_, _, b2, _, _] = header::<HEADER_LEN>(frame)?;
+        let h = header::<HEADER_LEN>(frame)?;
         // The VCID is the six bits above the 10-bit Frame Length (232.0 §4.1.2.7).
-        let vc = vc_of::<Tc>(b2 >> 2)?;
+        let vc = vc_of::<Tc>(layout::Vcid::get_u8(&h))?;
         match cx.params(vc) {
             None => cx.discard(DiscardReason::UnknownChannel, Some(vc), None),
             Some(p) if !p.served => cx.discard(DiscardReason::NotServed, Some(vc), None),

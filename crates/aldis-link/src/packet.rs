@@ -28,10 +28,26 @@ pub(crate) enum Length {
     Invalid,
 }
 
+/// The fields of the first octet of a packet by bit position (133.0 §4.1.3.2, 133.1 §4.1.2.2,
+/// §4.1.2.3; GEN-051).
+mod first_octet {
+    use aldis_core::bits::Field;
+
+    pub(super) type Pvn = Field<1, 0, 3>;
+    pub(super) type Epi = Field<1, 3, 3>;
+}
+
+/// The first two octets of a Space Packet by bit position (133.0 §4.1.3.3.4; GEN-051).
+mod space_header {
+    use aldis_core::bits::Field;
+
+    pub(super) type Apid = Field<2, 5, 11>;
+}
+
 /// The kind of packet whose first octet is `first` (the PVN is its top three bits, 133.0
 /// §4.1.3.2, 133.1 §4.1.2.2), or `None` for a PVN the engines do not delimit.
 pub(crate) const fn kind_of(first: u8) -> Option<Kind> {
-    match first >> 5 {
+    match first_octet::Pvn::get_u8(&[first]) {
         0b000 => Some(Kind::Space),
         0b111 => Some(Kind::Encapsulation),
         _ => None,
@@ -40,7 +56,7 @@ pub(crate) const fn kind_of(first: u8) -> Option<Kind> {
 
 /// The PVN in the first octet.
 pub(crate) const fn pvn(first: u8) -> u8 {
-    first >> 5
+    first_octet::Pvn::get_u8(&[first])
 }
 
 /// The length of the packet that starts `prefix` (not empty) of kind `kind`.
@@ -62,9 +78,11 @@ pub(crate) fn length(kind: Kind, prefix: &[u8]) -> Length {
 pub(crate) fn is_idle(kind: Kind, prefix: &[u8]) -> bool {
     match (kind, prefix) {
         (Kind::Space, [b0, b1, ..]) => {
-            Apid::new(u16::from_be_bytes([*b0 & 0x07, *b1])).is_some_and(Apid::is_idle)
+            Apid::new(space_header::Apid::get_u16(&[*b0, *b1])).is_some_and(Apid::is_idle)
         }
-        (Kind::Encapsulation, [b0, ..]) => Epi::new((*b0 >> 2) & 0b111).is_some_and(Epi::is_idle),
+        (Kind::Encapsulation, [b0, ..]) => {
+            Epi::new(first_octet::Epi::get_u8(&[*b0])).is_some_and(Epi::is_idle)
+        }
         _ => false,
     }
 }
