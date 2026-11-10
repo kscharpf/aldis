@@ -5,7 +5,7 @@
 //! | Module | Contents | Clauses | Requirements |
 //! |---|---|---|---|
 //! | [`upid`] | `Upid`, generated from the SANA registry snapshot, and `UnassignedUpid` | 732.1 §4.1.4.2.3 | USLP-007 |
-//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `VcParams`, `MapConfig`, `TransferFrameType`, `OcfUse`, `SecurityScope`, `TruncatedFrameLen`, the `VcLookup` trait and its `VcTable` | 732.1 §5, §6.6, Annex D1.2 | USLP-002, USLP-004, USLP-008, USLP-012, GEN-060, GEN-061, API-040, API-041, API-070, API-075 |
+//! | [`config`] | `PhysicalChannelConfig`, `VcConfig`, `VcParams`, `MapConfig`, `TransferFrameType`, `OcfUse`, `SecurityScope`, `TruncatedFrameLen`, its `VcTable` | 732.1 §5, §6.6, Annex D1.2 | USLP-002, USLP-004, USLP-008, USLP-012, GEN-060, GEN-061, API-040, API-041, API-070, API-075 |
 //! | [`header`] | `FrameKind`, `SourceOrDestination`, `VcfCountLen`, `VcfCount`, `ChannelFields`, owned `UslpPrimaryHeader` | 732.1 §4.1.2, Annex D1.3 | USLP-001, USLP-003, USLP-004, API-014, GEN-053 |
 //! | [`view`] | Zero-copy `UslpFrame` (full or truncated) and `UslpFullFrame`, `peek_length` | 732.1 §4.1, §6.3 | USLP-001, USLP-003…USLP-007, USLP-016, API-010…API-014, API-072 |
 //! | [`truncated`] | Zero-copy `UslpTruncatedFrame` | 732.1 Annex D | USLP-002, USLP-012, API-075 |
@@ -13,7 +13,7 @@
 //! | [`writer`] | One-shot `encode`, two-phase `UslpFrameWriter`, `encode_truncated`, `encode_oid` and `encode_oid_galois` | 732.1 §4.1, §6.3, Annex D | USLP-009, USLP-010, API-020…API-023 |
 //! | [`anomaly`] | `UslpAnomaly` lenient-mode flags | 732.1 §4.1.2.9, §4.1.4.1.8–9 | API-032, API-033 |
 //! | [`delimit`] | Frame Delimiting and Fill Data Removal: stateless `next_frame`, `FrameDelimiter` | 732.1 §4.3.11.2 | USLP-015 |
-//! | [`plain`] | `UslpFrame::into_plain` through `NoSecurity`, returning a `PlainUslpFrame`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
+//! | `security` | `SecuritySlices` for `UslpFrame`: `into_plain` through `NoSecurity` returns an `aldis_core::Plain`, the frame input of an engine | 355.0 §2.3 | RS-023, API-070, API-074 |
 //! | [`checked`] | USLP Frame Validation Checks: `check_frame` (strict and lenient) returning a `Checked<UslpFrame>`, `Reason` | 732.1 §4.3.11.3 | USLP-014, API-016 |
 //! | [`field`] | The field codes its errors name, re-exported from `aldis_core::field` | 732.1 §4.1, §5 | API-082, GEN-041 |
 //!
@@ -40,7 +40,7 @@ pub mod config;
 pub mod delimit;
 pub mod field;
 pub mod header;
-pub mod plain;
+mod security;
 pub mod stream;
 pub mod tfdf;
 pub mod truncated;
@@ -52,7 +52,7 @@ pub use anomaly::UslpAnomaly;
 pub use checked::{Reason, check_frame};
 pub use config::{
     MapConfig, OcfUse, PhysicalChannelConfig, SecurityScope, TransferFrameType, TruncatedFrameLen,
-    VcConfig, VcLookup, VcParams, VcTable,
+    VcConfig, VcParams, VcTable,
 };
 pub use delimit::{Delimited, FrameDelimiter, next_frame};
 pub use header::{
@@ -60,8 +60,7 @@ pub use header::{
     TRUNCATED_HEADER_LEN, UslpMapId, UslpPrimaryHeader, UslpSpacecraftId, UslpVcId, VcfCount,
     VcfCountLen,
 };
-pub use plain::PlainUslpFrame;
-pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
+pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, UslpIntake};
 pub use tfdf::{
     ConstructionRule, FirstHeaderPointer, LastValidOctet, POINTER_NONE, TfdfHeader, TfdzOffset,
     TfdzRule,

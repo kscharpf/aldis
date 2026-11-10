@@ -80,9 +80,10 @@ impl<'b> SpacePacketWriter<'b> {
         max_user_len: usize,
     ) -> Result<SpacePacketWriter<'b>> {
         let max_data = secondary_len.saturating_add(max_user_len);
-        check_parts(fields, secondary_len, max_data)?;
-        let total = max_data.saturating_add(PRIMARY_HEADER_LEN);
-        config.check_len(total)?;
+        let parts = check_parts(fields, secondary_len, max_data)?;
+        let total = config
+            .check_len(parts.data_len().saturating_add(PRIMARY_HEADER_LEN))?
+            .get();
         let buf = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
         // Version `111` and Packet Data Length 0 until `finish` (API-023).
         let unfinished = SpacePacketHeader::new(fields, secondary_len != 0, 1);
@@ -137,8 +138,8 @@ impl<'b> SpacePacketWriter<'b> {
             ));
         }
         let data_len = self.secondary_len.saturating_add(user_len);
-        check_parts(self.fields, self.secondary_len, data_len)?;
-        let header = SpacePacketHeader::new(self.fields, self.secondary_len != 0, data_len);
+        let parts = check_parts(self.fields, self.secondary_len, data_len)?;
+        let header = SpacePacketHeader::new(self.fields, self.secondary_len != 0, parts.data_len());
         for (d, s) in self.out.iter_mut().zip(header.octets()) {
             *d = s;
         }

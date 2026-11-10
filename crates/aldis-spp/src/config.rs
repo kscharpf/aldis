@@ -47,9 +47,9 @@ impl SppConfig {
         self.max_packet_len
     }
 
-    /// `OutOfRange` (`packet_len`) if a packet of `total` octets is longer than the maximum
-    /// (SPP-006).
-    pub(crate) fn check_len(self, total: usize) -> Result<()> {
+    /// The length `total` as a [`PacketLen`] proof, or `OutOfRange` (`packet_len`) if a packet
+    /// of `total` octets is longer than the maximum (SPP-006, RS-020).
+    pub(crate) fn check_len(self, total: usize) -> Result<PacketLen> {
         if total > self.max_packet_len {
             return Err(Error::out_of_range(
                 field::PACKET_LEN,
@@ -57,7 +57,7 @@ impl SppConfig {
                 len_u64(total),
             ));
         }
-        Ok(())
+        Ok(PacketLen(total))
     }
 
     /// Checks the parts of a packet against 133.0 and this configuration; the result is the only
@@ -87,12 +87,39 @@ impl SppConfig {
     }
 }
 
-/// The 133.0 checks on a packet's parts that need no configuration (SPP-005).
+/// A total packet length that [`SppConfig::check_len`] accepted (SPP-006, RS-020). Only that
+/// function builds one, so code that takes it need not compare against the maximum again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PacketLen(usize);
+
+impl PacketLen {
+    /// The checked length in octets.
+    pub(crate) const fn get(self) -> usize {
+        self.0
+    }
+}
+
+/// A Packet Data Field length that [`check_parts`] accepted: non-empty, and without a secondary
+/// header for an Idle Packet (SPP-005, RS-020). Only `check_parts` builds one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CheckedParts {
+    data_len: usize,
+}
+
+impl CheckedParts {
+    /// The checked Packet Data Field length in octets (secondary header plus user data).
+    pub(crate) const fn data_len(self) -> usize {
+        self.data_len
+    }
+}
+
+/// The 133.0 checks on a packet's parts that need no configuration (SPP-005); the proof carries
+/// the checked data field length.
 pub(crate) const fn check_parts(
     fields: PacketFields,
     secondary_len: usize,
     data_len: usize,
-) -> Result<()> {
+) -> Result<CheckedParts> {
     if data_len == 0 {
         return Err(
             invalid(field::DATA_FIELD).with_detail(ErrorDetail::Expected {
@@ -104,7 +131,7 @@ pub(crate) const fn check_parts(
     if fields.apid.is_idle() && secondary_len != 0 {
         return Err(invalid(field::SECONDARY_HEADER_FLAG));
     }
-    Ok(())
+    Ok(CheckedParts { data_len })
 }
 
 /// The parts of one packet, checked against 133.0 and an [`SppConfig`] (133.0 §4.1; SPP-005,

@@ -5,6 +5,8 @@
 //! 732.0-B-5 §4.1, §4.1.4.1.5, §4.2.7, §6.3; AOS-002, AOS-003, AOS-015, AOS-016, AOS-019,
 //! API-020…API-023, API-072, API-074, RS-023, GEN-014, GEN-042, GEN-052.
 
+use crate::config::AosVirtualChannelConfig;
+use aldis_core::lookup::ChannelLookup;
 use core::marker::PhantomData;
 use core::ops::Range;
 
@@ -21,8 +23,7 @@ use aldis_core::{Error, ErrorKind, Result};
 
 use crate::bpdu::{BitstreamPointer, ValidBitCount};
 use crate::config::{
-    AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout, pdu_header_len,
-    unknown_channel,
+    AosPhysicalChannelConfig, DataFieldContent, frame_layout, pdu_header_len, unknown_channel,
 };
 use crate::fhec;
 use crate::field;
@@ -151,7 +152,7 @@ struct Plan {
 
 impl Plan {
     /// Checks `fields` against `pc` and `vcs` and derives the header (AOS-019).
-    fn new<L: VcLookup + ?Sized>(
+    fn new<L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized>(
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
@@ -186,7 +187,7 @@ impl Plan {
     }
 
     /// The plan of an OID frame of `fields.scid` (732.0 §4.1.4.1.5; AOS-016).
-    fn oid<L: VcLookup + ?Sized>(
+    fn oid<L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized>(
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
@@ -352,7 +353,9 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
     ///   with `n` not below the zone's bits, with the largest valid value (AOS-017);
     /// - `OutOfRange` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible` (AOS-002);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
-    pub fn begin<L: VcLookup + ?Sized>(
+    pub fn begin<
+        L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+    >(
         out: &'b mut [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
@@ -373,7 +376,9 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
     /// - `UnknownChannel` (`spacecraft_id`) for an SCID with no VC in `vcs` (§4.3.6.3);
     /// - `OutOfRange` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible`;
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
-    pub fn begin_oid<L: VcLookup + ?Sized>(
+    pub fn begin_oid<
+        L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+    >(
         out: &'b mut [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
@@ -580,7 +585,9 @@ impl<'b> AosFrameWriter<'b, Finalized> {
 ///   with that length;
 /// - `InvalidField` (`ocf`) for an OCF given where none is configured, or missing where one is
 ///   (732.0 §4.1.5.3).
-pub fn encode<L: VcLookup + ?Sized>(
+pub fn encode<
+    L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+>(
     pc: &AosPhysicalChannelConfig,
     vcs: &L,
     fields: &AosFrameFields,
@@ -657,7 +664,9 @@ pub fn encode<L: VcLookup + ?Sized>(
 /// The errors of [`AosFrameWriter::begin_oid`], checked first, and then `LengthMismatch`
 /// (`insert_zone_len`) for an `insert_zone` of another length than the configured one. On error
 /// neither `out` nor `oid` is changed (GEN-042).
-pub fn encode_oid<L: VcLookup + ?Sized>(
+pub fn encode_oid<
+    L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+>(
     pc: &AosPhysicalChannelConfig,
     vcs: &L,
     fields: &AosFrameFields,
@@ -679,7 +688,9 @@ pub fn encode_oid<L: VcLookup + ?Sized>(
 ///
 /// # Errors
 /// As for [`encode_oid`]. On error neither `out` nor `oid` is changed (GEN-042).
-pub fn encode_oid_galois<L: VcLookup + ?Sized>(
+pub fn encode_oid_galois<
+    L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+>(
     pc: &AosPhysicalChannelConfig,
     vcs: &L,
     fields: &AosFrameFields,
@@ -694,7 +705,7 @@ pub fn encode_oid_galois<L: VcLookup + ?Sized>(
 
 /// The OID frame of [`encode_oid`], its data field filled by `fill` once every check has
 /// passed, so that a rejected frame leaves the generator unchanged (GEN-042).
-fn oid_frame<L: VcLookup + ?Sized>(
+fn oid_frame<L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized>(
     pc: &AosPhysicalChannelConfig,
     vcs: &L,
     fields: &AosFrameFields,

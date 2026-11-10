@@ -6,15 +6,19 @@
 //! two share (Annex D1.3.1 note 2). The checks, their order, and their errors are those of
 //! `docs/standards/uslp-frame.md` §3.1.
 
+use crate::config::PhysicalChannelConfig;
 use aldis_core::crc;
 use aldis_core::layout::{FECF_LEN, FrameLayout, FramedBytes, LayoutSpec, OCF_LEN};
+use aldis_core::lookup::ChannelLookup;
+use aldis_core::lookup::MapLookup;
+use aldis_core::lookup::PhysicalLookup;
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Lenient, Result};
 
 use crate::anomaly::UslpAnomaly;
 use crate::checked::Reason;
-use crate::config::{MapConfig, OcfUse, VcConfig, VcLookup, frame_layout, frame_security};
+use crate::config::{MapConfig, OcfUse, VcConfig, frame_layout, frame_security};
 use crate::field;
 use crate::header::{
     ChannelFields, FrameKind, OID_VCID, PRIMARY_HEADER_LEN, RawRest, RawStart, SourceOrDestination,
@@ -146,7 +150,12 @@ const fn ocf_flag_ok(vc: &VcConfig, flag: bool) -> bool {
 /// Test (c) on the fields before the Frame Length: the flags, the Reserve Spares, the VCID and
 /// MAP ID, the VCF Count Length, and the OCF Flag (`docs/standards/uslp-frame.md` §3.1). The
 /// MAP is `None` on VCID 63, which carries none.
-fn check_channel<L: VcLookup + ?Sized>(
+fn check_channel<
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     ch: ChannelFields,
     rest: RawRest,
     channels: &L,
@@ -210,7 +219,13 @@ fn check_channel<L: VcLookup + ?Sized>(
 }
 
 /// The checks of a non-truncated frame after the SCID (`docs/standards/uslp-frame.md` §3.1).
-fn parse_full<'a, L: VcLookup + ?Sized>(
+fn parse_full<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     bytes: &'a [u8],
     (start, rest): (RawStart, RawRest),
     channels: &L,
@@ -314,7 +329,13 @@ pub(crate) struct Parsed<F> {
 ///
 /// With `exact`, `bytes` must be exactly one frame (test d); otherwise any octets after a
 /// variable-length or truncated frame are ignored (API-011).
-pub(crate) fn parse<'a, L: VcLookup + ?Sized>(
+pub(crate) fn parse<
+    'a,
+    L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+        + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+        + PhysicalLookup<Physical = PhysicalChannelConfig>
+        + ?Sized,
+>(
     bytes: &'a [u8],
     channels: &L,
     known: Channels,
@@ -399,7 +420,15 @@ impl<'a> UslpFrame<'a> {
     ///   `Malformed` (`fhp_lvo_pointer`) for a pointer beyond the TFDZ (USLP-006).
     /// - On VCID 63, `InvalidField` naming the deviating OID header field in strict mode,
     ///   [`UslpAnomaly::OidHeaderMismatch`] in lenient (OI-44 item 1).
-    pub fn decode<L: VcLookup + ?Sized>(bytes: &'a [u8], channels: &L) -> Result<UslpFrame<'a>> {
+    pub fn decode<
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
+        bytes: &'a [u8],
+        channels: &L,
+    ) -> Result<UslpFrame<'a>> {
         parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
@@ -411,7 +440,12 @@ impl<'a> UslpFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the deviations that are anomalies.
-    pub fn decode_lenient<L: VcLookup + ?Sized>(
+    pub fn decode_lenient<
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
         bytes: &'a [u8],
         channels: &L,
     ) -> Result<Lenient<UslpFrame<'a>, UslpAnomaly>> {
@@ -433,7 +467,15 @@ impl<'a> UslpFrame<'a> {
     /// (`end_of_frame_primary_header_flag`: that VC carries only truncated frames, OI-48);
     /// otherwise, on a variable-length
     /// channel, `Incomplete` (`needed` = 6) for less than the Frame Length field.
-    pub fn peek_length<L: VcLookup + ?Sized>(prefix: &[u8], channels: &L) -> Result<usize> {
+    pub fn peek_length<
+        L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
+            + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
+        prefix: &[u8],
+        channels: &L,
+    ) -> Result<usize> {
         let start = RawStart::parse(prefix).ok_or(Error::incomplete(TRUNCATED_HEADER_LEN))?;
         start.check_version()?;
         let ch = start.channel;
@@ -686,14 +728,17 @@ mod tests {
     use crate::anomaly::UslpAnomaly;
     use crate::checked::{Reason, check_frame};
     use crate::config::tests::{fixed, mapid, plain_variable, variable};
+    use crate::config::{MapConfig, PhysicalChannelConfig, VcConfig};
     use crate::field;
     use crate::header::{FrameKind, SourceOrDestination};
+    use crate::header::{UslpMapId, UslpSpacecraftId, UslpVcId};
     use crate::stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream};
     use crate::tfdf::tests::offset;
     use crate::tfdf::{FirstHeaderPointer, LastValidOctet, TfdfHeader, TfdzRule};
     use crate::upid::Upid;
     use aldis_core::crc::crc16;
     use aldis_core::layout::FrameLayout;
+    use aldis_core::lookup::{MapLookup, PhysicalLookup};
     use aldis_core::ocf::Ocf;
     use aldis_core::{DecodeMode, Error, ErrorDetail, ErrorKind, FieldId, Lenient};
     use std::vec;
@@ -1113,7 +1158,15 @@ mod tests {
         for lenient in [false, true] {
             fn decode<'a>(
                 b: &'a [u8],
-                t: &impl crate::config::VcLookup,
+                t: &(
+                     impl MapLookup<
+                    UslpSpacecraftId,
+                    UslpVcId,
+                    UslpMapId,
+                    Vc = VcConfig,
+                    Map = MapConfig,
+                > + PhysicalLookup<Physical = PhysicalChannelConfig>
+                 ),
                 lenient: bool,
             ) -> aldis_core::Result<UslpFrame<'a>> {
                 if lenient {

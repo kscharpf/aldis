@@ -292,7 +292,7 @@ pub unsafe extern "C" fn aldis_epp_check(
             } else {
                 None
             };
-            config.check(epi, extension, data_len)
+            config.check(epi, extension, data_len).map(|_| ())
         })
     }
 }

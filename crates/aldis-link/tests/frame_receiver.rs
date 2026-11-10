@@ -143,7 +143,10 @@ fn uslp_variable_frame(vc: u8, map: u8, len: usize, count: u8) -> Vec<u8> {
 ///
 /// # Errors
 /// The codec's error for a frame it refuses.
-fn truncated_uslp(octets: &[u8]) -> aldis_core::Result<aldis_uslp::PlainUslpFrame<'_>> {
+fn truncated_uslp(
+    octets: &[u8],
+) -> aldis_core::Result<aldis_core::Plain<aldis_uslp::UslpFrame<'_>>> {
+    use aldis_core::SecuritySlices;
     use aldis_core::security::{NoSecurity, SecurityLayout};
     use aldis_uslp::{
         MapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType, TruncatedFrameLen,

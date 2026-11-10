@@ -29,7 +29,7 @@
 use aldis::aos::{AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig};
 use aldis::core::ids::{MapId, SpacecraftId, VcId};
 use aldis::core::security::NoSecurity;
-use aldis::core::{Error, ErrorKind, Result, field};
+use aldis::core::{Error, ErrorKind, Result, SecuritySlices, field};
 use aldis::link::extractor::{
     EXTRACTOR_MAX_ACTIONS, ExtractionError, ExtractorActions, ExtractorInput, ExtractorOutput,
     ExtractorStatus, FieldIn, PacketExtractor, PacketExtractorBuffers, PacketExtractorConfig,

@@ -123,7 +123,7 @@ impl TmVc {
 impl ReceiveProtocol for Tm {
     type Channel = TmChannel;
     type VcParams = TmVc;
-    type Plain<'a> = aldis_tm::PlainTmFrame<'a>;
+    type Plain<'a> = aldis_core::Plain<aldis_tm::TmFrame<'a>>;
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.as_bytes()

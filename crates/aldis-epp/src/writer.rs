@@ -17,7 +17,7 @@ use crate::header::{EncapsulationFields, EncapsulationHeader, HeaderSize, invali
 /// length) if `out` is too short. On any error `out` is unchanged (API-022).
 pub fn encode(unit: &DataUnit<'_>, size: HeaderSize, out: &mut [u8]) -> Result<usize> {
     let data = unit.data();
-    let header = EncapsulationHeader::for_data(unit.fields(), size, data.len())?;
+    let header = EncapsulationHeader::for_data(unit.fields(), size, unit.data_len().get())?;
     let total = header.header_len().octets().saturating_add(data.len());
     let dst = out.get_mut(..total).ok_or(Error::buffer_too_small(total))?;
     header.write_to(dst);

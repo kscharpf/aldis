@@ -1,6 +1,8 @@
 //! Zero-copy AOS Transfer Frame view (732.0-B-5 §4.1, §4.3.7, §6.3; AOS-010…AOS-017, API-010,
 //! API-012…API-014, API-030…API-032, API-072, GEN-013, GEN-043).
 
+use crate::config::AosVirtualChannelConfig;
+use aldis_core::lookup::ChannelLookup;
 use core::ops::Range;
 
 use aldis_core::crc::{Crc16, crc16, crc16_update};
@@ -12,7 +14,7 @@ use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, Lenient, Result};
 
 use crate::anomaly::{AosAnomaly, Deviations};
 use crate::bpdu::Bpdu;
-use crate::config::{AosPhysicalChannelConfig, DataFieldContent, VcLookup, frame_layout};
+use crate::config::{AosPhysicalChannelConfig, DataFieldContent, frame_layout};
 use crate::fhec::CorrectedSymbols;
 use crate::field;
 use crate::header::{
@@ -101,7 +103,9 @@ impl<'a> AosFrame<'a> {
     ///   for a cycle other than `0000` with its Use Flag `0` (AOS-012); `ReservedValue`
     ///   (`aos_header_spare`) for Issue 4 bits 42–43 other than `00` (AOS-002); the spare errors
     ///   of the `M_PDU` and `B_PDU`. [`decode_lenient`](Self::decode_lenient) reports them as [`AosAnomaly`] flags (API-032).
-    pub fn decode<L: VcLookup + ?Sized>(
+    pub fn decode<
+        L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
@@ -115,7 +119,9 @@ impl<'a> AosFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the deviations that are anomalies.
-    pub fn decode_lenient<L: VcLookup + ?Sized>(
+    pub fn decode_lenient<
+        L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
@@ -125,7 +131,9 @@ impl<'a> AosFrame<'a> {
     }
 
     /// The decode of both entry points: the header checks, the channel lookup, and the rest.
-    fn decode_in<L: VcLookup + ?Sized>(
+    fn decode_in<
+        L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
+    >(
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
@@ -658,6 +666,7 @@ pub(crate) mod tests {
     #[test]
     fn plain_needs_no_sdls_fields() {
         // req: RS-023, API-017, API-070, API-074
+        use aldis_core::SecuritySlices;
         use aldis_core::security::NoSecurity;
         let t = plain();
         let phy = t.physical_channel();
