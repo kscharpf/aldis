@@ -24,7 +24,7 @@ use aldis::core::time::{Duration, Instant};
 use aldis::link::common::Qos;
 use aldis::link::protocol::Tc;
 use aldis::link::segmenter::{
-    MapEntry, MapSegmenter, MapSegmenterConfig, MapService, SegmenterInput, SegmenterOutput,
+    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput, SegmenterService,
     TcSegmenterParams,
 };
 use refapp_scenario::generated::{apid, cop1, tc};
@@ -77,7 +77,7 @@ const fn map_of(apid: Apid) -> Option<MapId<6>> {
 fn map_entry(id: u8, blocking: bool, segmentation: bool) -> Result<MapEntry<Tc>, Error> {
     let bad = Error::new(ErrorKind::InvalidConfig);
     let id = MapId::<6>::new(id).ok_or(bad)?;
-    let entry = MapEntry::<Tc>::new(id, MapService::Any, ());
+    let entry = MapEntry::<Tc>::new(id, SegmenterService::Any, ());
     let entry = if blocking {
         entry.with_blocking()
     } else {
