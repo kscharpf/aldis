@@ -6,23 +6,27 @@ Aldis is a set of libraries that add CCSDS protocol support to spacecraft flight
 
 Aldis exists for two reasons. It aims to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified: [How Aldis is verified](#how-aldis-is-verified) lists the practices that back this claim.
 
-Aldis is **not** qualified or certified today, and is not yet ready to be. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
+The evidence, in short:
+- No panic path is reachable from any input, proven at link time (GEN-020, VER-010; [code rules](#how-aldis-is-verified)).
+- 100 % region, function, line, and branch coverage of the codec crates and `aldis-core` (VER-024; [testing](#how-aldis-is-verified)).
+- Test vectors computed by blind independent models written from the Blue Book alone (TV-023; [testing](#how-aldis-is-verified)).
+- The merge gate is a reproducible run in a digest-pinned image that produces a published evidence record (VER-056–VER-058; [merge gate](#how-aldis-is-verified)).
+
+The second thing Aldis showcases is how it is built: by coding agents under a merge gate. Implementation agents work in their own worktrees and commit under the reproducible gate. A fresh, independent reviewer agent reads every pull request ([review protocol](docs/process/review.md)), and test-vector models are written blind, from the Blue Book and the docs only (TV-023). Who decides what is fixed by the [decision rights](docs/process/decision-rights.md) (VER-062): the maintainer decides scope, API and ABI, dependencies, releases, and every merge, and a [coordinator](docs/process/coordinator.md) runs the merge trains. The process is measured with `cargo xtask metrics` (VER-063). The rules for agents are in [AGENTS.md](AGENTS.md).
+
+Aldis has not been qualified against any standard. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
 
 ## Where Aldis stands
 
 > [!NOTE]
 > **Pre-release, under active development.**
-> - Most of v1 is still to be built (see **Status** below).
-> - It has not been qualified or certified for flight or any other mission-critical use.
+> - v1.0 is not released: it waits on M6 and the reference-application milestones A2–A6 ([roadmap §5](docs/08-roadmap.md#5-releases); see **Status** below).
+> - It has not been qualified against any standard for flight or any other mission-critical use.
 > - Its API may change in any 0.x release (Semantic Versioning, GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
 > - The crates are not published to crates.io.
 > - Outside contributions are not being accepted yet.
 >
-> The repository is public so that the free tools it relies on for open-source projects can be used (VER-055, OI-22).
-
-## About the name
-
-Aldis is named after the Aldis lamp, the signal lamp that ships use to send Morse code by light.
+> The repository is public as a showcase; being public also lets it use the free tools that VER-055 requires (OI-22).
 
 ## Status
 
@@ -43,7 +47,7 @@ See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [co
 
 ## How Aldis is verified
 
-Aldis is built to the practices of safety- and mission-critical software. It is **not** qualified or certified (see [Where Aldis stands](#where-aldis-stands)); these practices are how it is built, and they back its purpose as a showcase of embedded high-assurance Rust, not a claim of fitness for flight. Every rule below is a numbered requirement in [`docs/`](docs/README.md), and most are enforced by a check of the merge gate rather than by review alone.
+Aldis is built to the practices of safety- and mission-critical software. These practices are how it is built, and they back its purpose as a showcase of embedded high-assurance Rust, not a claim of fitness for flight. Every rule below is a numbered requirement in [`docs/`](docs/README.md), and most are enforced by a check of the merge gate rather than by review alone.
 
 **Code rules** ([02-design-rules](docs/02-design-rules.md), [Rust profile](docs/profiles/rust.md))
 - `no_std` and no heap: fixed capacities through const generics (GEN-010, GEN-011).
@@ -142,3 +146,7 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
    - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
 2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
 3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed
+
+## About the name
+
+Aldis is named after the Aldis lamp, the signal lamp that ships use to send Morse code by light.
