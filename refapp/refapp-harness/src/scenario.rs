@@ -393,9 +393,7 @@ impl OpsEntry {
                 length: TableLength::new(length.get())
                     .map_err(|e| format!("table length: {:?}", e.kind()))?,
             },
-            OpsEntry::Fop1Directive { directive, .. } => {
-                node::OpsEntry::Fop1Directive(directive.to_node())
-            }
+            OpsEntry::Fop1Directive { directive, .. } => node::OpsEntry::Fop1Directive(directive),
         })
     }
 
@@ -521,61 +519,7 @@ impl JsonSchema for UnknownCode {
     }
 }
 
-/// A FOP-1 directive: the Directive Type and Qualifier of 232.1 Table 4-1 that the cases use
-/// (§4.5.2, APP-148). Any other value is rejected when the file is parsed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Fop1Directive {
-    /// *Initiate AD Service (without CLCW Check)*, code 1 (232.1 §4.1, Table 5-1 E23).
-    InitiateAdWithoutClcw,
-    /// *Initiate AD Service (with CLCW Check)*, code 2 (E24).
-    InitiateAdWithClcw,
-    /// *Initiate AD Service (with Unlock)*, code 3 (E25).
-    InitiateAdWithUnlock,
-    /// *Terminate AD Service*, code 5 (E29).
-    TerminateAd,
-    /// *Set V(S) to V\*(S)*, code 7, with the Qualifier V\*(S) (E35).
-    SetVs(Ranged<u8, 0, 255>),
-}
-
-impl Fop1Directive {
-    /// The directive as the ground node takes it.
-    #[must_use]
-    pub const fn to_node(self) -> refapp_ground::Fop1Directive {
-        use refapp_ground as node;
-        match self {
-            Fop1Directive::InitiateAdWithoutClcw => node::Fop1Directive::InitiateAdWithoutClcw,
-            Fop1Directive::InitiateAdWithClcw => node::Fop1Directive::InitiateAdWithClcw,
-            Fop1Directive::InitiateAdWithUnlock => node::Fop1Directive::InitiateAdWithUnlock,
-            Fop1Directive::TerminateAd => node::Fop1Directive::TerminateAd,
-            Fop1Directive::SetVs(vs) => node::Fop1Directive::SetVs(vs.get()),
-        }
-    }
-
-    /// The code of the directive in the events of §7.4: the row of 232.1 Table 4-1 (§4.5.2).
-    #[must_use]
-    pub const fn code(self) -> u8 {
-        match self {
-            Fop1Directive::InitiateAdWithoutClcw => 1,
-            Fop1Directive::InitiateAdWithClcw => 2,
-            Fop1Directive::InitiateAdWithUnlock => 3,
-            Fop1Directive::TerminateAd => 5,
-            Fop1Directive::SetVs(_) => 7,
-        }
-    }
-
-    /// The Qualifier of the event: V\*(S) of *Set V(S)*, 0 for a directive with none (§7.4).
-    #[must_use]
-    pub const fn qualifier(self) -> u8 {
-        match self {
-            Fop1Directive::SetVs(vs) => vs.get(),
-            Fop1Directive::InitiateAdWithoutClcw
-            | Fop1Directive::InitiateAdWithClcw
-            | Fop1Directive::InitiateAdWithUnlock
-            | Fop1Directive::TerminateAd => 0,
-        }
-    }
-}
+pub use refapp_ground::Fop1Directive;
 
 /// Direction of a link unit (§6.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]

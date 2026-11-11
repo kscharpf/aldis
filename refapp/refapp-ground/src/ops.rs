@@ -14,6 +14,8 @@ use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppCo
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
 use refapp_scenario::{Crc16, Duration, Instant, TableId, TableLength};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// Function code of `NOOP` (§3.3.5).
 const FN_NOOP: u8 = 0x01;
@@ -99,8 +101,12 @@ pub enum OpsEntry {
 }
 
 /// A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1
-/// that the cases use (§4.5.2, APP-148).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// that the cases use (232.1 §4.1, Table 5-1; §4.5.2, APP-148).
+///
+/// The ground node owns the type; the scenario file
+/// parses into it, and any other value is rejected when the file is parsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum Fop1Directive {
     /// *Initiate AD Service (without CLCW Check)*, code 1 (E23).
     InitiateAdWithoutClcw,

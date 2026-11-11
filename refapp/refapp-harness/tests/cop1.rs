@@ -471,7 +471,7 @@ const fn directive(at_us: u64, directive: Fop1Directive) -> OpsEntry {
 fn the_directives_of_the_scenario_parse_with_their_codes() {
     // req: APP-148
     let parse = |text: &str| serde_json::from_str::<Fop1Directive>(text);
-    let vs = |n| Fop1Directive::SetVs(Ranged::new(n).unwrap());
+    let vs = |n| Fop1Directive::SetVs(n);
     let table = [
         (
             "\"initiate_ad_without_clcw\"",
@@ -550,7 +550,7 @@ fn the_file_takes_the_level_cop1_and_the_directive_entries() {
         c.ops,
         [
             directive(0, Fop1Directive::TerminateAd),
-            directive(0, Fop1Directive::SetVs(Ranged::new(3).unwrap())),
+            directive(0, Fop1Directive::SetVs(3)),
         ]
     );
     // An unknown level, an unknown directive and a Qualifier out of range are refused when the
@@ -639,31 +639,17 @@ fn a_directive_below_cop1_is_ignored() {
 #[test]
 fn a_directive_entry_reaches_the_ground_node_with_its_value() {
     // req: APP-148, APP-019
-    use refapp_ground::{Fop1Directive as Node, OpsEntry as NodeEntry};
-    let cases = [
-        (
-            Fop1Directive::InitiateAdWithoutClcw,
-            Node::InitiateAdWithoutClcw,
-        ),
-        (Fop1Directive::InitiateAdWithClcw, Node::InitiateAdWithClcw),
-        (
-            Fop1Directive::InitiateAdWithUnlock,
-            Node::InitiateAdWithUnlock,
-        ),
-        (Fop1Directive::TerminateAd, Node::TerminateAd),
-        (
-            Fop1Directive::SetVs(Ranged::new(9).unwrap()),
-            Node::SetVs(9),
-        ),
-    ];
-    for (parsed, expected) in cases {
+    // One type serves the scenario file and the ground node, so the value cannot change on the
+    // way: the entry takes the parsed directive as it is.
+    use refapp_ground::OpsEntry as NodeEntry;
+    for parsed in [
+        Fop1Directive::InitiateAdWithoutClcw,
+        Fop1Directive::InitiateAdWithClcw,
+        Fop1Directive::InitiateAdWithUnlock,
+        Fop1Directive::TerminateAd,
+        Fop1Directive::SetVs(9),
+    ] {
         let entry = directive(0, parsed).to_node().unwrap();
-        assert_eq!(entry, NodeEntry::Fop1Directive(expected));
-        // The code and the qualifier of the events are the harness type's, and the ground
-        // node's agree.
-        assert_eq!(
-            (parsed.code(), parsed.qualifier()),
-            (expected.code(), expected.qualifier())
-        );
+        assert_eq!(entry, NodeEntry::Fop1Directive(parsed));
     }
 }
