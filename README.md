@@ -63,7 +63,7 @@ See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [co
 
 ## Limits
 
-- v1.0 is not released: it waits on M6 and the reference-application milestones A2 to A6 ([roadmap §5](docs/08-roadmap.md#5-releases)).
+- v1.0 is not released: it waits on M6 and A6 ([roadmap §5](docs/08-roadmap.md#5-releases)).
 - Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
 - Its wire behaviour has not yet been exercised against an independent implementation; the AINT milestone plans that.
 - Its API may change in any 0.x release (GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
