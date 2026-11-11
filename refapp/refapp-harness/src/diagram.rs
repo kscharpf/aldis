@@ -192,10 +192,10 @@ pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
                     _ => false,
                 };
                 let label = uplink_label(&frame, retransmission)?;
-                let (arrow, lost) = if !delivered.contains(&(dir_name, index)) {
-                    ("-x", " (lost)")
-                } else {
+                let (arrow, lost) = if delivered.contains(&(dir_name, index)) {
                     ("->>", "")
+                } else {
+                    ("-x", " (lost)")
                 };
                 writeln!(out, "    G{arrow}F: {at}  {label}{lost}").map_err(|e| e.to_string())?;
             }
