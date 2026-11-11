@@ -377,6 +377,7 @@ class Run:
             self.ground_app_event(t, 3, "seq_reset", [apid, count])
         self.last_count[apid] = count
         if apid == APID["dump"]:
+            require(len(pkt) >= 6 + 6, "dump packet shorter than its 6-octet secondary header (§3.2)")
             self.reassemble(t, flags, cont, pkt[6 + 6:])  # implicit P-field header: 6 octets (§3.2)
 
     def reassemble(self, t, flags, cont, ud):

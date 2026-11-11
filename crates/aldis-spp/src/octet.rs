@@ -68,7 +68,8 @@ impl OctetStringEncoder {
         };
         let parts = check_parts(fields, 0, octets.len())?;
         // The proof is not kept: the header sizes from `parts`, and `write_packet` sizes the total.
-        self.config
+        let _ = self
+            .config
             .check_len(parts.data_len().saturating_add(PRIMARY_HEADER_LEN))?;
         let header = SpacePacketHeader::new(fields, secondary_header_indicator, parts.data_len());
         let total = write_packet(out, &header, [octets, &[]])?;
