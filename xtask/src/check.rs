@@ -141,11 +141,24 @@ enum Mode {
 /// The workspaces that `cargo fmt --all` at the root does not reach, each with its own manifest,
 /// and the name of the step that formats it. The gate formats the same directories (`FMT` of
 /// `verify/checks.rs`).
-const SEPARATE_WORKSPACES: [(&str, &str); 3] = [
+pub(crate) const SEPARATE_WORKSPACES: [(&str, &str); 3] = [
     ("exerciser", "exerciser fmt"),
     ("fuzz", "fuzz fmt"),
     ("crosscheck", "crosscheck fmt"),
 ];
+
+/// The reference application's workspace, which the default tier formats in its `refapp fmt` step.
+const REFAPP_DIR: &str = "refapp";
+
+/// Every workspace directory that `xtask check` formats apart from the root workspace, so that
+/// `xtask fix` formats the same ones.
+pub(crate) fn separate_fmt_dirs() -> Vec<&'static str> {
+    SEPARATE_WORKSPACES
+        .iter()
+        .map(|(dir, _)| *dir)
+        .chain([REFAPP_DIR])
+        .collect()
+}
 
 /// What a change makes the verification run do.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -529,7 +542,7 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
         run.extend([
             cmd_in(
                 "refapp fmt",
-                "refapp",
+                REFAPP_DIR,
                 "cargo",
                 &["fmt", "--all", "--check"],
             ),
