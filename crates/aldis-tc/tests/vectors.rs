@@ -372,6 +372,12 @@ fn validation_failures() {
 }
 
 #[test]
+fn fuzz_regression() {
+    // req: TC-004, TC-021, TC-022, VER-022
+    run_codec_file("tc/fuzz_regression.json", handler).assert_passed();
+}
+
+#[test]
 fn decode_errors() {
     // req: TC-001, TC-002, TC-003, TC-006, API-031, API-032, VER-021
     run_codec_file("tc/decode_errors.json", handler).assert_passed();
