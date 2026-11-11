@@ -391,7 +391,8 @@ impl FlightIntake {
         let received: Vec<Vec<u64>> = seen(APP_CMD_RECEIVED).map(|(_, a)| a.clone()).collect();
         if received != commands {
             return Err(format!(
-                "the flight node's cmd_received records {received:?} differ from the command                  packets reassembled from the uplink {commands:?}"
+                "the flight node's cmd_received records {received:?} differ from the command \
+                 packets reassembled from the uplink {commands:?}"
             ));
         }
         let stored = seen(APP_TABLE_RECEIVED).count();

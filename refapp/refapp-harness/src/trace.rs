@@ -513,6 +513,14 @@ pub struct Decoded {
     pub framed_packets: usize,
 }
 
+/// The `args` of a flight `app_event`: an array of unsigned integers, else an error.
+fn intake_args(v: &Value, code: u16) -> Result<Vec<u64>, String> {
+    v["args"]
+        .as_array()
+        .and_then(|a| a.iter().map(Value::as_u64).collect::<Option<Vec<u64>>>())
+        .ok_or_else(|| format!("flight app_event {code} without an args array of integers"))
+}
+
 /// Decodes the octets of every `unit_sent`, `packet_out`, and `packet_in` record of `text`, a
 /// canonical trace, strictly (APP-086, API-030).
 ///
@@ -521,9 +529,11 @@ pub struct Decoded {
 /// and a TM frame (`down`) or TC frame (`up`) in a case of
 /// [`Level::Frames`](crate::scenario::Level::Frames) or `cop1`
 /// ([`crate::frame::decode_frame`]); the level is that of the case the header names, in
-/// `scenario`. In a frame-level case the frames of each direction also go, in trace order as a
-/// clean link, through the engines of the nodes ([`FramedPackets`]: the `PacketExtractor` of each
-/// downlink VC, the `MapReassembler` of the uplink), and every complete packet they hand out is
+/// `scenario`. In a frame-level case the frames also go through the engines of the nodes
+/// ([`FramedPackets`]): the downlink frames, in trace order, through the `PacketExtractor` of each
+/// VC; the uplink frames as delivered (`unit_delivered`, not those corrupted in transit), through
+/// FARM-1 (the flight node's `FrameUplink`) into the `MapReassembler`, not in trace order as a
+/// clean link. And every complete packet they hand out is
 /// decoded strictly too, and the packets the uplink gives are set against the flight node's own
 /// intake records ([`FlightIntake`]). Returns what was decoded.
 ///
@@ -591,10 +601,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
         if kind == "app_event" && level.has_frames() && v["node"].as_str() == Some("flight") {
             let code = v["code"].as_u64().and_then(|c| u16::try_from(c).ok());
             if let Some(code) = code.filter(|c| FlightIntake::CODES.contains(c)) {
-                let args = v["args"]
-                    .as_array()
-                    .map(|a| a.iter().filter_map(Value::as_u64).collect())
-                    .unwrap_or_default();
+                let args = intake_args(&v, code).map_err(at)?;
                 intake.push((code, args));
             }
             continue;
@@ -748,6 +755,27 @@ pub fn compare(expected: &str, actual: &str) -> Result<(), Mismatch> {
                     actual: y.map(|s| s.trim_end_matches('\n').to_owned()),
                 });
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod intake_args_tests {
+    use super::intake_args;
+    use serde_json::json;
+
+    #[test]
+    fn missing_or_non_integer_args_are_an_error() {
+        // req: APP-086
+        assert_eq!(intake_args(&json!({"args": [3, 1]}), 9), Ok(vec![3, 1]));
+        for v in [
+            json!({}),
+            json!({"args": 7}),
+            json!({"args": [3, "x"]}),
+            json!({"args": [3, -1]}),
+        ] {
+            let e = intake_args(&v, 9).unwrap_err();
+            assert!(e.contains("without an args array of integers"), "{v}: {e}");
         }
     }
 }
