@@ -382,3 +382,18 @@ Not covered by the model: `fault`, `unit_sent`, and `unit_delivered` records; th
 | `a1-downlink-faults` | 137 (58 and 7 `packet_out`, 56 `packet_in`, 7 and 9 `app_event`) | 137 | 0 | **Match** |
 
 The model needed one correction while it was written, found before any comparison, when its first run asserted on a time stamp off the 125 ms grid: a dump segment is due every 125 000 µs from the execution instant, not at every step of the node (§2.1, §6.2, APP-074). No correction followed a comparison.
+
+### 7.2 A2: the frames of `a2-nominal`
+
+A2 D8(c): the blind model `file:refapp/model/a2_nominal.py` (TV-023) regenerates every `unit_sent` record of `a2-nominal`: the 280 TM downlink frames (multiplexing schedule, release deadlines, idle fill, OID frames, the CLCW in the OCF, FECF) and the 8 TC uplink frames (Type-BD, Segment Header, blocking and segmentation, FECF), in trace order. It was written from `docs/reference-application.md`, `docs/milestones/a2-frames.md` D8, and `docs/standards/`, without sight of the refapp or library crates, and reads `file:refapp/scenario/scenario.json` as input data; the golden trace was read only as the comparison target. Protocol values came from `docs/`, not from the Blue Book text.
+
+| Item | Value |
+|---|---|
+| Run | `python3 refapp/model/a2_nominal.py --scenario <scenario.json> --compare <golden>` (Python 3, standard library; no CI step) |
+| Date | 2026-11-10 |
+| Golden file | `refapp/golden/a2-nominal.jsonl`, trace version 1, as on branch `a2/wp-5-golden` (#480) at `54ccbd20`, with that commit's `scenario.json` (it holds the `a2-nominal` case) |
+| Result | **Match** after one correction: 288 model records (280 down, 8 up), 288 golden `unit_sent` records, 0 mismatches, compared in order and octet for octet |
+
+The first comparison found 27 of 288 frames differing, all payload-packet frames, the first at record 4 (octet 22). The cause was the model's misreading of `docs/reference-application.md` §4.4.3: octet *i* of the payload packet data is (n + i) mod 256 for *i* = 4 to 399, and the model counted *i* from 0, an offset of 4. The model was corrected after the golden had been seen; the correction is the one line `range(396)` to `range(4, 400)`, and the comparison then ran again with 0 differences. The model's `--self-check` asserted no payload data, so it could not have found this.
+
+Not covered: only the `unit_sent` records of `a2-nominal`; the other A2 cases are not modelled, and nor are `unit_delivered`, event, and fault records. The model read the hand schedule of §4.4.4, so it is independent of the code but not of that derivation: a mistake in the schedule is in both.
