@@ -101,7 +101,7 @@ pub enum OpsEntry {
 }
 
 /// A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1
-/// that the cases use (§4.5.2, APP-148).
+/// that the cases use (232.1 §4.1, Table 5-1; §4.5.2, APP-148).
 ///
 /// The ground node owns the type; the scenario file
 /// parses into it, and any other value is rejected when the file is parsed.

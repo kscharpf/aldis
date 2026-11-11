@@ -24,7 +24,7 @@ History:
 - 2026-11-11: D10–D12 accepted by the maintainer.
 - 2026-11-11: D5 and D6 amended by the maintainer in the review of #499: D6 matches APP-145 (a Reject Response of FOP-1 is reported once, as `fop1_transfer`; `uplink_refused` stays for errors the engine returns, APP-143); D5: `a3-uplink-lockout` drops downlink frame 16 (without it FOP-1 raises Alert[NN(R)], E13, before the Lockout flag, E14), and `a3-uplink-limit` recovers with *Set V(S)* and then *Initiate AD Service (with CLCW check)* (§6.8).
 - 2026-11-11: WP-7 exits A3: `trace --scope a3 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; the results column of §4 is filled; the roadmap, the READMEs, and the ACFS P3 and AINT entry gates are updated; the follow-up issues are settled (§6); the process metrics were reviewed (VER-063: no threshold of `cargo xtask metrics --since 2026-11-11` crossed, and the friction item of the A2 exit, #487, stays open). A track-A milestone cuts no release.
-- 2026-11-11: the maintainer decided the exit's follow-ups: #497 and #505 deferred to v1.1 (#497 its own track-R plan); #508 fixed in the exit pull request (the ground node owns `Fop1Directive`, the scenario file parses into it); #498 fixed by a track-R pull request before the exit (one track per pull request).
+- 2026-11-11: the maintainer decided the exit's follow-ups: #497 and #505 deferred to v1.1 (#497 its own track-R plan); #508 fixed in the exit pull request (the ground node owns `Fop1Directive`, the scenario file parses into it); #498 fixed by #519 (track R), merged before the exit.
 
 ## 1. Starting point
 
@@ -176,7 +176,7 @@ Found by A3 and disposed of at the exit (each target named; the exit pull reques
 | Issue | Found in | Finding | Disposition |
 |---|---|---|---|
 | #497 | A2 WP-3b, split from #394 | Whether FARM-1's `Deliver` or the receiver output carries the Segment Header | Deferred to v1.1, its own track-R plan (a public API change; accepted by the maintainer, 2026-11-11) |
-| #498 | Third review of #496 | Two doc lines in `crates/` over 100 columns | Fixed by a track-R pull request before the exit (one track per pull request) |
+| #498 | Third review of #496 | Two doc lines in `crates/` over 100 columns | Fixed by #519 (track R), merged before the exit |
 | #504 | A3 WP-4 | `Fop1Event`, `Fop1State`, `AlertReason` have no Blue Book number accessor | Open PR #515 awaits a maintainer answer |
 | #505 | A3 WP-4 | A caller that holds a transmit request until a slot copies the frame and keeps its own Out-flag bookkeeping | Deferred to the next plan that changes `Fop1`'s API (v1.1 with #254 and #235; accepted by the maintainer, 2026-11-11) |
 | #508 | Review of #506 | `Fop1Directive` defined twice, in `refapp-harness` and `refapp-ground` | Fixed in the exit pull request: the ground node owns the type, the scenario file parses into it; closed on merge |
