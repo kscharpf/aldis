@@ -382,12 +382,13 @@ fn the_ad_and_bc_frames_decode_by_level() {
 }
 
 #[test]
-fn a_packet_split_over_uplink_frames_comes_out_with_its_last_segment() {
-    // req: APP-086
+fn only_the_frames_farm1_accepts_reach_the_reassembler() {
+    // req: APP-086, APP-146
     // A packet in a First and a Last segment (Segment Header 0x40, 0x80; MAP 0) comes out with
-    // the Last, and a Type-BC frame between the two changes nothing. This does not test #484
-    // (the area kept in the struct): the reassembler holds the SDU in its own buffer, so no
-    // behaviour tells a kept area from a fresh one per call; that is a performance fix only.
+    // the Last. A retransmitted Type-AD frame (N(S) behind V(R), E4) is discarded by FARM-1 and
+    // gives no packet and no reassembly event, where a reassembler fed every frame would see a
+    // sequence violation. This does not test #484 (the area kept in the struct): it is a
+    // performance fix only.
     let s = Scenario::load().unwrap();
     let mut framed = FramedPackets::new(&s).unwrap();
     let (first, last) = PACKET.split_at(3);
@@ -395,14 +396,49 @@ fn a_packet_split_over_uplink_frames_comes_out_with_its_last_segment() {
         |sequence: u8, header: u8, data: &[u8]| tc(0x00, sequence, &[&[header], data].concat());
     let uplink = [
         (segment(0, 0x40, first), 0),
-        (bc(ControlCommand::Unlock), 0),
+        (segment(0, 0x40, first), 0),
         (segment(1, 0x80, last), 1),
+        (segment(1, 0x80, last), 0),
         (ad(2, &PACKET), 1),
+        (ad(1, &PACKET), 0),
     ];
-    for (frame, expected) in uplink {
-        let d = decode_frame(&s, Level::Cop1, Dir::Up, &frame).unwrap();
-        assert_eq!(framed.take(Dir::Up, &d).unwrap(), expected);
+    for (at, (frame, expected)) in uplink.iter().enumerate() {
+        decode_frame(&s, Level::Cop1, Dir::Up, frame).unwrap();
+        let now = 1_000_000 + 250_000 * at as u64;
+        assert_eq!(
+            framed.receive_up(now, frame, false).unwrap(),
+            *expected,
+            "{at}"
+        );
     }
+}
+
+#[test]
+fn an_unlock_purges_a_packet_in_progress_before_the_strict_decode_sees_it() {
+    // req: APP-086, APP-146
+    // A First segment, an accepted Unlock (E7, which resets the reassembler), and the Last
+    // segment: the Last reaches the reassembler with no First, a fault of the trace.
+    let s = Scenario::load().unwrap();
+    let mut framed = FramedPackets::new(&s).unwrap();
+    let (first, last) = PACKET.split_at(3);
+    let segment =
+        |sequence: u8, header: u8, data: &[u8]| tc(0x00, sequence, &[&[header], data].concat());
+    assert_eq!(
+        framed
+            .receive_up(0, &segment(0, 0x40, first), false)
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        framed
+            .receive_up(1, &bc(ControlCommand::Unlock), false)
+            .unwrap(),
+        0
+    );
+    let e = framed
+        .receive_up(2, &segment(1, 0x80, last), false)
+        .unwrap_err();
+    assert!(e.contains("event 110"), "{e}");
 }
 
 const fn directive(at_us: u64, directive: Fop1Directive) -> OpsEntry {

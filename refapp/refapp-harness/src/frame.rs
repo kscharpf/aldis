@@ -9,17 +9,20 @@ use aldis::link::common::ValidPvns;
 use aldis::link::extractor::{
     ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
 };
-use aldis::link::protocol::{Tc, Tm, TmParams};
-use aldis::link::reassembler::{
-    FduIn, MapReassembler, MapReassemblerConfig, ReassemblerInput, ReassemblerMap,
-    ReassemblerOutput, TcReassemblerParams,
-};
+use aldis::link::protocol::Tm;
+use aldis::link::protocol::TmParams;
 use aldis::spp::SpacePacket;
 use aldis::tc::{
     ControlCommand, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame,
     VcConfig, VcTable,
 };
 use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
+use refapp_flight::FrameUplink;
+use refapp_flight::event::APP_PACKET_REJECTED;
+use refapp_flight::frames_up::{
+    APP_FRAME_REJECTED, APP_SDU_TOO_LONG, APP_SEQUENCE_VIOLATION, APP_UNKNOWN_MAP,
+};
+use refapp_scenario::{Apid, Instant, Output};
 
 use crate::scenario::{Level, Scenario};
 use crate::trace::Dir;
@@ -165,35 +168,45 @@ const ASSEMBLY: usize = 512;
 const FIELD: usize = 211;
 /// The output area of an extractor (LNK-075).
 const EXTRACT_AREA: usize = ASSEMBLY - 1 + FIELD;
-/// The output area of the reassembler: the SDU held plus the user data of one frame (LNK-075).
-const REASSEMBLY_AREA: usize = ASSEMBLY + 1024;
 
-/// The packets inside the frames of a trace (APP-086; WP-6 of the A2 plan).
+/// What the flight node's uplink chain said while it handled one frame.
+#[derive(Default)]
+struct Tap {
+    events: Vec<(u16, Vec<u64>)>,
+}
+
+impl Output for Tap {
+    fn unit(&mut self, _octets: &[u8]) {}
+    fn packet_out(&mut self, _apid: Apid, _octets: &[u8]) {}
+    fn packet_in(&mut self, _apid: Apid, _octets: &[u8]) {}
+    fn app_event(&mut self, code: u16, args: &[u64]) {
+        self.events.push((code, args.to_vec()));
+    }
+}
+
+/// The packets inside the frames of a trace (APP-086; WP-6 of the A2 and A3 plans).
 ///
-/// The engines of the nodes run over the frames of one direction in trace order as a clean link,
-/// and every complete packet they hand out is decoded strictly.
-///
-/// Downlink: one `PacketExtractor` for each of VC 0 and VC 1 (LNK-060). Uplink: the
-/// `MapReassembler` with the two MAPs of the scenario (LNK-070). Idle packets are dropped, as the
+/// Downlink: one `PacketExtractor` for each of VC 0 and VC 1 (LNK-060), over the frames in
+/// trace order as a clean link. Uplink: the receive chain of the flight node
+/// ([`FrameUplink`]: FARM-1, then the `MapReassembler` with the two MAPs, LNK-070), over the
+/// frames **as received**, since only the Type-BD frames and the Type-AD frames that FARM-1
+/// accepts reach the reassembler (APP-146, §4.5.3); a retransmitted, reordered, or duplicated
+/// Type-AD frame is discarded by FARM-1 and gives no packet. Idle packets are dropped, as the
 /// extractor does (LNK-063). A partial packet at the end of the trace is no fault.
 pub struct FramedPackets {
     realtime: Extractor,
     payload: Extractor,
     extract_area: Vec<u8>,
-    /// The output area of the reassembler, kept across frames like `extract_area` (#484).
-    reassembly_area: Vec<u8>,
-    reassembler: MapReassembler<Tc, 2, ASSEMBLY>,
-    vc: aldis::tc::TcVcId,
+    uplink: FrameUplink,
 }
 
 impl FramedPackets {
-    /// The extractors and the reassembler for the managed parameters of `scenario`.
+    /// The extractors and the uplink chain for the managed parameters of `scenario`.
     ///
     /// # Errors
     /// If the scenario does not form a configuration.
     pub fn new(scenario: &Scenario) -> Result<FramedPackets, String> {
         let bad = |e: aldis::core::Error| format!("packet engines of the scenario: {e:?}");
-        let out_of_range = |what: &str| format!("TC {what} of the scenario is out of range");
         let config = PacketExtractorConfig::<Tm>::new(
             TmParams,
             ValidPvns::from_versions(&[refapp_scenario::generated::tm::PACKET_VERSION])
@@ -201,49 +214,26 @@ impl FramedPackets {
             ASSEMBLY,
         )
         .map_err(bad)?;
-        let tc = &scenario.tc;
-        if !tc.segment_header {
+        if !scenario.tc.segment_header {
             return Err(
                 "a TC channel without a Segment Header has no MAPs to reassemble".to_owned(),
             );
         }
-        let vc = aldis::tc::TcVcId::new(tc.vcid.get()).ok_or_else(|| out_of_range("VCID"))?;
-        let map = |id: u8| {
-            let id = aldis::tc::TcMapId::new(id).ok_or_else(|| out_of_range("MAP ID"))?;
-            ReassemblerMap::packets(vc, id, ASSEMBLY).map_err(bad)
-        };
-        let reassembler = MapReassembler::new(
-            MapReassemblerConfig::new(
-                TcReassemblerParams::with_segment_header(),
-                &[map(tc.map_commands.get())?, map(tc.map_table_upload.get())?],
-            )
-            .map_err(bad)?,
-        )
-        .map_err(bad)?;
         Ok(FramedPackets {
             realtime: Extractor::new(config).map_err(bad)?,
             payload: Extractor::new(config).map_err(bad)?,
             extract_area: vec![0; EXTRACT_AREA],
-            reassembly_area: vec![0; REASSEMBLY_AREA],
-            reassembler,
-            vc,
+            uplink: FrameUplink::new_cop1().map_err(bad)?,
         })
     }
 
-    /// Gives the next frame of `dir` to the engines and decodes the packets they complete.
+    /// Gives the next downlink frame to the extractors and decodes the packets they complete.
     /// Returns how many it decoded.
     ///
     /// # Errors
     /// If an engine refuses the frame or reports an error, a discard, or an incomplete packet
     /// (a clean link has none), or a packet is not a strict Space Packet.
-    pub fn take(&mut self, dir: Dir, frame: &DecodedFrame) -> Result<usize, String> {
-        match dir {
-            Dir::Down => self.take_down(frame),
-            Dir::Up => self.take_up(frame),
-        }
-    }
-
-    fn take_down(&mut self, frame: &DecodedFrame) -> Result<usize, String> {
+    pub fn take_down(&mut self, frame: &DecodedFrame) -> Result<usize, String> {
         let extractor = match frame.vcid {
             0 => &mut self.realtime,
             1 => &mut self.payload,
@@ -286,47 +276,53 @@ impl FramedPackets {
         Ok(packets)
     }
 
-    fn take_up(&mut self, frame: &DecodedFrame) -> Result<usize, String> {
-        if frame.is_control() {
-            return Ok(0);
-        }
-        let header = frame
-            .segment_header
-            .ok_or("a TC data frame without a Segment Header")?;
-        let mut fdu = Vec::with_capacity(frame.data.len() + 1);
-        fdu.push(header);
-        fdu.extend_from_slice(&frame.data);
-        let input = ReassemblerInput::Fdu(FduIn {
-            vc: self.vc,
-            meta: (),
-            data: &fdu,
-        });
-        let actions = self
-            .reassembler
-            .step(input, &mut self.reassembly_area)
-            .map_err(|e| format!("reassembler: {e:?}"))?;
-        let mut packets = 0;
-        for action in actions.iter() {
-            match action {
-                ReassemblerOutput::Packets { run, .. } => {
-                    let run = PacketRun::new(*run, &self.reassembly_area)
-                        .ok_or("reassembler run outside its area")?;
-                    for packet in run {
-                        strict_packet(packet, "packet in a TC frame")?;
-                        packets += 1;
-                    }
-                }
-                ReassemblerOutput::Event { event, map, .. } => {
-                    return Err(format!("reassembly event {event:?} on MAP {map}"));
-                }
-                ReassemblerOutput::Sdu { .. }
-                | ReassemblerOutput::StreamData { .. }
-                | ReassemblerOutput::Discarded { .. } => {
-                    return Err("reassembler output of a service the MAPs do not have".to_owned());
-                }
+    /// Gives a TC frame as the flight node received it, at `now_us` microseconds, to the
+    /// uplink chain and decodes the packets the reassembler delivers. Returns how many.
+    ///
+    /// A frame that FARM-1 discards, as a retransmitted or an out-of-order Type-AD frame, is no
+    /// fault and gives no packet (APP-146). The check of the trace decodes the frame first
+    /// ([`decode_frame`]).
+    ///
+    /// `loss_before` says that an earlier uplink unit was dropped or corrupted. On a clean link
+    /// the chain reports no reassembly event, no rejected packet, and no rejected frame; after a
+    /// loss they are expected.
+    ///
+    /// # Errors
+    /// If, on a clean link, the chain rejects the frame or reports a reassembly event or a
+    /// rejected packet, or a packet is not a strict Space Packet.
+    pub fn receive_up(
+        &mut self,
+        now_us: u64,
+        octets: &[u8],
+        loss_before: bool,
+    ) -> Result<usize, String> {
+        let mut tap = Tap::default();
+        let mut packets = Vec::new();
+        self.uplink.accept(
+            Instant::from_micros(now_us),
+            octets,
+            &mut tap,
+            &mut |packet, _| packets.push(packet.to_vec()),
+        );
+        // After a lost or corrupted frame a segment may arrive with no First segment: the
+        // reassembler's events and `packet_rejected` are then the scenario's own outcome (A2
+        // `a2-uplink-faults`), not a fault of the trace.
+        for (code, args) in tap.events.iter().filter(|_| !loss_before) {
+            if matches!(
+                *code,
+                APP_FRAME_REJECTED
+                    | APP_PACKET_REJECTED
+                    | APP_SEQUENCE_VIOLATION
+                    | APP_UNKNOWN_MAP
+                    | APP_SDU_TOO_LONG
+            ) {
+                return Err(format!("uplink event {code} {args:?} on a received frame"));
             }
         }
-        Ok(packets)
+        for packet in &packets {
+            strict_packet(packet, "packet in a TC frame")?;
+        }
+        Ok(packets.len())
     }
 }
 

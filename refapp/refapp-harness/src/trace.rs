@@ -1,6 +1,6 @@
 //! Golden traces: writer, canonical-form check, and comparator (docs/reference-application.md §7).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use aldis::spp::SpacePacket;
@@ -541,10 +541,49 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
     let level = scenario.case(case_id)?.level;
     let mut decoded = Decoded::default();
     let mut framed = FramedPackets::new(scenario)?;
+    // The uplink units as sent, by index, the indices a fault dropped or corrupted, and whether
+    // any was.
+    let mut sent_up: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
+    let mut corrupted_up: BTreeSet<u64> = BTreeSet::new();
+    let mut up_loss = false;
+    let direction = |v: &Value| match v["dir"].as_str() {
+        Some("down") => Some(Dir::Down),
+        Some("up") => Some(Dir::Up),
+        _ => None,
+    };
     for (i, l) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
         let v: Value = serde_json::from_str(l).map_err(|e| at(e.to_string()))?;
         let kind = v["kind"].as_str().unwrap_or_default();
+        if kind == "fault" && level.has_frames() {
+            if direction(&v) == Some(Dir::Up)
+                && matches!(v["fault"].as_str(), Some("drop" | "flip" | "truncate"))
+            {
+                up_loss = true;
+                if let Some(index) = v["index"].as_u64() {
+                    corrupted_up.insert(index);
+                }
+            }
+            continue;
+        }
+        if kind == "unit_delivered" && level.has_frames() {
+            // The reassembler sees the frames as received (APP-146): a unit that FARM-1 discards,
+            // as a retransmitted or reordered Type-AD frame, gives no packet. A corrupted unit
+            // fails the FECF (APP-139) and reaches no engine but FARM-1's invalid-frame input.
+            let index = v["index"]
+                .as_u64()
+                .ok_or_else(|| at("unit_delivered record without an index".to_owned()))?;
+            if direction(&v) == Some(Dir::Up) && !corrupted_up.contains(&index) {
+                let octets = sent_up
+                    .get(&index)
+                    .ok_or_else(|| at(format!("unit {index} delivered but never sent")))?;
+                let now = v["t_us"]
+                    .as_u64()
+                    .ok_or_else(|| at("record without t_us".to_owned()))?;
+                decoded.framed_packets += framed.receive_up(now, octets, up_loss).map_err(at)?;
+            }
+            continue;
+        }
         if !matches!(kind, "unit_sent" | "packet_out" | "packet_in") {
             continue;
         }
@@ -553,14 +592,19 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             .ok_or_else(|| at(format!("{kind} record without hex")))?;
         let octets = unhex(hex).map_err(at)?;
         if kind == "unit_sent" && level.has_frames() {
-            let dir = match v["dir"].as_str() {
-                Some("down") => Dir::Down,
-                Some("up") => Dir::Up,
-                _ => return Err(at("unit_sent record without a direction".to_owned())),
-            };
+            let dir = direction(&v)
+                .ok_or_else(|| at("unit_sent record without a direction".to_owned()))?;
             let frame = decode_frame(scenario, level, dir, &octets).map_err(at)?;
             decoded.frames += 1;
-            decoded.framed_packets += framed.take(dir, &frame).map_err(at)?;
+            match dir {
+                Dir::Down => decoded.framed_packets += framed.take_down(&frame).map_err(at)?,
+                Dir::Up => {
+                    let index = v["index"]
+                        .as_u64()
+                        .ok_or_else(|| at("unit_sent record without an index".to_owned()))?;
+                    sent_up.insert(index, octets);
+                }
+            }
         } else {
             let packet = SpacePacket::decode(&octets)
                 .map_err(|e| at(format!("{kind} is not a strict Space Packet: {e:?}")))?;
