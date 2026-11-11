@@ -125,6 +125,14 @@ impl Run {
         }
     }
 
+    /// The node at the `cop1` level (A3 on).
+    fn new_cop1() -> Run {
+        Run {
+            node: FlightNode::new_cop1().unwrap(),
+            rec: Rec::default(),
+        }
+    }
+
     /// Delivers `frames` in one step at `now` µs.
     fn deliver(&mut self, now: u64, frames: &[Vec<u8>]) {
         let refs: Vec<&[u8]> = frames.iter().map(Vec::as_slice).collect();
@@ -398,3 +406,5 @@ fn a_packet_that_is_not_a_command_is_rejected_like_at_packet_level() {
     );
     assert_eq!(run.ocf_word(), 0x0100_0200);
 }
+
+mod cop1;
