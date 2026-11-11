@@ -116,16 +116,14 @@ fn a_node_pair_at_cop1_with_every_fault_kind_reproduces_a_hand_written_trace() {
         bc(ControlCommand::Unlock),
     ];
     let mut slot = 0u8;
-    let mut flight = Scripted(
-        |t: u64, d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
-            up.borrow_mut()
-                .extend(d.into_iter().map(|u| (t, u.to_vec())));
-            if tx {
-                out.unit(&unit(slot));
-                slot += 1;
-            }
-        },
-    );
+    let mut flight = Scripted(|t: u64, d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
+        up.borrow_mut()
+            .extend(d.into_iter().map(|u| (t, u.to_vec())));
+        if tx {
+            out.unit(&unit(slot));
+            slot += 1;
+        }
+    });
     let mut sent = 0usize;
     let mut ground = Scripted(|t: u64, d: Delivered<'_>, tx: bool, out: &mut dyn Output| {
         down.borrow_mut()
@@ -311,11 +309,13 @@ fn a_node_sees_tx_slot_only_on_its_own_slot_at_cop1() {
             }
         },
     );
-    let mut ground = Scripted(|t: u64, _d: Delivered<'_>, tx: bool, _out: &mut dyn Output| {
-        if tx {
-            ground_slots.borrow_mut().push(t);
-        }
-    });
+    let mut ground = Scripted(
+        |t: u64, _d: Delivered<'_>, tx: bool, _out: &mut dyn Output| {
+            if tx {
+                ground_slots.borrow_mut().push(t);
+            }
+        },
+    );
     let c = case(Level::Cop1, 600_000, vec![], vec![]);
     sim::records(&scenario, &c, &mut flight, &mut ground).unwrap();
     assert_eq!(
@@ -337,11 +337,13 @@ fn a_unit_sent_off_its_slot_fails_at_cop1() {
             }
         },
     );
-    let mut ground = Scripted(|_t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
-        if d.into_iter().next().is_some() {
-            out.unit(&[2]);
-        }
-    });
+    let mut ground = Scripted(
+        |_t: u64, d: Delivered<'_>, _tx: bool, out: &mut dyn Output| {
+            if d.into_iter().next().is_some() {
+                out.unit(&[2]);
+            }
+        },
+    );
     let c = case(Level::Cop1, 600_000, vec![], vec![]);
     let e = sim::records(&scenario, &c, &mut flight, &mut ground).unwrap_err();
     assert!(e.contains("tx_slot"), "{e}");

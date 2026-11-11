@@ -309,8 +309,8 @@ impl FramedPackets {
         for action in actions.iter() {
             match action {
                 ReassemblerOutput::Packets { run, .. } => {
-                    let run =
-                        PacketRun::new(*run, &self.reassembly_area).ok_or("reassembler run outside its area")?;
+                    let run = PacketRun::new(*run, &self.reassembly_area)
+                        .ok_or("reassembler run outside its area")?;
                     for packet in run {
                         strict_packet(packet, "packet in a TC frame")?;
                         packets += 1;
