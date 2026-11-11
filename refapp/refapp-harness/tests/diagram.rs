@@ -88,3 +88,43 @@ fn a_frame_that_fails_the_strict_decoder_is_refused() {
     let e = render(&Scenario::load().unwrap(), &bad).unwrap_err();
     assert!(e.contains("uplink unit"), "{e}");
 }
+
+#[test]
+fn separate_runs_of_lost_downlink_frames_are_drawn_apart() {
+    // req: APP-153
+    // The drops at downlink indexes 36, 92, and 99 are three runs of one frame, not one run.
+    let d = diagram("a2-downlink-loss").unwrap();
+    assert_eq!(d.matches("F--xG").count(), 3, "{d}");
+    assert_eq!(d.matches("1 downlink frame lost").count(), 3, "{d}");
+    assert!(!d.contains("frames lost"), "{d}");
+}
+
+#[test]
+fn only_a_dropped_uplink_frame_is_drawn_lost() {
+    // req: APP-153
+    // a2-uplink-faults drops index 2, flips index 0 (it arrives, and the FECF rejects it), and
+    // duplicates index 6 (it arrives twice): one cross among eight uplink frames.
+    let d = diagram("a2-uplink-faults").unwrap();
+    assert_eq!(d.matches("G-xF").count(), 1, "{d}");
+    assert_eq!(d.matches("G->>F").count(), 7, "{d}");
+    assert!(d.contains("G-xF: 2.250 s"), "{d}");
+}
+
+#[test]
+fn an_uplink_frame_the_link_did_not_deliver_is_drawn_lost() {
+    // req: APP-153
+    // Remove the delivery record of the first uplink frame: it is drawn lost, whatever the cause.
+    let text = std::fs::read_to_string(golden_path("a2-nominal")).unwrap();
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|l| {
+            !(l.contains("unit_delivered")
+                && l.contains("\"dir\":\"up\"")
+                && l.contains("\"index\":0,"))
+        })
+        .collect();
+    assert_eq!(kept.len() + 1, text.lines().count());
+    let d = render(&Scenario::load().unwrap(), &(kept.join("\n") + "\n")).unwrap();
+    assert_eq!(d.matches("G-xF").count(), 1, "{d}");
+    assert!(d.contains("G-xF: 1.000 s"), "{d}");
+}

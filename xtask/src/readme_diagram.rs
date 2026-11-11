@@ -5,8 +5,8 @@
 //! strict codecs and prints a Mermaid block. This module splices it between the marker
 //! comments [`BEGIN`] and [`END`] of `README.md`. Without `--write` it fails when the committed
 //! region differs, and `cargo xtask fix` rewrites it. Only this tool writes the region; the
-//! check reads `README.md` and the trace, both of which the verification run's `spec` check
-//! covers (it reads every path).
+//! check reads `README.md` and the trace, both inputs of the verification run's `refapp`
+//! check.
 
 use std::process::Command;
 

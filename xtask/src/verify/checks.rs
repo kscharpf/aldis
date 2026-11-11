@@ -255,6 +255,13 @@ pub const ROOT_CONFIG: PathList = PathList {
     patterns: &[".gitignore"],
 };
 
+/// The README, which the `refapp` check reads besides `RUST`: its sequence diagram must be the one
+/// decoded from the golden trace (APP-153). Also in `DOCS`, so a change to it runs `spec` too.
+pub const README_DIAGRAM: PathList = PathList {
+    name: "readme-diagram",
+    patterns: &["README.md"],
+};
+
 /// The shell scripts that a coordinator or an agent runs on a contributor's machine: `scripts/`
 /// (`reverify`, `pr-status`, `cleanup-merged`, their tests, ...), the hooks of `.claude/hooks/`,
 /// and `specs/fetch.sh`. Only `shell` reads them (VER-071): it lints, measures, and tests them;
@@ -326,6 +333,7 @@ const KANI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &KANI]);
 const SANITIZER_INPUTS: Inputs = Inputs::Paths(&[&RUN, &C_SANITIZERS_LIST]);
 const MIRI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI_MIRI_LIST]);
 const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
+const REFAPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &README_DIAGRAM]);
 const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS]);
 
 /// One check of the verification run.
@@ -468,7 +476,10 @@ fn rust() -> Vec<Check> {
             Group::Cross,
             reading(SHELL_INPUTS, check("shell", c, false, 90, SHELL)),
         ),
-        grouped(Group::Coverage, check("refapp", c, false, 11, REFAPP)),
+        grouped(
+            Group::Coverage,
+            reading(REFAPP_INPUTS, check("refapp", c, false, 11, REFAPP)),
+        ),
         grouped(
             Group::Coverage,
             check("fuzz-smoke", c, false, 14, "cargo xtask fuzz smoke\n"),
@@ -793,6 +804,10 @@ cargo run -p refapp-harness --locked -- gen-scenario --check
 # Golden traces are canonical and reproduced (APP-080, APP-085).
 cargo run -p refapp-harness --locked -- check-golden
 cargo run -p refapp-harness --locked -- compare
+cd ..
+# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
+# (APP-153). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
+cargo xtask readme-diagram
 ";
 
 const SPEC: &str = "\
@@ -810,9 +825,6 @@ cargo xtask status
 cargo xtask layouts
 # The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
 cargo xtask sana
-# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
-# (APP-153). Inputs: that trace and README.md; `spec` reads every path, so both are covered.
-cargo xtask readme-diagram
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency
@@ -1026,6 +1038,10 @@ mod tests {
             }
             if c.name == "stack" {
                 assert_eq!(lists, [&RUN, &STACK]);
+                continue;
+            }
+            if c.name == "refapp" {
+                assert_eq!(lists, [&RUN, &RUST, &README_DIAGRAM]);
                 continue;
             }
             if c.name == "shell" {

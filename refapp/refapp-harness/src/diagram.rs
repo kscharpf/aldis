@@ -9,7 +9,7 @@
 //!
 //! * every uplink frame (`unit_sent`, `up`) as an arrow from the ground to the flight node,
 //!   labelled with its instant, virtual channel, frame type, and, for a Type-AD frame, its Frame
-//!   Sequence Number N(S) (232.0 §4.1.2.8); a frame a `drop` fault removes ends in a cross, and
+//!   Sequence Number N(S) (232.0 §4.1.2.8); a frame the link did not deliver (dropped, or corrupted so it was refused) ends in a cross, and
 //!   a Type-AD frame whose octets were sent before is marked as a retransmission;
 //! * the CLCW of the downlink frames that arrived (`unit_delivered`, `down`), one arrow whenever
 //!   the Report Value N(R), the Retransmit, Lockout, or Wait flag differs from the CLCW before
@@ -76,7 +76,12 @@ fn seconds(t_us: u64) -> String {
 /// The label of an uplink frame: virtual channel, frame type, and what the type adds.
 fn uplink_label(frame: &DecodedFrame, retransmission: bool) -> Result<String, String> {
     let kind = match frame.frame_type {
-        Some(FrameType::Ad) => format!("AD N(S)={}", frame.sequence.unwrap_or_default()),
+        Some(FrameType::Ad) => {
+            let n = frame
+                .sequence
+                .ok_or("a Type-AD frame without a sequence number")?;
+            format!("AD N(S)={n}")
+        }
         Some(FrameType::Bd) => "BD".to_owned(),
         Some(FrameType::Bc) => match frame.control_command {
             Some(ControlCommand::Unlock) => "BC Unlock".to_owned(),
@@ -187,7 +192,7 @@ pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
                     _ => false,
                 };
                 let label = uplink_label(&frame, retransmission)?;
-                let (arrow, lost) = if dropped.contains(&(dir_name, index)) {
+                let (arrow, lost) = if !delivered.contains(&(dir_name, index)) {
                     ("-x", " (lost)")
                 } else {
                     ("->>", "")

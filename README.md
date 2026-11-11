@@ -44,7 +44,7 @@ The decoded packet borrows the buffer: nothing is allocated, and every error is 
 
 ### A COP-1 run over a lossy link
 
-The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmission. The diagram is generated from the golden trace [`refapp/golden/a3-uplink-loss.jsonl`](refapp/golden/a3-uplink-loss.jsonl), decoded with the strict codecs, and `cargo xtask fix` keeps it current.
+The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram is generated from the golden trace [`refapp/golden/a3-uplink-loss.jsonl`](refapp/golden/a3-uplink-loss.jsonl), decoded with the strict codecs, and `cargo xtask fix` keeps it current.
 
 <!-- BEGIN GENERATED: sequence-diagram (cargo xtask readme-diagram --write) -->
 ```mermaid
