@@ -69,6 +69,7 @@ fn bless_cmd(case: &str) -> Result<usize, String> {
 }
 
 fn check_golden() -> Result<usize, String> {
+    let scenario = Scenario::load()?;
     let dir = refapp_dir().join("golden");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
@@ -79,7 +80,7 @@ fn check_golden() -> Result<usize, String> {
     let mut failed = 0;
     for f in &files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
-        if let Err(e) = trace::decode_strict(&text) {
+        if let Err(e) = trace::decode_strict(&scenario, &text) {
             println!("error: {}: {e}", f.display());
             failed += 1;
         }
