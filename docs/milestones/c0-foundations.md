@@ -193,7 +193,7 @@ Not in C0: CPP-022 (decoders, C1), CPP-024 (engines, C3), CPP-035 and the C ABI 
 | Coverage misses templates that are never instantiated | D14: the gate checks that every public template is instantiated by the tests |
 | `aldis-core` changes during C0 (M1 additions, review fixes), so the port chases a moving reference | D18 (3): baseline commit, port list in §6, vectors as the contract |
 | No CI-usable QEMU machine for Cortex-R | Did not occur in M1: the Rust exerciser runs on QEMU 8.2.2's `none` machine with `-cpu cortex-r5f` (M1 D6). If the C++ start-up cannot run there, the fallback is the same as M1 D6's: link check only, recorded as a deviation from CPP-053 |
-| Toolchain downloads make CI slow or flaky | Cache the tarballs by checksum; one retry around downloads only |
+| Toolchain downloads make CI slow or flaky | Cache the tarballs by checksum; retries with backoff around downloads only: after a failed attempt wait 10 s, 30 s, then 90 s before the next, never retrying a checksum mismatch. **Amended 2026-11-11 (maintainer, #361):** was one immediate retry, which a GitHub releases HTTP 504/503 outlasted (nightly run 42471762338) |
 | `-fsanitize=integer` reports intended wrap-around | D10: helpers written without overflow; any exemption is limited to them (CPP-051) |
 
 ## 6. Divergences and pending ports
