@@ -25,13 +25,41 @@ use aldis_uslp::{
     VcTable as UslpVcTable,
 };
 
+mod sealed {
+    /// Keeps [`Fop1Format`](super::Fop1Format) closed to the formats of this crate.
+    pub trait Sealed {}
+}
+
 /// What FOP-1 needs of a protocol to build its frames: the codec's [`FrameFormat`] and the start
 /// of one frame in the codec's writer plan (COP-010, COP-011; OI-93).
 ///
-/// Implemented for [`TcFormat`] and, with the feature `uslp`, for `UslpFormat`. A
+/// Implemented for [`TcFormat`] and, with the feature `uslp`, for `UslpFormat`. The trait is
+/// sealed: the set is closed, and no other type implements it. A
 /// [`Fop1Target`](super::Fop1Target) of the protocol is built by its own constructor, which checks
 /// the channel once (RS-020).
-pub trait Fop1Format: FrameFormat + Hash {
+///
+/// ```compile_fail,E0277
+/// use aldis_cop1::Fop1Format;
+///
+/// #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// struct Outside;
+///
+/// impl Fop1Format for Outside {
+///     type Channel = ();
+///     type Plan = aldis_tc::TcPlan;
+///     fn begin<'b>(
+///         _: &(),
+///         _: aldis_tc::FrameType,
+///         _: aldis_core::ids::FrameSeqNum,
+///         _: bool,
+///         _: usize,
+///         _: &'b mut [u8],
+///     ) -> aldis_core::Result<aldis_core::writer::FrameWriter<'b, aldis_core::writer::Variable, aldis_tc::TcPlan>> {
+///         unreachable!()
+///     }
+/// }
+/// ```
+pub trait Fop1Format: FrameFormat + Hash + sealed::Sealed {
     /// The checked channel the frames belong to: its tables and identifiers.
     type Channel: Clone + Debug + Eq + Hash;
 
@@ -98,6 +126,8 @@ impl TcChannel {
     }
 }
 
+impl sealed::Sealed for TcFormat {}
+
 impl Fop1Format for TcFormat {
     type Channel = TcChannel;
     type Plan = TcPlan;
@@ -156,6 +186,9 @@ impl UslpChannel {
         self.map_id
     }
 }
+
+#[cfg(feature = "uslp")]
+impl sealed::Sealed for UslpFormat {}
 
 #[cfg(feature = "uslp")]
 impl Fop1Format for UslpFormat {
