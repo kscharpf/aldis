@@ -38,7 +38,7 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 |---|---|---|---|
 | **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer (exited 2026-11-06) |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI (exited 2026-11-07; [plan](milestones/a1-packets.md)) |
-| **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed. **In progress** |
+| **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed (exited 2026-11-10; [plan](milestones/a2-frames.md)) |
 | **A3 COP-1** | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases |
 | **A4 Variants** | The AOS and USLP variants of [reference-application.md](reference-application.md) §4.3, on the same engines. The engines are used from A2 on, so A4 no longer replaces loops | A3; M4 | `a4-*` traces reproduced in CI, with the packet projection of the nominal case (APP-003) |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
@@ -64,10 +64,10 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 
 Order of work (maintainer, 2026-11-10):
 
-1. Finish A2 (its remaining work packages WP-5, WP-6, WP-7).
+1. A2 (done, 2026-11-10).
 2. A3 COP-1, starting with its plan; its headline case is a COP-1 retransmission over a lossy link.
 3. AINT, interoperability against an independent ground system (YAMCS recommended, OSDLP the alternative; the plan's D1 decides); entry gate A3.
-4. M6 Phase 3 (WP-3a–WP-3d) and the M6 exit (WP-4) after AINT; the OI-93 follow-up of WP-2d may still land before A2's last work packages (the coordinator's call).
+4. M6 Phase 3 (WP-3a–WP-3d) and the M6 exit (WP-4) after AINT; the OI-93 follow-up of WP-2d may land at any time (the coordinator's call).
 5. In parallel, gated on nothing above: a README rewrite for a first-time reader.
 
 | Stage | Track R | Track A |
@@ -76,7 +76,7 @@ Order of work (maintainer, 2026-11-10):
 | 2 | M2 (complete, `v0.3.0-m2`) | A1 |
 | 3 | M3 | |
 | 4 | M4 | A2 (entry gate M4, D3) |
-| 5 | M5 (complete, `v0.6.0-m5`) | A2 (in progress) |
+| 5 | M5 (complete, `v0.6.0-m5`) | A2 (complete) |
 | 6 | M6 Phases 1–2 (merged) | A3 |
 | 7 | | AINT |
 | 8 | M6 Phase 3 and exit | A4, then A5 |

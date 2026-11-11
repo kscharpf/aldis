@@ -280,10 +280,10 @@ OI-11 is resolved as this default (2026-11-01); a later change of it would be a 
 | | Repetitions for Type-A frames; for control commands | 1; 1 | 232.0 Table 5-3 |
 | MAP 0: commands | Data Field Content; Blocking; Segmentation | Packets; Permitted; Prohibited | 232.0 Table 5-4 |
 | MAP 1: table upload | Data Field Content; Blocking; Segmentation | Packets; Prohibited; Permitted | 232.0 Table 5-4 |
-| MAP 0 and 1 | Maximum Frame Data Unit Length | 121 octets (Segment Header 1 + 120) | 232.0 Table 5-4, §4.1.3.2.1.1 |
+| MAP 0 and 1 | Maximum Frame Data Unit Length | 121 octets, the Segment Header included (Segment Header 1 + 120) | 232.0 Table 5-4, §4.1.3.2.1.1 |
 | Packet transfer | Valid PVNs; Maximum Packet Length; incomplete packets | {`000`}; 512; Not required | 232.0 Table 5-5 |
 
-Frame layout: primary header 5 ‖ Segment Header 1 ‖ user data ≤ 120 ‖ FECF 2. The table-upload packet (309 octets) becomes three segments (120, 120, 69). Commands released at one instant are blocked into one FDU on MAP 0 in release order while they fit (232.0 §4.3.1.8; LNK-040, LNK-071). Once a MAP 1 packet has started, no MAP 0 FDU is interleaved until it ends (LNK-041); otherwise MAP 0 goes first.
+Frame layout: primary header 5 ‖ Segment Header 1 ‖ user data ≤ 120 ‖ FECF 2. The 121-octet maximum of the Frame Data Unit includes the Segment Header. The table-upload packet (309 octets) becomes three segments (120, 120, 69). Commands released at one instant are blocked into one FDU on MAP 0 in release order while they fit (232.0 §4.3.1.8; LNK-040, LNK-071). Once a MAP 1 packet has started, no MAP 0 FDU is interleaved until it ends (LNK-041); otherwise MAP 0 goes first.
 
 | COP-1 parameter | Value | Source |
 |---|---|---|
@@ -636,7 +636,7 @@ The ground node raises, besides the `clcw_changed` events and the `packet_in` re
 | 66 | VC 0, HK 8 (8.25 s) | `flip` octet 100, bit 3 (the data field) |
 | 148 | VC 1, first field of payload 9 (18.5 s) | `truncate` 100 octets |
 
-The strict decoder checks the FECF before it reads any field, so the first flip is `CrcMismatch` (8) and not `UnknownChannel`; the node gives the receiver `CallerDiscard` for it and for the second flip (LNK-080), which raises no event, and a lost frame shows as a gap at the next frame. The truncated frame fails the length check, `LengthMismatch` (3). The delay is more than one slot, so frame 20 arrives after frames 21 to 29 (3.71 s) and before frame 30. The ground node raises:
+The strict decoder checks the FECF before it reads any field, so the first flip is `CrcMismatch` (8) and not `UnknownChannel`; the node gives the receiver `CallerDiscard` for it and for the second flip (LNK-080), which raises no event, and a lost frame shows as a gap at the next frame. The truncated frame fails the length check, `LengthMismatch` (3). The delay is more than one slot, so frame 20 arrives after frames 21 to 29 (3.71 s) and before frame 30. The ground node raises the events below. The table leaves out the events no fault changes, such as `dump_reassembled` and the `clcw_changed` events of the nominal run, which the trace still holds:
 
 | Arrival (s) | Frame | Events |
 |---|---|---|
