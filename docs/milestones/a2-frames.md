@@ -3,19 +3,19 @@
 **Goal:** the link level of the reference application becomes the transfer frame. The flight node packs its telemetry packets into TM frames (223 octets, FECF, VC 0, 1, and 7, the CLCW in the OCF) with the `aldis-link` generators and multiplexer, one frame in every 125 ms slot; the ground node receives the frames with the strict TM codec and the `FrameReceiver` and `PacketExtractor`, tracks frame counts, and hands the packets to the A1 applications. Uplink commands and the table upload go from the ground node as TC frames (Segment Header, MAP 0 and 1, Type-BD) built from the `MapSegmenter`, and the flight node accepts them with the `FrameReceiver`, FARM-1, and the `MapReassembler`. The packet projection of the nominal case is the same as A1's (APP-003). The harness reproduces the `a2-*` traces byte for byte in CI. The link level is the frame ([reference-application.md](../reference-application.md) §6.1, §4.1, §4.2).
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A1](a1-packets.md) (packet-level nodes and golden traces) and [M4](m4-link-engines.md) (`v0.5.0-m4`: the `aldis-link` engines) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
 
-**Status: in progress.** Decisions D1–D8 (§2) accepted by the maintainer 2026-11-07, D3 revised. Entry gate: A1 exited (2026-11-07, #335); M4 exited (2026-11-04, `v0.5.0-m4`, see §1). A track-A milestone cuts no release.
+**Status: exited (2026-11-10, WP-7).** Decisions D1–D8 (§2) accepted by the maintainer 2026-11-07, D3 revised. Entry gate: A1 exited (2026-11-07, #335); M4 exited (2026-11-04, `v0.5.0-m4`, see §1). A track-A milestone cuts no release. Every exit criterion of §4 is met, and `cargo xtask trace --scope a2 --strict` passes in `cargo xtask ci`, `ci.yml`, and the check `spec`.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | planned | | This plan, D1–D8, `--scope a2` trace gate (D1) |
+| WP-0 Plan | merged | #347 | This plan, D1–D8, `--scope a2` trace gate (D1) |
 | WP-1 Scenario additions | merged | #372, #426, #443, #446 | Only what [reference-application.md](../reference-application.md) lacks for A2: the per-instant order of frame building, the CLCW sampling rule, the frame-level events, the cases (D5), the expected frame schedule; no code |
 | WP-2 Harness: frames | merged | #382, #453, #461, #466, #470 | `flip` and the frame-level fault rules, frame-level scenario parameters, strict decoding of frames; the track-R pull request of D3 (the facade forwards the engines' features) is its entry |
 | WP-3a Flight node: downlink | merged | #397 | Generators, multiplexer, OID frames, OCF from FARM-1, TM frame writer |
 | WP-3b Flight node: uplink | merged | #396 | `FrameReceiver` (TC), FARM-1 for Type-BD, `MapReassembler` into the A1 command handler |
 | WP-4a Ground node: downlink | merged | #398 | Strict TM decoding, `FrameReceiver`, `PacketExtractor`, frame events, CLCW |
 | WP-4b Ground node: uplink | merged | #399 | `MapSegmenter`, FOP-1 for Type-BD, TC frame writer, one frame per uplink slot |
-| WP-5 Golden traces | planned | | `a2-*` cases blessed, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
-| WP-6 Strict decoding of frame traces | planned | | APP-086 for frames in the `refapp` check |
+| WP-5 Golden traces | merged | #479, #480 | `a2-*` cases blessed, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
+| WP-6 Strict decoding of frame traces | in progress | #483 | APP-086 for frames in the `refapp` check |
 | WP-7 Exit | planned | | `trace --scope a2 --strict`; roadmap, README, ACFS entry gate |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
@@ -127,24 +127,24 @@ Only what the document lacks; nothing in it is restated. The gaps found while wr
 
 ## 4. Exit criteria
 
-A2 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3. The requirements WP-1 adds join the table in that pull request. The results column is filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a2`, not repeated here.
+A2 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3. The requirements WP-1 adds join the table in that pull request. The results column was filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a2`, not repeated here.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| TM downlink | APP-030, APP-031, APP-032, APP-033, APP-034, APP-035 | |
-| Ground downlink | APP-036 | |
-| TC uplink | APP-040, APP-041, APP-042, APP-043 | |
-| Frame identity | APP-026 | |
-| Link model at frame level | APP-071, APP-090 | |
-| Order, sampling, and deadlines at frame level | APP-132, APP-133, APP-134, APP-135 | |
-| Link-engine parameters | APP-136 | |
-| Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | |
-| Harness rules at frame level | APP-141 | |
-| Frame-level events | APP-138, APP-139, APP-142, APP-143, APP-131 (frames) | |
-| Packet projection | APP-003 | |
-| Golden traces | APP-086 | |
-| Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
-| Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS entry gate updated | |
+| TM downlink | APP-030, APP-031, APP-032, APP-033, APP-034, APP-035 | Met. Flight node `refapp/refapp-flight/src/frames_down.rs`, tests in `frames_down_tests.rs`; golden trace `a2-nominal`; the blind model `refapp/model/a2_nominal.py` matched all 280 downlink `unit_sent` records ([cross-checks.md](../verification/cross-checks.md) §7.2, VER-040) |
+| Ground downlink | APP-036 | Met. `refapp/refapp-ground/src/frames_down.rs`, tests in `frames_down/tests.rs`; golden traces `a2-nominal`, `a2-downlink-loss`, `a2-downlink-corrupt` |
+| TC uplink | APP-040, APP-041, APP-042, APP-043 | Met. `refapp-flight/src/frames_up.rs` and `refapp-ground/src/frames_up.rs`, tests in `frames_up/tests.rs` and `tests_uplink.rs`; golden trace `a2-nominal` (the eight uplink frames, matched by the blind model) |
+| Frame identity | APP-026 | Met. Inspection by the test in `refapp-flight/src/frames_down_tests.rs` (the spacecraft ID of every frame) |
+| Link model at frame level | APP-071, APP-090 | Met. `refapp-harness/src/sim.rs` tests, `tests/frames.rs`, and `tests/a2_golden.rs`; the four `a2-*` golden traces |
+| Order, sampling, and deadlines at frame level | APP-132, APP-133, APP-134, APP-135 | Met. `refapp-harness/tests/a2_golden.rs` (hand-derived schedule, FARM-B Counter in the OCF), the node tests of `frames_down_tests.rs`, `frames_up/tests.rs`, `tests_uplink.rs`; golden trace `a2-nominal` |
+| Link-engine parameters | APP-136 | Met. Scenario file and generated constants checked in `refapp-harness/src/scenario.rs` |
+| Frame schedule and cases | APP-137, APP-140, APP-128 (not applied at frame level, D4) | Met. `tests/a2_golden.rs` compares the blessed traces with the schedule and tables of the scenario document; the golden traces of the four `a2-*` cases; APP-128 stays with the packet-level cases (`a1-immediate`, `a1-rejects`) |
+| Harness rules at frame level | APP-141 | Met. Scenario validation tests in `refapp-harness/src/scenario.rs` |
+| Frame-level events | APP-138, APP-139, APP-142, APP-143, APP-131 (frames) | Met. `refapp-ground/src/frames_down/tests.rs`, `tests_uplink.rs`, `refapp-flight/src/frames_up/tests.rs`, `frames_down_tests.rs`; `tests/a2_golden.rs` (event tables of `a2-downlink-loss`, `a2-downlink-corrupt`, `a2-uplink-faults`) |
+| Packet projection | APP-003 | Met. `refapp-harness/tests/a2_golden.rs` compares the packet projection of `a2-nominal` with `a1-nominal` (D7) |
+| Golden traces | APP-086 | Met. `refapp-harness/tests/trace.rs` and `tests/frames.rs` decode every `unit_sent` of the `a2-*` traces with the strict TM and TC codecs (WP-6); hand check of the first frame of each kind and the blind model (D8) |
+| Reproduction in CI | The check `refapp` runs `compare` for every `a2-*` case (APP-106); `cargo xtask trace --scope a2 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | Met. Verify check `refapp` (APP-106) runs `compare` for every `a2-*` case; `cargo xtask trace --scope a2 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; the bare-metal build and clippy of `refapp-flight` are in the `refapp` job of `ci.yml` |
+| Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS entry gate updated | Met. Roadmap §3 and §4, `README.md`, `refapp/README.md`, and the ACFS P2 entry gate updated by the exit pull request; APP-132 to APP-143 are in this table |
 
 The IDs of WP-1 (APP-132 to APP-140) joined the table in its pull request; APP-141 (no immediate or delivery-rejected command at frame level, maintainer decision of 2026-11-08, [#374](https://github.com/kscharpf/aldis/issues/374)) joined it in the WP-2 pull request.
 
@@ -168,6 +168,7 @@ Each finding is a GitHub issue labelled `api-feedback`; this list names them as 
 | Issue | Found in | Finding |
 |---|---|---|
 | #348 | Plan | The facade `aldis` does not forward the per-standard features of the engines: `aldis-link/{spp,epp,tm,tc}` were enabled only inside its `full` feature (before #348; `aldis-cop1` also had a `tc` feature, a no-op removed by #387). A consumer limited to the facade (APP-100) cannot use the engines without everything else. Fix decided in D3: weak-dependency forwarding in `spp`, `epp`, `tm`, `aos`, `tc`, and `uslp` |
+| #395 | WP-3a | `ChannelMux` with `MuxPolicy::FixedPriority` serves the offered VC with the highest `vc_priority`, the opposite of the rank wording of the Blue Books and the scenario (1 is served first), so the node inverts the rank; suggested: a name that gives the direction (`vc_rank`, lower first) or documentation at `VcConfig::with_priority` |
 | #394 | WP-3b | FARM-1 delivers the TC user data without the Segment Header that `MapReassembler<Tc>` reads as part of the FDU (the result of feeding it directly is `unknown_map` with a wrong MAP ID, not an error), and `ReceiverOutput::TcFrame` gives the frame back as octets from which no `ValidatedTcFrame` can be made without a second validation |
 
 Questions the work packages are expected to meet, to be filed only when the code shows them to be real: the number of calls and the copying between a generator's `Release`, the multiplexer's `Offer` and `Opportunity`, and the frame writer, for a node that wants one frame per slot (WP-3a); the chain from a codec-validated TC frame through `FrameReceiver` and `Farm1` to the `MapReassembler` (WP-3b); whether `Fop1` in S6 with `RequestBd` alone needs the store and capacities of the AD service (WP-4b); the deadline values the nodes must forward as `next_deadline` from several engines (WP-3a, WP-4b).
