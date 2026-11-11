@@ -30,9 +30,11 @@ pub use farm1_table::{
     EVENT_COUNT as FARM1_EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State,
     STATE_COUNT as FARM1_STATE_COUNT,
 };
+#[cfg(feature = "uslp")]
+pub use fop1::UslpChannel;
 pub use fop1::{
-    Fop1, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input, Fop1Output, Fop1Store,
-    Fop1Target, Handle, fop1_max_actions,
+    Fop1, Fop1Actions, Fop1Config, Fop1Decision, Fop1Format, Fop1Input, Fop1Output, Fop1Store,
+    Fop1Target, Handle, TcChannel, fop1_max_actions,
 };
 pub use fop1_table::{
     BcCommand, EVENT_COUNT as FOP1_EVENT_COUNT, FOP1_TABLE, Fop1Action, Fop1Cell, Fop1Event,

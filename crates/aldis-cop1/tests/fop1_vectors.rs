@@ -394,10 +394,8 @@ fn the_action_bound_target_and_classification_at_run_time() {
     )
     .unwrap();
     assert_eq!(plain.max_fdu_len(), F - 5);
-    assert!(matches!(
-        plain.channel(),
-        aldis_cop1::Fop1Channel::Tc { .. }
-    ));
+    assert_eq!(plain.channel().spacecraft_id().get(), 1);
+    assert_eq!(plain.channel().vc_id().get(), 0);
     let f = Engine::new(Fop1Config {
         target: plain,
         t1_initial: Duration::from_micros(10),
