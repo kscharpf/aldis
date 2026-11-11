@@ -807,6 +807,8 @@ fn first_frame_of_each_kind_by_hand() {
     assert_eq!(f.len(), 8);
     check_fecf("a3-uplink-lockout", 2, f);
     // The CLCW with the Retransmit flag (232.0 §4.2.1.8.6): 0x01000802, VC 0.
+    // The OCF is the four octets before the two-octet FECF that ends each
+    // 223-octet downlink frame, so octets 217 to 220.
     let ocf = |case: &str, i: usize| {
         let d = units(case, "down");
         u32::from_be_bytes([d[i].1[217], d[i].1[218], d[i].1[219], d[i].1[220]])
