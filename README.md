@@ -129,7 +129,8 @@ verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
 | COP-1 (FOP-1 and FARM-1) and frame synchronization | Released |
 | Link engines: packet and frame generators, multiplexing, reception, segmentation, CLTU packing | Released |
 | C ABI and C++ header over all of the above | Released |
-| Reference application: flight and ground nodes, golden traces | Complete |
+| Reference application: flight and ground nodes with packets, TM and TC frames, and COP-1 over a lossy link, golden traces | Complete |
+| Reference application: AOS and USLP variants, C and C++ flight side, bare-metal target | Planned |
 | Simplifying the crate architecture | In progress |
 | Interoperability against an independent ground system | Planned |
 
@@ -148,8 +149,7 @@ Each released row has its tests, test vectors, and hazard analysis. The [roadmap
 Every claim of correctness is backed by a check that the merge gate runs or by a record a person signed, not by assertion. The README does not repeat them; the documents do.
 
 - [Verification](docs/06-verification.md): the lints, link-time panic freedom, coverage, fuzzing, mutation testing, test vectors from blind independent models, cross-checks, and the targets (including bare-metal QEMU runs).
-- [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data and what it is compared against.
-- [Independent cross-checks](docs/verification/cross-checks.md): the vectors are also run through other implementations of the standards: the `spacepackets` Rust crate, and NASA cFE's `MSG` module (v7.0.1, vendored unmodified), which agrees with `aldis-spp` on the Space Packet primary header, the sequence count, and cFE's CUC telemetry time.
+- [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data, which is also run through other implementations of the standards: the `spacepackets` Rust crate, and NASA cFE's `MSG` module (v7.0.1, vendored unmodified), which agrees with `aldis-spp` on the Space Packet primary header, the sequence count, and cFE's CUC telemetry time.
 - [Traceability](docs/06-verification.md): every requirement cites its Blue Book clause and every test names the requirements it covers; `cargo xtask trace` reports what is traced.
 - [The merge gate](docs/06-verification.md#7-verification-runs-and-the-merge-gate): a reproducible run of every check in a digest-pinned image, with a published evidence record.
 - [Assurance case](docs/verification/assurance-case.md) and [hazard analysis](docs/verification/hazards.md): the argument from claims to evidence, and the failure modes.
@@ -162,7 +162,7 @@ Aldis is built by coding agents under rules a person sets. Implementation agents
 - [AGENTS.md](AGENTS.md): the rules for coding agents.
 - [Decision rights](docs/process/decision-rights.md): who decides what.
 - [Independent review](docs/process/review.md) and the [coordinator](docs/process/coordinator.md): the review protocol and the merge trains.
-- In the 30 days from 2026-10-12 to 2026-11-11, 388 pull requests were merged (2,128 commits); half were merged within 54 minutes of being opened. 252 of them (65 %) drew a review, and in 214 of those (85 %) commits followed the first review. Measured by `cargo xtask metrics`, which reads the pull requests from GitHub.
+- In the 30 days from 2026-10-12 to 2026-11-11, 391 pull requests were merged, half within about an hour of being opened. 46 were merge trains, which carry reviewed pull requests and get no review of their own. Of the other 345, 250 have a recorded review; from 2026-10-31 on, 186 of 189 do. Counted with `gh pr list --json` and `cargo xtask metrics`.
 
 ## Layout
 
