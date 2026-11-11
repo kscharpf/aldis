@@ -7,7 +7,7 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | in progress | — | This plan, D1–D9, `--scope a3` trace gate (D1) |
+| WP-0 Plan | in progress | #489 | This plan, D1–D9, `--scope a3` trace gate (D1) |
 | WP-1 Scenario additions | planned | — | Only what [reference-application.md](../reference-application.md) lacks for A3: order of work with COP-1, CLCW input, directives, events 200–299, the cases (D5) and their hand-derived schedules; no code |
 | WP-2 Harness: COP-1 level | planned | — | Level `cop1` and the directive entries of the scenario file, the frame-level rules at the new level, decoding of AD and BC frames; no change of an `a0-*`, `a1-*`, or `a2-*` trace |
 | WP-3 Flight node: FARM-1 | planned | — | FARM-1 for Type-AD and Type-BC frames, the delivery buffer, the CLCW, COP-1 events |
