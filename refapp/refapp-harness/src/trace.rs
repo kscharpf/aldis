@@ -654,7 +654,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
     Ok(decoded)
 }
 
-fn unhex(s: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn unhex(s: &str) -> Result<Vec<u8>, String> {
     let (pairs, rest) = s.as_bytes().as_chunks::<2>();
     if !rest.is_empty() {
         return Err("odd number of hex digits".to_owned());
