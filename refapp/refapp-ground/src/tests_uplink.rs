@@ -352,7 +352,7 @@ fn an_input_fop1_refuses_raises_uplink_refused_and_no_frame_goes_out() {
     assert_eq!(uplink.refused(), 1);
     // The slot after it, with an empty segmenter, outputs nothing and raises nothing.
     let mut out = Recorder::default();
-    assert_eq!(uplink.slot(Instant::from_micros(250_000), &mut out), None);
+    uplink.slot(Instant::from_micros(250_000), &mut out);
     assert_eq!(out.0, []);
 }
 

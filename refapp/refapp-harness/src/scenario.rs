@@ -393,7 +393,9 @@ impl OpsEntry {
                 length: TableLength::new(length.get())
                     .map_err(|e| format!("table length: {:?}", e.kind()))?,
             },
-            OpsEntry::Fop1Directive { .. } => node::OpsEntry::Fop1Directive,
+            OpsEntry::Fop1Directive { directive, .. } => {
+                node::OpsEntry::Fop1Directive(directive.to_node())
+            }
         })
     }
 
@@ -537,6 +539,19 @@ pub enum Fop1Directive {
 }
 
 impl Fop1Directive {
+    /// The directive as the ground node takes it.
+    #[must_use]
+    pub const fn to_node(self) -> refapp_ground::Fop1Directive {
+        use refapp_ground as node;
+        match self {
+            Fop1Directive::InitiateAdWithoutClcw => node::Fop1Directive::InitiateAdWithoutClcw,
+            Fop1Directive::InitiateAdWithClcw => node::Fop1Directive::InitiateAdWithClcw,
+            Fop1Directive::InitiateAdWithUnlock => node::Fop1Directive::InitiateAdWithUnlock,
+            Fop1Directive::TerminateAd => node::Fop1Directive::TerminateAd,
+            Fop1Directive::SetVs(vs) => node::Fop1Directive::SetVs(vs.get()),
+        }
+    }
+
     /// The code of the directive in the events of §7.4: the row of 232.1 Table 4-1 (§4.5.2).
     #[must_use]
     pub const fn code(self) -> u8 {

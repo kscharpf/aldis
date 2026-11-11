@@ -7,8 +7,9 @@
 //! is made, so a script that cannot be encoded is an error there and a step cannot fail
 //! (RS-020).
 
+use aldis::cop1::Directive;
 use aldis::core::Error;
-use aldis::core::ids::{Apid, SeqCount};
+use aldis::core::ids::{Apid, FrameSeqNum, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceCounter, SequenceFlags, SppConfig, encode};
 use aldis::time::{Cuc, CucEpoch, CucFormat, TimeCode};
 use refapp_scenario::generated::{apid, tc, time};
@@ -93,8 +94,63 @@ pub enum OpsEntry {
         /// Table length, octets.
         length: TableLength,
     },
-    /// A FOP-1 directive: issued from A3 on, ignored at A1 (APP-019).
-    Fop1Directive,
+    /// A FOP-1 directive: issued at the `cop1` level, ignored below it (APP-019).
+    Fop1Directive(Fop1Directive),
+}
+
+/// A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1
+/// that the cases use (§4.5.2, APP-148).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fop1Directive {
+    /// *Initiate AD Service (without CLCW Check)*, code 1 (E23).
+    InitiateAdWithoutClcw,
+    /// *Initiate AD Service (with CLCW Check)*, code 2 (E24).
+    InitiateAdWithClcw,
+    /// *Initiate AD Service (with Unlock)*, code 3 (E25).
+    InitiateAdWithUnlock,
+    /// *Terminate AD Service*, code 5 (E29).
+    TerminateAd,
+    /// *Set V(S) to V\*(S)*, code 7, with the Qualifier V\*(S) (E35).
+    SetVs(u8),
+}
+
+impl Fop1Directive {
+    /// The code of the directive in the events of §7.4: the row of 232.1 Table 4-1 (§4.5.2).
+    #[must_use]
+    pub const fn code(self) -> u8 {
+        match self {
+            Fop1Directive::InitiateAdWithoutClcw => 1,
+            Fop1Directive::InitiateAdWithClcw => 2,
+            Fop1Directive::InitiateAdWithUnlock => 3,
+            Fop1Directive::TerminateAd => 5,
+            Fop1Directive::SetVs(_) => 7,
+        }
+    }
+
+    /// The Qualifier of the event: V\*(S) of *Set V(S)*, 0 for a directive with none (§7.4).
+    #[must_use]
+    pub const fn qualifier(self) -> u8 {
+        match self {
+            Fop1Directive::SetVs(vs) => vs,
+            Fop1Directive::InitiateAdWithoutClcw
+            | Fop1Directive::InitiateAdWithClcw
+            | Fop1Directive::InitiateAdWithUnlock
+            | Fop1Directive::TerminateAd => 0,
+        }
+    }
+
+    /// The directive as the engine takes it (232.1 Table 4-1).
+    pub(crate) const fn to_engine(self) -> Directive {
+        match self {
+            Fop1Directive::InitiateAdWithoutClcw => Directive::InitiateAdWithoutClcwCheck,
+            Fop1Directive::InitiateAdWithClcw => Directive::InitiateAdWithClcwCheck,
+            Fop1Directive::InitiateAdWithUnlock => Directive::InitiateAdWithUnlock,
+            Fop1Directive::TerminateAd => Directive::TerminateAd,
+            Fop1Directive::SetVs(v_s) => Directive::SetVs {
+                v_s: FrameSeqNum::new(v_s),
+            },
+        }
+    }
 }
 
 /// A packet of the script, built.
@@ -118,8 +174,10 @@ pub struct ScriptError {
 /// The ops script with its packets built, in script order (APP-024, APP-126).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Script {
-    /// One slot per entry; `None` for a directive this link level ignores.
+    /// One slot per entry; `None` for a directive entry.
     packets: Vec<Option<Built>>,
+    /// One slot per entry; `Some` for a directive entry.
+    directives: Vec<Option<Fop1Directive>>,
 }
 
 impl Script {
@@ -132,6 +190,7 @@ impl Script {
         let mut commands = SequenceCounter::default();
         let mut tables = SequenceCounter::default();
         let mut packets = Vec::with_capacity(entries.len());
+        let mut directives = Vec::with_capacity(entries.len());
         for (index, entry) in entries.iter().enumerate() {
             let built = match *entry {
                 OpsEntry::Command {
@@ -153,16 +212,28 @@ impl Script {
                     &table_data(table_id, length),
                 )
                 .map(Some),
-                OpsEntry::Fop1Directive => Ok(None),
+                OpsEntry::Fop1Directive(_) => Ok(None),
             };
             packets.push(built.map_err(|error| ScriptError { index, error })?);
+            directives.push(match *entry {
+                OpsEntry::Fop1Directive(directive) => Some(directive),
+                OpsEntry::Command { .. } | OpsEntry::TableUpload { .. } => None,
+            });
         }
-        Ok(Script { packets })
+        Ok(Script {
+            packets,
+            directives,
+        })
     }
 
-    /// The packet of entry `index`; `None` if the entry sends nothing at A1 or does not exist.
+    /// The packet of entry `index`; `None` if the entry is a directive or does not exist.
     pub(crate) fn packet(&self, index: usize) -> Option<&Built> {
         self.packets.get(index).and_then(Option::as_ref)
+    }
+
+    /// The directive of entry `index`; `None` if the entry is a packet or does not exist.
+    pub(crate) fn directive(&self, index: usize) -> Option<Fop1Directive> {
+        self.directives.get(index).copied().flatten()
     }
 }
 
@@ -341,7 +412,14 @@ mod tests {
             table_id: TableId::new(1).unwrap(),
             length: TableLength::new(1).unwrap(),
         };
-        let script = Script::new(&[noop, table, noop, OpsEntry::Fop1Directive, table]).unwrap();
+        let script = Script::new(&[
+            noop,
+            table,
+            noop,
+            OpsEntry::Fop1Directive(crate::Fop1Directive::TerminateAd),
+            table,
+        ])
+        .unwrap();
         let counts: Vec<_> = (0..5)
             .map(|i| {
                 script.packet(i).map(|b| {
