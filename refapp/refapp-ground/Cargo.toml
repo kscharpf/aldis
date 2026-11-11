@@ -11,6 +11,8 @@ publish.workspace = true
 [dependencies]
 aldis = { workspace = true, features = ["core", "time", "spp-time", "epp", "link", "cop1", "tc", "tm"] }
 refapp-scenario = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
 
 # The flight lint set, restriction lints included: the ground node parses untrusted downlink
 # (APP-103). It may use `std`.

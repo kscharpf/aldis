@@ -39,11 +39,11 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A0 Scenario** ([plan](milestones/a0-scenario.md)) | The scenario specification, a new document [`docs/reference-application.md`](reference-application.md) with requirement area APP: flight and ground roles, APIDs, virtual channels, rates, injected faults, and the golden-trace format. `refapp/` workspace skeleton with a CI build job | — | Scenario approved by the maintainer (exited 2026-11-06) |
 | **A1 Packets** | Flight side produces housekeeping Space Packets with CUC time stamps; ground side decodes them; first golden trace | A0; M1 | Trace reproduced in CI (exited 2026-11-07; [plan](milestones/a1-packets.md)) |
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed (exited 2026-11-10; [plan](milestones/a2-frames.md)) |
-| **A3 COP-1** ([plan](milestones/a3-cop1.md)) | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases |
+| **A3 COP-1** ([plan](milestones/a3-cop1.md)) | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases (exited 2026-11-11; [plan](milestones/a3-cop1.md)) |
 | **A4 Variants** | The AOS and USLP variants of [reference-application.md](reference-application.md) §4.3, on the same engines. The engines are used from A2 on, so A4 no longer replaces loops | A3; M4 | `a4-*` traces reproduced in CI, with the packet projection of the nominal case (APP-003) |
 | **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | A4; M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
 | **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay is after v1 (§7) | A5 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
-| **AINT Interoperability** | The A3 Rust flight node exchanges TM and TC frames and COP-1 (FOP-1 on the ground system's side, FARM-1 on the flight side) with an independent ground system run as a black box, over a real transport driver that steps the node against a socket and a clock, outside the crates (the only new I/O; the crates stay sans-I/O, GEN-030–032). Candidate implementations: YAMCS (recommended) or OSDLP; the plan's D1 chooses, after checking the licence against VER-055 (YAMCS is AGPL-3.0: used as a black box, never read at source level, [decision-rights](process/decision-rights.md) §2.8). Every discrepancy is filed as an open issue or reported upstream by the maintainer. The plan is written before the milestone starts (§6 rule 1): `docs/milestones/aint-interoperability.md`, trace scope `aint` | A3 | The nominal and lossy-link COP-1 cases pass against the independent implementation; every discrepancy filed. Gates no release |
+| **AINT Interoperability** | The A3 Rust flight node exchanges TM and TC frames and COP-1 (FOP-1 on the ground system's side, FARM-1 on the flight side) with an independent ground system run as a black box, over a real transport driver that steps the node against a socket and a clock, outside the crates (the only new I/O; the crates stay sans-I/O, GEN-030–032). Candidate implementations: YAMCS (recommended) or OSDLP; the plan's D1 chooses, after checking the licence against VER-055 (YAMCS is AGPL-3.0: used as a black box, never read at source level, [decision-rights](process/decision-rights.md) §2.8). Every discrepancy is filed as an open issue or reported upstream by the maintainer. The plan is written before the milestone starts (§6 rule 1): `docs/milestones/aint-interoperability.md`, trace scope `aint` | A3 (exited 2026-11-11) | The nominal and lossy-link COP-1 cases pass against the independent implementation; every discrepancy filed. Gates no release |
 | **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Three phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
 ACFS and AINT are independent: ACFS replaces the flight side through the C ABI, AINT replaces the ground side. Running the cFS node against the independent ground system is an optional later cross-check that no phase requires.
@@ -54,7 +54,7 @@ ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one 
 |---|---|---|---|
 | **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
 | **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI | `a2-*` traces reproduced in nightly CI |
-| **P3 COP-1** | FARM-1 through its C ABI handle | P2 (so M4); A3; the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
+| **P3 COP-1** | FARM-1 through its C ABI handle | P2 (so M4); A3 (exited 2026-11-11); the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
 
 The alternative to one milestone with phases is three milestones, one per row; the plan's D1 compares them.
 
@@ -65,8 +65,8 @@ Each row is a set of milestones expected to run at the same time. The rows are n
 Order of work (maintainer, 2026-11-10):
 
 1. A2 (done, 2026-11-10).
-2. A3 COP-1, starting with its plan; its headline case is a COP-1 retransmission over a lossy link.
-3. AINT, interoperability against an independent ground system (YAMCS recommended, OSDLP the alternative; the plan's D1 decides); entry gate A3.
+2. A3 COP-1 (done, 2026-11-11); its headline case is a COP-1 retransmission over a lossy link.
+3. AINT, interoperability against an independent ground system (YAMCS recommended, OSDLP the alternative; the plan's D1 decides); entry gate A3 (exited 2026-11-11).
 4. M6 Phase 3 (WP-3a–WP-3d) and the M6 exit (WP-4) after AINT; the OI-93 follow-up of WP-2d may land at any time (the coordinator's call).
 5. In parallel, gated on nothing above: a README rewrite for a first-time reader.
 
@@ -77,7 +77,7 @@ Order of work (maintainer, 2026-11-10):
 | 3 | M3 | |
 | 4 | M4 | A2 (entry gate M4, D3) |
 | 5 | M5 (complete, `v0.6.0-m5`) | A2 (complete) |
-| 6 | M6 Phases 1–2 (merged) | A3 |
+| 6 | M6 Phases 1–2 (merged) | A3 (complete) |
 | 7 | | AINT |
 | 8 | M6 Phase 3 and exit | A4, then A5 |
 | 9 | | A6 |
