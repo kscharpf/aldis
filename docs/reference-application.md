@@ -18,6 +18,7 @@
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
 | Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep protocol for the A5 C++ and A6 QEMU flight nodes over stdin/stdout (OI-24) and for the cFS node over loopback TCP (§10.6) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
+| Interoperability | The A3 nodes against YAMCS 5.14.0 as a black box over a UDP transport driver: managed-parameter table, driver rules, pass criteria | §11 |
 | cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in three phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
 
 **Open items that affect this document:** none. Resolved: OI-86 (order of deliveries and ops entries, §2.2), OI-87 (queue-full check, §2.3), OI-88 and OI-89 (`packet_rejected` of the ground node, APP-130), OI-90 (count of the Idle Packets, §4.4.4), all 2026-11-08; OI-11 (OID frames, §4.1; 2026-11-01), OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
@@ -1257,3 +1258,104 @@ What the trace format needs: nothing in APP-080…APP-088. There are two consequ
 | APP-125 | The tests and C sources of the cFS node SHALL carry `// req:` annotations, and `cargo xtask trace` SHALL read them. | VER-020 | A |
 
 Not applicable to the cFS node, which is C code inside a framework with tasks and global state (plan D16): APP-091 (APP-117 and APP-121 take its place), the rule on threads in APP-077 (APP-116, APP-117), the Cargo rules of APP-100 (APP-112), and APP-102 to APP-106, which are rules for the Rust crates.
+
+## 11. Interoperability profile (AINT)
+
+**Plan:** [AINT Interoperability](milestones/aint-interoperability.md) (decisions D1–D9, accepted 2026-11-11). The scenario of §2 to §6 is run against an independent ground system, used as a black box, over a transport driver outside the crates. This section is written from the repository's own specification before any driver exists; it fixes what a person needs to configure the other system and to judge a run, and it changes no node, no case, and no golden trace (APP-002, APP-004, APP-005). The loss script's drop indexes are not here yet (§11.6).
+
+### 11.1 The ground system
+
+| Item | Value |
+|---|---|
+| System | YAMCS (mission control system), run as a black box (plan D1, D2) |
+| Release | **5.14.0** (public release page https://github.com/yamcs/yamcs/releases, read 2026-11-11: marked "Latest", released 31 October) |
+| Licence | AGPL-3.0, read from the repository's public README ("Affero GPLv3"). The pages read do not say whether it is -only or -or-later, or whether it has exceptions: unconfirmed. It runs as a separate process and is neither modified, copied into the repository, shipped in an artefact, nor linked (APP-155) |
+| Fetch and build | The public release page shows no official container image. The project **builds its own image from the pinned release** (the release's published distribution, not its source tree), in a container recipe this project writes; the recipe is fetched-input only and the image is never committed. The recipe and the build command are written by WP-3 (first run) and fixed by WP-5 |
+| Image digest | **Not yet existing.** Filled in by WP-3 (first image) and confirmed by WP-5 (the exit record); never invented here |
+| Configuration files | Written by this project and kept under `refapp/interop/yamcs/` (instance, TM and TC frame links, mission database of the scenario's packets and commands, ops script as client calls), by WP-3 (links) and WP-4 (database, ops script). Nothing else of the system is in the repository |
+| Documentation read | https://docs.yamcs.org/yamcs-server-manual/links/ccsds-frame-processing/ (public). No source code is read (plan D2 c) |
+
+What the public documentation shows of the frame links, and what it does not (read 2026-11-11):
+
+| Documented option | Meaning | Profile value |
+|---|---|---|
+| `UdpTmFrameLink` with `errorDetection` CRC16, codec NONE | TM frames on UDP, FECF check, no Reed-Solomon | 223 octets, FECF present (§4.1) |
+| `UdpTcFrameLink`, `cltuEncoding` absent | TC frames on UDP without a CLTU | APP-006 |
+| `useCop1`, `clcwStream`, `initialClcwWait` | COP-1 on; stream the CLCW is read from; seconds to wait for the first CLCW | on |
+| `slidingWindowWidth` | FOP sliding window width K; default 10 | 4 |
+| `cop1T1` | T1 in whole seconds; default 3 | 1 (1 000 000 µs) |
+| `cop1TxLimit` | "number of retransmissions for each un-acknowledged frame", after which operations are suspended | see §11.2 |
+| command attribute `cop1Bypass` | sends a command as a Type-BD frame | not used by `a3-nominal` or the lossy-link case |
+
+Not shown on the pages read: a timeout-type option, the *Initiate AD Service* variant, the attached sync marker of TM frames, the Segment Header and MAP IDs of TC frames, and whether the frame link takes a Control Word Type or CLCW Version other than the ones the profile fixes. Each is a setting WP-3 or WP-4 finds out by running, from the frames on the wire and the system's own log and API, not from its source (plan D2 c); a difference from the profile is a discrepancy, classified as in plan D2 (d) (APP-166).
+
+### 11.2 The open point: Timeout_Type
+
+232.1 §5.1.10.3 defines Timeout_Type, and §5.1.10.4 and §5.2 (Table 5-1, E17 and E18) give the two actions when Transmission_Count reaches the limit. Table 7-1 lets a project choose; the profile fixes 0, Alert when the limit is reached (§4.2). The public documentation of YAMCS names no timeout-type option, and says only that after `cop1TxLimit` retransmissions "operations are suspended". That sentence resembles the Suspend behaviour of 232.1 (Table 5-1 E18: suspend the service with Suspend_State, instead of raising Alert[T1] as E17 does) rather than the Alert, but the page does not name it, does not say how operations resume, and gives no default for `cop1TxLimit`.
+
+**Settled from the public documentation: nothing more.** What follows is what the run cannot check from the documentation and must observe:
+
+1. Whether YAMCS's limit is reached after Transmission_Limit = 3 transmissions in all (the first and two retransmissions, 232.1 §5.1.10.2) or after `cop1TxLimit` retransmissions beyond the first. The profile sets `cop1TxLimit` so that no case reaches it (the lossy-link case needs at most one retransmission of a frame, §6.8); the value is chosen in WP-3 from what the run shows.
+2. Which timeout type YAMCS then applies. No case of this milestone reaches the limit (APP-165), so the criteria of §11.5 do not depend on it; the cases `a3-uplink-limit`, `a3-uplink-lockout`, and `a3-uplink-disorder`, which reach the limit, a lockout, or reordering, are not run against YAMCS (§11.5).
+
+Neither is an open issue about a Blue Book reading (232.1 settles both values); the first run's observation of a difference from the profile's Timeout_Type 0 is a discrepancy of the other system's configuration (plan D2 d, §6 of the plan).
+
+### 11.3 Managed parameters, as a configuration table
+
+Every value is the one of the cited clause of this document; where the ground system has a documented option for it, §11.1 names it. A person sets up a ground system from this table and the Blue Book, without the Rust sources.
+
+| Parameter | Value | Fixed by |
+|---|---|---|
+| Spacecraft ID | `0x155` (341), fictional (OI-26); TM, TC, same for both directions | §3.4, APP-026 |
+| TM Transfer Frame Version Number; length | 1 (`00`); 223 octets | §4.1 |
+| TM VCs | 0 (HK `0x010`, events `0x011`), 1 (payload `0x020`, dump `0x021`), 7 (OID frames only) | §4.1, §3.1 |
+| TM frame layout | primary header 6, data field 211, OCF 4, FECF 2; no FSH; Packet data field content | §4.1 |
+| TM FECF | present (CRC-16) | §4.1 |
+| OCF in TM frames | present in every frame, including OID frames: the CLCW of the uplink VC, CLCW Version 1, COP in Effect 1 (bits 6–7 `01`, word `0x01000000` + flags + N(R)); reported 8 per second | §4.1, §4.2, §4.5.3 |
+| TC VC | one VC, VC 0; Type-AD, Type-BD, and Type-BC frames | §4.2 |
+| TC frame length | at most 128 octets; AD frames of the scenario carry first octets `01 55` | §4.2, §4.5.4 |
+| TC frame layout | primary header 5, Segment Header 1, user data at most 120, FECF 2 | §4.2 |
+| TC FECF | present | §4.2 |
+| Segment Header; MAP IDs | present; MAP 0 commands (blocking, no segmentation, packet `0x080`), MAP 1 table upload (segmentation, no blocking, packet `0x081`; three segments of 120, 120, 69) | §4.2, §3.1 |
+| Coding, CLTU, synchronisation marker | none; one whole frame per UDP datagram | APP-006, APP-159 |
+| FOP-1 sliding window K | 4 | §4.2 |
+| FARM-1 window W; PW; NW | 8; 4; 4 | §4.2, §4.5.3 |
+| T1_Initial | 1 000 000 µs (at least the 395 000 µs of §4.2); YAMCS takes whole seconds: 1 | §4.2, §11.1 |
+| Transmission_Limit | 3 | §4.2, §4.5.4 |
+| Timeout_Type | 0 (Alert); see §11.2 | §4.2, §11.2 |
+| FOP-1 start variant | *Initiate AD Service (without CLCW check)*, directive code 1, at 0.0 s, in `a3-nominal` and `a3-uplink-loss`; the other variants (with CLCW check, with Unlock, with Set V(R)) are not used | §4.5.2, §6.8 |
+| Downlink slot; uplink slot | 125 000 µs; 250 000 µs, one frame per slot, so at most one frame per 250 000 µs from the ground system and exactly one per 125 000 µs from the flight node | §6.1, APP-071 |
+| Time code of the packets | CUC Level 1, 4 coarse + 2 fractional octets, T0 = 2 100 000 000 s | §5 |
+
+The packets and commands of the ops script are those of §2.4 and §3.3 and are described to the ground system by its mission database (plan D7).
+
+### 11.4 What the driver does
+
+The transport driver is a program outside the crates, in the library and the binary of `refapp-interop` (plan D4). It is the only new I/O of the milestone and it steps the nodes through the contract of §8.1; the nodes do not change. A datagram is one transfer frame. The driver's own tests run in virtual time against the Rust ground node over loopback (plan D8 a, APP-106).
+
+### 11.5 Pass criteria
+
+A pass is a set of observed facts, not a byte comparison (plan D6): the golden traces hold the harness's simulated time and the schedule of Aldis's own FOP-1, which another FOP-1 on a real clock does not reproduce, and APP-004 is a property of the Aldis implementations. A criterion that fails is a discrepancy (APP-166), not a failed milestone. Cases that reach the limit, a lockout, or reordering (`a3-uplink-limit`, `a3-uplink-lockout`, `a3-uplink-disorder`) are not run against the ground system.
+
+### 11.6 The loss script
+
+The loss script of the lossy-link case drops uplink and downlink frames by (direction, index), as §6.5 does, where the index counts the units the driver sees in order in that direction. The cells of FARM-1 it must reach are those of `a3-uplink-loss` (§6.8): E3 (a frame behind a lost one is discarded and sets Retransmit), E1 again on the retransmitted frames and Retransmit reset, E4 (a retransmitted frame already accepted, because its acknowledging CLCWs were lost, is discarded as a duplicate), and a lone lost frame with no frame behind it, which only T1 retransmits.
+
+**TODO (WP-1b, after WP-3):** the list of drop indexes. They depend on the order in which the ground system sends its frames, which only the first run (WP-3) shows; the list is added to this section in WP-1b, together with a statement of every cell that the other system's schedule makes unreachable and why (plan D6).
+
+### 11.7 Requirements
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-155 | The independent ground system SHALL be YAMCS release 5.14.0, run as a separate process from an image built by the project from the pinned release. Nothing of it SHALL be copied into the repository, shipped in an artefact, linked, or modified; the repository SHALL hold only the configuration files of §11.1; no source code of it SHALL be read. A change of the pin repeats the licence check of plan D1 (a). | VER-055 | I |
+| APP-156 | The ground system SHALL be configured with the managed parameters of §11.3, and every parameter it has no option for, or that it takes in another form (T1 in whole seconds), SHALL be recorded in the run record with the setting used. | — | I |
+| APP-157 | The driver SHALL step the flight node per §8.1: `now` is the microseconds since the start of the run from its clock, the `unit` outputs are sent as datagrams to the ground system's TM port, the datagrams received on the TC port are `delivered`, and the next step is at the earliest of the node's `next_deadline`, the next downlink slot, and an arriving datagram. | APP-090 | T |
+| APP-158 | The driver SHALL set `tx_slot` in the step at every 125 000 µs of the downlink slot and in no other step. | LNK-030 | T |
+| APP-159 | The driver SHALL carry one transfer frame per datagram, in each direction, SHALL add no synchronisation marker, coding, or CLTU, and SHALL NOT reorder, merge, or split datagrams. | APP-006 | T |
+| APP-160 | The driver SHALL read time only through a clock trait, with a monotonic implementation for the binary and a manual one for its tests, which SHALL run in virtual time. | GEN-030 | T |
+| APP-161 | The driver SHALL change no node, no engine, no scenario value, and no golden trace; it SHALL use the nodes only through the contract of §8.1 and the Aldis facade (APP-100). | APP-090, APP-100 | I |
+| APP-162 | The driver SHALL write a run log in JSON Lines with a header line (the ground system's version and image digest, the commit of the node, the case, the loss script) and one record per datagram (direction, monotonic instant, octets in hexadecimal), per node event (the events of §7.4), and per `fault` of the loss script. The run log is not a golden trace and SHALL NOT be committed, except the run kept as evidence by the exit. | — | T |
+| APP-163 | The driver SHALL have a loss script: a list of `drop` entries by (direction, index) as §6.5, applied before a unit reaches its receiver and recorded in the run log. A script that reaches the FARM-1 cells of §11.6 SHALL exist for the lossy-link case, with the indexes of §11.6. | APP-139 | T |
+| APP-164 | A run of `a3-nominal` against the ground system SHALL pass when: the flight node accepts every command and table segment of the ops script, in order and exactly once (its `packet_in` projection and the projection of the commands equal those of `a3-nominal`, APP-003); N(R) across the CLCWs advances modulo 256 and never moves backward relative to V(S), and equals V(S) after the last command, with no Lockout and no Retransmit flag; the ground system reports every command as acknowledged; and it raises no alert. | APP-003, APP-150 | I |
+| APP-165 | A run of the lossy-link case against the ground system SHALL pass when: the flight node's events show the discard of an out-of-sequence frame (E3) and the Retransmit flag; the ground system retransmits the lost frames, including a lone lost frame retransmitted only by its timer T1, and a frame whose CLCW was lost; at the end the projection of the commands equals that of `a3-nominal`; and no case reaches the Transmission_Limit, Lockout, or an alert. | APP-003, APP-151 | I |
+| APP-166 | A failed criterion, and every difference between what the ground system does and what §11.3 or the Blue Books say, SHALL be classified from the wire (the run log), the Blue Books, the public documentation, and the system's own log and API: a defect of an Aldis node (a track-R fix with a vector), a reading the Blue Book does not settle (an open issue of [09](09-open-issues.md)), or a defect or deviation of the other system (an issue here, reported upstream by the maintainer only). It SHALL be filed and listed in §6 of the plan; no run SHALL be reported as passing with an unfiled failure. | — | I |
