@@ -482,7 +482,13 @@ impl<P: MuxProtocol> VcConfig<P> {
         }
     }
 
-    /// The same VC with the priority of fixed-priority multiplexing (LNK-031).
+    /// The same VC with the priority of fixed-priority multiplexing (LNK-031). A higher value is
+    /// served first: [`MuxPolicy::FixedPriority`] picks the offered VC with the highest priority,
+    /// the opposite of a rank in which 1 is served first (as in the "Mux priority" row of
+    /// `docs/reference-application.md` §4.1). The ordering algorithm is not specified by CCSDS
+    /// and is left to the project (732.0 §4.2.5.3, §4.2.6.3; 732.1 §4.2.5.3, §4.2.8.3;
+    /// 232.0 §4.3.3.3, §4.3.6.3, §4.3.7.3), so this direction is Aldis's own choice; a caller that
+    /// holds a rank passes it inverted (for example 255 less the rank).
     #[must_use]
     pub const fn with_priority(self, priority: u8) -> VcConfig<P> {
         VcConfig { priority, ..self }
