@@ -3,18 +3,18 @@
 **Goal:** the uplink of the reference application becomes the Sequence-Controlled (AD) service of COP-1. The ground node sends every Frame Data Unit as a Type-AD frame through `Fop1` (K = 4, T1_Initial = 1 s, Transmission_Limit = 3), feeds it the CLCW of every downlink frame, and issues the FOP-1 directives of the ops script (*Initiate AD Service*, with Unlock where a case needs it); the flight node accepts frames through the whole of `Farm1` (W = 8, retransmission allowed) and reports its state in the CLCW of every frame. The harness injects loss, duplication, delay, and a lockout into the uplink, and the traces show the retransmission, the timeout, the alerts, and the recovery. The headline case is a COP-1 retransmission over a lossy link. From A3 on the link-level traces are frozen (APP-004). The packet projection of the nominal case stays that of A1 (APP-003) ([reference-application.md](../reference-application.md) §4.2, §6, §7.4).
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A2](a2-frames.md) (frame-level nodes and golden traces), [M3](m3-cop1.md) (`v0.4.0-m3`: `Fop1` and `Farm1`), and [M4](m4-link-engines.md) (`v0.5.0-m4`: the `aldis-link` engines) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5)
 
-**Status: plan in review (2026-11-11, WP-0).** Decisions D1–D12 (§2) accepted by the maintainer on 2026-11-11. Entry gate: A2 exited (2026-11-10, #486); M4 exited (2026-11-04, `v0.5.0-m4`) and M3 exited (`v0.4.0-m3`), see §1. A track-A milestone cuts no release.
+**Status: exited (2026-11-11, WP-7).** Decisions D1–D12 (§2) accepted by the maintainer on 2026-11-11. Entry gate: A2 exited (2026-11-10, #486); M4 exited (2026-11-04, `v0.5.0-m4`) and M3 exited (`v0.4.0-m3`), see §1. A track-A milestone cuts no release. Every exit criterion of §4 is met, and `cargo xtask trace --scope a3 --strict` passes in `cargo xtask ci`, `ci.yml`, and the check `spec`.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | in progress | #489 | This plan, D1–D12, `--scope a3` trace gate (D1) |
-| WP-1 Scenario additions | planned | — | Only what [reference-application.md](../reference-application.md) lacks for A3: order of work with COP-1, CLCW input, directives, events 200–299, the cases (D5) and their hand-derived schedules; no code. Adds APP-144 to APP-152 ([§4.5, §6.8, §7.4](../reference-application.md)) |
-| WP-2 Harness: COP-1 level | planned | — | Level `cop1` and the directive entries of the scenario file, the frame-level rules at the new level, decoding of AD and BC frames; no change of an `a0-*`, `a1-*`, or `a2-*` trace |
-| WP-3 Flight node: FARM-1 | planned | — | FARM-1 for Type-AD and Type-BC frames, the delivery buffer, the CLCW, COP-1 events |
-| WP-4 Ground node: FOP-1 | planned | — | `RequestAd`, CLCW and timer inputs, transmit responses, directives, notifications and alerts as events, one frame per uplink slot |
-| WP-5 Golden traces | planned | — | `a3-*` cases blessed and frozen, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
-| WP-6 Strict decoding of COP-1 traces | planned | — | APP-086 for AD and BC frames and the CLCW in the `refapp` check; also carries the retransmitted AD frames through `FramedPackets` (WP-2 passes the frames of a clean link only) |
-| WP-7 Exit | planned | — | `trace --scope a3 --strict`; every A3 follow-up issue closed or deferred; roadmap, README, ACFS and AINT entry gates |
+| WP-0 Plan | merged | #489 | This plan, D1–D12, `--scope a3` trace gate (D1) |
+| WP-1 Scenario additions | merged | #499 | Only what [reference-application.md](../reference-application.md) lacks for A3: order of work with COP-1, CLCW input, directives, events 200–299, the cases (D5) and their hand-derived schedules; no code. Adds APP-144 to APP-152 ([§4.5, §6.8, §7.4](../reference-application.md)) |
+| WP-2 Harness: COP-1 level | merged | #503 | Level `cop1` and the directive entries of the scenario file, the frame-level rules at the new level, decoding of AD and BC frames; no change of an `a0-*`, `a1-*`, or `a2-*` trace |
+| WP-3 Flight node: FARM-1 | merged | #507 | FARM-1 for Type-AD and Type-BC frames, the delivery buffer, the CLCW, COP-1 events |
+| WP-4 Ground node: FOP-1 | merged | #506 | `RequestAd`, CLCW and timer inputs, transmit responses, directives, notifications and alerts as events, one frame per uplink slot |
+| WP-5 Golden traces | merged | #510, #511 | `a3-*` cases blessed and frozen, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
+| WP-6 Strict decoding of COP-1 traces | merged | #512 | APP-086 for AD and BC frames and the CLCW in the `refapp` check; also carries the retransmitted AD frames through `FramedPackets` (WP-2 passes the frames of a clean link only) |
+| WP-7 Exit | in progress | — | `trace --scope a3 --strict`; every A3 follow-up issue closed or deferred; roadmap, README, ACFS and AINT entry gates |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
@@ -23,6 +23,7 @@ History:
 - 2026-11-11: brought in line with the development plan #490: D10–D12 (the API-feedback issues #394, #395, #444) proposed; #484 assigned to WP-2; the exit settles every A3 follow-up issue (D-e); risk row for #254 and #235; A3 adds no C ABI surface (D-a); the AINT plan runs in parallel and is not part of this plan (D-c); D1–D9 accepted by the maintainer; T1_Initial = 1 s stays, and a spurious timeout found in the WP-1 derivation goes back to the maintainer as a decision; ACFS work is on hold until `aldis-ffi` is done (D-a), so the ACFS WP-6 housekeeping conflict (D9) waits until ACFS resumes.
 - 2026-11-11: D10–D12 accepted by the maintainer.
 - 2026-11-11: D5 and D6 amended by the maintainer in the review of #499: D6 matches APP-145 (a Reject Response of FOP-1 is reported once, as `fop1_transfer`; `uplink_refused` stays for errors the engine returns, APP-143); D5: `a3-uplink-lockout` drops downlink frame 16 (without it FOP-1 raises Alert[NN(R)], E13, before the Lockout flag, E14), and `a3-uplink-limit` recovers with *Set V(S)* and then *Initiate AD Service (with CLCW check)* (§6.8).
+- 2026-11-11: WP-7 exits A3: `trace --scope a3 --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; the results column of §4 is filled; the roadmap, the READMEs, and the ACFS P3 and AINT entry gates are updated; the follow-up issues are settled (§6); the process metrics were reviewed (VER-063: no threshold of `cargo xtask metrics --since 2026-11-11` crossed, and the friction item of the A2 exit, #487, stays open). A track-A milestone cuts no release.
 
 ## 1. Starting point
 
@@ -128,21 +129,21 @@ Only what the document lacks; nothing in it is restated. The gaps found while wr
 
 ## 4. Exit criteria
 
-A3 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3 (A2 left it here). The requirements WP-1 adds (APP-144 to APP-152) joined the table in its pull request. The results column is filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a3`, not repeated here.
+A3 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3 (A2 left it here). The requirements WP-1 adds (APP-144 to APP-152) joined the table in its pull request. The results column was filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a3`, not repeated here.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| FOP-1 on the ground | APP-044 | |
-| CLCW into FOP-1 | APP-036 | |
-| Frozen traces | APP-004 | |
-| Order, FOP-1 requests, directives, and events of COP-1 | APP-144, APP-145, APP-148, APP-149 | |
-| FARM-1 on board | APP-146, APP-147 | |
-| Cases and fault scripts | APP-150, APP-151, APP-152 | |
-| Packet projection | APP-003 | |
-| Golden traces | APP-086 | |
-| Reproduction in CI | The check `refapp` runs `compare` for every `a3-*` case (APP-106); `cargo xtask trace --scope a3 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
-| Follow-up issues | Every A3 review follow-up and `api-feedback` issue closed, or deferred to a named target, with #484 closed by WP-2 and D10 to D12 settled | |
-| Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS and AINT entry gates updated | |
+| FOP-1 on the ground | APP-044 | Met. `refapp/refapp-ground/src/frames_up/ad.rs` (`Fop1` with K = 4, T1_Initial = 1 s, Transmission_Limit = 3), tests in `refapp-ground/src/frames_down/tests_cop1.rs` and `frames_up/ad/tests.rs`; `refapp-harness/tests/a3_golden.rs` (uplink schedule of `a3-nominal`, retransmission of `a3-uplink-loss`, the limit of `a3-uplink-limit`); the five `a3-*` golden traces |
+| CLCW into FOP-1 | APP-036 | Met. Tests in `refapp-ground/src/frames_down/tests.rs` and `tests_cop1.rs` (every downlink CLCW reaches `Fop1`); golden traces `a3-nominal`, `a3-uplink-loss` |
+| Frozen traces | APP-004 | Met for A3. `refapp-harness/tests/run.rs` (`every_golden_trace_is_canonical_and_reproduced`) reproduces every golden trace byte for byte, and asserts that the five `a3-*` cases are among them; the verify check `refapp` runs `compare` in CI. The reproduction by A5, A6, and the cFS node is the check of those milestones, not of A3 |
+| Order, FOP-1 requests, directives, and events of COP-1 | APP-144, APP-145, APP-148, APP-149 | Met. `refapp-ground/src/frames_down/tests_cop1.rs` (order, one request per slot, directives, `fop1_transfer`, alerts); `refapp-harness/tests/cop1.rs` (`fop1_directive` entries); `a3_golden.rs` event tables of `a3-uplink-loss`, `a3-uplink-lockout`, `a3-uplink-limit`; `refapp-flight/src/frames_up/tests/cop1.rs` (APP-149 CLCW and events) |
+| FARM-1 on board | APP-146, APP-147 | Met. `refapp-flight/src/frames_up/tests/cop1.rs` (delivery buffer of depth 2, discard and unlock events, Segment Header put back in front, CLCW of every frame); `a3_golden.rs` (OCF and events of `a3-nominal`, `a3-uplink-lockout`, first frame of each kind by hand). APP-146's clause list now includes 232.1 §6.3.2.3 (#509) |
+| Cases and fault scripts | APP-150, APP-151, APP-152 | Met. `a3_golden.rs` compares each of the five `a3-*` traces with the hand-derived schedule and event tables of [reference-application.md](../reference-application.md) §4.5.5 and §6.8; `refapp-harness/tests/cop1.rs` (scenario validation of APP-152) |
+| Packet projection | APP-003 | Met. `refapp-harness/tests/a3_golden.rs` compares the packet projection of `a3-nominal` with `a1-nominal` and the instants with `a2-nominal` |
+| Golden traces | APP-086 | Met. `refapp-harness/tests/trace.rs`, `tests/cop1.rs`, and `tests/frames.rs` decode every `unit_sent` of the `a3-*` traces with the strict TM and TC codecs, the AD and BC frames and the CLCW included, and carry the uplink as received through FARM-1 and the `MapReassembler`; a planted AD frame with a wrong FECF fails (WP-6). **What this does and does not show:** the uplink check takes FARM-1's acceptance from the flight node itself (`FrameUplink`), so it is not an independent check of FARM-1. The independent check of the AD schedule is the blind model of D8 c, `refapp/model/a3_cases.py`, which matched every `unit_sent` record of `a3-nominal` (288) and `a3-uplink-loss` (292) with 0 mismatches ([cross-checks.md](../verification/cross-checks.md) §7.3, VER-040); it covers only the `unit_sent` records of those two cases, the FOP-1 cells they reach, and FARM-1 E1, E3, E4, and shares the document's reading of the slot model. The other three cases (`a3-uplink-disorder`, `a3-uplink-lockout`, `a3-uplink-limit`) rest on the hand-derived tables, the strict decode, and the first-frame check by hand, with no independent regeneration |
+| Reproduction in CI | The check `refapp` runs `compare` for every `a3-*` case (APP-106); `cargo xtask trace --scope a3 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | Met. Verify check `refapp` (APP-106) runs `compare` for every case; `cargo xtask trace --scope a3 --strict` (15 of 15 requirements traced) replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; the bare-metal build and clippy of `refapp-flight` are in the `refapp` job of `ci.yml` |
+| Follow-up issues | Every A3 review follow-up and `api-feedback` issue closed, or deferred to a named target, with #484 closed by WP-2 and D10 to D12 settled | Met. #484 closed by WP-2 (#503); D10 to D12 settled (#394 and #444 by #496, #395 by #496; #497 is the split-off API question); each other issue has a disposition in §6 and in the exit pull request |
+| Docs | The new requirements of WP-1 listed here; roadmap §3, the READMEs, and the ACFS and AINT entry gates updated | Met. APP-144 to APP-152 are in this table; roadmap §3 and §4, `README.md`, `refapp/README.md`, and the ACFS P3 and AINT entry gates updated by the exit pull request |
 
 ## 5. Risks
 
@@ -169,6 +170,14 @@ Each finding is a GitHub issue labelled `api-feedback`; this list names them as 
 | #444 | M6 WP-1 review | `SppConfig::packet` discards the proofs (D12) |
 | #484 | A2 WP-3b | `FramedPackets` allocates the uplink area per frame: a refapp fix, WP-2 |
 
-None new from A3 yet.
+Found by A3 and disposed of at the exit (each target named; the exit pull request lists them with the review follow-ups):
+
+| Issue | Found in | Finding | Disposition |
+|---|---|---|---|
+| #497 | A2 WP-3b, split from #394 | Whether FARM-1's `Deliver` or the receiver output carries the Segment Header | Deferred to its own track-R plan (a public API change, the maintainer's decision) |
+| #504 | A3 WP-4 | `Fop1Event`, `Fop1State`, `AlertReason` have no Blue Book number accessor | Open PR #515 awaits a maintainer answer |
+| #505 | A3 WP-4 | A caller that holds a transmit request until a slot copies the frame and keeps its own Out-flag bookkeeping | Deferred to the next plan that changes `Fop1`'s API (v1.1 with #254 and #235) |
+
+`next_deadline` of `Fop1` needed no workaround in the cases run (#505); whether it covers APP-074 with several engines stays a question for A5.
 
 Questions the work packages are expected to meet, to be filed only when the code shows them to be real: how a caller learns from `Fop1`'s outputs that a frame is ready and holds it for the next slot while the Out flag is Not_Ready (WP-4, D3 c); whether `next_deadline` of `Fop1` covers the timer of every state, so that APP-074 holds with several engines (WP-4); the number of calls and the copying between a validated TC frame, `Farm1`, and the `MapReassembler`, which A2 already filed as #394 (WP-3); whether the unlocked notification of FARM-1 gives the caller what it needs to purge the layers above (WP-3, D4 c).

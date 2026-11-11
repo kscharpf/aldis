@@ -529,13 +529,15 @@ fn intake_args(v: &Value, code: u16) -> Result<Vec<u64>, String> {
 /// and a TM frame (`down`) or TC frame (`up`) in a case of
 /// [`Level::Frames`](crate::scenario::Level::Frames) or `cop1`
 /// ([`crate::frame::decode_frame`]); the level is that of the case the header names, in
-/// `scenario`. In a frame-level case the frames also go through the engines of the nodes
-/// ([`FramedPackets`]): the downlink frames, in trace order, through the `PacketExtractor` of each
-/// VC; the uplink frames as delivered (`unit_delivered`, not those corrupted in transit), through
-/// FARM-1 (the flight node's `FrameUplink`) into the `MapReassembler`, not in trace order as a
-/// clean link. And every complete packet they hand out is
-/// decoded strictly too, and the packets the uplink gives are set against the flight node's own
-/// intake records ([`FlightIntake`]). Returns what was decoded.
+/// `scenario`.
+///
+/// In a frame-level case the frames also go through the engines of the nodes
+/// ([`FramedPackets`]). The downlink frames go in trace order through the `PacketExtractor` of
+/// each VC. The uplink frames go as delivered (`unit_delivered`, not those corrupted in transit,
+/// and not in trace order as on a clean link) through FARM-1 (the flight node's `FrameUplink`)
+/// into the `MapReassembler`. Every complete packet they hand out is decoded strictly too, and
+/// the packets the uplink gives are set against the flight node's own intake records
+/// ([`FlightIntake`]). Returns what was decoded.
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
@@ -571,10 +573,11 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             if direction(&v) == Some(Dir::Up)
                 && matches!(v["fault"].as_str(), Some("drop" | "flip" | "truncate"))
             {
+                let index = v["index"]
+                    .as_u64()
+                    .ok_or_else(|| at("fault record without an index".to_owned()))?;
                 framed.note_up_loss();
-                if let Some(index) = v["index"].as_u64() {
-                    corrupted_up.insert(index);
-                }
+                corrupted_up.insert(index);
             }
             continue;
         }

@@ -52,8 +52,16 @@ fn empty_case_matches_its_golden_trace() {
 
 #[test]
 fn every_golden_trace_is_canonical_and_reproduced() {
-    // req: APP-080, APP-085, APP-087
+    // req: APP-004, APP-080, APP-085, APP-087
+    // APP-004: the `a3-*` traces are frozen, so each is reproduced byte for byte by the engines;
+    // the A5, A6, and cFS reproductions are the checks of those milestones.
     let scenario = Scenario::load().unwrap();
+    let a3 = scenario
+        .cases
+        .iter()
+        .filter(|c| c.id.starts_with("a3-"))
+        .count();
+    assert_eq!(a3, 5);
     for c in &scenario.cases {
         let golden = std::fs::read_to_string(golden_path(&c.id)).unwrap();
         check_canonical(&golden).unwrap();

@@ -3,7 +3,7 @@
 **Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1, P1; the M1 codecs only), frames (A2, P2), and COP-1 (A3, P3), the last two through the link engine handles. It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A3 and the C ABI of M2–M4 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
 
-**Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (2026-11-07, [plan](a1-packets.md)) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). That of P2: P1, A2 exited (2026-11-10, [plan](a2-frames.md)), and the M4 engine handles in the C ABI. How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
+**Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (2026-11-07, [plan](a1-packets.md)) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). That of P2: P1, A2 exited (2026-11-10, [plan](a2-frames.md)), and the M4 engine handles in the C ABI. That of P3: P2, A3 exited (2026-11-11, [plan](a3-cop1.md)), and the M3 FARM-1 handle. ACFS is on hold until `aldis-ffi` is done (#490 D-a); the gate facts are recorded here, no work starts. How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -13,7 +13,7 @@
 | WP-3 Tooling: C header, trace scan, verify inputs | planned | — | Decisions D12, D15, D17 accepted |
 | WP-4 P1 Packets | planned | — | Entry: A1 exited; WP-1 to WP-3 |
 | WP-5 P2 Frames | planned | — | Entry: A2 exited (2026-11-10); the M4 engine handles in the C ABI |
-| WP-6 P3 COP-1 | planned | — | Entry: A3 exited; the M3 FARM-1 handle |
+| WP-6 P3 COP-1 | planned | — | Entry: A3 exited (2026-11-11); the M3 FARM-1 handle |
 | WP-7 Review and exit | planned | — | |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
@@ -141,7 +141,7 @@ Entry: A2 exited (2026-11-10); the M4 engine handles merged in the C ABI. The en
 
 ### WP-6 P3 COP-1 (M) — APP-110, APP-114
 
-Entry: A3 exited; the M3 FARM-1 handle merged. FARM-1 in `refapp_ci`, its CLCW in every frame, and its status in housekeeping.
+Entry: A3 exited (2026-11-11); the M3 FARM-1 handle merged. FARM-1 in `refapp_ci`, its CLCW in every frame, and its status in housekeeping.
 
 **Done when:** the nightly job reproduces every `a3-*` golden trace twice, the fault cases included.
 

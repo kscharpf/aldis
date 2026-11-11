@@ -451,3 +451,25 @@ fn the_flight_nodes_records_must_match_the_packets_reassembled_from_the_uplink()
     let e = decode_strict(&scenario, &wrong).unwrap_err();
     assert!(e.contains("cmd_received"), "{e}");
 }
+
+#[test]
+fn an_uplink_fault_without_an_index_fails_the_strict_decode() {
+    // req: APP-086
+    // The unit a fault hit must be known: a record without it is refused, not read as no fault.
+    let scenario = Scenario::load().unwrap();
+    let text = std::fs::read_to_string(refapp_harness::golden_path("a3-uplink-loss")).unwrap();
+    assert!(decode_strict(&scenario, &text).is_ok());
+    let planted: String = text
+        .split_inclusive('\n')
+        .map(|l| {
+            if l.contains("\"kind\":\"fault\",\"dir\":\"up\"") {
+                let (a, b) = l.split_once("\"index\":").unwrap();
+                format!("{a}{}", b.split_once(',').unwrap().1)
+            } else {
+                l.to_owned()
+            }
+        })
+        .collect();
+    assert_ne!(planted, text);
+    assert!(decode_strict(&scenario, &planted).is_err());
+}
