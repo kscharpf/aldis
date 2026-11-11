@@ -160,7 +160,11 @@ mod tests {
         // req: APP-153, APP-154
         let readme = crate::repo::read(&crate::repo::root().join("README.md")).unwrap();
         for r in &REGIONS {
-            assert!(splice(readme, r.begin, r.end, "x\n").is_ok(), "{}", r.begin);
+            assert!(
+                splice(&readme, r.begin, r.end, "x\n").is_ok(),
+                "{}",
+                r.begin
+            );
         }
     }
 }
