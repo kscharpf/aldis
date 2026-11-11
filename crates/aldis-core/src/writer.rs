@@ -594,18 +594,26 @@ mod tests {
         fail: bool,
     }
 
-    const OK: Hook = Hook {
-        layout: HookLayout::Any,
-        fail: false,
-    };
-    const FAILING: Hook = Hook {
-        layout: HookLayout::Any,
-        fail: true,
-    };
-    const NONE: Hook = Hook {
-        layout: HookLayout::Exact(SecurityLayout::NONE),
-        fail: false,
-    };
+    fn ok() -> Hook {
+        Hook {
+            layout: HookLayout::Any,
+            fail: false,
+        }
+    }
+
+    fn failing() -> Hook {
+        Hook {
+            layout: HookLayout::Any,
+            fail: true,
+        }
+    }
+
+    fn none() -> Hook {
+        Hook {
+            layout: HookLayout::Exact(SecurityLayout::NONE),
+            fail: false,
+        }
+    }
 
     impl SecurityHook for Hook {
         fn layout(&self) -> HookLayout {
@@ -648,7 +656,7 @@ mod tests {
         w.data_mut().fill(7);
         w.set_ocf(Ocf::decode([9, 9, 9, 9])).unwrap();
         assert_eq!(w.ocf_mut(), &[9, 9, 9, 9]);
-        let done = w.protect(&mut OK, &ctx()).unwrap().finalize();
+        let done = w.protect(&mut ok(), &ctx()).unwrap().finalize();
         assert_eq!((done.len(), done.is_empty()), (14, false));
         let body = done.octets().to_vec();
         // The seal wrote octet 2 before the FECF over all the octets before it.
@@ -686,7 +694,7 @@ mod tests {
         }
         let l = layout(spec(SecurityLayout::NONE, false, false, 3), 2);
         let mut out = [0_u8; 20];
-        let mut w = FrameWriter::reserve_fixed(&mut out, l.clone(), Id).unwrap();
+        let mut w = FrameWriter::reserve_fixed(&mut out, l, Id).unwrap();
         assert_eq!(w.secondary_data_mut().len(), 2);
         let mut w = FrameWriter::reserve_fixed(
             &mut out,
@@ -749,12 +757,12 @@ mod tests {
         );
         let w = FrameWriter::reserve_fixed(&mut out, l.clone(), Fix).unwrap();
         assert_eq!(
-            w.protect(&mut NONE, &ctx()).unwrap_err().field(),
+            w.protect(&mut none(), &ctx()).unwrap_err().field(),
             Some(field::SECURITY_HEADER_LEN)
         );
         let w = FrameWriter::reserve_fixed(&mut out, l, Fix).unwrap();
         assert_eq!(
-            w.protect(&mut FAILING, &ctx()).unwrap_err().kind(),
+            w.protect(&mut failing(), &ctx()).unwrap_err().kind(),
             ErrorKind::Security
         );
     }
@@ -785,7 +793,7 @@ mod tests {
         assert_eq!(w.security_header_mut(), &[0]);
         w.security_trailer_mut().copy_from_slice(&[8, 9]);
         w.data_mut().copy_from_slice(&[1, 2, 3, 4, 5, 6]);
-        let w = w.protect(2, &mut OK, &ctx()).unwrap();
+        let w = w.protect(2, &mut ok(), &ctx()).unwrap();
         let done = w.finalize();
         // Trailer is not moved by PreFilled: the trailer octets moved to follow 2 octets.
         let n = done.len();
@@ -843,18 +851,18 @@ mod tests {
         );
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(2, &mut NONE, &ctx()).unwrap_err().field(),
+            w.protect(2, &mut none(), &ctx()).unwrap_err().field(),
             Some(field::SECURITY_HEADER_LEN)
         );
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(9, &mut OK, &ctx()).unwrap_err().field(),
+            w.protect(9, &mut ok(), &ctx()).unwrap_err().field(),
             Some(field::USER_LEN)
         );
         // A failing hook leaves the unfinished header: version 3 again.
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(2, &mut FAILING, &ctx()).unwrap_err().kind(),
+            w.protect(2, &mut failing(), &ctx()).unwrap_err().kind(),
             ErrorKind::Security
         );
         assert_eq!(out[0], 3);
