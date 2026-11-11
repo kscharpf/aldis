@@ -105,8 +105,8 @@ fn a_node_pair_at_cop1_with_every_fault_kind_reproduces_a_hand_written_trace() {
     let scenario = Scenario::load().unwrap();
     let down = RefCell::new(Vec::new());
     let up = RefCell::new(Vec::new());
-    // The uplink: an AD frame at each of the first four slots (0, 250, 500, 750 ms), then the
-    // Unlock of a Type-BC frame at 1 s, as a ground node with FOP-1 sends them.
+    // The uplink: an AD frame at each of the first five slots (0, 250, 500, 750, 1000 ms), then
+    // the Unlock of a Type-BC frame at 1.25 s, as a ground node with FOP-1 sends them.
     let uplink = [
         ad(0, &PACKET),
         ad(1, &PACKET),
@@ -382,23 +382,27 @@ fn the_ad_and_bc_frames_decode_by_level() {
 }
 
 #[test]
-fn the_uplink_reassembly_area_is_kept_across_frames() {
+fn a_packet_split_over_uplink_frames_comes_out_with_its_last_segment() {
     // req: APP-086
-    // #484: the area belongs to the struct; a packet in each of several frames, and a Type-BC
-    // frame between them, are all handed out.
+    // A packet in a First and a Last segment (Segment Header 0x40, 0x80; MAP 0) comes out with
+    // the Last, and a Type-BC frame between the two changes nothing. This does not test #484
+    // (the area kept in the struct): the reassembler holds the SDU in its own buffer, so no
+    // behaviour tells a kept area from a fresh one per call; that is a performance fix only.
     let s = Scenario::load().unwrap();
     let mut framed = FramedPackets::new(&s).unwrap();
-    let mut packets = 0;
-    for frame in [
-        ad(0, &PACKET),
-        bc(ControlCommand::Unlock),
-        ad(1, &PACKET),
-        ad(2, &PACKET),
-    ] {
+    let (first, last) = PACKET.split_at(3);
+    let segment =
+        |sequence: u8, header: u8, data: &[u8]| tc(0x00, sequence, &[&[header], data].concat());
+    let uplink = [
+        (segment(0, 0x40, first), 0),
+        (bc(ControlCommand::Unlock), 0),
+        (segment(1, 0x80, last), 1),
+        (ad(2, &PACKET), 1),
+    ];
+    for (frame, expected) in uplink {
         let d = decode_frame(&s, Level::Cop1, Dir::Up, &frame).unwrap();
-        packets += framed.take(Dir::Up, &d).unwrap();
+        assert_eq!(framed.take(Dir::Up, &d).unwrap(), expected);
     }
-    assert_eq!(packets, 3);
 }
 
 const fn directive(at_us: u64, directive: Fop1Directive) -> OpsEntry {
