@@ -347,6 +347,10 @@ pub enum Farm1Notify {
 pub enum Farm1Output {
     /// The Accept action: the FDU is in the output area, and the Higher Procedures are to be
     /// signalled (232.1 §6.2.2).
+    ///
+    /// The delivered data is the frame data field after the Segment Header (COP-033). A caller
+    /// that feeds it to a `MapReassembler<Tc>` (`FduIn`) puts `SegmentHeader::octet` of the
+    /// frame back in front, in a buffer it owns.
     Deliver {
         /// Type-AD or Type-BD.
         kind: FduKind,
