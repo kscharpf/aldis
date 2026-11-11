@@ -256,7 +256,7 @@ pub const ROOT_CONFIG: PathList = PathList {
 };
 
 /// The README, which the `refapp` check reads besides `RUST`: its sequence diagram must be the one
-/// decoded from the golden trace (APP-153). Also in `DOCS`, so a change to it runs `spec` too.
+/// decoded from the golden trace and its demo output the one of a fresh run (APP-153, APP-154). Also in `DOCS`, so a change to it runs `spec` too.
 pub const README_DIAGRAM: PathList = PathList {
     name: "readme-diagram",
     patterns: &["README.md"],
@@ -805,8 +805,8 @@ cargo run -p refapp-harness --locked -- gen-scenario --check
 cargo run -p refapp-harness --locked -- check-golden
 cargo run -p refapp-harness --locked -- compare
 cd ..
-# The sequence diagram and the demo output of README.md are decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
-# (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
+# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl and its demo
+# output from a fresh run compared with that trace (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
 cargo xtask readme-diagram
 ";
 

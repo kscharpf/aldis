@@ -8,7 +8,7 @@ use refapp_harness::scenario::{Scenario, generate, refapp_dir};
 use refapp_harness::{demo, diagram, golden_path, manifest, run_case, trace};
 
 const HELP: &str = "\
-usage: cargo run -p refapp-harness -- <command>
+usage: cargo run --manifest-path refapp/Cargo.toml -p refapp-harness -- <command>
 
 commands:
   run <case> [--out <dir>]   run a case; write <case>.jsonl and <case>.manifest.json
@@ -114,16 +114,9 @@ fn demo_cmd() -> Result<usize, String> {
     let path = golden_path(case);
     let expected = std::fs::read_to_string(&path)
         .map_err(|e| format!("{}: {e} (bless the case first)", path.display()))?;
-    match trace::compare(&expected, &run) {
-        Ok(()) => {
-            println!("verdict: the run matches refapp/golden/{case}.jsonl");
-            Ok(0)
-        }
-        Err(m) => {
-            println!("verdict: the run differs from refapp/golden/{case}.jsonl\n{m}");
-            Ok(1)
-        }
-    }
+    let (text, matches) = demo::verdict(case, &expected, &run);
+    println!("{text}");
+    Ok(usize::from(!matches))
 }
 
 fn dispatch(args: &[&str]) -> Result<usize, String> {

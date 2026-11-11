@@ -9,6 +9,24 @@ use std::fmt::Write as _;
 
 use crate::diagram::{Row, rows};
 use crate::scenario::Scenario;
+use crate::trace::compare;
+
+/// The verdict line of the demo: whether the `run` equals the golden trace `expected` of `case`
+/// (APP-154, APP-085), and so whether the command succeeds. A difference names the first
+/// differing line.
+#[must_use]
+pub fn verdict(case: &str, expected: &str, run: &str) -> (String, bool) {
+    match compare(expected, run) {
+        Ok(()) => (
+            format!("verdict: the run matches refapp/golden/{case}.jsonl"),
+            true,
+        ),
+        Err(m) => (
+            format!("verdict: the run differs from refapp/golden/{case}.jsonl\n{m}"),
+            false,
+        ),
+    }
+}
 
 /// The lines of the demo for the trace `text`, each ending in a newline.
 ///

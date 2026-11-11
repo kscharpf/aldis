@@ -1,9 +1,10 @@
-//! `xtask readme-diagram`: the generated regions of the README, both decoded from the golden
-//! trace of the COP-1 run over a lossy link: its sequence diagram (APP-153) and the output of the
-//! one-command demo (APP-154).
+//! `xtask readme-diagram`: the generated regions of the README for the COP-1 run over a lossy
+//! link: its sequence diagram (APP-153), decoded from the golden trace, and the output of the
+//! one-command demo (APP-154), decoded from a fresh run that the demo compares with the golden
+//! trace.
 //!
-//! `refapp-harness sequence-diagram` and `refapp-harness demo` decode
-//! `refapp/golden/a3-uplink-loss.jsonl` with the strict codecs. This module splices what they
+//! `refapp-harness sequence-diagram` decodes `refapp/golden/a3-uplink-loss.jsonl` and
+//! `refapp-harness demo` decodes a run of the case, both with the strict codecs. This module splices what they
 //! print between the marker comments of each [`Region`] of `README.md`. Without `--write` it
 //! fails when a committed region differs, and `cargo xtask fix` rewrites it. Only this tool
 //! writes the regions; the check reads `README.md` and the trace, both inputs of the

@@ -1,6 +1,6 @@
 //! The one-command demo of the README (A3; APP-154).
 
-use refapp_harness::demo::render;
+use refapp_harness::demo::{render, verdict};
 use refapp_harness::diagram::CASE;
 use refapp_harness::scenario::Scenario;
 use refapp_harness::{golden_path, run_case};
@@ -35,7 +35,27 @@ fn demo_of_the_run_is_demo_of_the_golden_trace() {
 }
 
 #[test]
-fn a_case_without_frames_is_an_error() {
+fn a_run_equal_to_the_golden_trace_passes() {
     // req: APP-154
-    assert!(demo("a1-nominal").is_err());
+    let golden = std::fs::read_to_string(golden_path(CASE)).unwrap();
+    let (text, ok) = verdict(CASE, &golden, &run_case(CASE).unwrap());
+    assert!(ok, "{text}");
+    assert_eq!(
+        text,
+        "verdict: the run matches refapp/golden/a3-uplink-loss.jsonl"
+    );
+}
+
+#[test]
+fn a_run_that_differs_from_the_golden_trace_fails() {
+    // req: APP-154
+    let run = run_case(CASE).unwrap();
+    let changed = run.replacen("\"", "'", 1);
+    let (text, ok) = verdict(CASE, &changed, &run);
+    assert!(!ok, "{text}");
+    assert!(
+        text.starts_with("verdict: the run differs from refapp/golden/a3-uplink-loss.jsonl\n"),
+        "{text}"
+    );
+    assert!(text.contains("first difference at line 1"), "{text}");
 }
