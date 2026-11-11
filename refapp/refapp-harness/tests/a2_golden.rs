@@ -136,6 +136,10 @@ fn flight_output(case: &str) -> Vec<String> {
         .collect()
 }
 
+const CMD_EXECUTED: u64 = 1;
+const TABLE_REJECTED: u64 = 0x11;
+const DUMP_COMPLETED: u64 = 0x20;
+const PAYLOAD_MODE: u64 = 0x30;
 const SLOT: u64 = 125_000;
 const DELAY: u64 = 10_000;
 
@@ -204,7 +208,7 @@ fn nominal_downlink_follows_the_hand_derived_schedule() {
     vc0.push(102);
     let mut vc1: BTreeMap<u64, u8> = vc1_slots()
         .into_iter()
-        .map(|(s, (_, f))| (s, f as u8))
+        .map(|(s, (_, f))| (s, u8::try_from(f).unwrap()))
         .collect();
     // the dump stream and payload packet 6: frame -> VC count 12..17 are checked below.
     for s in [97, 99, 100, 101, 103, 110] {
@@ -286,7 +290,7 @@ fn nominal_fields_hold_the_packets_of_the_schedule() {
         .into_iter()
         .collect();
     for k in 0..30_u64 {
-        let i = (8 * k + 2) as usize;
+        let i = usize::try_from(8 * k + 2).unwrap();
         assert_eq!(down[i].1[4..6], [0x18, 0x00], "frame {i}: FHP 0");
         let n = events_at.get(&k).copied().unwrap_or(0);
         let mut expected = vec![(17, EVENT); n];
@@ -314,7 +318,7 @@ fn nominal_fields_hold_the_packets_of_the_schedule() {
     // VC 1, payload packets: first field at T(n) (FHP 0), the other 201 octets and an idle
     // packet of 10 octets at T(n) + 1 s (FHP 201).
     for (slot, (_, fhp)) in vc1_slots() {
-        let i = slot as usize;
+        let i = usize::try_from(slot).unwrap();
         let f = &down[i].1;
         assert_eq!(f[1], 0x53, "frame {i} is on VC 1");
         if fhp == 0 {
@@ -347,7 +351,7 @@ fn nominal_fields_hold_the_packets_of_the_schedule() {
         assert_eq!(down[i].1[3], vc_count, "frame {i}: VC Frame Count");
         assert_eq!(
             u16::from_be_bytes([down[i].1[4], down[i].1[5]]) & 0x07FF,
-            fhp as u16,
+            u16::try_from(fhp).unwrap(),
             "frame {i}: First Header Pointer"
         );
     }
@@ -647,10 +651,6 @@ fn uplink_faults_have_no_recovery() {
             )
         })
         .collect();
-    const CMD_EXECUTED: u64 = 1;
-    const TABLE_REJECTED: u64 = 0x11;
-    const DUMP_COMPLETED: u64 = 0x20;
-    const PAYLOAD_MODE: u64 = 0x30;
     let expected_reports = vec![
         (10_000_000, CMD_EXECUTED, vec![3, 1, 0]),
         (10_000_000, TABLE_REJECTED, vec![1, 1, 0]),
