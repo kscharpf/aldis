@@ -43,6 +43,23 @@ pub enum Fop1State {
     Initial = 5,
 }
 
+impl Fop1State {
+    /// The number of the state in 232.1-B-2 §5.1.2 and Table 5-1: 1 for S1 to 6 for S6 (COP-001).
+    ///
+    /// Not the table index of `self`, which is 0 for S1.
+    #[must_use]
+    pub const fn number(self) -> u8 {
+        match self {
+            Self::Active => 1,
+            Self::RetransmitWithoutWait => 2,
+            Self::RetransmitWithWait => 3,
+            Self::InitializingWithoutBcFrame => 4,
+            Self::InitializingWithBcFrame => 5,
+            Self::Initial => 6,
+        }
+    }
+}
+
 /// FOP-1 Events (CCSDS 232.1-B-2 §5.3, Table 5-1, COP-001, COP-004, RS-021).
 ///
 /// Events E1 through E46 and E101 through E104 (50 variants total) classify:
@@ -154,6 +171,68 @@ pub enum Fop1Event {
     E103 = 48,
     /// E104: Timer expires, Count<Limit, `Timeout_Type`=1.
     E104 = 49,
+}
+
+impl Fop1Event {
+    /// The number of the event in 232.1-B-2 §5.3 and Table 5-1: 1 to 46 for E1 to E46 and 101 to
+    /// 104 for E101 to E104 (COP-001, COP-004).
+    ///
+    /// Not the table index of `self`, which is 0 for E1 and 46 for E101.
+    #[must_use]
+    pub const fn number(self) -> u8 {
+        match self {
+            Self::E1 => 1,
+            Self::E2 => 2,
+            Self::E3 => 3,
+            Self::E4 => 4,
+            Self::E5 => 5,
+            Self::E6 => 6,
+            Self::E7 => 7,
+            Self::E8 => 8,
+            Self::E9 => 9,
+            Self::E10 => 10,
+            Self::E11 => 11,
+            Self::E12 => 12,
+            Self::E13 => 13,
+            Self::E14 => 14,
+            Self::E15 => 15,
+            Self::E16 => 16,
+            Self::E17 => 17,
+            Self::E18 => 18,
+            Self::E19 => 19,
+            Self::E20 => 20,
+            Self::E21 => 21,
+            Self::E22 => 22,
+            Self::E23 => 23,
+            Self::E24 => 24,
+            Self::E25 => 25,
+            Self::E26 => 26,
+            Self::E27 => 27,
+            Self::E28 => 28,
+            Self::E29 => 29,
+            Self::E30 => 30,
+            Self::E31 => 31,
+            Self::E32 => 32,
+            Self::E33 => 33,
+            Self::E34 => 34,
+            Self::E35 => 35,
+            Self::E36 => 36,
+            Self::E37 => 37,
+            Self::E38 => 38,
+            Self::E39 => 39,
+            Self::E40 => 40,
+            Self::E41 => 41,
+            Self::E42 => 42,
+            Self::E43 => 43,
+            Self::E44 => 44,
+            Self::E45 => 45,
+            Self::E46 => 46,
+            Self::E101 => 101,
+            Self::E102 => 102,
+            Self::E103 => 103,
+            Self::E104 => 104,
+        }
+    }
 }
 
 /// `Suspend_State` SS: the state FOP-1 was in when the AD Service was suspended (CCSDS
@@ -1546,3 +1625,86 @@ pub const FOP1_TABLE: [[Fop1Cell; EVENT_COUNT]; STATE_COUNT] = [
         NOT_APPLICABLE,
     ],
 ];
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod number_tests {
+    use super::{Fop1Event, Fop1State};
+
+    // req: COP-001
+    #[test]
+    fn state_numbers_are_s1_to_s6() {
+        let states = [
+            (Fop1State::Active, 1),
+            (Fop1State::RetransmitWithoutWait, 2),
+            (Fop1State::RetransmitWithWait, 3),
+            (Fop1State::InitializingWithoutBcFrame, 4),
+            (Fop1State::InitializingWithBcFrame, 5),
+            (Fop1State::Initial, 6),
+        ];
+        for (state, number) in states {
+            assert_eq!(state.number(), number);
+        }
+    }
+
+    // req: COP-001, COP-004
+    #[test]
+    fn event_numbers_are_the_e_numbers_of_table_5_1() {
+        let events = [
+            (Fop1Event::E1, 1),
+            (Fop1Event::E2, 2),
+            (Fop1Event::E3, 3),
+            (Fop1Event::E4, 4),
+            (Fop1Event::E5, 5),
+            (Fop1Event::E6, 6),
+            (Fop1Event::E7, 7),
+            (Fop1Event::E8, 8),
+            (Fop1Event::E9, 9),
+            (Fop1Event::E10, 10),
+            (Fop1Event::E11, 11),
+            (Fop1Event::E12, 12),
+            (Fop1Event::E13, 13),
+            (Fop1Event::E14, 14),
+            (Fop1Event::E15, 15),
+            (Fop1Event::E16, 16),
+            (Fop1Event::E17, 17),
+            (Fop1Event::E18, 18),
+            (Fop1Event::E19, 19),
+            (Fop1Event::E20, 20),
+            (Fop1Event::E21, 21),
+            (Fop1Event::E22, 22),
+            (Fop1Event::E23, 23),
+            (Fop1Event::E24, 24),
+            (Fop1Event::E25, 25),
+            (Fop1Event::E26, 26),
+            (Fop1Event::E27, 27),
+            (Fop1Event::E28, 28),
+            (Fop1Event::E29, 29),
+            (Fop1Event::E30, 30),
+            (Fop1Event::E31, 31),
+            (Fop1Event::E32, 32),
+            (Fop1Event::E33, 33),
+            (Fop1Event::E34, 34),
+            (Fop1Event::E35, 35),
+            (Fop1Event::E36, 36),
+            (Fop1Event::E37, 37),
+            (Fop1Event::E38, 38),
+            (Fop1Event::E39, 39),
+            (Fop1Event::E40, 40),
+            (Fop1Event::E41, 41),
+            (Fop1Event::E42, 42),
+            (Fop1Event::E43, 43),
+            (Fop1Event::E44, 44),
+            (Fop1Event::E45, 45),
+            (Fop1Event::E46, 46),
+            (Fop1Event::E101, 101),
+            (Fop1Event::E102, 102),
+            (Fop1Event::E103, 103),
+            (Fop1Event::E104, 104),
+        ];
+        assert_eq!(events.len(), super::EVENT_COUNT);
+        for (event, number) in events {
+            assert_eq!(event.number(), number);
+        }
+    }
+}

@@ -102,6 +102,27 @@ pub enum AlertReason {
     Term,
 }
 
+impl AlertReason {
+    /// The position of the reason in Table 4-4 of 232.1-B-2, 1 for Limit to 8 for Term (COP-004).
+    ///
+    /// The Blue Book gives each reason a name (Limit, T1, Lockout, Synch, NN(R), CLCW, LLIF, Term)
+    /// and no number; this is the order of the table, the numbering of the reference application
+    /// (`docs/reference-application.md` §7.4).
+    #[must_use]
+    pub const fn number(self) -> u8 {
+        match self {
+            Self::Limit => 1,
+            Self::T1 => 2,
+            Self::Lockout => 3,
+            Self::Synch => 4,
+            Self::NnR => 5,
+            Self::Clcw => 6,
+            Self::Llif => 7,
+            Self::Term => 8,
+        }
+    }
+}
+
 /// An Alert notification emitted by FOP-1 (CCSDS 232.1-B-2 §4.3, §5.2.15 e, Table 4-4; COP-004).
 ///
 /// It names the reason, the event that caused it, and the state before the event (COP-004).
@@ -160,4 +181,28 @@ pub struct DirectiveNotify<H> {
     pub handle: H,
     /// Notification status.
     pub status: DirectiveNotification,
+}
+
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod number_tests {
+    use super::AlertReason;
+
+    // req: COP-004
+    #[test]
+    fn reason_numbers_follow_table_4_4() {
+        let reasons = [
+            (AlertReason::Limit, 1),
+            (AlertReason::T1, 2),
+            (AlertReason::Lockout, 3),
+            (AlertReason::Synch, 4),
+            (AlertReason::NnR, 5),
+            (AlertReason::Clcw, 6),
+            (AlertReason::Llif, 7),
+            (AlertReason::Term, 8),
+        ];
+        for (reason, number) in reasons {
+            assert_eq!(reason.number(), number);
+        }
+    }
 }
