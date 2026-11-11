@@ -395,7 +395,7 @@ mod tests {
         let mut side = Side::new(Role::Flight, &mut probe, slot, Vec::new());
         let mut sink: Vec<crate::log::Event> = Vec::new();
         side.step(Micros::new(0), &[], &mut sink).unwrap();
-        // One slot late (slot 1 served at 130 000): nothing missed.
+        // Slot 1 is due at 125 000; a step at 130 000 is still in slot 1: nothing missed.
         side.step(Micros::new(130_000), &[], &mut sink).unwrap();
         assert_eq!(sink.len(), 0);
         // Slot 2 is due at 250 000; a step at 400 000 is in slot 3, so slot 2 is skipped.
