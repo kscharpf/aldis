@@ -2,7 +2,7 @@
 //! COP-011, LNK-001, RS-023; OI-93).
 //!
 //! [`Fop1Format`] is what FOP-1 needs of a protocol beyond [`FrameFormat`]: the checked channel
-//! its frames belong to, and the start of a frame in the codec's own [`FramePlan`]. FOP-1 itself
+//! its frames belong to, and the start of a frame in the codec's own [`FramePlan`](aldis_core::writer::FramePlan). FOP-1 itself
 //! is generic over it, and fills the data field, fixes its length, and finishes the frame the same
 //! way for every protocol; the lengths of a frame come from [`FrameFormat`], so FOP-1 restates no
 //! fact of a Blue Book.
