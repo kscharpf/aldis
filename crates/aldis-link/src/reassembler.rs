@@ -34,12 +34,12 @@
 //! the TFDZ, packets that do not tile a blocked FDU or a reassembled packet that disagrees with its
 //! own length field, a PVN other than 0 and 7.
 //!
-//! **Bounds (LNK-074, LNK-075, API-062).** One `Fdu` returns at most [`MAP_REASSEMBLER_MAX_ACTIONS`]
-//! actions: the events `GapDiscard` and `SequenceViolation` or `SduTooLong`, and the delivery,
-//! never all three (see the constant). It writes at most `max_sdu_len − 1 + z` octets to the
-//! output area, `z` being the octets of the user data of the FDU: the SDU in progress and the data
-//! of this FDU; an area shorter than that fails the input with `BufferTooSmall`. `Reconfigure`
-//! writes nothing.
+//! **Bounds (LNK-074, LNK-075, API-062).** One `Fdu` returns at most
+//! [`MAP_REASSEMBLER_MAX_ACTIONS`] actions: the events `GapDiscard` and `SequenceViolation` or
+//! `SduTooLong`, and the delivery, never all three (see the constant). It writes at most
+//! `max_sdu_len − 1 + z` octets to the output area, `z` being the octets of the user data of the
+//! FDU: the SDU in progress and the data of this FDU; an area shorter than that fails the input
+//! with `BufferTooSmall`. `Reconfigure` writes nothing.
 
 use core::fmt::Debug;
 
@@ -296,8 +296,8 @@ pub struct FduIn<'a, P: ReassemblerProtocol> {
     /// frame data field after the Segment Header, so it puts `SegmentHeader::octet` back in front,
     /// in a buffer it owns, before it feeds a `MapReassembler<Tc>`. Without it the MAP is read
     /// from the first data octet: for a MAP that is not configured the result is
-    /// [`ReassemblyEvent::UnknownMap`] and the `unknown_maps` counter of [`ReassemblerStatus`], with no
-    /// error; for a MAP that is configured the data is reassembled into the wrong MAP.
+    /// [`ReassemblyEvent::UnknownMap`] and the `unknown_maps` counter of [`ReassemblerStatus`],
+    /// with no error; for a MAP that is configured the data is reassembled into the wrong MAP.
     pub data: &'a [u8],
 }
 
@@ -455,7 +455,8 @@ pub struct MapReassembler<P: ReassemblerProtocol, const M: usize, const S: usize
 
 /// Everything of a [`MapReassembler`] but its assembly buffers (see [`crate::inplace`]).
 ///
-/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+/// LNK-003; docs/04-engines.md §3.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
     config: MapReassemblerConfig<P, M>,
@@ -466,7 +467,8 @@ pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
 /// The assembly buffers of a [`MapReassembler`]: `S` octets for each of `M` MAPs, valid when all
 /// zero, which is the empty state (see [`crate::inplace`]).
 ///
-/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+/// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+/// LNK-003; docs/04-engines.md §3.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
@@ -476,7 +478,8 @@ pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
 impl<const M: usize, const S: usize> MapReassemblerBuffers<M, S> {
     /// Empty buffers.
     ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+    /// LNK-003; docs/04-engines.md §3.3.
     pub const ZERO: Self = Self { maps: [[0; S]; M] };
 }
 
@@ -494,11 +497,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
 
     /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
     ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+    /// LNK-003; docs/04-engines.md §3.3.
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
     /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
     ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+    /// LNK-003; docs/04-engines.md §3.3.
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a reassembler with no SDU in progress: the part of [`Self::new`] that is
@@ -507,7 +512,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// # Errors
     /// As [`Self::new`].
     ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
+    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
+    /// LNK-003; docs/04-engines.md §3.3.
     pub fn new_head(config: MapReassemblerConfig<P, M>) -> Result<MapReassemblerHead<P, M>> {
         MapReassembler::<P, M, S>::check_capacity(&config)?;
         Ok(MapReassemblerHead {
