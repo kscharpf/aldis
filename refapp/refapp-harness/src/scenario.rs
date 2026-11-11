@@ -1420,9 +1420,10 @@ mod tests {
             for v in [min, max] {
                 let mut doc: serde_json::Value =
                     serde_json::from_str(&mutated(pointer, v)).unwrap();
-                if pointer == "/link/frame_slot_us" {
-                    // The ops' execution times must lie on the slot grid (APP-061), a rule
-                    // across fields that no slot but the A0 one meets; this test is of the range.
+                if pointer == "/link/frame_slot_us" || pointer == "/link/uplink_slot_us" {
+                    // The ops' execution times must lie on the slot grid (APP-061), and the
+                    // frame-level cases' arrivals on the uplink grid (APP-141), rules across
+                    // fields that no slot but the shipped one meets; this test is of the range.
                     for case in doc["cases"].as_array_mut().unwrap() {
                         case.as_object_mut().unwrap().remove("ops");
                     }
