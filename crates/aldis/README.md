@@ -8,19 +8,31 @@ Outside the layers of the [architecture](../../docs/01-architecture.md) §2: it 
 
 ## Example
 
-With `aldis = { …, features = ["core", "spp"] }` in `Cargo.toml`, decode a Space Packet through the facade:
+With `aldis = { …, features = ["core", "spp"] }` in `Cargo.toml`, encode a Space Packet through the facade and decode it again. The root [README](../../README.md) shows this example, and `cargo xtask consistency` checks that the two are the same:
 
 ```rust
-use aldis::spp::SpacePacket;
+use aldis::core::ids::{Apid, SeqCount};
+use aldis::spp::{
+    PRIMARY_HEADER_LEN, PacketFields, PacketType, SequenceFlags, SpacePacket, SppConfig, encode,
+};
 
 fn main() -> Result<(), aldis::core::Error> {
-    // Vector spp-dec-001 of test-vectors/spp/decode_valid.json: a telemetry packet,
-    // APID 0x123, unsegmented, sequence count 5, three octets of data.
-    let bytes = [0x01, 0x23, 0xC0, 0x05, 0x00, 0x02, 0x01, 0x02, 0x03];
-    let packet = SpacePacket::decode(&bytes)?;
-    assert_eq!(packet.apid().get(), 0x123);
-    assert_eq!(packet.sequence_count().get(), 5);
-    assert_eq!(packet.data_field(), [0x01, 0x02, 0x03]);
+    let fields = PacketFields {
+        packet_type: PacketType::Telemetry,
+        apid: Apid::try_from(0x123)?,
+        sequence_flags: SequenceFlags::Unsegmented,
+        sequence_count: SeqCount::try_from(42)?,
+    };
+    let packet = SppConfig::DEFAULT.packet(fields, &[], b"hello")?;
+
+    let mut buf = [0_u8; 64];
+    let len = encode(&packet, &mut buf)?;
+    assert_eq!(len, PRIMARY_HEADER_LEN + 5);
+
+    let decoded = SpacePacket::decode(&buf[..len])?;
+    assert_eq!(decoded.apid().get(), 0x123);
+    assert_eq!(decoded.sequence_count().get(), 42);
+    assert_eq!(decoded.data_field(), b"hello");
     Ok(())
 }
 ```
