@@ -33,11 +33,15 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+from time import sleep
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_LOCK = REPO / "toolchains.lock"
+# Seconds to wait after a failed download attempt, one entry per retry (the first attempt and three retries;
+# maintainer, 2026-11-11, #361). An offline test sets this to (0, 0) or replaces `sleep`.
+RETRY_DELAYS = (10, 30, 90)
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -213,7 +217,7 @@ def fetch(url: str, expected: str, dest_dir: Path) -> Path:
         print(f"setup-cpp: cached {path.name} (sha256 ok)")
         return path
     partial = path.with_name(path.name + ".part")
-    for attempt in (1, 2):  # one retry around the download only (c0 plan risk table)
+    for attempt in range(1, len(RETRY_DELAYS) + 2):  # retries around the download only (c0 plan risk table)
         try:
             print(f"setup-cpp: downloading {url}")
             request = urllib.request.Request(url, headers={"User-Agent": "aldis-setup-cpp"})
@@ -221,9 +225,11 @@ def fetch(url: str, expected: str, dest_dir: Path) -> Path:
                 shutil.copyfileobj(response, out, 1 << 20)
             break
         except OSError as e:
-            if attempt == 2:
+            if attempt > len(RETRY_DELAYS):
                 raise Failure(f"download failed: {url}: {e}") from e
-            print(f"setup-cpp: download failed ({e}); retrying once")
+            delay = RETRY_DELAYS[attempt - 1]
+            print(f"setup-cpp: download failed ({e}); attempt {attempt} of {len(RETRY_DELAYS) + 1}, retrying in {delay} s")
+            sleep(delay)
     actual = sha256(partial)
     if actual != expected:
         partial.unlink()
