@@ -195,7 +195,7 @@ pub fn records(
         .into_iter()
         .flatten()
         .min();
-        if case.level == Level::Frames {
+        if case.level.has_frames() {
             for period in [link.frame_slot_us.get(), link.uplink_slot_us.get()] {
                 next = next.into_iter().chain(next_slot(t, period)).min();
             }
@@ -244,10 +244,7 @@ fn step(
     t: Micros,
     delivered: &[Vec<u8>],
 ) -> Result<(), String> {
-    let slot = match world.level {
-        Level::Packets => true,
-        Level::Frames => t.is_multiple_of(side.slot_us),
-    };
+    let slot = !world.level.has_frames() || t.is_multiple_of(side.slot_us);
     let ops_from = side.ops_done;
     // bound: each pass takes one entry of the script, and `ops_done` stops at its length.
     while side.next_op().is_some_and(|at| at <= t) {
@@ -287,9 +284,9 @@ fn step(
     let unit_count = out.0.iter().filter(|o| matches!(o, Out::Unit(_))).count();
     let allowed = match (world.level, side.id, slot) {
         (Level::Packets, _, _) => true,
-        (Level::Frames, NodeId::Flight, true) => unit_count == 1,
-        (Level::Frames, NodeId::Ground, true) => unit_count <= 1,
-        (Level::Frames, _, false) => unit_count == 0,
+        (Level::Frames | Level::Cop1, NodeId::Flight, true) => unit_count == 1,
+        (Level::Frames | Level::Cop1, NodeId::Ground, true) => unit_count <= 1,
+        (Level::Frames | Level::Cop1, _, false) => unit_count == 0,
     };
     if !allowed {
         return Err(format!(

@@ -15,7 +15,10 @@ use aldis::link::reassembler::{
     ReassemblerOutput, TcReassemblerParams,
 };
 use aldis::spp::SpacePacket;
-use aldis::tc::{MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame, VcConfig, VcTable};
+use aldis::tc::{
+    ControlCommand, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame,
+    VcConfig, VcTable,
+};
 use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
 
 use crate::scenario::{Level, Scenario};
@@ -32,13 +35,29 @@ pub struct DecodedFrame {
     pub pointer: Option<u16>,
     /// TC: the Segment Header octet of a Type-D frame on a VC that has one.
     pub segment_header: Option<u8>,
-    /// TC: the frame is a Type-C frame (a control command, no packets).
-    pub control: bool,
+    /// TC: the frame type, the Bypass and Control Command Flags (232.0 Table 4-1).
+    pub frame_type: Option<FrameType>,
+    /// TC: the Frame Sequence Number N(S) of the Primary Header (232.0 §4.1.2.8).
+    pub sequence: Option<u8>,
+    /// TC: the Control Command of a Type-BC frame (232.0 §4.1.3.3).
+    pub control_command: Option<ControlCommand>,
+}
+
+impl DecodedFrame {
+    /// The frame is a Type-BC frame: a control command, no packets.
+    #[must_use]
+    pub const fn is_control(&self) -> bool {
+        matches!(self.frame_type, Some(FrameType::Bc))
+    }
 }
 
 /// Decodes a link unit as a TM (`down`) or TC (`up`) frame, strictly (APP-086).
 ///
 /// A unit of a [`Level::Packets`] case is a Space Packet ([`crate::trace::decode_strict`]).
+///
+/// The frame types a TC frame may have depend on the level (APP-043, APP-090): at
+/// [`Level::Frames`] the ground node sends Type-BD frames only; at [`Level::Cop1`] it sends
+/// Type-AD, Type-BD, and Type-BC frames (232.0 Table 4-1).
 ///
 /// The frame must carry the Spacecraft ID of the scenario (APP-026). A TM frame must have
 /// exactly the configured frame length; a TC frame is checked only against the maximum frame
@@ -46,8 +65,8 @@ pub struct DecodedFrame {
 ///
 /// # Errors
 /// If `level` is [`Level::Packets`], the managed parameters of the scenario do not form a
-/// configuration, or the codec rejects the frame (FECF, lengths, fields) or the frame has
-/// another Spacecraft ID.
+/// configuration, or the codec rejects the frame (FECF, lengths, fields), the frame has
+/// another Spacecraft ID, or a TC frame has a type its level does not use.
 pub fn decode_frame(
     scenario: &Scenario,
     level: Level,
@@ -76,7 +95,9 @@ pub fn decode_frame(
                 data: frame.data_field().to_vec(),
                 pointer: Some(frame.header().first_header_pointer.get()),
                 segment_header: None,
-                control: false,
+                frame_type: None,
+                sequence: None,
+                control_command: None,
             })
         }
         Dir::Up => {
@@ -117,12 +138,20 @@ pub fn decode_frame(
                     frame.spacecraft_id().get()
                 ));
             }
+            let frame_type = frame.frame_type();
+            if level == Level::Frames && frame_type != FrameType::Bd {
+                return Err(format!(
+                    "TC frame of type {frame_type:?} in a frame-level case, which has Type-BD only"
+                ));
+            }
             Ok(DecodedFrame {
                 vcid: frame.vc_id().get(),
                 data: frame.data_field().to_vec(),
                 pointer: None,
                 segment_header: frame.segment_header().map(aldis::tc::SegmentHeader::octet),
-                control: frame.control_command().is_some(),
+                frame_type: Some(frame_type),
+                sequence: Some(frame.sequence_number().get()),
+                control_command: frame.control_command(),
             })
         }
     }
@@ -151,6 +180,8 @@ pub struct FramedPackets {
     realtime: Extractor,
     payload: Extractor,
     extract_area: Vec<u8>,
+    /// The output area of the reassembler, kept across frames like `extract_area` (#484).
+    reassembly_area: Vec<u8>,
     reassembler: MapReassembler<Tc, 2, ASSEMBLY>,
     vc: aldis::tc::TcVcId,
 }
@@ -193,6 +224,7 @@ impl FramedPackets {
             realtime: Extractor::new(config).map_err(bad)?,
             payload: Extractor::new(config).map_err(bad)?,
             extract_area: vec![0; EXTRACT_AREA],
+            reassembly_area: vec![0; REASSEMBLY_AREA],
             reassembler,
             vc,
         })
@@ -255,7 +287,7 @@ impl FramedPackets {
     }
 
     fn take_up(&mut self, frame: &DecodedFrame) -> Result<usize, String> {
-        if frame.control {
+        if frame.is_control() {
             return Ok(0);
         }
         let header = frame
@@ -264,7 +296,6 @@ impl FramedPackets {
         let mut fdu = Vec::with_capacity(frame.data.len() + 1);
         fdu.push(header);
         fdu.extend_from_slice(&frame.data);
-        let mut area = vec![0_u8; REASSEMBLY_AREA];
         let input = ReassemblerInput::Fdu(FduIn {
             vc: self.vc,
             meta: (),
@@ -272,14 +303,14 @@ impl FramedPackets {
         });
         let actions = self
             .reassembler
-            .step(input, &mut area)
+            .step(input, &mut self.reassembly_area)
             .map_err(|e| format!("reassembler: {e:?}"))?;
         let mut packets = 0;
         for action in actions.iter() {
             match action {
                 ReassemblerOutput::Packets { run, .. } => {
                     let run =
-                        PacketRun::new(*run, &area).ok_or("reassembler run outside its area")?;
+                        PacketRun::new(*run, &self.reassembly_area).ok_or("reassembler run outside its area")?;
                     for packet in run {
                         strict_packet(packet, "packet in a TC frame")?;
                         packets += 1;
