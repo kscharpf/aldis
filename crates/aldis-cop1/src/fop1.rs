@@ -61,26 +61,22 @@
 //! longest cell sets the bound. The `N` of a [`Fop1`] must be at least that value, which its
 //! constructor checks at compile time.
 
+use aldis_core::format::FrameFormat;
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::layout::FECF_LEN;
 use aldis_core::security::SecurityLayout;
 use aldis_core::time::{Duration, Instant};
 use aldis_core::{Error, ErrorDetail, ErrorKind, Result, field};
 use aldis_tc::{
-    Clcw, ControlCommand, CopInEffect, FrameData, FrameFields, FrameType, PRIMARY_HEADER_LEN,
-    PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
+    Clcw, ControlCommand, CopInEffect, FrameType, PhysicalChannelConfig, SegmentHeaderUse,
+    TcFormat, TcSpacecraftId, TcVcId, VcConfig, VcTable,
 };
-use core::num::NonZeroU8;
 #[cfg(feature = "uslp")]
-use {
-    aldis_uslp::{
-        FrameContent as UslpContent, FrameFields as UslpFields, FrameKind as UslpKind, MapConfig,
-        SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid,
-        UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig as UslpVcConfig, VcTable as UslpVcTable,
-        encode as uslp_encode,
-    },
-    aldis_uslp::{PRIMARY_HEADER_LEN as USLP_HEADER_LEN, PhysicalChannelConfig as UslpPhysical},
+use aldis_uslp::{
+    MapConfig, PhysicalChannelConfig as UslpPhysical, SecurityScope, TfdfHeader, TfdzRule,
+    TransferFrameType, Upid, UslpFormat, VcConfig as UslpVcConfig, VcTable as UslpVcTable,
 };
+use core::marker::PhantomData;
+use core::num::NonZeroU8;
 
 use crate::fop1_table::{
     BcCommand, EVENT_COUNT, FOP1_TABLE, Fop1Action, Fop1Cell, Fop1Event, Fop1State, FrameKind,
@@ -91,6 +87,13 @@ use crate::notify::{
     TransferNotification, TransferNotify,
 };
 use aldis_core::engine::{Actions, OutRange};
+
+pub mod protocol;
+
+#[cfg(feature = "uslp")]
+pub use protocol::UslpChannel;
+use protocol::max_fdu_len;
+pub use protocol::{Fop1Format, TcChannel};
 
 /// The handle of a transfer request or a directive, chosen by the caller and returned in its
 /// notifications (232.1 §4.2, §4.4; API-054).
@@ -293,59 +296,19 @@ const fn cell(state: Fop1State, event: Fop1Event) -> &'static Fop1Cell {
 ///
 /// A TC Virtual Channel without Segment Headers and without SDLS (232.0 §4.1, §5.3), or, with
 /// the feature `uslp`, a USLP Virtual Channel and MAP of a variable-length Physical Channel
-/// (732.1 §4.1).
+/// (732.1 §4.1). `P` is the codec's [`Fop1Format`]; its frame format gives every length and its
+/// writer plan builds every frame (OI-93).
 ///
 /// FOP-1 puts the FDU in the data field as it is: the Frame Data Field of a TC frame, the TFDZ of
-/// a USLP frame. Built only by [`tc`](Self::tc) and [`uslp`](Self::uslp), which check the channel
-/// once (RS-020).
+/// a USLP frame. Built only by [`tc`](Fop1Target::tc) and [`uslp`](Fop1Target::uslp), which check
+/// the channel once (RS-020).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Fop1Target {
-    channels: Channels,
+pub struct Fop1Target<P: Fop1Format = TcFormat> {
+    channel: P::Channel,
     clcw_vc_id: u8,
     max_frame_len: usize,
     max_fdu_len: usize,
-}
-
-/// The channel tables of a target.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum Channels {
-    Tc {
-        table: VcTable<1, 0>,
-        spacecraft_id: TcSpacecraftId,
-        vc_id: TcVcId,
-    },
-    #[cfg(feature = "uslp")]
-    Uslp {
-        table: UslpVcTable<1, 1>,
-        spacecraft_id: UslpSpacecraftId,
-        vc_id: UslpVcId,
-        map_id: UslpMapId,
-        tfdf: TfdfHeader,
-    },
-}
-
-/// The identifiers of the channel a [`Fop1Target`] builds frames for (232.0 §4.1.2.5, §4.1.2.6;
-/// 732.1 §4.1.2.2–5; COP-010).
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Fop1Channel {
-    /// A TC Virtual Channel.
-    Tc {
-        /// The Spacecraft Identifier.
-        spacecraft_id: TcSpacecraftId,
-        /// The Virtual Channel Identifier.
-        vc_id: TcVcId,
-    },
-    /// A USLP Virtual Channel and MAP.
-    #[cfg(feature = "uslp")]
-    Uslp {
-        /// The Spacecraft Identifier.
-        spacecraft_id: UslpSpacecraftId,
-        /// The Virtual Channel Identifier.
-        vc_id: UslpVcId,
-        /// The MAP Identifier.
-        map_id: UslpMapId,
-    },
+    protocol: PhantomData<P>,
 }
 
 /// What a frame of a target carries: an FDU, or a Control Command.
@@ -355,7 +318,7 @@ enum Payload<'a> {
     Control(ControlCommand),
 }
 
-impl Fop1Target {
+impl Fop1Target<TcFormat> {
     /// The TC Virtual Channel (`spacecraft_id`, `vc_id`) of the physical channel `physical`,
     /// whose managed parameters give the Maximum Transfer Frame Length and the FECF (232.0
     /// §4.1.4, Table 5-1, Table 5-3; COP-010; M6 plan WP-2c).
@@ -369,9 +332,8 @@ impl Fop1Target {
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,
         physical: PhysicalChannelConfig,
-    ) -> Result<Fop1Target> {
+    ) -> Result<Fop1Target<TcFormat>> {
         let max_frame_len = physical.max_frame_len();
-        let fecf = physical.fecf();
         let vc = VcConfig::new(
             spacecraft_id,
             vc_id,
@@ -379,21 +341,21 @@ impl Fop1Target {
             SegmentHeaderUse::Absent(SecurityLayout::NONE),
         )?;
         let table = VcTable::new(physical, &[vc], &[])?;
-        let trailer = if fecf { FECF_LEN } else { 0 };
-        Ok(Fop1Target {
-            channels: Channels::Tc {
+        Ok(Fop1Target::new(
+            TcChannel {
                 table,
                 spacecraft_id,
                 vc_id,
             },
-            clcw_vc_id: vc_id.get(),
+            vc_id.get(),
             max_frame_len,
-            max_fdu_len: max_frame_len
-                .saturating_sub(PRIMARY_HEADER_LEN)
-                .saturating_sub(trailer),
-        })
+            max_fdu_len::<TcFormat>(&physical, &(), TcFormat::SDU_HEADER_LEN),
+        ))
     }
+}
 
+#[cfg(feature = "uslp")]
+impl Fop1Target<UslpFormat> {
     /// The USLP Virtual Channel `vc` and MAP `map` of the variable-length Physical Channel
     /// `physical`, whose user-data frames carry the TFDF Header `tfdf` and an FDU as the TFDZ
     /// (732.1 §4.1, §4.2.7.3; COP-010, USLP-013).
@@ -431,13 +393,12 @@ impl Fop1Target {
     ///   frames;
     /// - (`max_frame_len`) for a frame too short for a Set V(R) command;
     /// - and those of [`UslpVcTable::new`](aldis_uslp::VcTable::new).
-    #[cfg(feature = "uslp")]
     pub fn uslp(
         physical: UslpPhysical,
         vc: UslpVcConfig,
         map: MapConfig,
         tfdf: TfdfHeader,
-    ) -> Result<Fop1Target> {
+    ) -> Result<Fop1Target<UslpFormat>> {
         let variable = |t| matches!(t, TransferFrameType::Variable);
         if !variable(physical.frame_type()) || !variable(vc.frame_type()) {
             return Err(bad_config(field::TRANSFER_FRAME_TYPE));
@@ -474,56 +435,50 @@ impl Fop1Target {
             return Err(bad_config(field::UPID));
         }
         let max_frame_len = physical.frame_len();
-        let trailer = if physical.fecf() { FECF_LEN } else { 0 };
-        // The Primary Header, the one-octet VCF Count of a Type-AD frame, the one-octet TFDF
-        // Header (the shortest, for a rule without a pointer), the TFDZ, and the FECF.
-        let max_fdu_len = max_frame_len
-            .saturating_sub(USLP_HEADER_LEN)
-            .saturating_sub(1)
-            .saturating_sub(1)
-            .saturating_sub(trailer);
+        // The Primary Header with the one-octet VCF Count of a Type-AD frame, the TFDF Header (one
+        // octet: the rules with a pointer are refused above), the TFDZ, and the FECF.
+        let max_fdu_len =
+            max_fdu_len::<UslpFormat>(&physical, &vc.vcf_count_len(false), tfdf.len());
         if max_fdu_len < SET_VR_LEN {
             return Err(bad_config(field::MAX_FRAME_LEN));
         }
         let table = UslpVcTable::new(physical, &[vc], &[map])?;
-        Ok(Fop1Target {
-            channels: Channels::Uslp {
+        Ok(Fop1Target::new(
+            UslpChannel {
                 table,
                 spacecraft_id: vc.spacecraft_id(),
                 vc_id: vc.vc_id(),
                 map_id: map.map_id(),
                 tfdf,
             },
-            clcw_vc_id: vc.vc_id().get(),
+            vc.vc_id().get(),
             max_frame_len,
             max_fdu_len,
-        })
+        ))
+    }
+}
+
+impl<P: Fop1Format> Fop1Target<P> {
+    /// A target of the checked `channel`, with the lengths its constructor computed.
+    const fn new(
+        channel: P::Channel,
+        clcw_vc_id: u8,
+        max_frame_len: usize,
+        max_fdu_len: usize,
+    ) -> Fop1Target<P> {
+        Fop1Target {
+            channel,
+            clcw_vc_id,
+            max_frame_len,
+            max_fdu_len,
+            protocol: PhantomData,
+        }
     }
 
-    /// The identifiers of the channel the frames are built for (COP-010).
+    /// The channel the frames are built for: its identifiers (COP-010).
     #[must_use]
-    pub const fn channel(&self) -> Fop1Channel {
-        match &self.channels {
-            Channels::Tc {
-                spacecraft_id,
-                vc_id,
-                ..
-            } => Fop1Channel::Tc {
-                spacecraft_id: *spacecraft_id,
-                vc_id: *vc_id,
-            },
-            #[cfg(feature = "uslp")]
-            Channels::Uslp {
-                spacecraft_id,
-                vc_id,
-                map_id,
-                ..
-            } => Fop1Channel::Uslp {
-                spacecraft_id: *spacecraft_id,
-                vc_id: *vc_id,
-                map_id: *map_id,
-            },
-        }
+    pub const fn channel(&self) -> &P::Channel {
+        &self.channel
     }
 
     /// The Maximum Transfer Frame Length, the most octets one input writes to the output area
@@ -571,6 +526,9 @@ impl Fop1Target {
 
     /// Encodes a frame of `frame_type` with N(S) = `sequence_number` and `payload` into `out`;
     /// returns its length (232.0 §4.1, 732.1 §4.1; COP-010, TC-005, TC-008, USLP-013).
+    ///
+    /// The codec's plan starts the frame, and its writer fills the data field, fixes its length
+    /// (no SDLS), and computes the FECF (RS-023, API-023).
     fn encode(
         &self,
         frame_type: FrameType,
@@ -578,61 +536,26 @@ impl Fop1Target {
         payload: Payload<'_>,
         out: &mut [u8],
     ) -> Result<usize> {
-        match &self.channels {
-            Channels::Tc {
-                table,
-                spacecraft_id,
-                vc_id,
-            } => {
-                let fields = FrameFields {
-                    frame_type,
-                    spacecraft_id: *spacecraft_id,
-                    vc_id: *vc_id,
-                    sequence_number,
-                };
-                let data = match payload {
-                    Payload::Fdu(user_data) => FrameData::Fdu {
-                        segment_header: None,
-                        user_data,
-                    },
-                    Payload::Control(command) => FrameData::Control(command),
-                };
-                encode(table, fields, data, out)
+        let command;
+        let (control, octets) = match payload {
+            Payload::Fdu(user_data) => (false, user_data),
+            Payload::Control(c) => {
+                command = c.to_octets();
+                (true, command.as_slice())
             }
-            #[cfg(feature = "uslp")]
-            Channels::Uslp {
-                table,
-                spacecraft_id,
-                vc_id,
-                map_id,
-                tfdf,
-            } => {
-                let kind = UslpKind::from(frame_type);
-                // N(S) is the VCF Count of a sequence-controlled frame (732.1 §4.2.7.4 note 3); the
-                // expedited counter is absent (the constructor checked it, OI-66). A ground
-                // sender names the destination (§4.1.2.3.3).
-                let fields = UslpFields {
-                    spacecraft_id: *spacecraft_id,
-                    source_or_destination: SourceOrDestination::Destination,
-                    vc_id: *vc_id,
-                    map_id: *map_id,
-                    kind,
-                    vcf_count: u64::from(sequence_number.get()),
-                };
-                let (tfdf, octets) = match payload {
-                    Payload::Fdu(user_data) => (*tfdf, user_data),
-                    Payload::Control(command) => {
-                        return uslp_control(table, fields, command, out);
-                    }
-                };
-                let content = UslpContent {
-                    tfdf,
-                    insert_zone: &[],
-                    ocf: None,
-                };
-                uslp_encode(table, fields, content, octets, out)
-            }
+        };
+        let mut writer = P::begin(
+            &self.channel,
+            frame_type,
+            sequence_number,
+            control,
+            octets.len(),
+            out,
+        )?;
+        for (d, s) in writer.data_mut().iter_mut().zip(octets) {
+            *d = *s;
         }
+        Ok(writer.unsecured(octets.len())?.finalize().len())
     }
 }
 
@@ -640,36 +563,15 @@ impl Fop1Target {
 #[cfg(feature = "uslp")]
 const SET_VR_LEN: usize = 3;
 
-/// Encodes a Type-BC USLP frame carrying `command` as its TFDZ with the UPID "COP-1 Control
-/// Commands" (732.1 Table 4-1; USLP-013).
-#[cfg(feature = "uslp")]
-fn uslp_control(
-    table: &UslpVcTable<1, 1>,
-    fields: UslpFields,
-    command: ControlCommand,
-    out: &mut [u8],
-) -> Result<usize> {
-    let content = UslpContent {
-        tfdf: TfdfHeader {
-            rule: TfdzRule::NoSegmentation,
-            upid: Upid::Cop1ControlCommands,
-        },
-        insert_zone: &[],
-        ocf: None,
-    };
-    let octets = command.to_octets();
-    uslp_encode(table, fields, content, octets.as_slice(), out)
-}
-
 /// The managed parameters of one FOP-1 instance, one per Virtual Channel, at start-up
 /// (232.1 §7.2 Table 7-1; COP-015, COP-016, API-041).
 ///
 /// The directives E36 to E39 change K, `T1_Initial`, `Transmission_Limit`, and `Timeout_Type`
 /// later.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Fop1Config {
+pub struct Fop1Config<P: Fop1Format = TcFormat> {
     /// The Virtual Channel the frames are built for (COP-010).
-    pub target: Fop1Target,
+    pub target: Fop1Target<P>,
     /// `T1_Initial`, at least 1 µs (232.1 §5.1.9).
     pub t1_initial: Duration,
     /// `Transmission_Limit` (232.1 §5.1.10.2).
@@ -880,8 +782,8 @@ struct Core<const Q: usize> {
 /// input is decided without copying them ([`decide`](Self::decide)) and then applied in place
 /// ([`commit`](Self::commit)).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fop1<const Q: usize, const F: usize, const N: usize> {
-    target: Fop1Target,
+pub struct Fop1<const Q: usize, const F: usize, const N: usize, P: Fop1Format = TcFormat> {
+    target: Fop1Target<P>,
     core: Core<Q>,
 }
 
@@ -923,8 +825,8 @@ impl<const Q: usize, const F: usize> Default for Fop1Store<Q, F> {
 }
 
 /// What a decision reads of the engine besides its small state: the target and the store.
-struct Base<'b, const Q: usize, const F: usize> {
-    target: &'b Fop1Target,
+struct Base<'b, const Q: usize, const F: usize, P: Fop1Format> {
+    target: &'b Fop1Target<P>,
     store: &'b Fop1Store<Q, F>,
 }
 
@@ -951,13 +853,20 @@ pub type Fop1Actions<const N: usize> = Actions<Fop1Output, N>;
 /// outliving the state).
 #[must_use]
 #[derive(Debug)]
-pub struct Fop1Decision<'a, const Q: usize, const F: usize, const N: usize> {
+pub struct Fop1Decision<
+    'a,
+    const Q: usize,
+    const F: usize,
+    const N: usize,
+    P: Fop1Format = TcFormat,
+> {
     core: Core<Q>,
     actions: Fop1Actions<N>,
     fdu: &'a [u8],
+    protocol: PhantomData<P>,
 }
 
-impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
+impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N, P> {
     /// Fails the build of a `Fop1` whose `N` is below the bound of Table 5-1 (COP-006).
     const BOUND: () = assert!(N >= fop1_max_actions(Q), "N is below fop1_max_actions(Q)");
 
@@ -971,13 +880,13 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     /// `InvalidConfig` naming `sliding_window_k` for a K outside 1..=min(255, `Q`) (COP-015),
     /// `t1_initial` for a `T1_Initial` of 0, and `max_frame_len` for a target whose frames do
     /// not fit `F` octets (API-040).
-    pub fn new(config: Fop1Config) -> Result<Fop1<Q, F, N>> {
+    pub fn new(config: Fop1Config<P>) -> Result<Fop1<Q, F, N, P>> {
         let (target, core) = Self::start(config)?;
         Ok(Fop1 { target, core })
     }
 
     /// The target and the small state of a new engine, once `config` is checked.
-    fn start(config: Fop1Config) -> Result<(Fop1Target, Core<Q>)> {
+    fn start(config: Fop1Config<P>) -> Result<(Fop1Target<P>, Core<Q>)> {
         let () = Self::BOUND;
         if !Self::k_fits(config.sliding_window_k) {
             return Err(bad_config(field::SLIDING_WINDOW_K));
@@ -1019,7 +928,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
 
     /// The target Virtual Channel (COP-010).
     #[must_use]
-    pub const fn target(&self) -> &Fop1Target {
+    pub const fn target(&self) -> &Fop1Target<P> {
         &self.target
     }
 
@@ -1321,7 +1230,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         input: Fop1Input<'a>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<Fop1Decision<'a, Q, F, N>> {
+    ) -> Result<Fop1Decision<'a, Q, F, N, P>> {
         let Some((event, ctx)) = self.classify(input, now)? else {
             return Ok(Fop1Decision::start(&self.core, &[]));
         };
@@ -1345,7 +1254,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         input: Fop1Input<'a>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<Fop1Decision<'a, Q, F, N>> {
+    ) -> Result<Fop1Decision<'a, Q, F, N, P>> {
         let mut ctx = Context {
             event,
             now,
@@ -1379,7 +1288,7 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
         event: Fop1Event,
         ctx: &Context<'a>,
         out: &mut [u8],
-    ) -> Result<Fop1Decision<'a, Q, F, N>> {
+    ) -> Result<Fop1Decision<'a, Q, F, N, P>> {
         let base = Base {
             target: &self.target,
             store,
@@ -1396,12 +1305,13 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     pub fn commit(
         &mut self,
         store: &mut Fop1Store<Q, F>,
-        decision: Fop1Decision<'_, Q, F, N>,
+        decision: Fop1Decision<'_, Q, F, N, P>,
     ) -> Fop1Actions<N> {
         let Fop1Decision {
             mut core,
             actions,
             fdu,
+            ..
         } = decision;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
@@ -1462,13 +1372,16 @@ impl<const Q: usize, const F: usize, const N: usize> Fop1<Q, F, N> {
     }
 }
 
-impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, N> {
+impl<'a, const Q: usize, const F: usize, const N: usize, P: Fop1Format>
+    Fop1Decision<'a, Q, F, N, P>
+{
     /// The decision that changes nothing: the small state `core`, no action.
-    fn start(core: &Core<Q>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N> {
+    fn start(core: &Core<Q>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N, P> {
         Fop1Decision {
             core: core.clone(),
             actions: Actions::new(),
             fdu,
+            protocol: PhantomData,
         }
     }
 
@@ -1483,7 +1396,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// COP-003, COP-004).
     fn run(
         &mut self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         event: Fop1Event,
         ctx: &Context<'_>,
         out: &mut [u8],
@@ -1526,7 +1439,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     #[expect(clippy::too_many_lines, reason = "one arm per action token of §5.2")]
     fn act(
         &mut self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         action: Fop1Action,
         prior: Fop1State,
         ctx: &Context<'_>,
@@ -1761,7 +1674,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// `To_Be_Retransmitted`, else the FDU of the `Wait_Queue` if V(S) < NN(R) + K.
     fn look_for_fdu(
         &mut self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         now: Instant,
         out: &mut OutArea<'_>,
     ) -> Result<()> {
@@ -1807,7 +1720,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// again into the master copy.
     fn transmit_ad(
         &mut self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         waiting: Waiting,
         now: Instant,
         out: &mut OutArea<'_>,
@@ -1848,7 +1761,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// (232.0 §4.1.3.3).
     fn transmit_bc(
         &mut self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         command: BcCommand,
         ctx: &Context<'_>,
         out: &mut OutArea<'_>,
@@ -1886,7 +1799,11 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
 
     /// Look for Directive (232.1 §5.2.9): with `BC_Out_Flag` Ready, the Type-BC frame if it is
     /// marked `To_Be_Retransmitted`.
-    fn look_for_directive(&mut self, base: &Base<'_, Q, F>, out: &mut OutArea<'_>) -> Result<()> {
+    fn look_for_directive(
+        &mut self,
+        base: &Base<'_, Q, F, P>,
+        out: &mut OutArea<'_>,
+    ) -> Result<()> {
         if !self.core.bc_out_ready {
             return Ok(());
         }
@@ -1930,7 +1847,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     }
 
     /// The octets of an FDU a decision builds a frame from.
-    fn fdu_of<'s>(&'s self, base: &'s Base<'_, Q, F>, source: FduSource) -> Result<&'s [u8]> {
+    fn fdu_of<'s>(&'s self, base: &'s Base<'_, Q, F, P>, source: FduSource) -> Result<&'s [u8]> {
         match source {
             FduSource::Input => Ok(self.fdu),
             FduSource::Wait(len) => base
@@ -1946,7 +1863,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize> Fop1Decision<'a, Q, F, 
     /// the frame encoded again.
     fn emit_sent(
         &self,
-        base: &Base<'_, Q, F>,
+        base: &Base<'_, Q, F, P>,
         sent: &Sent,
         out: &mut OutArea<'_>,
     ) -> Result<OutRange> {
@@ -2053,7 +1970,7 @@ mod tests {
     use std::vec::Vec;
 
     use super::{
-        Base, Context, FduSource, Fop1Actions, Fop1Channel, Fop1Config, Fop1Decision, Fop1Input,
+        Base, Context, FduSource, Fop1Actions, Fop1Config, Fop1Decision, Fop1Format, Fop1Input,
         Fop1Output, Fop1Store, Fop1Target, Origin, OutArea, Sent, SentKind, cell, fop1_max_actions,
     };
     use crate::fop1_table::{EVENT_COUNT, FOP1_TABLE, Fop1Action, STATE_COUNT};
@@ -2066,7 +1983,7 @@ mod tests {
     use aldis_core::ids::FrameSeqNum;
     use aldis_core::time::{Duration, Instant};
     use aldis_core::{ErrorDetail, ErrorKind, field};
-    use aldis_tc::{Clcw, ClcwStatus, CopInEffect, FarmBCounter, TcSpacecraftId, TcVcId};
+    use aldis_tc::{Clcw, ClcwStatus, CopInEffect, FarmBCounter, TcFormat, TcSpacecraftId, TcVcId};
     use core::hint::black_box;
     use core::num::NonZeroU8;
 
@@ -2120,7 +2037,11 @@ mod tests {
         Fop1Input::Directive { handle, directive }
     }
 
-    fn go(f: &Engine, input: Fop1Input<'_>, at: u64) -> (Engine, Vec<Fop1Output>) {
+    fn go<P: Fop1Format>(
+        f: &Rig<Q, F, N, P>,
+        input: Fop1Input<'_>,
+        at: u64,
+    ) -> (Rig<Q, F, N, P>, Vec<Fop1Output>) {
         let mut out = [0u8; F];
         let mut next = f.clone();
         let decision = next
@@ -2130,7 +2051,7 @@ mod tests {
         (next, actions.iter().copied().collect())
     }
 
-    fn view(r: &Engine) -> Base<'_, Q, F> {
+    fn view(r: &Engine) -> Base<'_, Q, F, TcFormat> {
         Base {
             target: &r.fop.target,
             store: &r.store,
@@ -2413,8 +2334,8 @@ mod tests {
         use aldis_core::security::SecurityLayout;
         use aldis_uslp::{
             FirstHeaderPointer, LastValidOctet, MapConfig, PhysicalChannelConfig, SecurityScope,
-            TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpMapId,
-            UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcfCountLen,
+            TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen, Upid, UslpFormat,
+            UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcfCountLen,
         };
         let scid = UslpSpacecraftId::new(0x155).unwrap();
         let vcid = UslpVcId::new(1).unwrap();
@@ -2507,12 +2428,17 @@ mod tests {
         // The frames: a Type-BC with Unlock, a Type-AD, and a Type-BD.
         let target = Fop1Target::uslp(p64, v, map, tfdf).unwrap();
         assert_eq!(target.max_fdu_len(), F - 11);
-        assert!(matches!(target.channel(), Fop1Channel::Uslp { .. }));
-        let f = Engine::new(Fop1Config {
+        assert_eq!(target.channel().map_id(), map.map_id());
+        let uslp_config = Fop1Config {
             target,
-            ..config(TimeoutType::Tt0, 2)
-        })
-        .unwrap();
+            t1_initial: Duration::from_micros(100),
+            transmission_limit: NonZeroU8::new(2).unwrap(),
+            timeout_type: TimeoutType::Tt0,
+            sliding_window_k: 2,
+            ad_repetitions: 3,
+            bc_repetitions: 4,
+        };
+        let f = Rig::<Q, F, N, UslpFormat>::new(uslp_config).unwrap();
         let (f, out) = go(&f, directive(1, Directive::InitiateAdWithUnlock), 0);
         assert!(matches!(
             out.last(),
@@ -2584,12 +2510,10 @@ mod tests {
         .unwrap();
         assert_eq!(plain.max_fdu_len(), F - 5);
         assert_eq!(
-            t.channel(),
-            Fop1Channel::Tc {
-                spacecraft_id: TcSpacecraftId::new(42).unwrap(),
-                vc_id: TcVcId::new(1).unwrap(),
-            }
+            t.channel().spacecraft_id(),
+            TcSpacecraftId::new(42).unwrap()
         );
+        assert_eq!(t.channel().vc_id(), TcVcId::new(1).unwrap());
         assert_eq!((t.max_frame_len(), t.max_fdu_len()), (F, F - 7));
         let f = fresh();
         assert_eq!(f.target(), &t);

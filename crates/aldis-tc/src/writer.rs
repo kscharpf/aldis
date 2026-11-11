@@ -266,6 +266,31 @@ impl TcPlan {
         let plan = Plan::new(channels, fields, segment_header, false, max_user_len)?;
         start(out, plan)
     }
+
+    /// Reserves a Type-BC frame for a Control Command of `command_len` octets (232.0 §4.1.3.3;
+    /// TC-004, TC-007, API-020): the frame [`begin`](Self::begin) refuses. The caller writes the
+    /// command octets into the data field and fixes its length with `unsecured`, since a Control
+    /// Command frame has no Segment Header and no SDLS fields.
+    ///
+    /// # Errors
+    /// The errors of [`encode`] for a Control Command frame: `InvalidField`
+    /// (`control_command_flag`) for a Type-AD or Type-BD frame; `BufferTooSmall` if `out` cannot
+    /// hold the frame. On error `out` is unchanged.
+    pub fn begin_control<
+        'b,
+        L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
+            + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
+            + PhysicalLookup<Physical = PhysicalChannelConfig>
+            + ?Sized,
+    >(
+        out: &'b mut [u8],
+        channels: &L,
+        fields: FrameFields,
+        command_len: usize,
+    ) -> Result<TcFrameWriter<'b>> {
+        let plan = Plan::new(channels, fields, None, true, command_len)?;
+        start(out, plan)
+    }
 }
 
 /// The writer of a checked plan (API-023): writes the unfinished header, the Segment Header, and
@@ -663,5 +688,38 @@ mod tests {
         w.data_mut()[0] = 0x42;
         assert_eq!(w.unsecured(1).unwrap().finalize().len(), 6);
         assert_eq!(TcFrame::peek_length(&out), Ok(6));
+    }
+
+    #[test]
+    fn a_control_command_frame_is_reserved_by_begin_control() {
+        // req: API-020, TC-004, TC-007
+        let t = standard(true);
+        let set = ControlCommand::SetVr(FrameSeqNum::new(3));
+        let command = set.to_octets();
+        let mut two = [0_u8; 16];
+        let mut w = TcPlan::begin_control(
+            &mut two,
+            &t,
+            fields(FrameType::Bc, 1),
+            command.as_slice().len(),
+        )
+        .unwrap();
+        w.data_mut().copy_from_slice(command.as_slice());
+        let n = w
+            .unsecured(command.as_slice().len())
+            .unwrap()
+            .finalize()
+            .len();
+        let mut one = [0_u8; 16];
+        let encoded = encode(
+            &t,
+            fields(FrameType::Bc, 1),
+            FrameData::Control(set),
+            &mut one,
+        )
+        .unwrap();
+        assert_eq!((n, &two[..n]), (encoded, &one[..encoded]));
+        let e = TcPlan::begin_control(&mut two, &t, fields(FrameType::Ad, 1), 1).unwrap_err();
+        assert_eq!(e.field(), Some(field::CONTROL_COMMAND_FLAG));
     }
 }

@@ -14,9 +14,9 @@
 mod common;
 
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1Channel,
-    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
-    TransferNotification, fop1_max_actions,
+    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1Config,
+    Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, TransferNotification,
+    fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -26,8 +26,8 @@ use aldis_tc::{Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, TcVc
 use aldis_uslp::{
     FirstHeaderPointer, FrameKind as UslpKind, MapConfig, OcfUse, PhysicalChannelConfig,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
-    Upid, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
-    VcfCountLen,
+    Upid, UslpFormat, UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams,
+    VcTable, VcfCountLen,
 };
 use core::num::NonZeroU8;
 
@@ -36,7 +36,7 @@ use common::Rig;
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Rig<Q, F, N>;
+type Engine = Rig<Q, F, N, UslpFormat>;
 const NOW: Instant = Instant::from_micros(0);
 
 const fn scid() -> UslpSpacecraftId {
@@ -77,7 +77,7 @@ const TFDF: TfdfHeader = TfdfHeader {
     upid: Upid::OctetStream,
 };
 
-fn target(fecf: bool) -> Fop1Target {
+fn target(fecf: bool) -> Fop1Target<UslpFormat> {
     Fop1Target::uslp(physical(fecf), vc(params()), map(), TFDF).unwrap()
 }
 
@@ -154,12 +154,12 @@ fn the_target_names_its_channel_and_sizes_its_frames() {
     // req: COP-010, API-040
     let t = target(true);
     assert_eq!(
-        t.channel(),
-        Fop1Channel::Uslp {
-            spacecraft_id: scid(),
-            vc_id: vcid(),
-            map_id: mapid()
-        }
+        (
+            t.channel().spacecraft_id(),
+            t.channel().vc_id(),
+            t.channel().map_id()
+        ),
+        (scid(), vcid(), mapid())
     );
     assert_eq!(t.max_frame_len(), F);
     // The Primary Header (7), the VCF Count (1), the TFDF Header (1), and the FECF (2).

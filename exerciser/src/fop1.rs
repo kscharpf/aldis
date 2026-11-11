@@ -8,7 +8,7 @@ use core::hint::black_box as bb;
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1Channel, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Store,
+    Directive, Fop1Config, Fop1Event, Fop1Format, Fop1Input, Fop1Output, Fop1State, Fop1Store,
     Fop1Target, FrameKind, SuspendState, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -27,9 +27,15 @@ const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
 type Engine = rig::Rig<Q, F, N>;
+type UslpEngine = rig::Rig<Q, F, N, aldis_uslp::UslpFormat>;
 
 /// Steps `f` in place by `decide` and `commit`; `None` if the input failed.
-fn step(f: &mut Engine, input: Fop1Input<'_>, at: u64, out: &mut [u8]) -> Option<()> {
+fn step<P: Fop1Format>(
+    f: &mut rig::Rig<Q, F, N, P>,
+    input: Fop1Input<'_>,
+    at: u64,
+    out: &mut [u8],
+) -> Option<()> {
     let decision = f.decide(bb(input), Instant::from_micros(at), out).ok()?;
     let _ = f.commit(decision);
     Some(())
@@ -60,10 +66,7 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
     )
     .ok()?;
     t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 7);
-    t.check(matches!(
-        target.channel(),
-        Fop1Channel::Tc { spacecraft_id, vc_id } if spacecraft_id.get() == 42 && vc_id.get() == 1
-    ));
+    t.check(target.channel().spacecraft_id().get() == 42 && target.channel().vc_id().get() == 1);
     let config = Fop1Config {
         target,
         t1_initial: Duration::from_micros(bb(1000)),
@@ -224,9 +227,9 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
     };
     t.check(Fop1Target::uslp(physical, vc, map, idle).is_err());
     let target = Fop1Target::uslp(physical, vc, map, tfdf).ok()?;
-    t.check(matches!(target.channel(), Fop1Channel::Uslp { .. }));
+    t.check(target.channel().map_id().get() == 2);
     t.check(target.max_frame_len() == F && target.max_fdu_len() == F - 11);
-    let f = Engine::new(Fop1Config {
+    let f = UslpEngine::new(Fop1Config {
         target,
         t1_initial: Duration::from_micros(bb(1000)),
         transmission_limit: NonZeroU8::new(bb(2))?,
@@ -240,7 +243,7 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
 }
 
 /// The frames of an engine on the USLP target: Type-BC, Type-AD, and Type-BD.
-fn uslp_frames(t: &mut Tally, mut f: Engine) -> Option<()> {
+fn uslp_frames(t: &mut Tally, mut f: UslpEngine) -> Option<()> {
     let mut out = [0_u8; F];
     // A Type-BC frame with the Unlock command, then a Type-AD and a Type-BD frame.
     let decision = f
