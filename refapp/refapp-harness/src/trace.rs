@@ -119,6 +119,12 @@ pub const APP_EVENTS: &[(u16, &str)] = &[
     (112, "sdu_too_long"),
     (113, "downlink_refused"),
     (114, "uplink_refused"),
+    (200, "fop1_alert"),
+    (201, "fop1_transfer"),
+    (202, "fop1_directive"),
+    (203, "fop1_state"),
+    (210, "farm1_state"),
+    (211, "farm1_unlock"),
 ];
 
 /// Name of an application event code, if the code is in the vocabulary.
