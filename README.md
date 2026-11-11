@@ -50,39 +50,9 @@ Run the reference application's lossy-link case with one command; it needs only 
 cargo run --manifest-path refapp/Cargo.toml -p refapp-harness -- demo
 ```
 
-It prints:
+The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram and the text output are generated from the golden trace, decoded with the strict codecs, and `cargo xtask fix` keeps both current.
 
-<!-- BEGIN GENERATED: demo-output (cargo xtask readme-diagram --write) -->
-```text
-a3-uplink-loss: COP-1 over a lossy link, decoded with the strict codecs
- 0.000 s  down  VC 7 TM  CLCW N(R)=0
- 1.000 s  up    VC 0 AD N(S)=0
- 1.125 s  down  VC 7 TM  CLCW N(R)=1
- 2.000 s  up    VC 0 AD N(S)=1
- 2.125 s  down  VC 7 TM  CLCW N(R)=2
- 2.250 s  up    VC 0 AD N(S)=2  LOST
- 2.500 s  up    VC 0 AD N(S)=3
- 2.625 s  down  VC 7 TM  CLCW N(R)=2 Retransmit
- 2.750 s  up    VC 0 AD N(S)=2 retransmission
- 2.875 s  down  VC 7 TM  CLCW N(R)=3
- 3.000 s  up    VC 0 AD N(S)=3 retransmission
- 3.125 s  down  VC 7 TM  CLCW N(R)=4
- 3.250 s  up    VC 0 AD N(S)=4
- 3.375 s  down  VC 7 TM  CLCW N(R)=5
- 4.000 s  up    VC 0 AD N(S)=5
- 4.125 s  down  7 frames LOST
- 5.000 s  up    VC 0 AD N(S)=5 retransmission
- 5.000 s  down  VC 7 TM  CLCW N(R)=6
- 5.250 s  up    VC 0 AD N(S)=6
- 5.375 s  down  VC 7 TM  CLCW N(R)=7
- 6.000 s  up    VC 0 AD N(S)=7  LOST
- 7.000 s  up    VC 0 AD N(S)=7 retransmission
- 7.125 s  down  VC 7 TM  CLCW N(R)=8
-verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
-```
-<!-- END GENERATED: demo-output -->
-
-The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram of the same run is generated from the golden trace, decoded with the strict codecs, and `cargo xtask fix` keeps it and the output above current.
+The same run, drawn as a sequence diagram:
 
 <!-- BEGIN GENERATED: sequence-diagram (cargo xtask readme-diagram --write) -->
 ```mermaid
@@ -115,39 +85,71 @@ sequenceDiagram
 ```
 <!-- END GENERATED: sequence-diagram -->
 
+<details>
+<summary>The text output of the command</summary>
+
+<!-- BEGIN GENERATED: demo-output (cargo xtask readme-diagram --write) -->
+```text
+a3-uplink-loss: COP-1 over a lossy link, decoded with the strict codecs
+ 0.000 s  down  VC 7 TM  CLCW N(R)=0
+ 1.000 s  up    VC 0 AD N(S)=0
+ 1.125 s  down  VC 7 TM  CLCW N(R)=1
+ 2.000 s  up    VC 0 AD N(S)=1
+ 2.125 s  down  VC 7 TM  CLCW N(R)=2
+ 2.250 s  up    VC 0 AD N(S)=2  LOST
+ 2.500 s  up    VC 0 AD N(S)=3
+ 2.625 s  down  VC 7 TM  CLCW N(R)=2 Retransmit
+ 2.750 s  up    VC 0 AD N(S)=2 retransmission
+ 2.875 s  down  VC 7 TM  CLCW N(R)=3
+ 3.000 s  up    VC 0 AD N(S)=3 retransmission
+ 3.125 s  down  VC 7 TM  CLCW N(R)=4
+ 3.250 s  up    VC 0 AD N(S)=4
+ 3.375 s  down  VC 7 TM  CLCW N(R)=5
+ 4.000 s  up    VC 0 AD N(S)=5
+ 4.125 s  down  7 frames LOST
+ 5.000 s  up    VC 0 AD N(S)=5 retransmission
+ 5.000 s  down  VC 7 TM  CLCW N(R)=6
+ 5.250 s  up    VC 0 AD N(S)=6
+ 5.375 s  down  VC 7 TM  CLCW N(R)=7
+ 6.000 s  up    VC 0 AD N(S)=7  LOST
+ 7.000 s  up    VC 0 AD N(S)=7 retransmission
+ 7.125 s  down  VC 7 TM  CLCW N(R)=8
+verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
+```
+<!-- END GENERATED: demo-output -->
+
+</details>
+
 ## Status
 
-| Milestone or track | State |
+| Capability | State |
 |---|---|
-| M0 Foundations (`v0.1.0-m0`) | Released: the specification, the verification tooling, and `aldis-core` (Layer 0) |
-| M1 Packets and time (`v0.2.0-m1`) | Released: the Layer 1 codecs for time codes, Space Packets, and Encapsulation Packets (`aldis-time`, `aldis-spp`, `aldis-epp`) |
-| M2 Frame codecs (`v0.3.0-m2`) | Released: the Layer 1 codecs for TM, TC, AOS, and USLP Transfer Frames (`aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp`), each with its C ABI functions, the hazard analysis, and the assurance case |
-| M3 COP-1 (`v0.4.0-m3`) | Released: `aldis-cop1` (FOP-1 and FARM-1 as step functions over their state tables), their C ABI handles, the closed-loop tests, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m3-cop1.md)) |
-| M4 Link engines (`v0.5.0-m4`) | Released: `aldis-link` (the PacketGenerator, Access and Bitstream generators, ChannelMux, FrameReceiver, PacketExtractor, MapSegmenter, MapReassembler, and CLTU packer over TM, TC, AOS, and USLP), their C ABI handles, the blind vectors, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m4-link-engines.md)) |
-| M5 C ABI completion (`v0.6.0-m5`) | Released: `aldis-sync` (ASM attach, the TM pseudo-randomizer, and the ASM search engine of 131.0 §9–10) with its C ABI, the C harness under sanitizers and the C ABI tests under Miri, header checks across C and C++ standards, `aldis.hpp` over the engine handles, the open v1 requirements closed, and the hazard analysis ([plan §4](docs/milestones/m5-c-abi-completion.md)) |
-| M6 Crate architecture simplification | In progress; Phases 1–2 merged; the OI-93 follow-up of WP-2d is #475; Phase 3 and the exit deferred until after AINT ([roadmap §4](docs/08-roadmap.md#4-overlap)): one checking pipeline, one frame-format trait per codec, one frame writer, and a generic C ABI over them, without a change of wire behaviour ([plan](docs/milestones/m6-architecture.md)) |
-| A0 reference application scenario | Complete: the scenario ([`docs/reference-application.md`](docs/reference-application.md), area APP) and the `refapp/` skeleton ([plan](docs/milestones/a0-scenario.md)) |
-| A1 reference application packets | Complete: the flight and ground nodes of `refapp/` exchange Space Packets with CUC time stamps through the harness, and the golden traces of the four `a1-*` cases are decoded with the strict codecs and reproduced in CI ([plan](docs/milestones/a1-packets.md)) |
-| A2 reference application frames | Complete: the flight and ground nodes of `refapp/` exchange TM and TC frames, multiplexed and demultiplexed by the `aldis-link` engines, and the golden traces of the four `a2-*` cases are decoded with the strict codecs and reproduced in CI ([plan](docs/milestones/a2-frames.md)) |
-| A3 reference application COP-1 | Complete: the ground node sends every uplink Frame Data Unit as a Type-AD frame through `Fop1`, the flight node accepts frames through `Farm1` and reports its state in the CLCW, and the golden traces of the five `a3-*` cases, retransmission over a lossy link included, are decoded with the strict codecs and reproduced in CI ([plan](docs/milestones/a3-cop1.md)) |
-| AINT interoperability against an independent ground system | Planned, entry gate A3 met (exited 2026-11-11): the Rust flight node exchanges TM and TC frames and COP-1 with an independent mission control system run as a black box (YAMCS recommended, OSDLP the alternative; the milestone plan decides) over a real transport, and every discrepancy is filed as an open issue or reported upstream by the maintainer ([roadmap §3](docs/08-roadmap.md#3-track-a--reference-application-a0a6-aint-acfs)) |
+| Time codes, Space Packets, Encapsulation Packets | Released |
+| TM, TC, AOS, and USLP Transfer Frames | Released |
+| COP-1 (FOP-1 and FARM-1) and frame synchronization | Released |
+| Link engines: packet and frame generators, multiplexing, reception, segmentation, CLTU packing | Released |
+| C ABI and C++ header over all of the above | Released |
+| Reference application: flight and ground nodes with packets, TM and TC frames, and COP-1 over a lossy link, golden traces | Complete |
+| Reference application: AOS and USLP variants, C and C++ flight side, bare-metal target | Planned |
+| Simplifying the crate architecture | In progress |
+| Interoperability against an independent ground system | Planned |
 
-See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
+Each released row has its tests, test vectors, and hazard analysis. The [roadmap](docs/08-roadmap.md) has the milestone detail, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) lists the CCSDS documents and sections covered.
 
 ## Limits
 
-- v1.0 is not released: it waits on M6 and A6 ([roadmap §5](docs/08-roadmap.md#5-releases)).
+- v1.0 is not released: it waits on the architecture simplification and the last reference-application milestone ([roadmap §5](docs/08-roadmap.md#5-releases)).
 - Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
 - Its wire behaviour has not yet been exercised against an independent implementation; the AINT milestone plans that.
-- Its API may change in any 0.x release (GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
-- Outside contributions are not being accepted yet. The repository is public as a showcase, which also lets it use the free tools VER-055 requires (OI-22).
+- Its API may change in any 0.x release (pre-1.0 versions promise no stability); the [changelog](CHANGELOG.md) lists the breaking changes.
+- Outside contributions are not being accepted yet. The repository is public as a showcase, which also lets it use free verification tools that require a public repository ([open issues](docs/09-open-issues.md)).
 
 ## Evidence
 
 Every claim of correctness is backed by a check that the merge gate runs or by a record a person signed, not by assertion. The README does not repeat them; the documents do.
 
 - [Verification](docs/06-verification.md): the lints, link-time panic freedom, coverage, fuzzing, mutation testing, test vectors from blind independent models, cross-checks, and the targets (including bare-metal QEMU runs).
-- [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data and what it is compared against.
+- [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data, which is also run through other implementations of the standards: the `spacepackets` Rust crate, and NASA cFE's `MSG` module (v7.0.1, vendored unmodified), which agrees with `aldis-spp` on the Space Packet primary header, the sequence count, and cFE's CUC telemetry time.
 - [Traceability](docs/06-verification.md): every requirement cites its Blue Book clause and every test names the requirements it covers; `cargo xtask trace` reports what is traced.
 - [The merge gate](docs/06-verification.md#7-verification-runs-and-the-merge-gate): a reproducible run of every check in a digest-pinned image, with a published evidence record.
 - [Assurance case](docs/verification/assurance-case.md) and [hazard analysis](docs/verification/hazards.md): the argument from claims to evidence, and the failure modes.
@@ -160,12 +162,12 @@ Aldis is built by coding agents under rules a person sets. Implementation agents
 - [AGENTS.md](AGENTS.md): the rules for coding agents.
 - [Decision rights](docs/process/decision-rights.md): who decides what.
 - [Independent review](docs/process/review.md) and the [coordinator](docs/process/coordinator.md): the review protocol and the merge trains.
-- `cargo xtask metrics` measures the process (VER-063).
+- In the 30 days from 2026-10-12 to 2026-11-11, 391 pull requests were merged, half within about an hour of being opened. 46 were merge trains, which carry reviewed pull requests and get no review of their own. Of the other 345, 250 have a recorded review; from 2026-10-31 on, 186 of 189 do. Counted with `gh pr list --json` and `cargo xtask metrics`.
 
 ## Layout
 
 ```
-code/
+aldis/
 ├── Cargo.toml            workspace (edition 2024, shared lint set)
 ├── AGENTS.md             guide for contributors and coding agents
 ├── docs/                 the specification: start at docs/README.md
