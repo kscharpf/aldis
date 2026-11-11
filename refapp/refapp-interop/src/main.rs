@@ -17,7 +17,7 @@ use refapp_interop::port::UdpPort;
 use refapp_interop::run::{downlink_slot, flight_node, load_case, run_flight};
 
 const HELP: &str = "\
-usage: cargo run --manifest-path refapp/Cargo.toml -p refapp-interop -- run <options>
+usage: cargo run -p refapp-interop -- run (from refapp/) <options>
 
 options:
   --case <id>             the case whose level and end instant the run takes (required)

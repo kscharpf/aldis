@@ -58,6 +58,15 @@ pub enum Event {
     Datagram(Datagram),
     /// A node event of §7.3 and §7.4, or a `fault` of the loss script.
     Node(Record),
+    /// The driver ran more than one slot late: `count` slots, from the one after the last
+    /// served up to the one before `t_us`'s, got no `tx_slot` step (APP-158). Tells the
+    /// driver's lateness from a loss on the link.
+    SlotsMissed {
+        /// Monotonic instant of the late step, µs since the start of the run.
+        t_us: Micros,
+        /// The number of slots that got no step.
+        count: u64,
+    },
 }
 
 /// What the driver reports into: the run log, or a test's collector.
@@ -76,12 +85,14 @@ impl Sink for Vec<Event> {
     }
 }
 
-/// The header line of a run log (APP-162).
+/// The header line of a run log (APP-162). Every field is written; `None` is `null`, meaning
+/// unknown (a run without a ground system has no version or digest).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     /// The case ID.
     pub case: String,
-    /// The ground system's version, if known (APP-155).
+    /// The ground system's version; `null` in the log when unknown (APP-155, APP-162). The
+    /// three fields of the ground system and the node are always written.
     pub ground_version: Option<String>,
     /// The ground system's image digest, if known.
     pub image_digest: Option<String>,
@@ -186,6 +197,9 @@ impl<W: Write> Sink for RunLog<W> {
         let line = match event {
             Event::Datagram(d) => d.to_line(),
             Event::Node(r) => r.to_line().map_err(Error::Contract)?,
+            Event::SlotsMissed { t_us, count } => {
+                format!("{{\"t_us\":{t_us},\"kind\":\"slots_missed\",\"count\":{count}}}\n")
+            }
         };
         self.out.write_all(line.as_bytes())?;
         Ok(())

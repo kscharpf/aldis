@@ -51,7 +51,7 @@ fn datagrams(events: &[Event], dir: Dir, kind: DatagramKind) -> Vec<&Datagram> {
 
 #[test]
 fn nominal_case_over_loopback_gives_the_packet_projection_of_a3_nominal() {
-    // req: APP-003, APP-157, APP-158, APP-159, APP-160, APP-161
+    // req: APP-003, APP-157, APP-158, APP-159, APP-160
     let mut events: Vec<Event> = Vec::new();
     run_pair("a3-nominal", &LossScript::default(), &mut events).unwrap();
     let got = projection(&events);
@@ -84,7 +84,7 @@ fn nominal_case_over_loopback_gives_the_packet_projection_of_a3_nominal() {
 
 #[test]
 fn lossy_case_over_loopback_applies_the_script_and_the_commands_still_arrive() {
-    // req: APP-163, APP-165, APP-162, APP-003
+    // req: APP-163, APP-162, APP-003
     let scenario = Scenario::load().unwrap();
     let loss = LossScript::from_case(scenario.case("a3-uplink-loss").unwrap()).unwrap();
     let mut events: Vec<Event> = Vec::new();
@@ -174,7 +174,8 @@ fn flight_node_over_a_real_clock_sends_one_frame_per_datagram() {
     let mut flight = flight_node(case.level).unwrap();
     let mut events: Vec<Event> = Vec::new();
     let mut clock = Monotonic::start();
-    // Slots 0, 1, 2 and the step at 300 000 µs of the run are 3 frames.
+    // How many slots fit in the run depends on the wall clock; the count is checked against the
+    // frames the driver itself sent.
     run_flight(
         &mut flight,
         NonZeroU64::new(125_000).unwrap(),
@@ -191,10 +192,12 @@ fn flight_node_over_a_real_clock_sends_one_frame_per_datagram() {
     while let Ok(n) = tm.recv(&mut buf) {
         lengths.push(n);
     }
-    assert_eq!(
-        lengths,
-        vec![223, 223, 223],
-        "frames at 0, 125 000, 250 000 µs"
-    );
-    assert_eq!(datagrams(&events, Dir::Down, DatagramKind::Sent).len(), 3);
+    let sent = datagrams(&events, Dir::Down, DatagramKind::Sent);
+    assert!(!sent.is_empty(), "slot 0 is always served");
+    assert_eq!(lengths.len(), sent.len(), "one datagram per frame sent");
+    assert!(lengths.iter().all(|n| *n == 223), "{lengths:?}");
+    for (i, d) in sent.iter().enumerate() {
+        assert_eq!(d.index, i as u64, "indexes count in order");
+        assert_eq!(d.octets.len(), 223);
+    }
 }

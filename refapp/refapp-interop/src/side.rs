@@ -150,7 +150,15 @@ impl<'n> Side<'n> {
             return Ok(Vec::new());
         }
         if tx_slot {
-            self.next_slot = (now.get() / self.slot.get()).saturating_add(1);
+            let current = now.get() / self.slot.get();
+            let missed = current.saturating_sub(self.next_slot);
+            if missed > 0 && self.role == Role::Flight {
+                sink.record(Event::SlotsMissed {
+                    t_us: now,
+                    count: missed,
+                })?;
+            }
+            self.next_slot = current.saturating_add(1);
         }
         let units: Vec<&[u8]> = delivered.iter().map(Vec::as_slice).collect();
         let input = StepInput {
@@ -377,6 +385,31 @@ mod tests {
                 (130_000, true, 0),
             ]
         );
+    }
+
+    #[test]
+    fn a_step_more_than_one_slot_late_logs_the_missed_slots() {
+        // req: APP-158
+        let mut probe = Probe { seen: Vec::new() };
+        let slot = NonZeroU64::new(125_000).unwrap();
+        let mut side = Side::new(Role::Flight, &mut probe, slot, Vec::new());
+        let mut sink: Vec<crate::log::Event> = Vec::new();
+        side.step(Micros::new(0), &[], &mut sink).unwrap();
+        // One slot late (slot 1 served at 130 000): nothing missed.
+        side.step(Micros::new(130_000), &[], &mut sink).unwrap();
+        assert_eq!(sink.len(), 0);
+        // Slot 2 is due at 250 000; a step at 400 000 is in slot 3, so slot 2 is skipped.
+        side.step(Micros::new(400_000), &[], &mut sink).unwrap();
+        assert_eq!(
+            sink,
+            vec![crate::log::Event::SlotsMissed {
+                t_us: Micros::new(400_000),
+                count: 1
+            }]
+        );
+        // The next slot is 4 again: a step at 500 000 misses none.
+        side.step(Micros::new(500_000), &[], &mut sink).unwrap();
+        assert_eq!(sink.len(), 1);
     }
 
     #[test]

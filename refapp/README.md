@@ -14,7 +14,7 @@ The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0
 | `refapp-flight/` | `no_std`, no heap: the flight node; flight lint set (APP-102) |
 | `refapp-ground/` | The ground node; flight lint set's restriction lints (APP-103) |
 | `refapp-harness/` | `std` tool: scheduler and link model, trace writer, canonical-form check, comparator, scenario generator |
-| `refapp-interop/` | `std` tool, standard library only: the transport driver of the interoperability milestone (AINT): steps the flight node against a UDP socket and a clock, the loss script, the run log, and the self-test over loopback in virtual time (APP-157…APP-163) |
+| `refapp-interop/` | `std` tool, no third-party dependency of its own (std plus workspace crates): the transport driver of the interoperability milestone (AINT): steps the flight node against a UDP socket and a clock, the loss script, the run log, and the self-test over loopback in virtual time (APP-157…APP-163) |
 | `scenario/scenario.json` | The one scenario file every implementation reads (APP-107); `scenario.schema.json` is generated from the harness's model |
 | `golden/<case>.jsonl` | Golden traces (§7); `golden/CHANGES.md` records every trace-version change (APP-087) |
 
