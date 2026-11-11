@@ -112,9 +112,10 @@ commands:
                                every marker names one; `list` prints the types (RS-020, VER-023)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
-  readme-diagram [--write]     check that the sequence diagram of README.md is the Mermaid
-                               text decoded from refapp/golden/a3-uplink-loss.jsonl, or
-                               rewrite it (APP-153)
+  readme-diagram [--write]     check that the sequence diagram of README.md is the one
+                               decoded from refapp/golden/a3-uplink-loss.jsonl and its
+                               demo output the one of a fresh run, or rewrite them
+                               (APP-153, APP-154)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   ffi-imports <target>         the bare-metal aldis-ffi static library needs nothing from the
                                integrator beyond memcpy/memset equivalents (CABI-004)

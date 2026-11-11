@@ -6,6 +6,7 @@
 //!
 //! | Module | Contents | Requirements |
 //! |---|---|---|
+//! | [`demo`] | The README demo: one text line per event of a golden trace | APP-154 |
 //! | [`diagram`] | Mermaid sequence diagram of a golden trace | APP-153 |
 //! | [`frame`] | Strict decoding of a link unit as a TM or TC frame | APP-086 |
 //! | [`micros`] | Microseconds of simulated time | APP-107 |
@@ -15,6 +16,7 @@
 //! | [`trace`] | Golden-trace writer, canonical-form check, comparator | APP-080…APP-085 |
 #![forbid(unsafe_code)]
 
+pub mod demo;
 pub mod diagram;
 pub mod frame;
 pub mod micros;
