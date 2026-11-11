@@ -36,6 +36,20 @@ use aldis_uslp::{
     UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcfCountLen,
 };
 
+/// The physical channel of a TC VC: the longest frame the standard allows.
+fn tc_physical(fecf: bool) -> aldis_tc::PhysicalChannelConfig {
+    aldis_tc::PhysicalChannelConfig::new(1024, fecf).unwrap()
+}
+
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
@@ -143,7 +157,7 @@ fn tc_fdus_are_the_requests_of_fop1() {
     assert_eq!(target.max_fdu_len(), 33);
     let config = MapSegmenterConfig::<Tc, 1>::new(
         VcId::<6>::new(2).unwrap(),
-        TcSegmenterParams::without_segment_header(true, true),
+        TcSegmenterParams::without_segment_header(tc_physical(true), true),
         target.max_fdu_len(),
         &[],
     )
@@ -217,7 +231,7 @@ fn uslp_tfdfs_of_whole_sdus_are_the_requests_of_fop1() {
     // The segmenter's TFDF is the target's FDU, its header, and the VCF Count lengths the same.
     let config = MapSegmenterConfig::<Uslp, 2>::new(
         VcId::<6>::new(5).unwrap(),
-        UslpSegmenterParams::new(VcfCountLen::new(1).unwrap(), VcfCountLen::NONE),
+        uslp_params(VcfCountLen::new(1).unwrap(), VcfCountLen::NONE),
         target.max_fdu_len() + 1,
         &[MapEntry::<Uslp>::new(
             MapId::<4>::new(2).unwrap(),

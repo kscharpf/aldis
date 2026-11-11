@@ -40,13 +40,15 @@ use aldis::link::receiver::{
     AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
     DiscardReason, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet,
     ReceiveProtocol, ReceiverInput, ReceiverOutput, ReceiverStatus, TcChannel, TcVc, TmChannel,
-    TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
+    TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis::tc::{
     MapConfig as TcMapConfig, PhysicalChannelConfig as TcPhysical, TcFrame, TcMapId,
     TcSpacecraftId, TcVcId, VcConfig as TcVcConfig,
 };
-use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
+use aldis::tm::{
+    DataFieldContent, FshLen, TmFrame, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 use aldis::uslp::{
     MapConfig as UslpMapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType,
     UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig as UslpVcConfig,
@@ -86,7 +88,7 @@ const _: () = assert!(ALDIS_FRAME_RECEIVER_MAX_ACTIONS == FRAME_RECEIVER_MAX_ACT
 pub const ALDIS_PACKET_EXTRACTOR_WORDS: usize = 1043;
 /// 64-bit words of one `aldis_frame_receiver_t` (CABI-031): the tag and the largest of the
 /// engines of TM, TC, AOS, and USLP at the build capacities.
-pub const ALDIS_FRAME_RECEIVER_WORDS: usize = 67;
+pub const ALDIS_FRAME_RECEIVER_WORDS: usize = 82;
 
 const _: () = assert!(
     size_of::<crate::handle::Slot<PacketExtractorState>>() <= ALDIS_PACKET_EXTRACTOR_WORDS * 8
@@ -1075,7 +1077,7 @@ where
     fn channel(c: &aldis_frame_receiver_config_t) -> Result<Self::Channel>;
 
     /// The parameters of the VC `vc` of `c`.
-    fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<Self::VcParams>;
+    fn vc_params(vc: &aldis_frame_receiver_vc_t, id: Self::Vc) -> Result<Self::VcParams>;
 
     /// The `Plain` frame of `octets` for `config`: the codec decodes it, and it takes the `Plain`
     /// step through `NoSecurity`. The codec knows no VC, as the receiver counts frames of
@@ -1093,7 +1095,8 @@ where
 {
     let mut parsed: [Option<VcEntry<P>>; V] = [None; V];
     for (slot, vc) in parsed.iter_mut().zip(&c.vcs).take(c.vc_count) {
-        *slot = Some(VcEntry::new(P::Vc::try_from(vc.vc_id)?, P::vc_params(vc)?));
+        let id = P::Vc::try_from(vc.vc_id)?;
+        *slot = Some(VcEntry::new(id, P::vc_params(vc, id)?));
     }
     let channel = P::channel(c)?;
     let config = match parsed.first().copied().flatten() {
@@ -1122,15 +1125,24 @@ impl RxProtocol for Tm {
         Ok(TmChannel::new(physical, ocf, fsh))
     }
 
-    fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<TmVc> {
-        let content = match parse::<aldis_link_content>(vc.content)? {
-            aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => TmContent::Packets,
-            aldis_link_content::ALDIS_LINK_CONTENT_VCA => TmContent::Vca,
-            aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED => TmContent::Unserved,
+    fn vc_params(vc: &aldis_frame_receiver_vc_t, id: VcId<3>) -> Result<TmVc> {
+        let (content, served) = match parse::<aldis_link_content>(vc.content)? {
+            aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => (DataFieldContent::Packets, true),
+            aldis_link_content::ALDIS_LINK_CONTENT_VCA => (DataFieldContent::VcaSdu, true),
+            // The receiver does not serve the VC; what it carries is then of no concern.
+            aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED => (DataFieldContent::Packets, false),
             aldis_link_content::ALDIS_LINK_CONTENT_BITSTREAM => return Err(bad_content()),
         };
-        let fsh_len = usize::from(vc.fsh_len);
-        TmVc::new(content, flag(vc.ocf)?, (fsh_len > 0).then_some(fsh_len))
+        let mut config = TmVirtualChannelConfig::new(id, content);
+        if flag(vc.ocf)? {
+            config = config.with_ocf();
+        }
+        if vc.fsh_len > 0 {
+            let len = FshLen::new(vc.fsh_len)
+                .ok_or(Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN))?;
+            config = config.with_fsh(len);
+        }
+        Ok(TmVc::new(config, served))
     }
 
     fn plain<'a>(config: &FrameReceiverConfig<Tm, V>, octets: &'a [u8]) -> Result<Self::Plain<'a>> {
@@ -1169,7 +1181,7 @@ impl RxProtocol for Aos {
         }
     }
 
-    fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<AosVc> {
+    fn vc_params(vc: &aldis_frame_receiver_vc_t, _: VcId<6>) -> Result<AosVc> {
         let content = match parse::<aldis_link_content>(vc.content)? {
             aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => AosContent::Packets,
             aldis_link_content::ALDIS_LINK_CONTENT_VCA => AosContent::Vca,
@@ -1226,7 +1238,7 @@ impl RxProtocol for Tc {
         Ok(TcChannel::new(physical))
     }
 
-    fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<TcVc> {
+    fn vc_params(vc: &aldis_frame_receiver_vc_t, _: VcId<6>) -> Result<TcVc> {
         Ok(match parse::<aldis_link_content>(vc.content)? {
             aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED => TcVc::UNSERVED,
             aldis_link_content::ALDIS_LINK_CONTENT_PACKETS
@@ -1305,7 +1317,7 @@ impl RxProtocol for Uslp {
         UslpChannel::new(physical, ocf)
     }
 
-    fn vc_params(vc: &aldis_frame_receiver_vc_t) -> Result<UslpVc> {
+    fn vc_params(vc: &aldis_frame_receiver_vc_t, _: VcId<6>) -> Result<UslpVc> {
         let served = parse::<aldis_link_content>(vc.content)?
             != aldis_link_content::ALDIS_LINK_CONTENT_UNSERVED;
         Ok(UslpVc::new(map_set(vc.maps)?, flag(vc.cop)?, served))

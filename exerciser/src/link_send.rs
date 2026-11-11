@@ -5,7 +5,9 @@
 
 use core::hint::black_box as bb;
 
-use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
+use aldis_aos::{
+    AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
+};
 use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
@@ -19,14 +21,15 @@ use aldis_link::bitstream::{
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh,
-    MAX_FSH_DATA, MuxInput, MuxOutput, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
+    MAX_FSH_DATA, MuxInput, MuxOutput, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel,
     UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Selector, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp, UslpParams};
+use aldis_tm::{DataFieldContent, TmVirtualChannelConfig};
 use aldis_uslp::{
-    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
-    Upid, VcfCountLen,
+    OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination,
+    TransferFrameType, Upid, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
 use crate::exercise::Tally;
@@ -74,15 +77,30 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     };
     let mut channel = TmChannel::new(physical, scid, oid);
     channel.mc_ocf = Some([0; 4]);
-    let mut v1_params = TmVc::new(TmRole::Packets);
-    v1_params.fsh = Some(fsh);
+    let Some(fsh_len) = fsh.fsh_len() else {
+        t.check(false);
+        return;
+    };
+    let v1_config = TmVirtualChannelConfig::new(v1, DataFieldContent::Packets)
+        .with_fsh(fsh_len)
+        .with_security(security);
+    let Ok(v1_params) = TmVc::new(v1_config).with_initial_fsh(fsh) else {
+        t.check(false);
+        return;
+    };
     let vcs = [
-        VcConfig::<Tm>::new(v1, v1_params)
+        VcConfig::<Tm>::new(v1_params)
             .with_priority(bb(2))
-            .with_weight(weight)
-            .with_security(security),
-        VcConfig::<Tm>::new(v3, TmVc::new(TmRole::Vca)).with_priority(bb(1)),
-        VcConfig::<Tm>::new(oid, TmVc::new(TmRole::Packets)),
+            .with_weight(weight),
+        VcConfig::<Tm>::new(TmVc::new(TmVirtualChannelConfig::new(
+            v3,
+            DataFieldContent::VcaSdu,
+        )))
+        .with_priority(bb(1)),
+        VcConfig::<Tm>::new(TmVc::new(TmVirtualChannelConfig::new(
+            oid,
+            DataFieldContent::Packets,
+        ))),
     ];
     let Ok(config) = ChannelMuxConfig::<Tm, 4>::new(channel, policy, &vcs) else {
         t.check(false);
@@ -100,7 +118,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
             && v.priority() == 2
             && v.weight() == weight
             && v.security() == security
-            && v.params().role == TmRole::Packets
+            && v.params().config().content() == DataFieldContent::Packets
     }));
     let Ok(mut mux) = ChannelMux::<Tm, 4, F>::new(config) else {
         t.check(false);
@@ -238,12 +256,16 @@ fn aos(t: &mut Tally) {
             .and_then(|issue4| AosChannel::new(issue4, big, false))
             .is_err()
     }));
-    let vcs = [VcConfig::<Aos>::new(
-        v1,
-        AosVc {
-            ocf: Some([bb(1); 4]),
-        },
-    )];
+    let Ok(v1_config) = AosVirtualChannelConfig::new(scid, v1, AosContent::VcaSdu) else {
+        t.check(false);
+        return;
+    };
+    let Ok(v1_params) = AosVc::new(v1_config.with_ocf()).with_initial_ocf([bb(1); 4]) else {
+        t.check(false);
+        return;
+    };
+    t.check(AosVc::new(v1_config).with_initial_ocf([0; 4]).is_err());
+    let vcs = [VcConfig::<Aos>::new(v1_params)];
     let config = ChannelMuxConfig::<Aos, 2>::new(channel, MuxPolicy::RoundRobin, &vcs)
         .and_then(|c| c.with_insert_zone_fill(bb(0xA5)));
     let Ok(config) = config else {
@@ -292,6 +314,16 @@ fn aos(t: &mut Tally) {
     t.check(mux.config().channel().cycle_in_use());
 }
 
+/// The codec's parameters of a fixed-length USLP VC with the VCF Count Lengths `sc` and `exp`
+/// whose frames carry the OCF of the master channel.
+const fn fixed_vc_params(sc: VcfCountLen, exp: VcfCountLen) -> VcParams {
+    let mut codec = VcParams::new(TransferFrameType::Fixed);
+    codec.vcf_count_len_sequence = sc;
+    codec.vcf_count_len_expedited = exp;
+    codec.ocf = OcfUse::Required;
+    codec
+}
+
 /// A USLP mux with COP-1 on a VC: the `cop` block, routes, and the OID frame with the MC's OCF.
 fn uslp(t: &mut Tally) {
     let (Some(scid), Some(v1), Some(map)) = (
@@ -311,24 +343,33 @@ fn uslp(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let Ok(mut channel) = UslpChannel::new(
+    let Ok(channel) = UslpChannel::new(
         physical,
         scid,
         SourceOrDestination::Source,
         VcfCountLen::NONE,
+        Some([bb(7); 4]),
     ) else {
         t.check(false);
         return;
     };
-    channel.mc_ocf = Some([bb(7); 4]);
-    let Ok(params) = UslpVc::new(map, Qos::SequenceControlled, sc, exp, bb(true)) else {
+    let codec = fixed_vc_params(sc, exp);
+    let Ok(config) = UslpVcConfig::new(scid, v1, codec) else {
+        t.check(false);
+        return;
+    };
+    let Ok(params) = UslpVc::new(config, map, Qos::SequenceControlled, bb(true)) else {
         t.check(false);
         return;
     };
     t.check(params.map() == map && params.qos() == Qos::SequenceControlled && params.cop());
     t.check(params.vcf_len_sc() == sc && params.vcf_len_exp() == exp);
-    t.check(UslpVc::new(map, Qos::Expedited, VcfCountLen::NONE, exp, bb(true)).is_err());
-    let vcs = [VcConfig::<Uslp>::new(v1, params)];
+    t.check(
+        UslpVcConfig::new(scid, v1, fixed_vc_params(VcfCountLen::NONE, exp))
+            .and_then(|c| UslpVc::new(c, map, Qos::Expedited, bb(true)))
+            .is_err(),
+    );
+    let vcs = [VcConfig::<Uslp>::new(params)];
     let Ok(config) = ChannelMuxConfig::<Uslp, 2>::new(channel, MuxPolicy::FixedPriority, &vcs)
     else {
         t.check(false);
