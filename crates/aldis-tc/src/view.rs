@@ -622,6 +622,25 @@ mod tests {
     }
 
     #[test]
+    fn the_frame_of_fuzz_issue_433_passes_the_checks_but_cannot_be_written() {
+        // req: TC-004, TC-021, TC-022, API-020, VER-022
+        // VC 2, no FECF, Segment Header 0xFE (flags 11, MAP 62, not configured), one data octet.
+        // The checks accept it (TC-022); writing a frame of that MAP is `UnknownChannel`, so a
+        // re-encode of every accepted frame is wrong (the fuzz target skips such a frame).
+        let t = standard(false);
+        let bytes = [0x01, 0x55, 0x08, 0x06, 0xF6, 0xFE, 0xFD];
+        let f = TcFrame::decode(&bytes, &t).unwrap();
+        assert_eq!(f.segment_header().map(|s| s.map_id.get()), Some(62));
+        assert_eq!(f.data_field(), [0xFD]);
+        assert!(crate::checked::check_frame(&bytes, &t, DecodeMode::Lenient).is_ok());
+        let mut out = [0_u8; 16];
+        let e =
+            crate::writer::TcPlan::begin(&mut out, &t, f.header().fields(), f.segment_header(), 1)
+                .unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::UnknownChannel);
+    }
+
+    #[test]
     fn the_header_peeks_alone() {
         // req: TC-001, TC-002, API-014, GEN-053
         // Type-BC, SCID 0x3FF, VCID 63, Frame Length field 6, N(S) 9; no channel is looked up.
