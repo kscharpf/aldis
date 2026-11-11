@@ -8,7 +8,7 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | in progress | #489 | This plan, D1–D12, `--scope a3` trace gate (D1) |
-| WP-1 Scenario additions | planned | — | Only what [reference-application.md](../reference-application.md) lacks for A3: order of work with COP-1, CLCW input, directives, events 200–299, the cases (D5) and their hand-derived schedules; no code |
+| WP-1 Scenario additions | planned | — | Only what [reference-application.md](../reference-application.md) lacks for A3: order of work with COP-1, CLCW input, directives, events 200–299, the cases (D5) and their hand-derived schedules; no code. Adds APP-144 to APP-152 ([§4.5, §6.8, §7.4](../reference-application.md)) |
 | WP-2 Harness: COP-1 level | planned | — | Level `cop1` and the directive entries of the scenario file, the frame-level rules at the new level, decoding of AD and BC frames; no change of an `a0-*`, `a1-*`, or `a2-*` trace |
 | WP-3 Flight node: FARM-1 | planned | — | FARM-1 for Type-AD and Type-BC frames, the delivery buffer, the CLCW, COP-1 events |
 | WP-4 Ground node: FOP-1 | planned | — | `RequestAd`, CLCW and timer inputs, transmit responses, directives, notifications and alerts as events, one frame per uplink slot |
@@ -127,15 +127,16 @@ Only what the document lacks; nothing in it is restated. The gaps found while wr
 
 ## 4. Exit criteria
 
-A3 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3 (A2 left it here). The requirements WP-1 adds join the table in that pull request. The results column is filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a3`, not repeated here.
+A3 is complete when every item below is green on `main`. Requirements of the scenario that need no test are reviewed in A0's table and are not repeated. APP-004 belongs to A3 (A2 left it here). The requirements WP-1 adds (APP-144 to APP-152) joined the table in its pull request. The results column is filled in the WP-7 exit pull request; the artefacts of each requirement are listed by `cargo xtask trace --scope a3`, not repeated here.
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
 | FOP-1 on the ground | APP-044 | |
 | CLCW into FOP-1 | APP-036 | |
 | Frozen traces | APP-004 | |
-| Order, input, and events of COP-1 | The requirements WP-1 adds for the order of work, the CLCW input, the directives, FARM-1's use, and the events 200–299 | |
-| Cases and fault scripts | The requirements WP-1 adds for the `a3-*` cases, the harness rules at `cop1`, and APP-141 carried to the level | |
+| Order, FOP-1 requests, directives, and events of COP-1 | APP-144, APP-145, APP-148, APP-149 | |
+| FARM-1 on board | APP-146, APP-147 | |
+| Cases and fault scripts | APP-150, APP-151, APP-152 | |
 | Packet projection | APP-003 | |
 | Golden traces | APP-086 | |
 | Reproduction in CI | The check `refapp` runs `compare` for every `a3-*` case (APP-106); `cargo xtask trace --scope a3 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
