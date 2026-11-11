@@ -62,8 +62,8 @@ impl SppConfig {
 
     /// Checks the parts of a packet against 133.0 and this configuration; the result is the only
     /// input [`encode`](crate::writer::encode) takes (RS-020). The checks run here through
-    /// `check_parts` and `SppConfig::check_len`, whose proofs (`CheckedParts`, `PacketLen`)
-    /// are consumed by these checks and not stored: [`PacketData`] holds the checked parts, and
+    /// `check_parts` and `SppConfig::check_len`, which produce the proofs (`CheckedParts`,
+    /// `PacketLen`); this constructor discards them and does not store them: [`PacketData`] holds the checked parts, and
     /// its private fields and this constructor are what make it a proof (OI-92). The Secondary
     /// Header Flag is set exactly when `secondary_header` is non-empty, so a flag without a
     /// secondary header cannot be expressed (SPP-005, API-021).
