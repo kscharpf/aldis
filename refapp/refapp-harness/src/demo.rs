@@ -10,9 +10,10 @@ use std::fmt::Write as _;
 use crate::diagram::{Row, rows};
 use crate::scenario::Scenario;
 
-/// The lines of the demo for the trace `text`, each ending in a newline: the instant, the
-/// direction, the virtual channel and frame type, N(S) or the CLCW, and whether the link lost the
-/// frame or the ground node sent it again.
+/// The lines of the demo for the trace `text`, each ending in a newline.
+///
+/// A line holds the instant, the direction, the virtual channel and frame type, N(S) or the CLCW,
+/// and whether the link lost the frame or the ground node sent it again.
 ///
 /// # Errors
 /// As [`crate::diagram::render`].
