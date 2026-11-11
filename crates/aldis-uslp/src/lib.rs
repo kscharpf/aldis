@@ -72,7 +72,7 @@ pub use truncated::UslpTruncatedFrame;
 pub use upid::{UnassignedUpid, Upid};
 pub use view::{UslpFrame, UslpFullFrame};
 pub use writer::{
-    FrameContent, FrameFields, UslpFrameWriter, encode, encode_oid, encode_oid_galois,
+    FrameContent, FrameFields, UslpFrameWriter, UslpPlan, encode, encode_oid, encode_oid_galois,
     encode_truncated,
 };
 

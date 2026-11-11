@@ -27,6 +27,7 @@
 //! | [`engine`] | `Actions` and `OutRange` of the engine step | API-057, API-061, RS-022 |
 //! | [`finishing`] | Frame finishing states of the codec writers | RS-023 |
 //! | [`format`] | `FrameFormat`: the geometry of a codec's frames | LNK-001, GEN-003 |
+//! | [`writer`] | `FrameWriter`: the finishing of a frame, FECF and SDLS, once for every codec | RS-023, API-074 |
 //!
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020, GEN-070).
 #![no_std]
@@ -56,6 +57,7 @@ pub mod plain;
 pub mod security;
 pub mod stream;
 pub mod time;
+pub mod writer;
 
 // Kani proof harnesses, compiled only by `cargo kani` (docs/verification/formal-verification.md).
 #[cfg(kani)]

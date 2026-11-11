@@ -18,7 +18,7 @@ use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, TruncatedFrameLen,
-    Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig,
+    Upid, UslpAnomaly, UslpFrame, UslpMapId, UslpPlan, UslpSpacecraftId, UslpVcId, VcConfig,
     VcParams, VcTable, VcfCountLen, check_frame, encode, encode_oid, encode_truncated,
 };
 use serde_json::{Map, Value, json};
@@ -271,9 +271,8 @@ fn encode_case(case: &CodecCase) -> Result<Value, Error> {
     let len = encode(&tbl, frame_fields, content, &tfdz, &mut out)?;
     // The two-phase writer produces the same octets (API-020).
     let mut two = vec![0xA5_u8; len];
-    let mut writer =
-        UslpFrameWriter::begin(&mut two, &tbl, frame_fields, content, tfdz.len()).unwrap();
-    writer.tfdz_mut().unwrap().copy_from_slice(&tfdz);
+    let mut writer = UslpPlan::begin(&mut two, &tbl, frame_fields, content, tfdz.len()).unwrap();
+    writer.data_mut().copy_from_slice(&tfdz);
     let ctx = FrameCtx::Uslp {
         scid: frame_fields.spacecraft_id,
         vcid: frame_fields.vc_id,
@@ -281,8 +280,7 @@ fn encode_case(case: &CodecCase) -> Result<Value, Error> {
     };
     let done = writer
         .protect(tfdz.len(), &mut PreFilledSecurity, &ctx)?
-        .finalize()
-        .unwrap();
+        .finalize();
     assert_eq!(done.len(), len, "{}", case.id);
     assert_eq!(two, out[..len], "{}: two-phase writer differs", case.id);
     Ok(json!({ "output_hex": hex::encode(&out[..len]) }))

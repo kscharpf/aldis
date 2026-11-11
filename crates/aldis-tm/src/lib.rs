@@ -49,7 +49,7 @@ pub use header::{
 };
 pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{
-    TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,
+    TmFrameContent, TmFrameFields, TmFrameWriter, TmPlan, encode, encode_oid, encode_oid_galois,
 };
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.

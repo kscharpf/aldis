@@ -3,7 +3,7 @@
 //! proposal P-TC-06).
 //!
 //! The buffer is filled with a pattern and is longer than the frame. After `encode`, and after
-//! `AosFrameWriter::begin` and `finish`, every octet from the end of the frame on is the
+//! `AosPlan::begin` and `finish`, every octet from the end of the frame on is the
 //! pattern; a rejected `encode` or `begin` changes no octet.
 #![expect(
     clippy::unwrap_used,
@@ -12,9 +12,9 @@
 )]
 
 use aldis_aos::{
-    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
-    AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent, PacketOffset,
-    PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
+    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig, AosPlan,
+    AosVirtualChannelConfig, DataFieldContent, PacketOffset, PacketPointer, PduHeader,
+    VcFrameCount, VcTable, encode,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -88,12 +88,12 @@ fn begin_and_finish_write_only_the_frame() {
     let (pc, table, fields, _) = channel();
     let before = pattern(BUFFER);
     let mut out = before.clone();
-    let w = AosFrameWriter::begin(&mut out, &pc, &table, &fields).unwrap();
+    let w = AosPlan::begin(&mut out, &pc, &table, &fields).unwrap();
     assert_eq!(w.unsecured().unwrap().finalize().len(), FRAME);
     assert_eq!(out[FRAME..], before[FRAME..]);
     // A rejected `begin` changes nothing.
     let mut short = before[..FRAME - 1].to_vec();
-    let e = AosFrameWriter::begin(&mut short, &pc, &table, &fields).unwrap_err();
+    let e = AosPlan::begin(&mut short, &pc, &table, &fields).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(short, before[..FRAME - 1]);
 }

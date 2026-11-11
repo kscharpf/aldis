@@ -16,8 +16,8 @@ use aldis_testkit::strategies::uslp::{
 };
 use aldis_testkit::strategies::{self, octets};
 use aldis_uslp::{
-    Delimited, FrameContent, FrameDelimiter, Reason, UslpAnomaly, UslpFrame, UslpFrameWriter,
-    check_frame, encode, encode_oid, next_frame,
+    Delimited, FrameContent, FrameDelimiter, Reason, UslpAnomaly, UslpFrame, UslpPlan, check_frame,
+    encode, encode_oid, next_frame,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -84,10 +84,10 @@ proptest! {
             FrameParts::Full { fields, tfdf, insert_zone, ocf } => {
                 let content = FrameContent { tfdf: *tfdf, insert_zone, ocf: *ocf };
                 let mut two = vec![fill; f.octets.len()];
-                let mut w = UslpFrameWriter::begin(&mut two, t, *fields, content, f.tfdz.len()).unwrap();
-                w.tfdz_mut().unwrap().copy_from_slice(&f.tfdz);
+                let mut w = UslpPlan::begin(&mut two, t, *fields, content, f.tfdz.len()).unwrap();
+                w.data_mut().copy_from_slice(&f.tfdz);
                 let ctx = FrameCtx::Uslp { scid: fields.spacecraft_id, vcid: fields.vc_id, map_id: Some(fields.map_id) };
-                let done = w.protect(f.tfdz.len(), &mut PreFilledSecurity, &ctx).unwrap().finalize().unwrap();
+                let done = w.protect(f.tfdz.len(), &mut PreFilledSecurity, &ctx).unwrap().finalize();
                 prop_assert_eq!(done.len(), f.octets.len());
                 prop_assert_eq!(&two, &f.octets);
                 // One octet short: nothing is written (API-022).

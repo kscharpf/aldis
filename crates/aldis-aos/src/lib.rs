@@ -53,7 +53,7 @@ pub use header::{AosPrimaryHeader, FrameCountCycle, OID_VCID, VcFrameCount};
 pub use mpdu::{Mpdu, PacketOffset, PacketPointer};
 pub use view::{AosFrame, DataUnit};
 pub use writer::{
-    AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode, encode_oid,
+    AosFrameContent, AosFrameFields, AosFrameWriter, AosPlan, PduHeader, encode, encode_oid,
     encode_oid_galois,
 };
 

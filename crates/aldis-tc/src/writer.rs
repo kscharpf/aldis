@@ -12,15 +12,12 @@ use crate::header::TcVcId;
 use aldis_core::lookup::ChannelLookup;
 use aldis_core::lookup::MapLookup;
 use aldis_core::lookup::PhysicalLookup;
-use core::marker::PhantomData;
 
-use aldis_core::crc;
-use aldis_core::finishing::{
-    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
-};
+use aldis_core::finishing::Unprotected;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
-use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
-use aldis_core::{Error, ErrorKind, Result};
+use aldis_core::security::SecurityLayout;
+use aldis_core::writer::{FramePlan, FrameWriter, Variable, VariablePlan};
+use aldis_core::{Error, Result};
 
 use crate::control::{ControlCommand, ControlOctets};
 use crate::field;
@@ -48,18 +45,12 @@ pub enum FrameData<'a> {
 }
 
 /// Where the fields of a frame go, checked against the channels (232.0 §4.1, §6.3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Plan {
     fields: FrameFields,
     segment_header: Option<SegmentHeader>,
-    /// Offset of the data: after the Primary Header, the Segment Header, and the Security
-    /// Header.
-    data_start: usize,
-    security_header_len: usize,
-    security_trailer_len: usize,
-    fecf: bool,
-    /// The frame length with `data_len` data octets.
-    total: usize,
+    /// The frame with its data field of `data_len` octets.
+    layout: FrameLayout,
 }
 
 impl Plan {
@@ -131,11 +122,7 @@ impl Plan {
         Ok(Plan {
             fields,
             segment_header,
-            data_start: layout.data().start,
-            security_header_len: security.header_len(),
-            security_trailer_len: security.trailer_len(),
-            fecf: physical.fecf(),
-            total,
+            layout,
         })
     }
 }
@@ -186,55 +173,62 @@ pub fn encode<
         control.is_some(),
         payload.len(),
     )?;
-    let mut w = TcFrameWriter::start(out, plan)?;
-    for (d, s) in w.user_data_mut().iter_mut().zip(payload) {
+    let mut w = start(out, plan)?;
+    for (d, s) in w.data_mut().iter_mut().zip(payload) {
         *d = *s;
     }
-    w.fix_length(payload.len())
-        .and_then(TcFrameWriter::finalize)
-        .map(|w| w.len())
+    // The one-shot encoders take the Security Header and Trailer as given (API-072).
+    w.taken_as_given(payload.len()).map(|w| w.finalize().len())
 }
 
-/// Two-phase writer of a Type-D frame (232.0 §4.1, §6.3; API-020…API-023, API-072, API-074,
-/// RS-023).
+/// The plan of a TC frame for [`FrameWriter`] (232.0 §4.1, §6.3; TC-007).
 ///
-/// [`begin`](Self::begin) reserves the frame for up to a maximum of User Data and returns the
-/// writer [`Unprotected`]; the caller fills the User Data and, with SDLS, the Security Header
-/// and Trailer in place. [`protect`](TcFrameWriter::protect) (or
-/// [`unsecured`](TcFrameWriter::unsecured) without SDLS) fixes the length of the User Data, which
-/// decides where the Security Trailer lies and the Frame Length, writes the header, and applies
-/// SDLS; the writer is then [`Protected`]. [`finalize`](TcFrameWriter::finalize) computes the
-/// FECF, last, and gives the [`Finalized`] writer, the only state that exposes the frame's
-/// octets. Each step consumes the writer, so a step out of order does not compile (RS-023,
-/// RS-021).
+/// Variable-length: its Primary Header is rewritten with the Frame Length when the User Data
+/// length is fixed (232.0 §4.1.2.7). Its associated functions start the writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TcPlan {
+    fields: FrameFields,
+}
+
+impl FramePlan for TcPlan {}
+
+impl VariablePlan for TcPlan {
+    fn write_header(&self, frame: &mut [u8], total: usize, finished: bool) {
+        let version = if finished {
+            VERSION
+        } else {
+            UNFINISHED_VERSION
+        };
+        for (d, s) in frame
+            .iter_mut()
+            .zip(primary_octets(version, self.fields, total))
+        {
+            *d = s;
+        }
+    }
+
+    fn check_data_len(&self, _: usize) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Two-phase writer of a Type-D frame (232.0 §4.1, §6.3; API-020…API-023, API-072, API-074, RS-023).
+///
+/// [`TcPlan::begin`] reserves the frame for up to a maximum of User Data and returns the writer
+/// [`Unprotected`]; the caller fills the User Data (`data_mut`) and, with SDLS, the Security
+/// Header and Trailer in place. `protect` (or `unsecured` without SDLS) fixes the length of the
+/// User Data, which decides where the Security Trailer lies and the Frame Length, writes the
+/// header, and applies SDLS; the writer is then [`Protected`]. `finalize` computes the FECF,
+/// last, and gives the [`Finalized`] writer, the only state that exposes the frame's octets.
+/// Each step consumes the writer, so a step out of order does not compile (RS-023, RS-021). The
+/// steps are those of the core [`FrameWriter`].
 ///
 /// Until `protect` or `unsecured`, the buffer holds a Primary Header whose version field is `11`
 /// and whose Frame Length is the reserved frame length, which every decoder rejects with
 /// `UnsupportedVersion`, so an unfinished frame cannot be mistaken for a valid one (API-023).
-#[derive(Debug)]
-pub struct TcFrameWriter<'b, S: FrameState = Unprotected> {
-    out: &'b mut [u8],
-    plan: Plan,
-    max_user_len: usize,
-    /// The frame length: the reserved one until the User Data length is fixed.
-    total: usize,
-    state: PhantomData<S>,
-}
+pub type TcFrameWriter<'b, S = Unprotected> = FrameWriter<'b, Variable, TcPlan, S>;
 
-impl<'b, S: FrameState> TcFrameWriter<'b, S> {
-    /// The same frame in state `T`: the one place a state changes.
-    const fn into_state<T: FrameState>(self) -> TcFrameWriter<'b, T> {
-        TcFrameWriter {
-            out: self.out,
-            plan: self.plan,
-            max_user_len: self.max_user_len,
-            total: self.total,
-            state: PhantomData,
-        }
-    }
-}
-
-impl<'b> TcFrameWriter<'b, Unprotected> {
+impl TcPlan {
     /// Reserves a Type-D frame with room for up to `max_user_len` octets of User Data (232.0
     /// §4.1; TC-004, TC-007, API-020).
     ///
@@ -243,6 +237,7 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
     /// `InvalidField` (`control_command_flag`) for a Type-BC frame; `BufferTooSmall` if `out`
     /// cannot hold the largest frame. On error `out` is unchanged.
     pub fn begin<
+        'b,
         L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
             + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>
             + PhysicalLookup<Physical = PhysicalChannelConfig>
@@ -253,238 +248,33 @@ impl<'b> TcFrameWriter<'b, Unprotected> {
         fields: FrameFields,
         segment_header: Option<SegmentHeader>,
         max_user_len: usize,
-    ) -> Result<TcFrameWriter<'b, Unprotected>> {
+    ) -> Result<TcFrameWriter<'b>> {
         let plan = Plan::new(channels, fields, segment_header, false, max_user_len)?;
-        TcFrameWriter::start(out, plan)
-    }
-
-    /// The writer of a checked plan (API-023): writes the unfinished header, the Segment
-    /// Header, and zeros in the Security Header and Trailer.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<TcFrameWriter<'b, Unprotected>> {
-        let buf = out
-            .get_mut(..plan.total)
-            .ok_or(Error::buffer_too_small(plan.total))?;
-        let header = primary_octets(UNFINISHED_VERSION, plan.fields, plan.total);
-        let segment = plan.segment_header.map(SegmentHeader::octet);
-        for (d, s) in buf.iter_mut().zip(header.into_iter().chain(segment)) {
-            *d = s;
-        }
-        let max_user_len = plan
-            .total
-            .saturating_sub(plan.data_start)
-            .saturating_sub(plan.security_trailer_len)
-            .saturating_sub(if plan.fecf { FECF_LEN } else { 0 });
-        let total = plan.total;
-        let mut w = TcFrameWriter {
-            out,
-            plan,
-            max_user_len,
-            total,
-            state: PhantomData,
-        };
-        w.security_header_mut().fill(0);
-        w.security_trailer_mut().fill(0);
-        Ok(w)
-    }
-
-    /// The Security Header to fill in place; empty without SDLS (232.0 §6.3.4; API-072).
-    pub fn security_header_mut(&mut self) -> &mut [u8] {
-        let end = self.plan.data_start;
-        let start = end.saturating_sub(self.plan.security_header_len);
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.out.get_mut(start..end).unwrap_or_default()
-    }
-
-    /// The User Data to fill in place, `max_user_len` octets (232.0 §4.1.3.2; GEN-014).
-    pub fn user_data_mut(&mut self) -> &mut [u8] {
-        let start = self.plan.data_start;
-        let end = start.saturating_add(self.max_user_len);
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.out.get_mut(start..end).unwrap_or_default()
-    }
-
-    /// The Security Trailer to fill in place, after the reserved User Data; empty without SDLS.
-    /// [`protect`](Self::protect) moves it to follow the User Data (232.0 §6.3.6; API-072).
-    pub fn security_trailer_mut(&mut self) -> &mut [u8] {
-        let start = self.plan.data_start.saturating_add(self.max_user_len);
-        let end = start.saturating_add(self.plan.security_trailer_len);
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.out.get_mut(start..end).unwrap_or_default()
-    }
-
-    /// Fixes the User Data at `user_len` octets and applies `hook` to the Security Header, the
-    /// User Data, and the Security Trailer, after every other field except the FECF is final
-    /// (232.0 §4.1.2.7, §4.1.4, §6.3; TC-007, API-074, RS-023). `ctx` identifies the channel for
-    /// the hook's Security Association.
-    ///
-    /// When `user_len` is below the reservation, the Security Trailer moves to follow the User
-    /// Data, and the reserved octets after the frame keep unspecified values; use only the
-    /// finalized frame's octets.
-    ///
-    /// # Errors
-    /// As [`unsecured`](Self::unsecured), without the SDLS check: `OutOfRange` (`user_len`)
-    /// above the reservation; `InvalidField` (`frame_data_field`) for 0; and the hook's error,
-    /// `Security`, after which the frame is dropped and must not be transmitted. On the first
-    /// two errors the buffer keeps its unfinished state.
-    pub fn protect<H: SecurityHook + ?Sized>(
-        self,
-        user_len: usize,
-        hook: &mut H,
-        ctx: &FrameCtx,
-    ) -> Result<TcFrameWriter<'b, Protected>> {
-        require_layout(
-            hook.layout(),
-            self.plan.security_header_len,
-            self.plan.security_trailer_len,
-        )
-        .and_then(|()| self.fix_length(user_len))
-        .and_then(|mut w| {
-            let result = w
-                .secured(user_len)
-                .and_then(|(frame, fields)| hook.protect(ctx, frame, &fields));
-            w.checked(result)
-        })
-    }
-
-    /// Fixes the User Data at `user_len` octets on a channel without SDLS, the `NoSecurity`
-    /// path (API-073, RS-023); the frame is then [`Protected`].
-    ///
-    /// # Errors
-    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the channel reserves
-    /// a Security Header or Trailer, which need [`protect`](Self::protect); `OutOfRange`
-    /// (`user_len`) above the reservation; `InvalidField` (`frame_data_field`) for 0. On error
-    /// the buffer keeps its unfinished state.
-    pub fn unsecured(self, user_len: usize) -> Result<TcFrameWriter<'b, Protected>> {
-        require_unsecured(
-            self.plan.security_header_len,
-            self.plan.security_trailer_len,
-        )?;
-        self.fix_length(user_len)
-    }
-
-    /// Fixes the length: moves the Security Trailer to follow `user_len` octets of User Data and
-    /// writes the final Primary Header (232.0 §4.1.2.7; TC-007, API-023).
-    fn fix_length(self, user_len: usize) -> Result<TcFrameWriter<'b, Protected>> {
-        if user_len > self.max_user_len {
-            return Err(Error::out_of_range(
-                field::USER_LEN,
-                len_u64(self.max_user_len),
-                len_u64(user_len),
-            ));
-        }
-        if user_len == 0 {
-            return Err(invalid(field::FRAME_DATA_FIELD));
-        }
-        let unused = self.max_user_len.saturating_sub(user_len);
-        let total = self.plan.total.saturating_sub(unused);
-        // The unused User Data and the Security Trailer after it: move the trailer to the front.
-        let tail_start = self.plan.data_start.saturating_add(user_len);
-        let tail_end = tail_start
-            .saturating_add(unused)
-            .saturating_add(self.plan.security_trailer_len);
-        let mut w = self;
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        let tail = w.out.get_mut(tail_start..tail_end).unwrap_or_default();
-        let from = unused.min(tail.len());
-        tail.copy_within(from.., 0);
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        let frame = w.out.get_mut(..total).unwrap_or_default();
-        let header = primary_octets(VERSION, w.plan.fields, total);
-        for (d, s) in frame.iter_mut().zip(header) {
-            *d = s;
-        }
-        w.total = total;
-        Ok(w.into_state())
+        start(out, plan)
     }
 }
 
-impl<'b> TcFrameWriter<'b, Protected> {
-    /// The frame and the ranges of its secured fields, for the hook of `protect`.
-    fn secured(&mut self, user_len: usize) -> Result<(&mut [u8], SecuredFields)> {
-        let fields = SecuredFields::adjacent(
-            self.plan
-                .data_start
-                .saturating_sub(self.plan.security_header_len),
-            self.plan.security_header_len,
-            user_len,
-            self.plan.security_trailer_len,
-        );
-        self.out
-            .get_mut(..self.total)
-            .map(|frame| (frame, fields))
-            .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
+/// The writer of a checked plan (API-023): writes the unfinished header, the Segment Header, and
+/// zeros in the Security Header and Trailer.
+fn start(out: &mut [u8], plan: Plan) -> Result<TcFrameWriter<'_>> {
+    let segment = plan.segment_header.map(SegmentHeader::octet);
+    let mut writer = FrameWriter::reserve_variable(
+        out,
+        plan.layout,
+        TcPlan {
+            fields: plan.fields,
+        },
+    )?;
+    for (d, s) in writer.secondary_mut().iter_mut().zip(segment) {
+        *d = s;
     }
-
-    /// The writer if the hook succeeded; the part of `protect` that does not depend on the
-    /// hook type. After a failure the buffer holds the unfinished header again, which every
-    /// decoder rejects (API-023), not a final-looking frame.
-    fn checked(self, result: Result<()>) -> Result<Self> {
-        match result {
-            Ok(()) => Ok(self),
-            Err(e) => {
-                let header = primary_octets(UNFINISHED_VERSION, self.plan.fields, self.plan.total);
-                for (d, s) in self.out.iter_mut().zip(header) {
-                    *d = s;
-                }
-                Err(e)
-            }
-        }
-    }
-
-    /// Completes the frame: computes the FECF, if configured, over every other octet, last
-    /// (232.0 §4.1.4; TC-007, API-021, API-074, RS-023).
-    ///
-    /// # Errors
-    /// `InternalError` (`frame_len`) if the frame lies outside the buffer or is shorter than its
-    /// FECF, which `begin` and the length step rule out; the error is returned rather than
-    /// assumed away, and no frame is then finalized.
-    pub fn finalize(self) -> Result<TcFrameWriter<'b, Finalized>> {
-        let written = if self.plan.fecf {
-            self.out
-                .get_mut(..self.total)
-                .ok_or(Error::new(ErrorKind::InternalError).with_field(field::FRAME_LEN))
-                .and_then(crc::write_fecf)
-        } else {
-            Ok(())
-        };
-        written.map(|()| self.into_state())
-    }
-}
-
-impl<'b> TcFrameWriter<'b, Finalized> {
-    /// The frame length (232.0 §4.1.2.7; TC-007).
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.total
-    }
-
-    /// Always `false`: a frame holds at least its Primary Header.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        false
-    }
-
-    /// The octets of the finalized frame, for transmission (RS-023).
-    #[must_use]
-    pub fn octets(&self) -> &[u8] {
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.out.get(..self.total).unwrap_or_default()
-    }
-
-    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
-    /// transmission (RS-023).
-    #[must_use]
-    pub fn into_octets(self) -> &'b [u8] {
-        let total = self.total;
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.out.get(..total).unwrap_or_default()
-    }
+    Ok(writer)
 }
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{FrameData, TcFrameWriter, encode};
+    use super::{FrameData, TcPlan, encode};
     use crate::config::tests::{mapid, scid, standard, vcid};
     use crate::control::ControlCommand;
     use crate::field;
@@ -647,14 +437,13 @@ mod tests {
             sequence_flags: SequenceFlags::Unsegmented,
             map_id: mapid(9),
         };
-        let mut w =
-            TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        let mut w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         assert_eq!(w.security_header_mut(), [0, 0, 0]);
         assert_eq!(w.security_trailer_mut(), [0]);
-        assert_eq!(w.user_data_mut().len(), 5);
+        assert_eq!(w.data_mut().len(), 5);
         w.security_header_mut().copy_from_slice(&[0xA, 0xB, 0xC]);
         w.security_trailer_mut().copy_from_slice(&[0xD]);
-        w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
+        w.data_mut()[..2].copy_from_slice(&[1, 2]);
         let ctx = FrameCtx::Tc {
             scid: scid(0x155),
             vcid: vcid(2),
@@ -663,8 +452,7 @@ mod tests {
         let done = w
             .protect(2, &mut PreFilledSecurity, &ctx)
             .unwrap()
-            .finalize()
-            .unwrap();
+            .finalize();
         let n = done.len();
         assert_eq!((n, done.octets().len()), (5 + 1 + 3 + 2 + 1 + 2, n));
         assert!(!done.is_empty());
@@ -749,7 +537,7 @@ mod tests {
             map_id: mapid(9),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        let w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         let e = w.protect(2, &mut NoSecurity, &ctx).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -763,8 +551,7 @@ mod tests {
         let mut again = [0xEE_u8; 32];
         {
             let _begun =
-                TcFrameWriter::begin(&mut again, &t, fields(FrameType::Ad, 2), Some(sh), 5)
-                    .unwrap();
+                TcPlan::begin(&mut again, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         }
         assert_eq!(begun, again);
     }
@@ -783,7 +570,7 @@ mod tests {
             map_id: mapid(9),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        let w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         let e = w.protect(2, &mut Refuse, &ctx).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
         // The buffer holds the unfinished header again, which no decoder accepts (API-023).
@@ -805,14 +592,12 @@ mod tests {
             map_id: mapid(9),
         };
         let mut out = [0xEE_u8; 32];
-        let mut w =
-            TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
-        w.user_data_mut()[..2].copy_from_slice(&[1, 2]);
+        let mut w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        w.data_mut()[..2].copy_from_slice(&[1, 2]);
         let octets = w
             .protect(2, &mut OrderHook, &ctx)
             .unwrap()
             .finalize()
-            .unwrap()
             .into_octets();
         assert_eq!(syndrome(octets).get(), 0);
         let f = TcFrame::decode(octets, &t).unwrap();
@@ -831,7 +616,7 @@ mod tests {
             map_id: mapid(9),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
+        let w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 2), Some(sh), 5).unwrap();
         let e = w.unsecured(2).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -847,7 +632,7 @@ mod tests {
         // req: API-023, TC-007
         let t = standard(false);
         let mut out = [0_u8; 16];
-        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
+        let w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
         let e = w.unsecured(5).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -855,14 +640,14 @@ mod tests {
         );
         let e = TcFrame::decode_lenient(&out, &t).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
-        let w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
+        let w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
         let e = w.unsecured(0).unwrap_err();
         assert_eq!(e.field(), Some(field::FRAME_DATA_FIELD));
-        let e = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Bc, 1), None, 1).unwrap_err();
+        let e = TcPlan::begin(&mut out, &t, fields(FrameType::Bc, 1), None, 1).unwrap_err();
         assert_eq!(e.field(), Some(field::CONTROL_COMMAND_FLAG));
-        let mut w = TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
-        w.user_data_mut()[0] = 0x42;
-        assert_eq!(w.unsecured(1).unwrap().finalize().unwrap().len(), 6);
+        let mut w = TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 1), None, 4).unwrap();
+        w.data_mut()[0] = 0x42;
+        assert_eq!(w.unsecured(1).unwrap().finalize().len(), 6);
         assert_eq!(TcFrame::peek_length(&out), Ok(6));
     }
 }

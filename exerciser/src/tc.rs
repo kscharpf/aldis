@@ -12,7 +12,7 @@ use aldis_core::{Anomaly, AnomalySet, DecodeMode, Error, ErrorKind};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, Reason,
-    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcMapId, TcPlan,
     TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode, next_frame,
 };
 
@@ -172,17 +172,14 @@ fn frame_group(t: &mut Tally) {
         vcid: f.vc_id,
         map_id: None,
     });
-    match seg.map(|f| TcFrameWriter::begin(&mut out, &table, f, sh, bb(4))) {
+    match seg.map(|f| TcPlan::begin(&mut out, &table, f, sh, bb(4))) {
         Some(Ok(mut w)) => {
             w.security_header_mut().fill(0xA5);
             w.security_trailer_mut().fill(0x5A);
-            w.user_data_mut().fill(0x11);
+            w.data_mut().fill(0x11);
             match ctx.map(|c| w.protect(bb(2), bb(&mut PreFilledSecurity), bb(&c))) {
                 Some(Ok(p)) => {
-                    let Ok(done) = p.finalize() else {
-                        t.check(false);
-                        return;
-                    };
+                    let done = p.finalize();
                     t.check(done.len() == 14 && !done.is_empty() && done.octets().len() == 14);
                     t.check(done.into_octets().len() == 14);
                 }
@@ -199,7 +196,7 @@ fn frame_group(t: &mut Tally) {
     }));
     // Without `protect`, a channel with SDLS is not finished.
     t.check(
-        seg.map(|f| TcFrameWriter::begin(&mut out, &table, f, sh, bb(4)))
+        seg.map(|f| TcPlan::begin(&mut out, &table, f, sh, bb(4)))
             .is_some_and(|w| {
                 w.and_then(|w| w.unsecured(bb(2)))
                     .is_err_and(|e| e.kind() == ErrorKind::InvalidField)
@@ -450,8 +447,8 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         let n = encode(&channels, fields, fdu, bb(&mut *out))?;
         // The two-phase writer must produce the same octets (API-020).
         let two = fresh(&mut scratch.b, n)?;
-        let mut w = TcFrameWriter::begin(two, &channels, fields, segment, user.len())?;
-        if !crate::vectors::copy(w.user_data_mut(), user) {
+        let mut w = TcPlan::begin(two, &channels, fields, segment, user.len())?;
+        if !crate::vectors::copy(w.data_mut(), user) {
             return Err(Fail::Vector);
         }
         let ctx = FrameCtx::Tc {
@@ -460,7 +457,7 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
             map_id: segment.map(|s| s.map_id),
         };
         if w.protect(user.len(), &mut PreFilledSecurity, &ctx)?
-            .finalize()?
+            .finalize()
             .len()
             != n
         {

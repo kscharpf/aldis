@@ -7,18 +7,15 @@
 
 use crate::config::AosVirtualChannelConfig;
 use aldis_core::lookup::ChannelLookup;
-use core::marker::PhantomData;
-use core::ops::Range;
 
-use aldis_core::crc::crc16;
-use aldis_core::finishing::{
-    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
-};
+use aldis_core::error::FieldId;
+use aldis_core::finishing::Unprotected;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook, SecurityLayout};
+use aldis_core::security::SecurityLayout;
+use aldis_core::writer::{Fixed, FramePlan, FrameWriter};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::bpdu::{BitstreamPointer, ValidBitCount};
@@ -42,7 +39,7 @@ pub enum PduHeader {
     /// A `B_PDU` Header with this Bitstream Data Pointer, on a VC that carries `B_PDUs`.
     Bpdu(BitstreamPointer),
     /// None: the data field is a `VCA_SDU` or Idle Data, written by the caller, or the OID
-    /// data of [`AosFrameWriter::begin_oid`].
+    /// data of [`AosPlan::begin_oid`].
     None,
 }
 
@@ -69,8 +66,8 @@ impl PduHeader {
 pub struct AosFrameFields {
     /// Spacecraft Identifier of the frame's master channel (732.0 §4.1.2.2.3).
     pub scid: SpacecraftId<10>,
-    /// Virtual Channel Identifier: a configured VC for [`AosFrameWriter::begin`] and [`encode`],
-    /// 63 for [`AosFrameWriter::begin_oid`] (732.0 §4.1.2.3).
+    /// Virtual Channel Identifier: a configured VC for [`AosPlan::begin`] and [`encode`],
+    /// 63 for [`AosPlan::begin_oid`] (732.0 §4.1.2.3).
     pub vcid: VcId<6>,
     /// Virtual Channel Frame Count (732.0 §4.1.2.4).
     pub vc_frame_count: VcFrameCount,
@@ -169,15 +166,15 @@ impl Plan {
         let layout = frame_layout(pc, vc.security(), vc.ocf())?;
         let data = layout.data().len();
         let header_len = pdu_header_len(vc.content());
-        if data <= header_len {
-            return Err(mismatch(
+        let layout = layout.with_data_header(header_len).map_err(|_| {
+            mismatch(
                 ErrorKind::InvalidConfig,
                 field::FRAME_DATA_FIELD,
                 len_u64(header_len.saturating_add(1)),
                 len_u64(data),
-            ));
-        }
-        let zone = data.saturating_sub(header_len);
+            )
+        })?;
+        let zone = layout.data_zone().len();
         let pdu = match fields.pdu {
             PduHeader::Mpdu(pointer) => Some(mpdu_header(pointer, zone, pc)?),
             PduHeader::Bpdu(pointer) => Some(bpdu_header(pointer, zone)?),
@@ -300,42 +297,46 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
-/// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072, API-074, RS-023).
+/// The plan of an AOS frame for [`FrameWriter`] (732.0 §4.1, §4.2.7.4; AOS-013, AOS-019).
 ///
-/// [`begin`](Self::begin) writes the Primary Header, without its FHEC, and the `M_PDU` or
-/// `B_PDU` Header and returns the writer [`Unprotected`]; the caller fills the other fields in
-/// place and applies SDLS with [`protect`](AosFrameWriter::protect), or
-/// [`unsecured`](AosFrameWriter::unsecured) without it, which gives the writer [`Protected`];
-/// [`finalize`](AosFrameWriter::finalize) computes the FHEC and then the FECF, last, and gives
-/// it [`Finalized`], the only state that exposes the frame's octets. Each step consumes the
-/// writer, so a step out of order does not compile (RS-023, RS-021).
-///
-/// `begin` zero-fills every octet after the headers, so until `finalize` the frame is defined:
-/// its headers final but the FHEC, the fields the caller has not filled zero, and the FECF, if
-/// configured, zero (API-023).
-#[derive(Debug)]
-pub struct AosFrameWriter<'b, S: FrameState = Unprotected> {
-    frame: &'b mut [u8],
-    layout: FrameLayout,
-    zone_start: usize,
+/// Fixed-length, with the FHEC computed before the FECF when the physical channel has one (732.0
+/// §4.1.2.6). Its associated functions start the writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AosPlan {
     fhec: bool,
-    state: PhantomData<S>,
 }
 
-impl<'b, S: FrameState> AosFrameWriter<'b, S> {
-    /// The same frame in state `T`: the one place a state changes.
-    const fn into_state<T: FrameState>(self) -> AosFrameWriter<'b, T> {
-        AosFrameWriter {
-            frame: self.frame,
-            layout: self.layout,
-            zone_start: self.zone_start,
-            fhec: self.fhec,
-            state: PhantomData,
+impl FramePlan for AosPlan {
+    const OCF_FIELD: FieldId = field::OCF;
+
+    fn seal(&self, frame: &mut [u8]) {
+        if self.fhec {
+            // The frame holds the eight header octets, so this is the one chunk.
+            frame
+                .first_chunk_mut::<8>()
+                .into_iter()
+                .for_each(fhec::write);
         }
     }
 }
 
-impl<'b> AosFrameWriter<'b, Unprotected> {
+/// Two-phase frame writer (732.0 §4.1; AOS-019, API-020…API-023, API-072, API-074, RS-023).
+///
+/// [`AosPlan::begin`] writes the Primary Header, without its FHEC, and the `M_PDU` or `B_PDU`
+/// Header and returns the writer [`Unprotected`]; the caller fills the other fields in place and
+/// applies SDLS with `protect`, or `unsecured` without it, which gives the writer [`Protected`];
+/// `finalize` computes the FHEC and then the FECF, last, and gives it [`Finalized`], the only
+/// state that exposes the frame's octets. Each step consumes the writer, so a step out of order
+/// does not compile (RS-023, RS-021). The steps are those of the core [`FrameWriter`]; the
+/// Insert Zone is its `secondary_mut`, the zone after the `M_PDU` or `B_PDU` Header its
+/// `data_mut`.
+///
+/// `begin` zero-fills every octet after the headers, so until `finalize` the frame is defined:
+/// its headers final but the FHEC, the fields the caller has not filled zero, and the FECF, if
+/// configured, zero (API-023).
+pub type AosFrameWriter<'b, S = Unprotected> = FrameWriter<'b, Fixed, AosPlan, S>;
+
+impl AosPlan {
     /// Starts a frame of (`fields.scid`, `fields.vcid`) in the first frame-length octets of
     /// `out` (AOS-019).
     ///
@@ -354,15 +355,16 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
     /// - `OutOfRange` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible` (AOS-002);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
     pub fn begin<
+        'b,
         L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
     >(
         out: &'b mut [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
-    ) -> Result<AosFrameWriter<'b, Unprotected>> {
+    ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::new(pc, vcs, fields)?;
-        AosFrameWriter::start(out, plan)
+        start(out, plan)
     }
 
     /// Starts an OID Transfer Frame: VCID 63, no OCF or SDLS fields, and the whole data field
@@ -377,6 +379,7 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
     /// - `OutOfRange` (`spacecraft_id`) for an SCID above 255 in `Issue4Compatible`;
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
     pub fn begin_oid<
+        'b,
         L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelConfig> + ?Sized,
     >(
         out: &'b mut [u8],
@@ -384,191 +387,33 @@ impl<'b> AosFrameWriter<'b, Unprotected> {
         vcs: &L,
         fields: &AosFrameFields,
         oid: &mut OidGenerator,
-    ) -> Result<AosFrameWriter<'b, Unprotected>> {
+    ) -> Result<AosFrameWriter<'b>> {
         let plan = Plan::oid(pc, vcs, fields)?;
-        let mut writer = AosFrameWriter::start(out, plan)?;
-        oid.fill(writer.zone_mut());
+        let mut writer = start(out, plan)?;
+        oid.fill(writer.data_mut());
         Ok(writer)
     }
-
-    /// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary
-    /// Header and the `M_PDU` or `B_PDU` Header.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<AosFrameWriter<'b, Unprotected>> {
-        let frame_len = plan.layout.frame_len();
-        let frame = out
-            .get_mut(..frame_len)
-            .ok_or(Error::buffer_too_small(frame_len))?;
-        let header_octets = plan.header.to_octets();
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        let header = header_octets.get(..plan.header.len()).unwrap_or_default();
-        let data = plan.layout.data();
-        let pdu: &[u8] = plan.pdu.as_ref().map_or(&[], |p| p.as_slice());
-        let zone_start = data.start.saturating_add(pdu.len());
-        // The FHEC, if any, is computed last, by `finalize` (RS-023).
-        let fhec = header.len() > PRIMARY_HEADER_LEN;
-        frame.fill(0);
-        write_at(
-            frame,
-            0,
-            // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-            header.get(..PRIMARY_HEADER_LEN).unwrap_or_default(),
-        );
-        write_at(frame, data.start, pdu);
-        Ok(AosFrameWriter {
-            frame,
-            layout: plan.layout,
-            zone_start,
-            fhec,
-            state: PhantomData,
-        })
-    }
-
-    /// The octets of `range`, which lies inside the frame by construction (CMN-040).
-    fn field_mut(&mut self, range: Range<usize>) -> &mut [u8] {
-        self.frame.get_mut(range).unwrap_or_default()
-    }
-
-    /// The Insert Zone to fill in place with an `IN_SDU`; empty without one (732.0 §4.1.3;
-    /// AOS-015).
-    pub fn insert_zone_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.secondary())
-    }
-
-    /// The Security Header to fill in place; empty without SDLS (732.0 §6.3.4; API-072).
-    pub fn security_header_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.security_header())
-    }
-
-    /// The octets after the `M_PDU` or `B_PDU` Header to fill in place: the Packet Zone, the
-    /// Bitstream Data Zone, or the whole data field of a `VCA_SDU` or Idle Data; never empty
-    /// (732.0 §4.1.4; GEN-014).
-    pub fn zone_mut(&mut self) -> &mut [u8] {
-        let end = self.layout.data().end;
-        self.field_mut(self.zone_start..end)
-    }
-
-    /// The Security Trailer to fill in place; empty without SDLS (732.0 §6.3.6; API-072).
-    pub fn security_trailer_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.security_trailer())
-    }
-
-    /// Writes the Operational Control Field (732.0 §4.1.5; AOS-019).
-    ///
-    /// # Errors
-    /// `InvalidField` (`ocf`) if frames of this VC carry no OCF (732.0 §4.1.5.2, Table 5-3).
-    pub fn set_ocf(&mut self, ocf: Ocf) -> Result<()> {
-        let range = self.layout.ocf();
-        if range.is_empty() {
-            return Err(mismatch(ErrorKind::InvalidField, field::OCF, 0, 1));
-        }
-        write_at(self.frame, range.start, &ocf.to_octets());
-        Ok(())
-    }
-
-    /// The octet ranges of the frame's fields, for a security hook (CMN-040, API-074).
-    #[must_use]
-    pub const fn layout(&self) -> &FrameLayout {
-        &self.layout
-    }
-
-    /// Applies `hook` to the Security Header, the data field, and the Security Trailer, after
-    /// every other field except the FHEC and the FECF is final (355.0 §2.3; API-074, RS-023).
-    /// `ctx` identifies the channel for the hook's Security Association.
-    ///
-    /// # Errors
-    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the hook is for
-    /// another layout than the VC's ([`SecurityHook::layout`]), such as `NoSecurity` on a VC with
-    /// SDLS; the hook's error, `Security`; the frame is then dropped and must not be
-    /// transmitted.
-    pub fn protect<H: SecurityHook + ?Sized>(
-        self,
-        hook: &mut H,
-        ctx: &FrameCtx,
-    ) -> Result<AosFrameWriter<'b, Protected>> {
-        let fields = SecuredFields::from_layout(&self.layout);
-        let result = require_layout(
-            hook.layout(),
-            self.layout.security_header().len(),
-            self.layout.security_trailer().len(),
-        )
-        .and_then(|()| hook.protect(ctx, &mut *self.frame, &fields));
-        self.protected(result)
-    }
-
-    /// The writer [`Protected`] if the hook succeeded; the part of `protect` that does not
-    /// depend on the hook type.
-    fn protected(self, result: Result<()>) -> Result<AosFrameWriter<'b, Protected>> {
-        result.map(|()| self.into_state())
-    }
-
-    /// Moves to [`Protected`] on a channel without SDLS, the `NoSecurity` path (API-073,
-    /// RS-023).
-    ///
-    /// # Errors
-    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the VC reserves a
-    /// Security Header or Trailer, which need [`protect`](Self::protect).
-    pub fn unsecured(self) -> Result<AosFrameWriter<'b, Protected>> {
-        require_unsecured(
-            self.layout.security_header().len(),
-            self.layout.security_trailer().len(),
-        )?;
-        Ok(self.into_state())
-    }
 }
 
-impl<'b> AosFrameWriter<'b, Protected> {
-    /// Completes the frame: computes the FHEC, if configured, then the FECF, if configured,
-    /// over every other octet, last (732.0 §4.1.2.6, §4.1.6.2, §4.2.7.4; AOS-013, AOS-019,
-    /// API-021, API-074, RS-023).
-    #[must_use = "the finalized frame"]
-    pub fn finalize(self) -> AosFrameWriter<'b, Finalized> {
-        if self.fhec {
-            // The frame holds the eight header octets, so this is the one chunk.
-            self.frame
-                .first_chunk_mut::<8>()
-                .into_iter()
-                .for_each(fhec::write);
-        }
-        let fecf = self.layout.fecf();
-        if !fecf.is_empty() {
-            // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-            let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
-            write_at(self.frame, fecf.start, &crc.to_be_bytes());
-        }
-        self.into_state()
-    }
-}
-
-impl<'b> AosFrameWriter<'b, Finalized> {
-    /// The frame length (732.0 §4.1; AOS-019).
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.layout.frame_len()
-    }
-
-    /// Always `false`: a frame holds at least its Primary Header.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        false
-    }
-
-    /// The octets of the finalized frame, for transmission (RS-023).
-    #[must_use]
-    pub fn octets(&self) -> &[u8] {
+/// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary Header and
+/// the `M_PDU` or `B_PDU` Header.
+fn start(out: &mut [u8], plan: Plan) -> Result<AosFrameWriter<'_>> {
+    let header_octets = plan.header.to_octets();
+    // The FHEC, if any, is computed last, by `finalize` (RS-023).
+    let fhec = plan.header.len() > PRIMARY_HEADER_LEN;
+    let mut writer = FrameWriter::reserve_fixed(out, plan.layout, AosPlan { fhec })?;
+    write_at(
+        writer.primary_header_mut(),
+        0,
         // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.frame
-            .get(..self.layout.frame_len())
-            .unwrap_or_default()
-    }
-
-    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
-    /// transmission (RS-023).
-    #[must_use]
-    pub fn into_octets(self) -> &'b [u8] {
-        let len = self.layout.frame_len();
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.frame.get(..len).unwrap_or_default()
-    }
+        header_octets.get(..PRIMARY_HEADER_LEN).unwrap_or_default(),
+    );
+    write_at(
+        writer.data_header_mut(),
+        0,
+        plan.pdu.as_ref().map_or(&[], |p| p.as_slice()),
+    );
+    Ok(writer)
 }
 
 /// Encodes one frame of (`fields.scid`, `fields.vcid`) into the start of `out`; returns the
@@ -578,7 +423,7 @@ impl<'b> AosFrameWriter<'b, Finalized> {
 /// `fields.pdu` (API-021).
 ///
 /// # Errors
-/// On error `out` is unchanged (API-022). The errors of [`AosFrameWriter::begin`], checked
+/// On error `out` is unchanged (API-022). The errors of [`AosPlan::begin`], checked
 /// first, and then:
 /// - `LengthMismatch` (`insert_zone_len`, `security_header_len`, `frame_data_field`, or
 ///   `security_trailer_len`) for a field of `content` whose length is not the configured one,
@@ -634,22 +479,17 @@ pub fn encode<
             u64::from(content.ocf.is_some()),
         ));
     }
-    let writer = AosFrameWriter::start(out, plan)?;
+    let mut writer = start(out, plan)?;
     // Each field has the length checked above, so it fills its range exactly.
-    let layout = &writer.layout;
-    for (at, src) in [
-        (layout.secondary().start, content.insert_zone),
-        (layout.security_header().start, content.security_header),
-        (writer.zone_start, content.zone),
-        (layout.security_trailer().start, content.security_trailer),
-    ] {
-        write_at(writer.frame, at, src);
-    }
+    write_at(writer.secondary_mut(), 0, content.insert_zone);
+    write_at(writer.security_header_mut(), 0, content.security_header);
+    write_at(writer.data_mut(), 0, content.zone);
+    write_at(writer.security_trailer_mut(), 0, content.security_trailer);
     if let Some(ocf) = content.ocf {
-        write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
+        write_at(writer.ocf_mut(), 0, &ocf.to_octets());
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.into_state::<Protected>().finalize().len())
+    Ok(writer.taken_as_given().finalize().len())
 }
 
 /// Encodes an OID Transfer Frame of `fields.scid` into the start of `out`; returns its length
@@ -661,7 +501,7 @@ pub fn encode<
 /// when none is configured (AOS-015). Build `fields` with [`AosFrameFields::oid`].
 ///
 /// # Errors
-/// The errors of [`AosFrameWriter::begin_oid`], checked first, and then `LengthMismatch`
+/// The errors of [`AosPlan::begin_oid`], checked first, and then `LengthMismatch`
 /// (`insert_zone_len`) for an `insert_zone` of another length than the configured one. On error
 /// neither `out` nor `oid` is changed (GEN-042).
 pub fn encode_oid<
@@ -723,11 +563,11 @@ fn oid_frame<L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelC
             len_u64(insert_zone.len()),
         ));
     }
-    let mut writer = AosFrameWriter::start(out, plan)?;
-    write_at(writer.frame, writer.layout.secondary().start, insert_zone);
-    fill(writer.zone_mut());
+    let mut writer = start(out, plan)?;
+    write_at(writer.secondary_mut(), 0, insert_zone);
+    fill(writer.data_mut());
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.into_state::<Protected>().finalize().len())
+    Ok(writer.taken_as_given().finalize().len())
 }
 
 #[cfg(test)]
@@ -737,8 +577,7 @@ mod tests {
     use std::vec;
 
     use super::{
-        AosFrameContent, AosFrameFields, AosFrameWriter, PduHeader, encode, encode_oid,
-        encode_oid_galois,
+        AosFrameContent, AosFrameFields, AosPlan, PduHeader, encode, encode_oid, encode_oid_galois,
     };
     use crate::bpdu::{BitstreamPointer, ValidBitCount};
     use crate::config::tests::{pc, scid, starts_at, vc, vcid};
@@ -796,7 +635,7 @@ mod tests {
         fields: &AosFrameFields,
     ) -> (ErrorKind, Option<FieldId>, ErrorDetail) {
         let mut out = [0xEE_u8; 40];
-        let e = AosFrameWriter::begin(&mut out, &t.physical_channel(), t, fields).unwrap_err();
+        let e = AosPlan::begin(&mut out, &t.physical_channel(), t, fields).unwrap_err();
         assert!(out.iter().all(|&b| b == 0xEE), "out changed");
         (e.kind(), e.field(), e.detail())
     }
@@ -871,7 +710,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 40];
-        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let w = AosPlan::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         let e = w.protect(&mut NoSecurity, &ctx).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -889,7 +728,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 40];
-        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let w = AosPlan::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         let e = w.protect(&mut Refuse, &ctx).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
     }
@@ -904,7 +743,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 40];
-        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let w = AosPlan::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         let octets = w
             .protect(&mut OrderHook, &ctx)
             .unwrap()
@@ -929,7 +768,7 @@ mod tests {
         let t = table();
         let phy = t.physical_channel();
         let mut out = [0xEE_u8; 40];
-        let w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let w = AosPlan::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         let e = w.unsecured().unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -943,13 +782,13 @@ mod tests {
         let t = table();
         let phy = t.physical_channel();
         let mut out = [0xEE_u8; 48];
-        let mut w = AosFrameWriter::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
+        let mut w = AosPlan::begin(&mut out, &phy, &t, &mpdu(starts_at(3))).unwrap();
         assert_eq!(w.layout().frame_len(), 40);
-        w.insert_zone_mut().copy_from_slice(&[1, 2, 3, 4]);
+        w.secondary_mut().copy_from_slice(&[1, 2, 3, 4]);
         w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
         // 40 − 8 − 4 − 2 − 1 − 4 − 2 = 19 data octets: the M_PDU Header and 17.
-        assert_eq!(w.zone_mut().len(), 17);
-        w.zone_mut().fill(0xD0);
+        assert_eq!(w.data_mut().len(), 17);
+        w.data_mut().fill(0xD0);
         w.security_trailer_mut().copy_from_slice(&[0x5A]);
         w.set_ocf(Ocf::decode([0x01, 0, 0, 0])).unwrap();
         let ctx = FrameCtx::Aos {
@@ -999,7 +838,7 @@ mod tests {
             count(0),
             PduHeader::Bpdu(BitstreamPointer::OnlyIdle),
         );
-        assert!(AosFrameWriter::begin(&mut out, &t.physical_channel(), &t, &fields).is_ok());
+        assert!(AosPlan::begin(&mut out, &t.physical_channel(), &t, &fields).is_ok());
         assert_eq!(out[..6], [0x6A, 0xC1, 0, 0, 0, 0]);
         assert_eq!(
             out[6..8],
@@ -1074,7 +913,7 @@ mod tests {
             );
         }
         let mut short = [0xEE_u8; 39];
-        let e = AosFrameWriter::begin(&mut short, &t.physical_channel(), &t, &mpdu(starts_at(16)))
+        let e = AosPlan::begin(&mut short, &t.physical_channel(), &t, &mpdu(starts_at(16)))
             .unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
@@ -1090,19 +929,19 @@ mod tests {
             )),
         );
         let mut out = [0_u8; 40];
-        assert!(AosFrameWriter::begin(&mut out, &t.physical_channel(), &t, &f).is_ok());
+        assert!(AosPlan::begin(&mut out, &t.physical_channel(), &t, &f).is_ok());
         // A physical channel the table was not built for: no data octet at all, then only the
         // two of the M_PDU Header.
         let small = pc(21, true, 4, true, AosEdition::Issue5);
-        let e = AosFrameWriter::begin(&mut out, &small, &t, &mpdu(PacketPointer::NoPacketStart))
-            .unwrap_err();
+        let e =
+            AosPlan::begin(&mut out, &small, &t, &mpdu(PacketPointer::NoPacketStart)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidConfig, Some(field::FRAME_DATA_FIELD))
         );
         let tiny = pc(23, true, 4, true, AosEdition::Issue5);
-        let e = AosFrameWriter::begin(&mut out, &tiny, &t, &mpdu(PacketPointer::NoPacketStart))
-            .unwrap_err();
+        let e =
+            AosPlan::begin(&mut out, &tiny, &t, &mpdu(PacketPointer::NoPacketStart)).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidConfig, Some(field::FRAME_DATA_FIELD))
@@ -1133,7 +972,7 @@ mod tests {
         let mut out = vec![0_u8; 2100];
         let fields =
             |pointer| AosFrameFields::new(scid(0xFF), vcid(7), count(1), PduHeader::Mpdu(pointer));
-        let w = AosFrameWriter::begin(&mut out, &p4, &t, &fields(starts_at(0x7FD))).unwrap();
+        let w = AosPlan::begin(&mut out, &p4, &t, &fields(starts_at(0x7FD))).unwrap();
         assert_eq!(w.unsecured().unwrap().finalize().len(), 2100);
         // SCID 0xFF in bits 2–9, bits 42–43 00; spare 00000 and FHP 0x7FD.
         assert_eq!(out[..8], [0x7F, 0xC7, 0, 0, 1, 0x00, 0x07, 0xFD]);
@@ -1142,7 +981,7 @@ mod tests {
             (f.scid(), f.header().edition()),
             (scid(0xFF), AosEdition::Issue4Compatible)
         );
-        let e = AosFrameWriter::begin(&mut out, &p4, &t, &fields(starts_at(0x7FE))).unwrap_err();
+        let e = AosPlan::begin(&mut out, &p4, &t, &fields(starts_at(0x7FE))).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (
@@ -1156,14 +995,14 @@ mod tests {
         // Issue 5 accepts the offset, and writes 16 bits.
         let p5 = pc(2100, false, 0, false, AosEdition::Issue5);
         let t5 = VcTable::<1>::new(p5, &[vc(0xFF, 7, DataFieldContent::Mpdu)]).unwrap();
-        let w = AosFrameWriter::begin(&mut out, &p5, &t5, &fields(starts_at(0x7FE))).unwrap();
+        let w = AosPlan::begin(&mut out, &p5, &t5, &fields(starts_at(0x7FE))).unwrap();
         assert_eq!(w.unsecured().unwrap().finalize().len(), 2100);
         assert_eq!(out[6..8], [0x07, 0xFE]);
         // An SCID above 8 bits from a lookup that did not check it.
         let wide = Any(vc(0x100, 7, DataFieldContent::Mpdu));
         let mut f = fields(PacketPointer::NoPacketStart);
         f.scid = scid(0x100);
-        let e = AosFrameWriter::begin(&mut out, &p4, &wide, &f).unwrap_err();
+        let e = AosPlan::begin(&mut out, &p4, &wide, &f).unwrap_err();
         assert_eq!(
             (e.kind(), e.field(), e.detail()),
             (
@@ -1175,7 +1014,7 @@ mod tests {
                 }
             )
         );
-        let e = AosFrameWriter::begin_oid(
+        let e = AosPlan::begin_oid(
             &mut out,
             &p4,
             &wide,
@@ -1318,21 +1157,21 @@ mod tests {
         let phy = t.physical_channel();
         let mut out = [0_u8; 40];
         let fields = AosFrameFields::new(scid(0x0AB), vcid(2), count(0), PduHeader::None);
-        let mut w = AosFrameWriter::begin(&mut out, &phy, &t, &fields).unwrap();
+        let mut w = AosPlan::begin(&mut out, &phy, &t, &fields).unwrap();
         let e = w.set_ocf(Ocf::decode([0; 4])).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::OCF))
         );
         assert!(w.security_header_mut().is_empty() && w.security_trailer_mut().is_empty());
-        assert_eq!(w.zone_mut().len(), 26);
+        assert_eq!(w.data_mut().len(), 26);
         assert_eq!(w.unsecured().unwrap().finalize().len(), 40);
         // Without FHEC and FECF: nothing computed after the header.
         let plain = pc(12, false, 0, false, AosEdition::Issue5);
         let t = VcTable::<1>::new(plain, &[vc(1, 1, DataFieldContent::IdleData)]).unwrap();
         let mut out = [0_u8; 12];
         let f = AosFrameFields::new(scid(1), vcid(1), count(0), PduHeader::None);
-        let w = AosFrameWriter::begin(&mut out, &plain, &t, &f).unwrap();
+        let w = AosPlan::begin(&mut out, &plain, &t, &f).unwrap();
         assert!(w.layout().fecf().is_empty());
         assert_eq!(w.unsecured().unwrap().finalize().len(), 12);
         assert_eq!(out, [0x40, 0x41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -1346,7 +1185,7 @@ mod tests {
         let mut oid = OidGenerator::new();
         let mut first = [0_u8; 40];
         let mut second = [0_u8; 40];
-        let mut w = AosFrameWriter::begin_oid(
+        let mut w = AosPlan::begin_oid(
             &mut first,
             &phy,
             &t,
@@ -1354,9 +1193,9 @@ mod tests {
             &mut oid,
         )
         .unwrap();
-        w.insert_zone_mut().copy_from_slice(&[7, 7, 7, 7]);
+        w.secondary_mut().copy_from_slice(&[7, 7, 7, 7]);
         assert_eq!(w.unsecured().unwrap().finalize().len(), 40);
-        let w = AosFrameWriter::begin_oid(
+        let w = AosPlan::begin_oid(
             &mut second,
             &phy,
             &t,
@@ -1398,10 +1237,10 @@ mod tests {
                 field::DATA_FIELD_CONTENT,
             ),
         ] {
-            let e = AosFrameWriter::begin_oid(&mut third, &phy, &t, &fields, &mut oid).unwrap_err();
+            let e = AosPlan::begin_oid(&mut third, &phy, &t, &fields, &mut oid).unwrap_err();
             assert_eq!((e.kind(), e.field()), (ErrorKind::InvalidField, Some(f)));
         }
-        let e = AosFrameWriter::begin_oid(
+        let e = AosPlan::begin_oid(
             &mut third,
             &phy,
             &t,
@@ -1413,7 +1252,7 @@ mod tests {
             (e.kind(), e.field()),
             (ErrorKind::UnknownChannel, Some(field::SPACECRAFT_ID))
         );
-        let e = AosFrameWriter::begin_oid(
+        let e = AosPlan::begin_oid(
             &mut third[..39],
             &phy,
             &t,
@@ -1449,9 +1288,8 @@ mod tests {
             Ok(40)
         );
         let mut writer =
-            AosFrameWriter::begin_oid(&mut two_frame, &phy, &table, &fields, &mut two_phase)
-                .unwrap();
-        writer.insert_zone_mut().copy_from_slice(&iz);
+            AosPlan::begin_oid(&mut two_frame, &phy, &table, &fields, &mut two_phase).unwrap();
+        writer.secondary_mut().copy_from_slice(&iz);
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 40);
         assert_eq!(fib_frame[..40], two_frame);
         assert_eq!(gal_frame, two_frame);

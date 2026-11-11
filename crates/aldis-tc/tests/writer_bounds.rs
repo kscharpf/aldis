@@ -2,7 +2,7 @@
 //! API-022, API-023, GEN-014, GEN-020; hazard HZ-TC-16, proposal P-TC-06).
 //!
 //! The buffer is filled with a pattern and is longer than the frame. After a successful
-//! `encode`, `TcFrameWriter::begin`, and `finish`, every octet from the end of the frame (or,
+//! `encode`, `TcPlan::begin`, and `finish`, every octet from the end of the frame (or,
 //! before `finish`, from the end of the reservation) on is the pattern; an `encode` rejected
 //! for any reason, and a `begin` or `finish` that fails, change no octet of the frame or the
 //! reservation either (API-022). A `finish` below the reservation leaves the reserved octets
@@ -19,8 +19,8 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
-    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcMapId, TcPlan, TcSpacecraftId,
+    TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 
 /// Channels with the FECF: VC 1 without Segment Headers, VC 2 with them and MAP 3, and VC 4
@@ -195,12 +195,12 @@ fn begin_and_finish_write_only_the_reservation() {
         for user_len in [max_user, 25, 1] {
             let before = pattern(BUFFER);
             let mut out = before.clone();
-            let mut w = TcFrameWriter::begin(&mut out, &t, f, None, max_user).unwrap();
-            let reserved = w.user_data_mut().len();
+            let mut w = TcPlan::begin(&mut out, &t, f, None, max_user).unwrap();
+            let reserved = w.data_mut().len();
             assert_eq!(reserved, max_user);
             let security = w.security_header_mut().len() + w.security_trailer_mut().len();
             let total = 5 + security + max_user + 2;
-            w.user_data_mut()[..user_len].fill(0x5C);
+            w.data_mut()[..user_len].fill(0x5C);
             let ctx = FrameCtx::Tc {
                 scid: f.spacecraft_id,
                 vcid: f.vc_id,
@@ -210,7 +210,6 @@ fn begin_and_finish_write_only_the_reservation() {
                 .protect(user_len, &mut PreFilledSecurity, &ctx)
                 .unwrap()
                 .finalize()
-                .unwrap()
                 .len();
             assert_eq!(n, total - (max_user - user_len));
             // Beyond the reservation nothing changes; inside it, the frame is a valid frame.
@@ -223,7 +222,7 @@ fn begin_and_finish_write_only_the_reservation() {
         let before = pattern(BUFFER);
         let mut out = before.clone();
         let total = {
-            let mut w = TcFrameWriter::begin(&mut out, &t, f, None, max_user).unwrap();
+            let mut w = TcPlan::begin(&mut out, &t, f, None, max_user).unwrap();
             5 + w.security_header_mut().len() + max_user + w.security_trailer_mut().len() + 2
         };
         assert_eq!(out[total..], before[total..]);
@@ -241,17 +240,17 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
     let before = pattern(BUFFER);
     // Too small for the reservation (5 + 40 + 2 = 47).
     let mut out = before[..46].to_vec();
-    let e = TcFrameWriter::begin(&mut out, &t, f, None, 40).unwrap_err();
+    let e = TcPlan::begin(&mut out, &t, f, None, 40).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(out, before[..46]);
     // An unknown VC.
     let mut out = before.clone();
-    TcFrameWriter::begin(&mut out, &t, fields(FrameType::Ad, 5), None, 40).unwrap_err();
+    TcPlan::begin(&mut out, &t, fields(FrameType::Ad, 5), None, 40).unwrap_err();
     assert_eq!(out, before);
     // A failed finish.
     for user_len in [0, 41] {
         let mut out = before.clone();
-        let w = TcFrameWriter::begin(&mut out, &t, f, None, 40).unwrap();
+        let w = TcPlan::begin(&mut out, &t, f, None, 40).unwrap();
         let begun = {
             // The writer borrows the buffer: compare after it is gone.
             let ctx = FrameCtx::Tc {
@@ -265,7 +264,7 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
         };
         let mut again = before.clone();
         {
-            let _begun = TcFrameWriter::begin(&mut again, &t, f, None, 40).unwrap();
+            let _begun = TcPlan::begin(&mut again, &t, f, None, 40).unwrap();
         }
         assert_eq!(begun, again, "user_len {user_len}");
         assert_eq!(begun[47..], before[47..]);

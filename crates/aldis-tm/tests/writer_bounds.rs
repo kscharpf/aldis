@@ -3,7 +3,7 @@
 //! proposal P-TC-06).
 //!
 //! The buffer is filled with a pattern and is longer than the frame. After `encode`, and after
-//! `TmFrameWriter::begin` and `finish`, every octet from the end of the frame on is the pattern;
+//! `TmPlan::begin` and `finish`, every octet from the end of the frame on is the pattern;
 //! a rejected `encode` or `begin` changes no octet.
 #![expect(
     clippy::unwrap_used,
@@ -15,7 +15,7 @@ use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FshLen, PacketOffset, PacketPointer, TmFrame,
-    TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig,
+    TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan,
     TmVirtualChannelConfig, encode,
 };
 
@@ -83,12 +83,12 @@ fn begin_and_finish_write_only_the_frame() {
     let (mc, fields) = channel();
     let before = pattern(BUFFER);
     let mut out = before.clone();
-    let w = TmFrameWriter::begin(&mut out, &mc, &fields).unwrap();
+    let w = TmPlan::begin(&mut out, &mc, &fields).unwrap();
     assert_eq!(w.unsecured().unwrap().finalize().len(), FRAME);
     assert_eq!(out[FRAME..], before[FRAME..]);
     // A rejected `begin` changes nothing.
     let mut short = before[..FRAME - 1].to_vec();
-    let e = TmFrameWriter::begin(&mut short, &mc, &fields).unwrap_err();
+    let e = TmPlan::begin(&mut short, &mc, &fields).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(short, before[..FRAME - 1]);
 }

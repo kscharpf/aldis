@@ -117,7 +117,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 | `encode_oid`: MAP ID ≠ 0, or protocol control flags | `InvalidField` (`map_id`, `protocol_control_command_flag`) |
 | MAP ID not configured on the VC (not on VCID 63) | `UnknownChannel` (`map_id`) |
 | `encode_truncated` on a VC without a truncated frame length | `InvalidField` (`end_of_frame_primary_header_flag`) |
-| `encode` or `UslpFrameWriter::begin` on a VC with a truncated frame length (OI-48) | `InvalidField` (`end_of_frame_primary_header_flag`) |
+| `encode` or `UslpPlan::begin` on a VC with a truncated frame length (OI-48) | `InvalidField` (`end_of_frame_primary_header_flag`) |
 | a TFDZ Construction Rule of the other TFDZ type (USLP-016) | `InvalidField` (`tfdz_construction_rule`) |
 | a VCF Count that does not fit the VC's VCF Count Length for the QoS | `OutOfRange` (`vcf_count`) |
 | an OCF on a VC with `OcfUse::Absent`, or none on a VC with `Required` | `InvalidField` (`ocf_flag`) |
@@ -128,7 +128,7 @@ The truncated frame has no Bypass/Sequence Control Flag, Reserve Spares, OCF, or
 | a First Header or Last Valid Octet Pointer neither `0xFFFF` nor below the TFDZ length | `OutOfRange` (`fhp_lvo_pointer`) |
 | `out` shorter than the frame | `BufferTooSmall` |
 
-Until `UslpFrameWriter::protect` or `unsecured` (which fix the TFDZ length), the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `begin` stores the reserved frame length in the Frame Length field of that header.
+Until the writer's `protect` or `unsecured` (which fix the TFDZ length), the buffer holds a Primary Header whose TFVN is `1111`, which every decoder rejects with `UnsupportedVersion` and the delimiter treats as fill (API-023). `begin` stores the reserved frame length in the Frame Length field of that header.
 
 ## 4. Anomaly flags (lenient mode)
 

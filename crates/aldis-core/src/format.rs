@@ -7,8 +7,10 @@
 //! the format as a supertrait, so no engine restates a length of the standard (M6 plan WP-2a).
 //! The Primary Header writer and the header of an Only Idle Data frame are members of the same
 //! trait (WP-2b). The managed parameters of one physical channel are the checked
-//! [`Physical`](FrameFormat::Physical) set the codec defines (WP-2c); the frame writer is later
-//! (WP-2d).
+//! [`Physical`](FrameFormat::Physical) set the codec defines (WP-2c). The frame writer
+//! ([`FrameWriter`](crate::writer::FrameWriter), WP-2d) takes the codec's plan of one frame, a
+//! [`FramePlan`](crate::writer::FramePlan), and needs no member of this trait; FOP-1 builds its
+//! frames through the trait in a later pull request (OI-93).
 
 use core::fmt::Debug;
 
