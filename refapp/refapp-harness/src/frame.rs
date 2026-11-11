@@ -1,8 +1,8 @@
 //! Strict decoding of a link unit by level (docs/reference-application.md §6.1, APP-086).
 //!
 //! At A2 on a link unit is a frame: a TM frame on the downlink, a TC frame on the uplink. The
-//! trace tests decode every `unit_sent` with the strict codecs; this module is the function
-//! (the check over the golden traces is WP-6).
+//! trace tests decode every `unit_sent` with the strict codecs; this module holds the function
+//! and the packets inside the frames, which the check over the golden traces uses (WP-6).
 
 use aldis::core::security::SecurityLayout;
 use aldis::link::common::ValidPvns;
@@ -139,8 +139,10 @@ const EXTRACT_AREA: usize = ASSEMBLY - 1 + FIELD;
 /// The output area of the reassembler: the SDU held plus the user data of one frame (LNK-075).
 const REASSEMBLY_AREA: usize = ASSEMBLY + 1024;
 
-/// direction in trace order as a clean link, and every complete packet they hand out decoded
-/// strictly (APP-086; WP-6 of the A2 plan).
+/// The packets inside the frames of a trace (APP-086; WP-6 of the A2 plan).
+///
+/// The engines of the nodes run over the frames of one direction in trace order as a clean link,
+/// and every complete packet they hand out is decoded strictly.
 ///
 /// Downlink: one `PacketExtractor` for each of VC 0 and VC 1 (LNK-060). Uplink: the
 /// `MapReassembler` with the two MAPs of the scenario (LNK-070). Idle packets are dropped, as the
