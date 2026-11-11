@@ -10,7 +10,7 @@
 //! [`Physical`](FrameFormat::Physical) set the codec defines (WP-2c). The frame writer
 //! ([`FrameWriter`](crate::writer::FrameWriter), WP-2d) takes the codec's plan of one frame, a
 //! [`FramePlan`](crate::writer::FramePlan), and needs no member of this trait; FOP-1 builds its
-//! frames through the trait in a later pull request (OI-93).
+//! frames through the trait and the codecs' plans (OI-93).
 
 use core::fmt::Debug;
 

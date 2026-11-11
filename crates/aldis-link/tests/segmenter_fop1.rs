@@ -19,8 +19,8 @@
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Store, Fop1Target, FrameKind,
-    TimeoutType, fop1_max_actions,
+    Directive, Fop1, Fop1Config, Fop1Format, Fop1Input, Fop1Output, Fop1Store, Fop1Target,
+    FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::time::{Duration, Instant};
@@ -56,13 +56,13 @@ const N: usize = fop1_max_actions(Q);
 const NOW: Instant = Instant::from_micros(0);
 
 /// FOP-1 in State S1 (Active) over `target`, with its store.
-struct Link {
-    fop: Fop1<Q, F, N>,
+struct Link<P: Fop1Format> {
+    fop: Fop1<Q, F, N, P>,
     store: Fop1Store<Q, F>,
 }
 
-impl Link {
-    fn active(target: Fop1Target) -> Link {
+impl<P: Fop1Format> Link<P> {
+    fn active(target: Fop1Target<P>) -> Link<P> {
         let mut link = Link {
             fop: Fop1::new(Fop1Config {
                 target,
