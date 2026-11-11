@@ -266,19 +266,54 @@ fn a_planted_malformed_packet_fails_the_strict_decode() {
     let ok = format!("{header}\n{}", line("packet_out", good));
     assert_eq!(decode_strict(&scenario, &ok).unwrap().records, 1);
     // Version 1 (SPP-001), truncated, and trailing octets after the packet.
-    for bad in [
-        "2810C00000057D2B75000000",
-        "0810C00000057D2B750000",
-        "0810C00000057D2B75000000FF",
+    for (bad, message) in [
+        (
+            "2810C00000057D2B75000000",
+            "packet_out is not a strict Space Packet",
+        ),
+        (
+            "0810C00000057D2B750000",
+            "packet_out is not a strict Space Packet",
+        ),
+        (
+            "0810C00000057D2B75000000FF",
+            "packet_out has 1 octet(s) after its packet",
+        ),
     ] {
         let text = format!("{header}\n{}", line("packet_out", bad));
         let e = decode_strict(&scenario, &text).unwrap_err();
-        assert!(e.starts_with("line 2:"), "{e}");
+        assert!(e.starts_with(&format!("line 2: {message}")), "{e}");
     }
     let unit = format!(
         "{header}\n{{\"t_us\":0,\"kind\":\"unit_sent\",\"dir\":\"down\",\"index\":0,\"hex\":\"2810C00000057D2B75000000\"}}\n"
     );
-    assert!(decode_strict(&scenario, &unit).is_err());
+    let e = decode_strict(&scenario, &unit).unwrap_err();
+    assert!(
+        e.starts_with("line 2: unit_sent is not a strict Space Packet"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_planted_apid_that_disagrees_with_the_octets_fails_the_strict_decode() {
+    // req: APP-086
+    // No requirement names the comparison: APP-086 (strict decode of every packet) is the
+    // closest, APP-003 defines the projection by the record's `apid`.
+    let scenario = Scenario::load().unwrap();
+    let header = SAMPLE
+        .lines()
+        .next()
+        .unwrap()
+        .replace("\"sample\"", "\"a1-nominal\"");
+    // The good packet is APID 16 (0x10); the record says 17.
+    let text = format!(
+        "{header}\n{{\"t_us\":0,\"kind\":\"packet_in\",\"node\":\"ground\",\"apid\":17,\"hex\":\"0810C00000057D2B75000000\"}}\n"
+    );
+    let e = decode_strict(&scenario, &text).unwrap_err();
+    assert_eq!(
+        e,
+        "line 2: packet_in apid 17 differs from the APID 16 in its octets"
+    );
 }
 
 /// The golden trace of `case_id` with one `unit_sent` of direction `dir` changed by `f`.
