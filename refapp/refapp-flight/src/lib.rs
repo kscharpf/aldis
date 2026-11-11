@@ -90,6 +90,20 @@ impl FlightNode {
         })
     }
 
+    /// A flight node at the COP-1 level (A3 on, §6.1): as [`FlightNode::new_frames`], with FARM-1
+    /// seeing the Type-AD and Type-BC frames and its state changes and Unlock raised as the
+    /// events 210 and 211 (APP-146, APP-149).
+    ///
+    /// # Errors
+    /// As [`FlightNode::new_frames`].
+    pub fn new_cop1() -> Result<FlightNode> {
+        Ok(FlightNode {
+            frames: Some(FrameDownlink::new()?),
+            uplink: Some(FrameUplink::new_cop1()?),
+            ..FlightNode::default()
+        })
+    }
+
     /// The CLCW FARM-1 reports now, for the OCF of the downlink (§4.4.1, APP-134); `None` at
     /// packet level, which has no FARM-1. The downlink converts it with `Clcw::to_ocf`.
     #[must_use]
