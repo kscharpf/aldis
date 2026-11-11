@@ -8,12 +8,12 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | planned | | This plan, D1–D8, `--scope a2` trace gate (D1) |
-| WP-1 Scenario additions | planned | | Only what [reference-application.md](../reference-application.md) lacks for A2: the per-instant order of frame building, the CLCW sampling rule, the frame-level events, the cases (D5), the expected frame schedule; no code |
-| WP-2 Harness: frames | planned | | `flip` and the frame-level fault rules, frame-level scenario parameters, strict decoding of frames; the track-R pull request of D3 (the facade forwards the engines' features) is its entry |
-| WP-3a Flight node: downlink | planned | | Generators, multiplexer, OID frames, OCF from FARM-1, TM frame writer |
-| WP-3b Flight node: uplink | planned | | `FrameReceiver` (TC), FARM-1 for Type-BD, `MapReassembler` into the A1 command handler |
-| WP-4a Ground node: downlink | planned | | Strict TM decoding, `FrameReceiver`, `PacketExtractor`, frame events, CLCW |
-| WP-4b Ground node: uplink | planned | | `MapSegmenter`, FOP-1 for Type-BD, TC frame writer, one frame per uplink slot |
+| WP-1 Scenario additions | merged | #372, #426, #443, #446 | Only what [reference-application.md](../reference-application.md) lacks for A2: the per-instant order of frame building, the CLCW sampling rule, the frame-level events, the cases (D5), the expected frame schedule; no code |
+| WP-2 Harness: frames | merged | #382, #453, #461, #466, #470 | `flip` and the frame-level fault rules, frame-level scenario parameters, strict decoding of frames; the track-R pull request of D3 (the facade forwards the engines' features) is its entry |
+| WP-3a Flight node: downlink | merged | #397 | Generators, multiplexer, OID frames, OCF from FARM-1, TM frame writer |
+| WP-3b Flight node: uplink | merged | #396 | `FrameReceiver` (TC), FARM-1 for Type-BD, `MapReassembler` into the A1 command handler |
+| WP-4a Ground node: downlink | merged | #398 | Strict TM decoding, `FrameReceiver`, `PacketExtractor`, frame events, CLCW |
+| WP-4b Ground node: uplink | merged | #399 | `MapSegmenter`, FOP-1 for Type-BD, TC frame writer, one frame per uplink slot |
 | WP-5 Golden traces | planned | | `a2-*` cases blessed, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
 | WP-6 Strict decoding of frame traces | planned | | APP-086 for frames in the `refapp` check |
 | WP-7 Exit | planned | | `trace --scope a2 --strict`; roadmap, README, ACFS entry gate |

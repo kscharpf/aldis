@@ -3,19 +3,19 @@
 **Goal:** the simplest crate architecture that still meets every requirement. Most protocols (TM, TC, AOS, USLP) were added one work package at a time by copying a sibling, so the codecs, the link engines, and the C ABI each restate protocol facts. The pattern of this milestone: **each protocol fact is stated once, in the codec crate or in `aldis-core`, and the engine, FFI, and feature layers are generic over it.** The work changes no wire behaviour: every vector, every requirement, and the trace stay as they are.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M5](m5-c-abi-completion.md) (complete; its release `v0.6.0-m5` was made 2026-11-06) · **Release:** none planned; the maintainer decides whether it ships as `v0.7.0-m6` or with the next release
 
-**Status: in progress.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat). Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); its release `v0.6.0-m5` was made 2026-11-06.
+**Status: Phases 1–2 merged; the OI-93 follow-up of WP-2d is #475; Phase 3 and the exit deferred.** Decisions D1–D8 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat). Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); its release `v0.6.0-m5` was made 2026-11-06. WP-3a–WP-3d and WP-4 wait until after the AINT interoperability milestone ([roadmap §4](../08-roadmap.md#4-overlap), maintainer, 2026-11-10); the OI-93 follow-up of WP-2d may still land before then.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Phase 0: cheap clean-ups | | | #387, #389, #391 (via train #401) |
-| WP-1a Channel-lookup trait | | | Phase 1 step 1 |
-| WP-1b One checking pipeline | | | Phase 1 step 2; `check_frame` returns `Lenient<Checked<F>, A>` in both modes (empty anomaly set after a strict check); `Checked<F>` replaces the four `Validated…Frame` types, the `Plain…` types stay for WP-1c; refapp needs a companion PR (D8) |
-| WP-1c Generic proof types | | | Phase 1 step 3 |
-| WP-1d Generic frame stream | | | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
-| WP-2a Frame geometry | | | Phase 2 step 1; `FrameFormat` in `aldis-core` (geometry only), implemented by `TmFormat`, `TcFormat`, `AosFormat`, `UslpFormat`; `aldis-link`'s `Tm`, `Tc`, `Aos`, `Uslp` are those markers and exist with the codec feature (the `CltuPacker` impls too) |
-| WP-2b Header writers and parsers | | | Phase 2 step 2; `bits` primitives (D2) |
-| WP-2c Managed-parameter sets | | | Phase 2 step 3; first slice: the physical-channel set (`FrameFormat::Physical`, the codec's `*PhysicalChannelConfig`) is embedded by the mux and receiver channel types and taken by `Fop1Target::tc`, which no longer restate the frame length, FECF, Insert Zone, FHEC, or edition; second slice: the VC sets, the mux's `TmVc`, `AosVc`, `UslpVc` and the receiver's `TmVc` embed the codec's VC configuration (`TmVirtualChannelConfig`, `AosVirtualChannelConfig`, `VcConfig` of `aldis-uslp`), the segmenters take the FECF and the VCF Count Lengths from the codec's sets, and `UslpChannel` takes `mc_ocf` (#465); the receiver's AOS, TC, and USLP VC params stay (OI-92) |
-| WP-2d One frame writer | | | Phase 2 step 4; the writer (first PR, #472); FOP-1 builds its frames through `FrameFormat` and the codec's frame-writer plans (OI-93; second PR, #475) |
+| WP-1a Channel-lookup trait | merged | #414 | Phase 1 step 1 |
+| WP-1b One checking pipeline | merged | #424 | Phase 1 step 2; `check_frame` returns `Lenient<Checked<F>, A>` in both modes (empty anomaly set after a strict check); `Checked<F>` replaces the four `Validated…Frame` types, the `Plain…` types stay for WP-1c; refapp needs a companion PR (D8) |
+| WP-1c Generic proof types | merged | #441, #442 | Phase 1 step 3 |
+| WP-1d Generic frame stream | merged | #445 | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
+| WP-2a Frame geometry | merged | #449 | Phase 2 step 1; `FrameFormat` in `aldis-core` (geometry only), implemented by `TmFormat`, `TcFormat`, `AosFormat`, `UslpFormat`; `aldis-link`'s `Tm`, `Tc`, `Aos`, `Uslp` are those markers and exist with the codec feature (the `CltuPacker` impls too) |
+| WP-2b Header writers and parsers | merged | #451, #458 | Phase 2 step 2; `bits` primitives (D2) |
+| WP-2c Managed-parameter sets | merged | #456, #467 | Phase 2 step 3; first slice: the physical-channel set (`FrameFormat::Physical`, the codec's `*PhysicalChannelConfig`) is embedded by the mux and receiver channel types and taken by `Fop1Target::tc`, which no longer restate the frame length, FECF, Insert Zone, FHEC, or edition; second slice: the VC sets, the mux's `TmVc`, `AosVc`, `UslpVc` and the receiver's `TmVc` embed the codec's VC configuration (`TmVirtualChannelConfig`, `AosVirtualChannelConfig`, `VcConfig` of `aldis-uslp`), the segmenters take the FECF and the VCF Count Lengths from the codec's sets, and `UslpChannel` takes `mc_ocf` (#465); the receiver's AOS, TC, and USLP VC params stay (OI-92) |
+| WP-2d One frame writer | merged | #472, #475 | Phase 2 step 4; the writer (first PR, #472); FOP-1 builds its frames through `FrameFormat` and the codec's frame-writer plans (OI-93; second PR, #475) |
 | WP-2e Link codec dependencies | | | Cut: OI-97 resolved (a), the codec dependencies stay optional (maintainer, chat, 2026-11-10) |
 | WP-3a `InPlace` and `place` | | | Phase 3 step 1 |
 | WP-3b Generic engine entry points | | | Phase 3 step 2 |

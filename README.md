@@ -22,6 +22,7 @@ Aldis has not been qualified against any standard. The goal is to reach that poi
 > **Pre-release, under active development.**
 > - v1.0 is not released: it waits on M6 and the reference-application milestones A2–A6 ([roadmap §5](docs/08-roadmap.md#5-releases); see **Status** below).
 > - It has not been qualified against any standard for flight or any other mission-critical use.
+> - Its wire behaviour has not yet been exercised against an independent implementation; that evidence is planned as the AINT milestone (see **Status** below).
 > - Its API may change in any 0.x release (Semantic Versioning, GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
 > - The crates are not published to crates.io.
 > - Outside contributions are not being accepted yet.
@@ -38,10 +39,11 @@ Aldis has not been qualified against any standard. The goal is to reach that poi
 | M3 COP-1 (`v0.4.0-m3`) | Released: `aldis-cop1` (FOP-1 and FARM-1 as step functions over their state tables), their C ABI handles, the closed-loop tests, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m3-cop1.md)) |
 | M4 Link engines (`v0.5.0-m4`) | Released: `aldis-link` (the PacketGenerator, Access and Bitstream generators, ChannelMux, FrameReceiver, PacketExtractor, MapSegmenter, MapReassembler, and CLTU packer over TM, TC, AOS, and USLP), their C ABI handles, the blind vectors, the fuzz targets, and the hazard analysis ([plan §4](docs/milestones/m4-link-engines.md)) |
 | M5 C ABI completion (`v0.6.0-m5`) | Released: `aldis-sync` (ASM attach, the TM pseudo-randomizer, and the ASM search engine of 131.0 §9–10) with its C ABI, the C harness under sanitizers and the C ABI tests under Miri, header checks across C and C++ standards, `aldis.hpp` over the engine handles, the open v1 requirements closed, and the hazard analysis ([plan §4](docs/milestones/m5-c-abi-completion.md)) |
-| M6 Crate architecture simplification | In progress: one checking pipeline, one frame-format trait per codec, one frame writer, and a generic C ABI over them, without a change of wire behaviour ([plan](docs/milestones/m6-architecture.md)) |
+| M6 Crate architecture simplification | In progress; Phases 1–2 merged; the OI-93 follow-up of WP-2d is #475; Phase 3 and the exit deferred until after AINT ([roadmap §4](docs/08-roadmap.md#4-overlap)): one checking pipeline, one frame-format trait per codec, one frame writer, and a generic C ABI over them, without a change of wire behaviour ([plan](docs/milestones/m6-architecture.md)) |
 | A0 reference application scenario | Complete: the scenario ([`docs/reference-application.md`](docs/reference-application.md), area APP) and the `refapp/` skeleton ([plan](docs/milestones/a0-scenario.md)) |
 | A1 reference application packets | Complete: the flight and ground nodes of `refapp/` exchange Space Packets with CUC time stamps through the harness, and the golden traces of the four `a1-*` cases are decoded with the strict codecs and reproduced in CI ([plan](docs/milestones/a1-packets.md)) |
 | A2 reference application frames | In progress: TM and TC frames multiplexed and demultiplexed by the `aldis-link` engines ([plan](docs/milestones/a2-frames.md)) |
+| AINT interoperability against an independent ground system | Planned, after A3: the Rust flight node exchanges TM and TC frames and COP-1 with an independent mission control system run as a black box (YAMCS recommended, OSDLP the alternative; the milestone plan decides) over a real transport, and every discrepancy is filed as an open issue or reported upstream by the maintainer ([roadmap §3](docs/08-roadmap.md#3-track-a--reference-application-a0a6-aint-acfs)) |
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
 
