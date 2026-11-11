@@ -805,8 +805,8 @@ cargo run -p refapp-harness --locked -- gen-scenario --check
 cargo run -p refapp-harness --locked -- check-golden
 cargo run -p refapp-harness --locked -- compare
 cd ..
-# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
-# (APP-153). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
+# The sequence diagram and the demo output of README.md are decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
+# (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
 cargo xtask readme-diagram
 ";
 

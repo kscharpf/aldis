@@ -112,6 +112,36 @@ fn dir_of(v: &Value) -> Option<Dir> {
     }
 }
 
+/// One event of a run, decoded from its trace: what the diagram and the demo (APP-154) draw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Row {
+    /// An uplink frame; `lost` when the link did not deliver it intact.
+    Up {
+        /// Instant of the send, as `seconds` prints it.
+        at: String,
+        /// Virtual channel, frame type, N(S), and `retransmission`, for example `VC 0 AD N(S)=2`.
+        label: String,
+        /// The link dropped the frame or corrupted it so the receiver refused it.
+        lost: bool,
+    },
+    /// The CLCW of a delivered downlink frame, when it differs from the one before.
+    Report {
+        /// Instant of the send.
+        at: String,
+        /// Virtual channel of the downlink frame.
+        vc: u8,
+        /// For example `CLCW N(R)=2 Retransmit`.
+        label: String,
+    },
+    /// A run of consecutive downlink frames a `drop` fault removed.
+    DownLost {
+        /// Instant of the first lost frame.
+        at: String,
+        /// How many frames.
+        frames: u64,
+    },
+}
+
 /// The Mermaid block (a fenced `mermaid` code block, ending in a newline) of the trace `text`
 /// of a case at a link level with frames (APP-153).
 ///
@@ -119,6 +149,31 @@ fn dir_of(v: &Value) -> Option<Dir> {
 /// If `text` is not a canonical trace (APP-080), its case is not at a link level with frames,
 /// or a frame does not decode strictly.
 pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
+    let mut out = String::from(
+        "```mermaid\nsequenceDiagram\n    participant G as Ground\n    participant F as Flight\n",
+    );
+    for row in rows(scenario, text)? {
+        let line = match row {
+            Row::Up { at, label, lost } if lost => format!("G-xF: {at}  {label} (lost)"),
+            Row::Up { at, label, .. } => format!("G->>F: {at}  {label}"),
+            Row::Report { at, label, .. } => format!("F-->>G: {at}  {label}"),
+            Row::DownLost { at, frames } => {
+                let noun = if frames == 1 { "frame" } else { "frames" };
+                format!("F--xG: {at}  {frames} downlink {noun} lost")
+            }
+        };
+        writeln!(out, "    {line}").map_err(|e| e.to_string())?;
+    }
+    out.push_str("```\n");
+    Ok(out)
+}
+
+/// The events of the trace `text` of a case at a link level with frames, in trace order, every
+/// frame decoded strictly (APP-086).
+///
+/// # Errors
+/// As [`render`].
+pub fn rows(scenario: &Scenario, text: &str) -> Result<Vec<Row>, String> {
     check_canonical(text)?;
     let mut lines = text.split_terminator('\n');
     let header: Value = serde_json::from_str(lines.next().unwrap_or_default())
@@ -166,9 +221,7 @@ pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
         }
     }
 
-    let mut out = String::from(
-        "```mermaid\nsequenceDiagram\n    participant G as Ground\n    participant F as Flight\n",
-    );
+    let mut out = Vec::new();
     let mut sent_ad: BTreeMap<u8, Vec<u8>> = BTreeMap::new();
     let mut last_report: Option<Report> = None;
     for r in &records {
@@ -192,19 +245,13 @@ pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
                     _ => false,
                 };
                 let label = uplink_label(&frame, retransmission)?;
-                let (arrow, lost) = if delivered.contains(&(dir_name, index)) {
-                    ("->>", "")
-                } else {
-                    ("-x", " (lost)")
-                };
-                writeln!(out, "    G{arrow}F: {at}  {label}{lost}").map_err(|e| e.to_string())?;
+                let lost = !delivered.contains(&(dir_name, index));
+                out.push(Row::Up { at, label, lost });
             }
             Dir::Down => {
                 if !delivered.contains(&(dir_name, index)) {
                     if let Some(n) = runs.get(&index) {
-                        let frames = if *n == 1 { "frame" } else { "frames" };
-                        writeln!(out, "    F--xG: {at}  {n} downlink {frames} lost")
-                            .map_err(|e| e.to_string())?;
+                        out.push(Row::DownLost { at, frames: *n });
                     }
                     continue;
                 }
@@ -213,14 +260,16 @@ pub fn render(scenario: &Scenario, text: &str) -> Result<String, String> {
                 let report = frame.clcw.as_ref().map(Report::of);
                 if report.is_some() && report != last_report {
                     if let Some(report) = report {
-                        writeln!(out, "    F-->>G: {at}  {}", report.label())
-                            .map_err(|e| e.to_string())?;
+                        out.push(Row::Report {
+                            at,
+                            vc: frame.vcid,
+                            label: report.label(),
+                        });
                     }
                     last_report = report;
                 }
             }
         }
     }
-    out.push_str("```\n");
     Ok(out)
 }

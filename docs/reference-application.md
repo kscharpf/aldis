@@ -1126,6 +1126,7 @@ The harness sends one message and waits for its answer; it never reads the wall 
 | APP-107 | All scenario values SHALL come from one language-neutral file in `refapp/scenario/`, validated against a published JSON Schema; the Rust constants SHALL be generated from it (a C++ header from A5), and CI SHALL check that the generated files are current. | — | A |
 | APP-108 | Tests in `refapp/` SHALL carry `// req:` annotations (VER-020), and `cargo xtask trace` SHALL read them and the `requirements` of golden-trace headers. | VER-020 | A |
 | APP-153 | The sequence diagram in `README.md` SHALL be generated, between marker comments, from the golden trace of `a3-uplink-loss`: every frame the diagram draws SHALL be decoded with the strict decoders of APP-086, frames the link dropped and retransmissions SHALL be marked, and `cargo xtask readme-diagram` SHALL fail while the region differs from the trace (`cargo xtask fix` rewrites it). | APP-086, APP-151 | T |
+| APP-154 | `refapp-harness demo` SHALL run the case `a3-uplink-loss`, print one line per event of the run (instant, direction, virtual channel and frame type, N(S) or the CLCW report, and whether the frame was lost or sent again), every figure decoded with the strict decoders of APP-086 from the diagram rows of APP-153, and end with a verdict that the run matches or differs from the golden trace, failing when it differs. `README.md` SHALL give the command and, between marker comments, its output as `cargo xtask readme-diagram` generates it. | APP-086, APP-153 | T |
 
 ## 10. cFS flight side
 
