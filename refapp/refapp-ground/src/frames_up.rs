@@ -101,11 +101,8 @@ impl Uplink {
         let spacecraft =
             SpacecraftId::<10>::new(refapp_scenario::generated::SPACECRAFT_ID).ok_or(bad)?;
         let vc = VcId::<6>::new(tc::VCID).ok_or(bad)?;
-        let target = Fop1Target::tc(
-            spacecraft,
-            vc,
-            PhysicalChannelConfig::new(usize::from(tc::MAX_FRAME_LENGTH), tc::FECF)?,
-        )?;
+        let physical = PhysicalChannelConfig::new(usize::from(tc::MAX_FRAME_LENGTH), tc::FECF)?;
+        let target = Fop1Target::tc(spacecraft, vc, physical)?;
         // The capacities are constants of this module; the scenario's values must agree.
         let max_fdu = usize::from(tc::MAX_FDU_LENGTH);
         if usize::from(cop1::K) != SENT
@@ -121,7 +118,7 @@ impl Uplink {
         }
         let config = MapSegmenterConfig::<Tc, 2>::new(
             vc,
-            TcSegmenterParams::with_segment_header(tc::FECF),
+            TcSegmenterParams::with_segment_header(physical),
             max_fdu,
             &[
                 map_entry(
