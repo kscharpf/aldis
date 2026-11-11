@@ -151,8 +151,8 @@ fn check_uplink(case: &str, table: &[Up]) {
         match *entry {
             Up::Ad(i, t, ns, fdu) => {
                 let (len, seg) = FDU[fdu];
-                let f = &up[i as usize].1;
-                assert_eq!(up[i as usize].0, t, "{case}: unit {i}: send instant");
+                let f = &up[ix(i)].1;
+                assert_eq!(up[ix(i)].0, t, "{case}: unit {i}: send instant");
                 assert_eq!(f.len(), len, "{case}: unit {i}: length");
                 // Version 00, Bypass 0, Control Command 0 (Type-AD), SCID 0x155, VC 0.
                 assert_eq!(f[..3], [0x01, 0x55, 0x00], "{case}: unit {i}: header");
@@ -162,8 +162,8 @@ fn check_uplink(case: &str, table: &[Up]) {
                 check_fecf(case, i, f);
             }
             Up::Unlock(i, t) => {
-                let f = &up[i as usize].1;
-                assert_eq!(up[i as usize].0, t, "{case}: unit {i}: send instant");
+                let f = &up[ix(i)].1;
+                assert_eq!(up[ix(i)].0, t, "{case}: unit {i}: send instant");
                 // Type-BC (Bypass 1, Control Command 1), SCID 0x155, VC 0, length 8, N(S) 0,
                 // the Unlock command `00` (232.0 §4.1.2, §4.1.3.3; 232.1 §6.3.2.2).
                 assert_eq!(
@@ -263,7 +263,7 @@ fn nominal_uplink_has_the_eight_frames_of_the_schedule() {
         .map(|(i, t)| (i as u64, t + DELAY))
         .collect();
     assert_eq!(up_arrivals("a3-nominal"), arrivals);
-    assert!(faults("a3-nominal").is_empty());
+    assert_eq!(faults("a3-nominal").len(), 0);
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn uplink_loss_follows_the_table() {
     let arrived: Vec<u64> = up_arrivals(case).iter().map(|a| a.0).collect();
     assert_eq!(arrived, [0, 1, 3, 4, 5, 6, 7, 8, 9, 11]);
     for (i, t) in up_arrivals(case) {
-        assert_eq!(t, up[i as usize].0 + DELAY);
+        assert_eq!(t, up[ix(i)].0 + DELAY);
     }
     let mut expected = directive0();
     expected.extend(ack(1_135_000, 16_777_217, 0));
@@ -725,4 +725,8 @@ fn uplink_limit_follows_the_table() {
     assert_eq!((count(case, 17), count(case, 32)), (8, 10));
     assert_eq!((count("a3-nominal", 17), count("a3-nominal", 32)), (10, 13));
     assert!(reports(case).iter().all(|r| r.0 < 24_000_000));
+}
+
+fn ix(i: u64) -> usize {
+    usize::try_from(i).unwrap()
 }
