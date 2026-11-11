@@ -765,7 +765,7 @@ expect "--status --wait: TIMEOUT, exit status 5" \
     bash -c 'grep -Eq "^#7 TIMEOUT: still running; the reverify of pid $2 is stalled" "$0" &&
         [ "$1" -eq 5 ]' "$work/bg.s" "$rc_s" "$h7"
 # The waiter notices at 16 s or a poll later; a loaded machine adds a second or two (#261).
-expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 s)" \
+expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 to 19 s)" \
     grep -Eq "which recorded no deadline, after 1[6-9] min" "$work/bg.n"
 expect "no deadline recorded: exit status 5" [ "$rc_n" -eq 5 ]
 wait "$(pid_of r)"
