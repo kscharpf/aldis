@@ -401,3 +401,53 @@ fn a_corrupt_packet_inside_a_frame_with_a_valid_fecf_fails_the_strict_decode() {
         "the frame itself is valid: {e}"
     );
 }
+
+#[test]
+fn a_planted_invalid_clcw_fails_the_strict_decode_of_a_downlink_frame() {
+    // req: APP-086, APP-134
+    // The CLCW is the last four octets before the FECF; its Reserved Spare of bits 14 to 15
+    // is set (TC-030, strict mode), the FECF recomputed, so only the CLCW is wrong.
+    let scenario = Scenario::load().unwrap();
+    for case in ["a3-nominal", "a3-uplink-loss"] {
+        assert!(
+            decode_strict(
+                &scenario,
+                &std::fs::read_to_string(refapp_harness::golden_path(case)).unwrap()
+            )
+            .is_ok()
+        );
+        let bad = with_unit_changed(case, "down", |o| {
+            o.truncate(o.len() - 2);
+            let at = o.len() - 3;
+            o[at] |= 0x01;
+            *o = with_fecf(std::mem::take(o));
+            true
+        });
+        let e = decode_strict(&scenario, &bad).unwrap_err();
+        assert!(e.contains("not a strict CLCW"), "{case}: {e}");
+    }
+}
+
+#[test]
+fn the_flight_nodes_records_must_match_the_packets_reassembled_from_the_uplink() {
+    // req: APP-086, APP-129, APP-146
+    let scenario = Scenario::load().unwrap();
+    let text = std::fs::read_to_string(refapp_harness::golden_path("a3-uplink-loss")).unwrap();
+    // A command the node never received.
+    let dropped: String = text
+        .split_inclusive('\n')
+        .filter(|l| !(l.contains("\"cmd_received\"") && l.contains("\"args\":[3,1]")))
+        .collect();
+    assert_ne!(dropped, text);
+    let e = decode_strict(&scenario, &dropped).unwrap_err();
+    assert!(e.contains("cmd_received"), "{e}");
+    // A command with another sequence count.
+    let wrong = text.replacen(
+        "\"name\":\"cmd_received\",\"args\":[3,1]",
+        "\"name\":\"cmd_received\",\"args\":[3,9]",
+        1,
+    );
+    assert_ne!(wrong, text);
+    let e = decode_strict(&scenario, &wrong).unwrap_err();
+    assert!(e.contains("cmd_received"), "{e}");
+}

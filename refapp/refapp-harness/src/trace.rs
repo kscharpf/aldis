@@ -6,7 +6,7 @@ use std::fmt;
 use aldis::spp::SpacePacket;
 use serde_json::{Map, Value, json};
 
-use crate::frame::{FramedPackets, decode_frame};
+use crate::frame::{FlightIntake, FramedPackets, decode_frame};
 use crate::micros::Micros;
 use crate::scenario::Scenario;
 
@@ -524,8 +524,8 @@ pub struct Decoded {
 /// `scenario`. In a frame-level case the frames of each direction also go, in trace order as a
 /// clean link, through the engines of the nodes ([`FramedPackets`]: the `PacketExtractor` of each
 /// downlink VC, the `MapReassembler` of the uplink), and every complete packet they hand out is
-/// decoded strictly too. Returns what was
-/// decoded.
+/// decoded strictly too, and the packets the uplink gives are set against the flight node's own
+/// intake records ([`FlightIntake`]). Returns what was decoded.
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
@@ -545,7 +545,9 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
     // any was.
     let mut sent_up: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
     let mut corrupted_up: BTreeSet<u64> = BTreeSet::new();
-    let mut up_loss = false;
+    // The packets the uplink chain handed out, and the flight node's own intake records.
+    let mut up_packets: Vec<Vec<u8>> = Vec::new();
+    let mut intake: Vec<(u16, Vec<u64>)> = Vec::new();
     let direction = |v: &Value| match v["dir"].as_str() {
         Some("down") => Some(Dir::Down),
         Some("up") => Some(Dir::Up),
@@ -559,7 +561,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             if direction(&v) == Some(Dir::Up)
                 && matches!(v["fault"].as_str(), Some("drop" | "flip" | "truncate"))
             {
-                up_loss = true;
+                framed.note_up_loss();
                 if let Some(index) = v["index"].as_u64() {
                     corrupted_up.insert(index);
                 }
@@ -580,7 +582,20 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
                 let now = v["t_us"]
                     .as_u64()
                     .ok_or_else(|| at("record without t_us".to_owned()))?;
-                decoded.framed_packets += framed.receive_up(now, octets, up_loss).map_err(at)?;
+                let packets = framed.receive_up(now, octets).map_err(at)?;
+                decoded.framed_packets += packets.len();
+                up_packets.extend(packets);
+            }
+            continue;
+        }
+        if kind == "app_event" && level.has_frames() && v["node"].as_str() == Some("flight") {
+            let code = v["code"].as_u64().and_then(|c| u16::try_from(c).ok());
+            if let Some(code) = code.filter(|c| FlightIntake::CODES.contains(c)) {
+                let args = v["args"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(Value::as_u64).collect())
+                    .unwrap_or_default();
+                intake.push((code, args));
             }
             continue;
         }
@@ -617,6 +632,11 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             }
         }
         decoded.records += 1;
+    }
+    if level.has_frames() {
+        // The node is its own oracle for FARM-1 (§4.5.3); the packets it handled must still be
+        // the ones the strict decode reassembles from the uplink.
+        FlightIntake::check(&up_packets, &intake)?;
     }
     Ok(decoded)
 }

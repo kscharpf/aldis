@@ -406,7 +406,7 @@ fn only_the_frames_farm1_accepts_reach_the_reassembler() {
         decode_frame(&s, Level::Cop1, Dir::Up, frame).unwrap();
         let now = 1_000_000 + 250_000 * at as u64;
         assert_eq!(
-            framed.receive_up(now, frame, false).unwrap(),
+            framed.receive_up(now, frame).unwrap().len(),
             *expected,
             "{at}"
         );
@@ -424,21 +424,40 @@ fn an_unlock_purges_a_packet_in_progress_before_the_strict_decode_sees_it() {
     let segment =
         |sequence: u8, header: u8, data: &[u8]| tc(0x00, sequence, &[&[header], data].concat());
     assert_eq!(
-        framed
-            .receive_up(0, &segment(0, 0x40, first), false)
-            .unwrap(),
-        0
+        framed.receive_up(0, &segment(0, 0x40, first)).unwrap(),
+        Vec::<Vec<u8>>::new()
     );
     assert_eq!(
-        framed
-            .receive_up(1, &bc(ControlCommand::Unlock), false)
-            .unwrap(),
-        0
+        framed.receive_up(1, &bc(ControlCommand::Unlock)).unwrap(),
+        Vec::<Vec<u8>>::new()
     );
-    let e = framed
-        .receive_up(2, &segment(1, 0x80, last), false)
-        .unwrap_err();
+    let e = framed.receive_up(2, &segment(1, 0x80, last)).unwrap_err();
     assert!(e.contains("event 110"), "{e}");
+}
+
+#[test]
+fn a_loss_explains_a_stray_segment_only_until_a_packet_comes_out() {
+    // req: APP-086, APP-146
+    // After a dropped First segment the Last segment is a sequence violation, which the loss
+    // explains. Once a packet has come out the loss is explained away, and the same stray
+    // segment, or an unknown MAP, is a fault of the trace.
+    let s = Scenario::load().unwrap();
+    let mut framed = FramedPackets::new(&s).unwrap();
+    let (_, last) = PACKET.split_at(3);
+    let stray = |sequence: u8| tc(0x00, sequence, &[&[0x80], last].concat());
+    framed.note_up_loss();
+    assert_eq!(
+        framed.receive_up(0, &stray(0)).unwrap(),
+        Vec::<Vec<u8>>::new()
+    );
+    assert_eq!(framed.receive_up(1, &ad(1, &PACKET)).unwrap().len(), 1);
+    let e = framed.receive_up(2, &stray(2)).unwrap_err();
+    assert!(e.contains("event 110"), "{e}");
+    // A loss does not explain an unknown MAP or a rejected frame either.
+    framed.note_up_loss();
+    let unknown = tc(0x00, 3, &[&[0xC5], &PACKET[..]].concat());
+    let e = framed.receive_up(3, &unknown).unwrap_err();
+    assert!(e.contains("event 111"), "{e}");
 }
 
 const fn directive(at_us: u64, directive: Fop1Directive) -> OpsEntry {
