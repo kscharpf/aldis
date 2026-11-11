@@ -44,7 +44,45 @@ The decoded packet borrows the buffer: nothing is allocated, and every error is 
 
 ### A COP-1 run over a lossy link
 
-The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram is generated from the golden trace [`refapp/golden/a3-uplink-loss.jsonl`](refapp/golden/a3-uplink-loss.jsonl), decoded with the strict codecs, and `cargo xtask fix` keeps it current.
+Run the reference application's lossy-link case with one command; it needs only `cargo`. The harness runs the case, prints one line per event decoded with the strict codecs, and compares the run with the golden trace [`refapp/golden/a3-uplink-loss.jsonl`](refapp/golden/a3-uplink-loss.jsonl):
+
+```sh
+cargo run --manifest-path refapp/Cargo.toml -p refapp-harness -- demo
+```
+
+It prints:
+
+<!-- BEGIN GENERATED: demo-output (cargo xtask readme-diagram --write) -->
+```text
+a3-uplink-loss: COP-1 over a lossy link, decoded with the strict codecs
+ 0.000 s  down  VC 7 TM  CLCW N(R)=0
+ 1.000 s  up    VC 0 AD N(S)=0
+ 1.125 s  down  VC 7 TM  CLCW N(R)=1
+ 2.000 s  up    VC 0 AD N(S)=1
+ 2.125 s  down  VC 7 TM  CLCW N(R)=2
+ 2.250 s  up    VC 0 AD N(S)=2  LOST
+ 2.500 s  up    VC 0 AD N(S)=3
+ 2.625 s  down  VC 7 TM  CLCW N(R)=2 Retransmit
+ 2.750 s  up    VC 0 AD N(S)=2 retransmission
+ 2.875 s  down  VC 7 TM  CLCW N(R)=3
+ 3.000 s  up    VC 0 AD N(S)=3 retransmission
+ 3.125 s  down  VC 7 TM  CLCW N(R)=4
+ 3.250 s  up    VC 0 AD N(S)=4
+ 3.375 s  down  VC 7 TM  CLCW N(R)=5
+ 4.000 s  up    VC 0 AD N(S)=5
+ 4.125 s  down  7 frames LOST
+ 5.000 s  up    VC 0 AD N(S)=5 retransmission
+ 5.000 s  down  VC 7 TM  CLCW N(R)=6
+ 5.250 s  up    VC 0 AD N(S)=6
+ 5.375 s  down  VC 7 TM  CLCW N(R)=7
+ 6.000 s  up    VC 0 AD N(S)=7  LOST
+ 7.000 s  up    VC 0 AD N(S)=7 retransmission
+ 7.125 s  down  VC 7 TM  CLCW N(R)=8
+verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
+```
+<!-- END GENERATED: demo-output -->
+
+The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram of the same run is generated from the golden trace, decoded with the strict codecs, and `cargo xtask fix` keeps it and the output above current.
 
 <!-- BEGIN GENERATED: sequence-diagram (cargo xtask readme-diagram --write) -->
 ```mermaid

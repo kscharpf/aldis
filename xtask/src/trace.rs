@@ -46,7 +46,10 @@ fn req_annotations(text: &str) -> impl Iterator<Item = (usize, &str)> {
 /// requirement IDs or ranges. The check, its record in the run, and this trace are the evidence;
 /// no prose record repeats them (VER-020, OI-63).
 pub const CHECK_REQUIREMENTS: [(&str, &str); 16] = [
-    ("refapp", "APP-102…APP-104, APP-106, APP-107, APP-153"),
+    (
+        "refapp",
+        "APP-102…APP-104, APP-106, APP-107, APP-153, APP-154",
+    ),
     ("header", "CABI-001…CABI-003, CABI-030, CABI-072, VER-050"),
     ("layers", "GEN-001…GEN-004, VER-031"),
     ("no-std-", "GEN-005"),

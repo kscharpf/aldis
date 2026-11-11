@@ -1,12 +1,18 @@
 //! The Mermaid sequence diagram of a golden trace (A3; APP-153).
 
 use refapp_harness::diagram::{CASE, render};
-use refapp_harness::golden_path;
 use refapp_harness::scenario::Scenario;
+use refapp_harness::{golden_path, run_case};
 
 fn diagram(case: &str) -> Result<String, String> {
     let text = std::fs::read_to_string(golden_path(case)).unwrap();
     render(&Scenario::load().unwrap(), &text)
+}
+
+#[test]
+fn a_case_without_frames_is_an_error() {
+    // req: APP-153
+    assert!(render(&Scenario::load().unwrap(), &run_case("a1-nominal").unwrap()).is_err());
 }
 
 #[test]

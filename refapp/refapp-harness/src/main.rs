@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use refapp_harness::scenario::{Scenario, generate, refapp_dir};
-use refapp_harness::{diagram, golden_path, manifest, run_case, trace};
+use refapp_harness::{demo, diagram, golden_path, manifest, run_case, trace};
 
 const HELP: &str = "\
-usage: cargo run -p refapp-harness -- <command>
+usage: cargo run --manifest-path refapp/Cargo.toml -p refapp-harness -- <command>
 
 commands:
   run <case> [--out <dir>]   run a case; write <case>.jsonl and <case>.manifest.json
@@ -20,6 +20,9 @@ commands:
   check-golden               every file in refapp/golden/ is canonical and strictly decodes
   sequence-diagram [<case>]  print the Mermaid sequence diagram of the README, decoded from
                              refapp/golden/a3-uplink-loss.jsonl (APP-153)
+  demo                       run the COP-1 lossy-link case a3-uplink-loss, print one line per
+                             event decoded with the strict codecs, and the verdict of the
+                             comparison with refapp/golden/a3-uplink-loss.jsonl (APP-154)
   gen-scenario [--check]     (re)generate the schema and Rust constants from
                              refapp/scenario/scenario.json, or check that they are current
 ";
@@ -102,6 +105,20 @@ fn sequence_diagram(case: &str) -> Result<usize, String> {
     Ok(0)
 }
 
+fn demo_cmd() -> Result<usize, String> {
+    let scenario = Scenario::load()?;
+    let case = diagram::CASE;
+    let run = run_case(case)?;
+    println!("{case}: COP-1 over a lossy link, decoded with the strict codecs");
+    print!("{}", demo::render(&scenario, &run)?);
+    let path = golden_path(case);
+    let expected = std::fs::read_to_string(&path)
+        .map_err(|e| format!("{}: {e} (bless the case first)", path.display()))?;
+    let (text, matches) = demo::verdict(case, &expected, &run);
+    println!("{text}");
+    Ok(usize::from(!matches))
+}
+
 fn dispatch(args: &[&str]) -> Result<usize, String> {
     match args {
         ["run", case] => run_cmd(case, None),
@@ -112,6 +129,7 @@ fn dispatch(args: &[&str]) -> Result<usize, String> {
         ["check-golden"] => check_golden(),
         ["sequence-diagram"] => sequence_diagram(diagram::CASE),
         ["sequence-diagram", case] => sequence_diagram(case),
+        ["demo"] => demo_cmd(),
         ["gen-scenario"] => generate(false),
         ["gen-scenario", "--check"] => generate(true),
         [] | ["help" | "-h" | "--help"] => {
