@@ -1060,7 +1060,6 @@ mod tests {
         let docs = changed(&[
             "docs/06-verification.md",
             "docs/process/pr-body.md",
-            "README.md",
             "AGENTS.md",
             "specs/manifest.tsv",
         ]);
@@ -1068,6 +1067,9 @@ mod tests {
         assert_eq!(p.every, None);
         assert_eq!(p.base_record.as_deref(), Some("c".repeat(40).as_str()));
         assert_eq!(running(&docs, Force::default()), ["spec"]);
+        // The README is also an input of `refapp`, which checks its sequence diagram (APP-153).
+        let readme = changed(&["README.md"]);
+        assert_eq!(running(&readme, Force::default()), ["refapp", "spec"]);
         let skipped = p.checks.iter().find(|d| d.name == "clippy");
         assert_eq!(
             skipped.map(|d| d.why.clone()),

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use refapp_harness::scenario::{Scenario, generate, refapp_dir};
-use refapp_harness::{golden_path, manifest, run_case, trace};
+use refapp_harness::{diagram, golden_path, manifest, run_case, trace};
 
 const HELP: &str = "\
 usage: cargo run -p refapp-harness -- <command>
@@ -18,6 +18,8 @@ commands:
   bless <case>               write the run's trace to refapp/golden/<case>.jsonl (changing a
                              released trace needs a trace_version bump and a CHANGES.md row)
   check-golden               every file in refapp/golden/ is canonical and strictly decodes
+  sequence-diagram [<case>]  print the Mermaid sequence diagram of the README, decoded from
+                             refapp/golden/a3-uplink-loss.jsonl (APP-153)
   gen-scenario [--check]     (re)generate the schema and Rust constants from
                              refapp/scenario/scenario.json, or check that they are current
 ";
@@ -92,6 +94,14 @@ fn check_golden() -> Result<usize, String> {
     Ok(failed)
 }
 
+fn sequence_diagram(case: &str) -> Result<usize, String> {
+    let scenario = Scenario::load()?;
+    let path = golden_path(case);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    print!("{}", diagram::render(&scenario, &text)?);
+    Ok(0)
+}
+
 fn dispatch(args: &[&str]) -> Result<usize, String> {
     match args {
         ["run", case] => run_cmd(case, None),
@@ -100,6 +110,8 @@ fn dispatch(args: &[&str]) -> Result<usize, String> {
         ["compare", case] => compare_cmd(Some(case)),
         ["bless", case] => bless_cmd(case),
         ["check-golden"] => check_golden(),
+        ["sequence-diagram"] => sequence_diagram(diagram::CASE),
+        ["sequence-diagram", case] => sequence_diagram(case),
         ["gen-scenario"] => generate(false),
         ["gen-scenario", "--check"] => generate(true),
         [] | ["help" | "-h" | "--help"] => {

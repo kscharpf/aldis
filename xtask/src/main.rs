@@ -23,6 +23,7 @@ mod loops;
 mod md;
 mod metrics;
 mod models;
+mod readme_diagram;
 mod records;
 mod refapp;
 mod repo;
@@ -111,6 +112,9 @@ commands:
                                every marker names one; `list` prints the types (RS-020, VER-023)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
+  readme-diagram [--write]     check that the sequence diagram of README.md is the Mermaid
+                               text decoded from refapp/golden/a3-uplink-loss.jsonl, or
+                               rewrite it (APP-153)
   symbols                      no frame-protocol code in a build of aldis-spp alone (VER-031)
   ffi-imports <target>         the bare-metal aldis-ffi static library needs nothing from the
                                integrator beyond memcpy/memset equivalents (CABI-004)
@@ -243,6 +247,7 @@ fn fix() -> Result<usize, String> {
         + sana::run(&["--write"])?
         + header::run(true)?
         + refapp::gen_scenario()?
+        + readme_diagram::run(true)?
         + format_workspaces()?
         + consistency::check()?)
 }
@@ -300,6 +305,8 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["links"] => links::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
+        ["readme-diagram"] => readme_diagram::run(false),
+        ["readme-diagram", "--write"] => readme_diagram::run(true),
         ["symbols"] => binaries::symbols(),
         ["ffi-imports", target] => binaries::ffi_imports(target),
         ["stack", rest @ ..] => stack::run(rest),
