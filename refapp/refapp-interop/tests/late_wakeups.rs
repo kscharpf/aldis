@@ -33,7 +33,7 @@ impl Clock for Shared {
 /// 0.5 s slot, due 1 s later) reaches its deadline after a later slot's step and before the next.
 struct Sleepy(Rc<Cell<u64>>);
 
-fn late_us(target_us: u64) -> u64 {
+const fn late_us(target_us: u64) -> u64 {
     1_000 - 50 * ((target_us / 125_000) % 16)
 }
 
