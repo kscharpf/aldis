@@ -2,9 +2,9 @@
 """Blind model of the `unit_sent` records of the `a2-nominal` golden trace.
 
 A2 D8(c), TV-023.  Written from docs/reference-application.md (sections 2, 3,
-4, 6, 7), docs/milestones/a2-frames.md D8, docs/standards/ and the Blue Books
-132.0-B-3 (TM), 232.0-B-4 (TC), 133.0-B-2 (Space Packet), 301.0-B-4 (CUC) and
-the CRC-16 of 132.0 4.1.6; `refapp/scenario/scenario.json` is read as input
+4, 6, 7), docs/milestones/a2-frames.md D8 and docs/standards/; protocol values
+came from those documents, not from the Blue Book text (132.0-B-3, 232.0-B-4,
+133.0-B-2, 301.0-B-4 are the standards they cite); `refapp/scenario/scenario.json` is read as input
 data only.  No implementation file was read.  Python 3, standard library only.
 
 It simulates the flight node's applications and its per-virtual-channel field
@@ -466,6 +466,12 @@ def self_check(ul, down):
     assert kinds.count(7) == 219 and kinds.count(0) == 31 and kinds.count(1) == 30
     assert [down[i]["hex"][:6].hex().upper() for i in (0, 2, 4)] == \
         ["155F00001FFE", "155102001800", "155304001800"]
+    # Payload data (reference-application.md 4.3, 4.4.3): the first VC 1 frame
+    # holds packet number n = 0 from its start: 6 octets of frame header, 6 of
+    # packet header, 6 of CUC time, then data octets 0-3 = n and octet i =
+    # (n + i) mod 256 from i = 4.
+    first_pl = next(f["hex"] for f in down if (f["hex"][0] << 8 | f["hex"][1]) >> 1 & 7 == 1)
+    assert first_pl[18:22] == bytes(4) and first_pl[22:26] == bytes([4, 5, 6, 7])
     last = down[-1]["hex"]
     assert last[2] == 23
     vc = {0: [], 1: [], 7: []}
