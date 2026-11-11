@@ -1,7 +1,10 @@
 //! Trace writer, canonical-form check, and comparator against a hand-written sample trace
 //! (docs/reference-application.md §7; A0 WP-2).
 
+use std::fmt::Write as _;
+
 use refapp_harness::micros::Micros;
+use refapp_harness::scenario::Scenario;
 use refapp_harness::trace::{
     Dir, FaultKind, Header, Mismatch, NodeId, Record, check_canonical, compare, decode_strict,
 };
@@ -221,16 +224,25 @@ fn golden_traces_decode_with_the_strict_codecs() {
     // req: APP-086
     let dir = refapp_harness::golden_path("a1-nominal");
     let dir = dir.parent().unwrap();
+    let scenario = Scenario::load().unwrap();
     let mut traces = 0;
+    let mut a2 = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|x| x == "jsonl") {
             let text = std::fs::read_to_string(&path).unwrap();
-            decode_strict(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            decode_strict(&scenario, &text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             traces += 1;
+            if path
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with("a2-"))
+            {
+                a2 += 1;
+            }
         }
     }
     assert!(traces >= 5);
+    assert!(a2 >= 4, "the a2-* traces were not decoded as frames");
 }
 
 #[test]
@@ -241,10 +253,15 @@ fn a_planted_malformed_packet_fails_the_strict_decode() {
             "{{\"t_us\":0,\"kind\":\"{kind}\",\"node\":\"flight\",\"apid\":16,\"hex\":\"{hex}\"}}\n"
         )
     };
-    let header = SAMPLE.lines().next().unwrap();
+    let scenario = Scenario::load().unwrap();
+    let header = SAMPLE
+        .lines()
+        .next()
+        .unwrap()
+        .replace("\"sample\"", "\"a1-nominal\"");
     let good = "0810C00000057D2B75000000";
     let ok = format!("{header}\n{}", line("packet_out", good));
-    assert_eq!(decode_strict(&ok), Ok(1));
+    assert_eq!(decode_strict(&scenario, &ok), Ok(1));
     // Version 1 (SPP-001), truncated, and trailing octets after the packet.
     for bad in [
         "2810C00000057D2B75000000",
@@ -252,11 +269,67 @@ fn a_planted_malformed_packet_fails_the_strict_decode() {
         "0810C00000057D2B75000000FF",
     ] {
         let text = format!("{header}\n{}", line("packet_out", bad));
-        let e = decode_strict(&text).unwrap_err();
+        let e = decode_strict(&scenario, &text).unwrap_err();
         assert!(e.starts_with("line 2:"), "{e}");
     }
     let unit = format!(
         "{header}\n{{\"t_us\":0,\"kind\":\"unit_sent\",\"dir\":\"down\",\"index\":0,\"hex\":\"2810C00000057D2B75000000\"}}\n"
     );
-    assert!(decode_strict(&unit).is_err());
+    assert!(decode_strict(&scenario, &unit).is_err());
+}
+
+/// The golden trace of `case_id` with one `unit_sent` of direction `dir` changed by `f`.
+fn with_unit_changed(case_id: &str, dir: &str, f: impl Fn(&mut Vec<u8>)) -> String {
+    let path = refapp_harness::golden_path(case_id);
+    let text = std::fs::read_to_string(path).unwrap();
+    let mark = format!("\"kind\":\"unit_sent\",\"dir\":\"{dir}\",\"index\":");
+    let mut out = String::new();
+    let mut done = false;
+    for l in text.split_inclusive('\n') {
+        if !done && l.contains(&mark) {
+            let (head, rest) = l.split_once("\"hex\":\"").unwrap();
+            let hex = rest.trim_end().trim_end_matches("\"}");
+            let mut octets = unhex(hex);
+            f(&mut octets);
+            let hex = octets.iter().fold(String::new(), |mut acc, b| {
+                write!(acc, "{b:02X}").unwrap();
+                acc
+            });
+            writeln!(out, "{head}\"hex\":\"{hex}\"}}").unwrap();
+            done = true;
+        } else {
+            out.push_str(l);
+        }
+    }
+    assert!(done, "no {dir} unit_sent in {case_id}");
+    out
+}
+
+#[test]
+fn a_planted_wrong_fecf_fails_the_strict_decode_of_a_frame_trace() {
+    // req: APP-086
+    let scenario = Scenario::load().unwrap();
+    let good = std::fs::read_to_string(refapp_harness::golden_path("a2-nominal")).unwrap();
+    assert!(decode_strict(&scenario, &good).is_ok());
+    for dir in ["down", "up"] {
+        let bad = with_unit_changed("a2-nominal", dir, |o| {
+            if let Some(last) = o.last_mut() {
+                *last ^= 1;
+            }
+        });
+        let e = decode_strict(&scenario, &bad).unwrap_err();
+        assert!(e.contains("not a strict"), "{dir}: {e}");
+    }
+}
+
+#[test]
+fn the_level_of_the_case_chooses_the_decoder_not_its_name() {
+    // req: APP-086
+    let scenario = Scenario::load().unwrap();
+    // A frame under a packet-level case fails as a packet; an unknown case fails.
+    let text = std::fs::read_to_string(refapp_harness::golden_path("a2-nominal")).unwrap();
+    let as_packets = text.replacen("\"a2-nominal\"", "\"a1-nominal\"", 1);
+    assert!(decode_strict(&scenario, &as_packets).is_err());
+    let unknown = text.replacen("\"a2-nominal\"", "\"a2-unknown\"", 1);
+    assert!(decode_strict(&scenario, &unknown).is_err());
 }
