@@ -1,7 +1,10 @@
 //! Trace writer, canonical-form check, and comparator against a hand-written sample trace
 //! (docs/reference-application.md §7; A0 WP-2).
 
+use std::fmt::Write as _;
+
 use refapp_harness::micros::Micros;
+use refapp_harness::scenario::Scenario;
 use refapp_harness::trace::{
     Dir, FaultKind, Header, Mismatch, NodeId, Record, check_canonical, compare, decode_strict,
 };
@@ -221,16 +224,28 @@ fn golden_traces_decode_with_the_strict_codecs() {
     // req: APP-086
     let dir = refapp_harness::golden_path("a1-nominal");
     let dir = dir.parent().unwrap();
+    let scenario = Scenario::load().unwrap();
     let mut traces = 0;
+    let mut frame_traces = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|x| x == "jsonl") {
             let text = std::fs::read_to_string(&path).unwrap();
-            decode_strict(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let d = decode_strict(&scenario, &text)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             traces += 1;
+            if d.frames > 0 {
+                // A frame-level trace: its frames and the packets inside were decoded.
+                assert!(d.framed_packets > 0, "{}", path.display());
+                frame_traces += 1;
+            }
         }
     }
     assert!(traces >= 5);
+    assert_eq!(
+        frame_traces, 4,
+        "the four a2-* traces are decoded as frames"
+    );
 }
 
 #[test]
@@ -241,10 +256,15 @@ fn a_planted_malformed_packet_fails_the_strict_decode() {
             "{{\"t_us\":0,\"kind\":\"{kind}\",\"node\":\"flight\",\"apid\":16,\"hex\":\"{hex}\"}}\n"
         )
     };
-    let header = SAMPLE.lines().next().unwrap();
+    let scenario = Scenario::load().unwrap();
+    let header = SAMPLE
+        .lines()
+        .next()
+        .unwrap()
+        .replace("\"sample\"", "\"a1-nominal\"");
     let good = "0810C00000057D2B75000000";
     let ok = format!("{header}\n{}", line("packet_out", good));
-    assert_eq!(decode_strict(&ok), Ok(1));
+    assert_eq!(decode_strict(&scenario, &ok).unwrap().records, 1);
     // Version 1 (SPP-001), truncated, and trailing octets after the packet.
     for bad in [
         "2810C00000057D2B75000000",
@@ -252,11 +272,132 @@ fn a_planted_malformed_packet_fails_the_strict_decode() {
         "0810C00000057D2B75000000FF",
     ] {
         let text = format!("{header}\n{}", line("packet_out", bad));
-        let e = decode_strict(&text).unwrap_err();
+        let e = decode_strict(&scenario, &text).unwrap_err();
         assert!(e.starts_with("line 2:"), "{e}");
     }
     let unit = format!(
         "{header}\n{{\"t_us\":0,\"kind\":\"unit_sent\",\"dir\":\"down\",\"index\":0,\"hex\":\"2810C00000057D2B75000000\"}}\n"
     );
-    assert!(decode_strict(&unit).is_err());
+    assert!(decode_strict(&scenario, &unit).is_err());
+}
+
+/// The golden trace of `case_id` with one `unit_sent` of direction `dir` changed by `f`.
+fn with_unit_changed(case_id: &str, dir: &str, f: impl Fn(&mut Vec<u8>) -> bool) -> String {
+    let path = refapp_harness::golden_path(case_id);
+    let text = std::fs::read_to_string(path).unwrap();
+    let mark = format!("\"kind\":\"unit_sent\",\"dir\":\"{dir}\",\"index\":");
+    let mut out = String::new();
+    let mut done = false;
+    for l in text.split_inclusive('\n') {
+        let picked = if !done && l.contains(&mark) {
+            let (head, rest) = l.split_once("\"hex\":\"").unwrap();
+            let hex = rest.trim_end().trim_end_matches("\"}");
+            let mut octets = unhex(hex);
+            f(&mut octets).then_some((head, octets))
+        } else {
+            None
+        };
+        if let Some((head, octets)) = picked {
+            let hex = octets.iter().fold(String::new(), |mut acc, b| {
+                write!(acc, "{b:02X}").unwrap();
+                acc
+            });
+            writeln!(out, "{head}\"hex\":\"{hex}\"}}").unwrap();
+            done = true;
+        } else {
+            out.push_str(l);
+        }
+    }
+    assert!(done, "no {dir} unit_sent in {case_id}");
+    out
+}
+
+#[test]
+fn a_planted_wrong_fecf_fails_the_strict_decode_of_a_frame_trace() {
+    // req: APP-086
+    let scenario = Scenario::load().unwrap();
+    let good = std::fs::read_to_string(refapp_harness::golden_path("a2-nominal")).unwrap();
+    assert!(decode_strict(&scenario, &good).is_ok());
+    for dir in ["down", "up"] {
+        let bad = with_unit_changed("a2-nominal", dir, |o| {
+            if let Some(last) = o.last_mut() {
+                *last ^= 1;
+            }
+            true
+        });
+        let e = decode_strict(&scenario, &bad).unwrap_err();
+        assert!(e.contains("not a strict"), "{dir}: {e}");
+    }
+}
+
+#[test]
+fn the_level_of_the_case_chooses_the_decoder_not_its_name() {
+    // req: APP-086
+    let scenario = Scenario::load().unwrap();
+    // A frame under a packet-level case fails as a packet; an unknown case fails.
+    let text = std::fs::read_to_string(refapp_harness::golden_path("a2-nominal")).unwrap();
+    let as_packets = text.replacen("\"a2-nominal\"", "\"a1-nominal\"", 1);
+    let e = decode_strict(&scenario, &as_packets).unwrap_err();
+    assert!(e.contains("is not a strict Space Packet"), "{e}");
+    let unknown = text.replacen("\"a2-nominal\"", "\"a2-unknown\"", 1);
+    let e = decode_strict(&scenario, &unknown).unwrap_err();
+    assert_eq!(e, "no case `a2-unknown` in scenario.json");
+}
+
+/// Appends the FECF of 132.0 Annex B and 232.0 Annex A (polynomial 0x1021, initial 0xFFFF).
+fn with_fecf(mut frame: Vec<u8>) -> Vec<u8> {
+    let mut crc = 0xFFFFu16;
+    for b in &frame {
+        crc ^= u16::from(*b) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 == 0 {
+                crc << 1
+            } else {
+                (crc << 1) ^ 0x1021
+            };
+        }
+    }
+    frame.extend_from_slice(&crc.to_be_bytes());
+    frame
+}
+
+#[test]
+fn a_corrupt_packet_inside_a_frame_with_a_valid_fecf_fails_the_strict_decode() {
+    // req: APP-086
+    let scenario = Scenario::load().unwrap();
+    // The first octet of the first packet that starts in a TM frame (the First Header Pointer
+    // is the offset into the data field after the 6 octets of the header), and of the first FDU
+    // of the uplink (after the 5 octets of the header and the Segment Header). The Packet
+    // Version Number is set to 1, which the codec refuses (SPP-001); the FECF is recomputed.
+    let plant = |frame: &mut Vec<u8>, at: usize| {
+        frame.truncate(frame.len() - 2);
+        frame[at] = (frame[at] & 0x1F) | 0x20;
+        *frame = with_fecf(std::mem::take(frame));
+    };
+    let down = with_unit_changed("a2-nominal", "down", |o| {
+        let fhp = usize::from(o[4] & 0x07) << 8 | usize::from(o[5]);
+        if fhp >= 0x7FE {
+            return false;
+        }
+        plant(o, 6 + fhp);
+        true
+    });
+    let e = decode_strict(&scenario, &down).unwrap_err();
+    assert!(
+        e.contains("extraction error") || e.contains("not a strict Space Packet"),
+        "{e}"
+    );
+    assert!(
+        !e.contains("not a strict TM frame"),
+        "the frame itself is valid: {e}"
+    );
+    let up = with_unit_changed("a2-nominal", "up", |o| {
+        plant(o, 6);
+        true
+    });
+    let e = decode_strict(&scenario, &up).unwrap_err();
+    assert!(
+        !e.contains("not a strict TC frame"),
+        "the frame itself is valid: {e}"
+    );
 }

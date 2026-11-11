@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-aldis = { workspace = true, features = ["core", "spp", "tc", "tm"] }
+aldis = { workspace = true, features = ["core", "link", "spp", "tc", "tm"] }
 refapp-flight = { workspace = true }
 refapp-ground = { workspace = true }
 refapp-scenario = { workspace = true }
