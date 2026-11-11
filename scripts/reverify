@@ -338,7 +338,7 @@ renew_deadlines() {
 
 release_locks() {
     local pr
-    [ -z "$watcher" ] || kill "$watcher" 2>/dev/null || true
+    [ -z "$watcher" ] || kill -KILL "$watcher" 2>/dev/null || true
     for pr in ${held[@]+"${held[@]}"}; do
         if mine "$pr"; then
             rm -f "$state_dir/$pr.deadline" "$state_dir/$pr.lock"
@@ -411,6 +411,9 @@ lock_acquire() {
 
 # Wait for the hosted run $1 to end, at most --timeout. Returns 0 when it ended and 5 when the wait
 # expired (the run goes on; only the watcher is stopped).
+# The watcher is stopped with KILL: a TERM that arrives between the fork and the exec of the
+# watcher meets this script's own TERM trap, which is reset at the exec, so the signal is lost, the
+# watcher lives on, and the `wait` below never returns (#261).
 watch_run() {
     local start=$SECONDS
     renew_deadlines
@@ -419,7 +422,7 @@ watch_run() {
     # bound: ends when the watcher exits or the wait has lasted --timeout.
     while kill -0 "$watcher" 2>/dev/null; do
         if [ $((SECONDS - start)) -ge "$timeout_s" ]; then
-            kill "$watcher" 2>/dev/null || true
+            kill -KILL "$watcher" 2>/dev/null || true
             wait "$watcher" 2>/dev/null || true
             watcher=""
             return 5
