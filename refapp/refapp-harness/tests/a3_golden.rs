@@ -730,3 +730,94 @@ fn uplink_limit_follows_the_table() {
 fn ix(i: u64) -> usize {
     usize::try_from(i).unwrap()
 }
+
+/// `n` bits of `word` from bit `first` (bit 0 is the most significant of `width` bits).
+const fn field(word: u32, width: u32, first: u32, n: u32) -> u32 {
+    (word >> (width - first - n)) & ((1 << n) - 1)
+}
+
+/// The Transfer Frame Primary Header of a TC frame, field by field (232.0 §4.1.2): version,
+/// bypass, control command, spare, SCID, VCID, frame length, N(S).
+fn tc_header(f: &[u8]) -> [u32; 8] {
+    let w = u32::from_be_bytes([f[0], f[1], f[2], f[3]]);
+    [
+        field(w, 32, 0, 2),
+        field(w, 32, 2, 1),
+        field(w, 32, 3, 1),
+        field(w, 32, 4, 2),
+        field(w, 32, 6, 10),
+        field(w, 32, 16, 6),
+        field(w, 32, 22, 10),
+        u32::from(f[4]),
+    ]
+}
+
+/// A CLCW, field by field (232.0 §4.2.1): type, version, status, COP in effect, VCID, spare,
+/// No RF, No Bit Lock, Lockout, Wait, Retransmit, FARM-B Counter, spare, Report Value.
+const fn clcw(w: u32) -> [u32; 14] {
+    [
+        field(w, 32, 0, 1),
+        field(w, 32, 1, 2),
+        field(w, 32, 3, 3),
+        field(w, 32, 6, 2),
+        field(w, 32, 8, 6),
+        field(w, 32, 14, 2),
+        field(w, 32, 16, 1),
+        field(w, 32, 17, 1),
+        field(w, 32, 18, 1),
+        field(w, 32, 19, 1),
+        field(w, 32, 20, 1),
+        field(w, 32, 21, 2),
+        field(w, 32, 23, 1),
+        field(w, 32, 24, 8),
+    ]
+}
+
+#[test]
+fn first_frame_of_each_kind_by_hand() {
+    // req: APP-150, APP-151, APP-090, APP-147
+    // D8(b): the first frame of each kind decoded field by field, against 232.0-B-4 and
+    // 232.1-B-2 (the clauses are in the pull request).
+    let nominal = units("a3-nominal", "up");
+    let loss = units("a3-uplink-loss", "up");
+    // The AD frame with N(S) = 0: Type-AD (Table 4-1), SCID 0x155, VC 0, 22 octets, N(S) 0,
+    // Segment Header `C0` (no segmentation, MAP 0; Table 4-2), one 14-octet telecommand packet.
+    let f = &nominal[0].1;
+    assert_eq!(tc_header(f), [0, 0, 0, 0, 0x155, 0, 21, 0]);
+    assert_eq!(f[5], 0xC0);
+    assert_eq!(f.len(), 22);
+    assert_eq!(f[6..20], unhex("1080C000000701017D2B75060000")[..]);
+    check_fecf("a3-nominal", 0, f);
+    // The retransmitted AD frame: unit 4 of `a3-uplink-loss` repeats unit 2, N(S) 2, with the
+    // Segment Header `01` (first portion, MAP 1), 128 octets, at 2.75 s (232.1 §5.2.4 a, §5.2.7 d).
+    assert_eq!(loss[2].1, loss[4].1);
+    assert_eq!((loss[2].0, loss[4].0), (2_250_000, 2_750_000));
+    let f = &loss[4].1;
+    assert_eq!(tc_header(f), [0, 0, 0, 0, 0x155, 0, 127, 2]);
+    assert_eq!(f[5], 0x01);
+    assert_eq!(f.len(), 128);
+    check_fecf("a3-uplink-loss", 4, f);
+    // The Unlock frame: Type-BC (bypass 1, control command 1), length 7 (8 octets), N(S) 0, no
+    // Segment Header (232.0 §4.1.3.2.2.1.3), the data octet 0x00 (§4.1.3.3.2).
+    let lockout = units("a3-uplink-lockout", "up");
+    assert_eq!(lockout[2].0, 2_500_000);
+    let f = &lockout[2].1;
+    assert_eq!(tc_header(f), [0, 1, 1, 0, 0x155, 0, 7, 0]);
+    assert_eq!(f[5], 0x00);
+    assert_eq!(f.len(), 8);
+    check_fecf("a3-uplink-lockout", 2, f);
+    // The CLCW with the Retransmit flag (232.0 §4.2.1.8.6): 0x01000802, VC 0.
+    // The OCF is the four octets before the two-octet FECF that ends each
+    // 223-octet downlink frame, so octets 217 to 220.
+    let ocf = |case: &str, i: usize| {
+        let d = units(case, "down");
+        u32::from_be_bytes([d[i].1[217], d[i].1[218], d[i].1[219], d[i].1[220]])
+    };
+    let w = ocf("a3-uplink-loss", 21);
+    assert_eq!(w, 0x0100_0802);
+    assert_eq!(clcw(w), [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2]);
+    // The CLCW with the Lockout flag (§4.2.1.8.4): 0x01002001, N(R) 1.
+    let w = ocf("a3-uplink-lockout", 17);
+    assert_eq!(w, 0x0100_2001);
+    assert_eq!(clcw(w), [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+}
