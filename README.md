@@ -2,32 +2,45 @@
 
 [![CI](https://github.com/kscharpf/aldis/actions/workflows/ci.yml/badge.svg)](https://github.com/kscharpf/aldis/actions/workflows/ci.yml)
 
-Aldis is a set of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The reference implementation is in Rust (`no_std`, no heap, panic-free), with a C ABI for C and C++ applications. Other languages are planned on top of that ABI.
+Aldis is a CCSDS protocol stack for spacecraft flight software and ground systems, written in Rust (`no_std`, no heap, panic-free) with a C ABI for C and C++ applications. It implements Space Packets, Encapsulation Packets, time codes, TM, TC, AOS, and USLP Transfer Frames, frame synchronization, COP-1, and the sans-I/O engines that link them: you hand the library bytes and time, and it hands back bytes and events.
 
-Aldis exists for two reasons. It aims to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified: [How Aldis is verified](#how-aldis-is-verified) lists the practices that back this claim.
-
-The evidence, in short:
-- No panic path is reachable from any input, proven at link time (GEN-020, VER-010; [code rules](#how-aldis-is-verified)).
-- 100 % region, function, line, and branch coverage of the codec crates and `aldis-core` (VER-024; [testing](#how-aldis-is-verified)).
-- Test vectors computed by blind independent models written from the Blue Book alone (TV-023; [testing](#how-aldis-is-verified)).
-- The merge gate is a reproducible run in a digest-pinned image that produces a published evidence record (VER-056–VER-058; [merge gate](#how-aldis-is-verified)).
-
-The second thing Aldis showcases is how it is built: by coding agents under a merge gate. Implementation agents work in their own worktrees and commit under the reproducible gate. A fresh, independent reviewer agent reads every pull request ([review protocol](docs/process/review.md)), and test-vector models are written blind, from the Blue Book and the docs only (TV-023). Who decides what is fixed by the [decision rights](docs/process/decision-rights.md) (VER-062): the maintainer decides scope, API and ABI, dependencies, releases, and every merge, and a [coordinator](docs/process/coordinator.md) runs the merge trains. The process is measured with `cargo xtask metrics` (VER-063). The rules for agents are in [AGENTS.md](AGENTS.md).
-
-Aldis has not been qualified against any standard. The goal is to reach that point: it is designed so that a later qualification against a standard (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)). It claims compliance with none of them.
-
-## Where Aldis stands
+Aldis has two aims. It is meant to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified, largely by coding agents under a reproducible merge gate.
 
 > [!NOTE]
-> **Pre-release, under active development.**
-> - v1.0 is not released: it waits on M6 and the reference-application milestones A2–A6 ([roadmap §5](docs/08-roadmap.md#5-releases); see **Status** below).
-> - It has not been qualified against any standard for flight or any other mission-critical use.
-> - Its wire behaviour has not yet been exercised against an independent implementation; that evidence is planned as the AINT milestone (see **Status** below).
-> - Its API may change in any 0.x release (Semantic Versioning, GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
-> - The crates are not published to crates.io.
-> - Outside contributions are not being accepted yet.
->
-> The repository is public as a showcase; being public also lets it use the free tools that VER-055 requires (OI-22).
+> **Pre-release, under active development.** It has not been qualified against any standard, its wire behaviour has not yet been exercised against an independent implementation, its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
+
+## Example
+
+Encode a Space Packet and decode it again, through the `aldis` facade with the features `core` and `spp`. This code is compiled and run as a doctest of [`crates/aldis/README.md`](crates/aldis/README.md), and `cargo xtask consistency` checks that it is the same code.
+
+```rust
+use aldis::core::ids::{Apid, SeqCount};
+use aldis::spp::{
+    PRIMARY_HEADER_LEN, PacketFields, PacketType, SequenceFlags, SpacePacket, SppConfig, encode,
+};
+
+fn main() -> Result<(), aldis::core::Error> {
+    let fields = PacketFields {
+        packet_type: PacketType::Telemetry,
+        apid: Apid::try_from(0x123)?,
+        sequence_flags: SequenceFlags::Unsegmented,
+        sequence_count: SeqCount::try_from(42)?,
+    };
+    let packet = SppConfig::DEFAULT.packet(fields, &[], b"hello")?;
+
+    let mut buf = [0_u8; 64];
+    let len = encode(&packet, &mut buf)?;
+    assert_eq!(len, PRIMARY_HEADER_LEN + 5);
+
+    let decoded = SpacePacket::decode(&buf[..len])?;
+    assert_eq!(decoded.apid().get(), 0x123);
+    assert_eq!(decoded.sequence_count().get(), 42);
+    assert_eq!(decoded.data_field(), b"hello");
+    Ok(())
+}
+```
+
+The decoded packet borrows the buffer: nothing is allocated, and every error is a value, never a panic. Each crate has its own README with an example; the [crate list](#layout) links them.
 
 ## Status
 
@@ -48,34 +61,33 @@ Aldis has not been qualified against any standard. The goal is to reach that poi
 
 See the [roadmap](docs/08-roadmap.md) for every milestone and track, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) for the CCSDS documents and sections each milestone covers.
 
-## How Aldis is verified
+## Limits
 
-Aldis is built to the practices of safety- and mission-critical software. These practices are how it is built, and they back its purpose as a showcase of embedded high-assurance Rust, not a claim of fitness for flight. Every rule below is a numbered requirement in [`docs/`](docs/README.md), and most are enforced by a check of the merge gate rather than by review alone.
+- v1.0 is not released: it waits on M6 and the reference-application milestones A2 to A6 ([roadmap §5](docs/08-roadmap.md#5-releases)).
+- Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
+- Its wire behaviour has not yet been exercised against an independent implementation; the AINT milestone plans that.
+- Its API may change in any 0.x release (GEN-080); the [changelog](CHANGELOG.md) lists the breaking changes.
+- Outside contributions are not being accepted yet. The repository is public as a showcase, which also lets it use the free tools VER-055 requires (OI-22).
 
-**Code rules** ([02-design-rules](docs/02-design-rules.md), [Rust profile](docs/profiles/rust.md))
-- `no_std` and no heap: fixed capacities through const generics (GEN-010, GEN-011).
-- No panics on any input, proven at link time: the bare-metal exerciser fails to link if any panic path is reachable (GEN-020, VER-010).
-- No `unsafe` outside the C ABI crate, enforced by `unsafe_code = "forbid"` (GEN-070). Every `unsafe` block in `aldis-ffi` carries a `// SAFETY:` argument.
-- What Aldis assumes of the platform, above all memory protected against single-event upsets, and what happens without it: [hardware assumptions](docs/hardware-assumptions.md) (GEN-015).
-- Every loop bounded and no recursion (GEN-022), verified by static object-level call-graph cycle detection and formal proof harnesses ([analysis record](docs/verification/records/GEN-022.md)).
-- Worst-case stack bounds computed per embedded target for every public entry point and checked against fixed budgets ([stack bounds](docs/verification/records/VER-011.md), VER-011).
-- **Parse, don't validate** (RS-020): restricted values are their own types, so invalid values cannot be constructed; `cargo xtask rs020` checks the public API mechanically. State machines make invalid states unrepresentable (RS-021).
-- A strict lint set (Clippy `all` and `pedantic` denied, plus restriction lints), with every exception local and reasoned (RS-016).
+## Evidence
 
-**Testing** ([06-verification](docs/06-verification.md), [07-test-vectors](docs/07-test-vectors.md))
-- **100 % region, function, line, and branch coverage** of the codec crates and `aldis-core` (VER-024).
-- **Test vectors with provenance**, shared by every implementation and run through both the Rust API and the C ABI. Each hand-derived file is computed by an **independent model** written from the Blue Book by an author who has not read the implementation (TV-023).
-- **Cross-checks** against independent implementations where they exist (NASA cFE for Space Packets) ([cross-checks](docs/verification/cross-checks.md)).
-- **Property tests** from shared strategies (VER-023, VER-054), **fuzzing** of every decoder and of the C ABI against the Rust decoders (VER-022), and **mutation testing** with every surviving mutant triaged (VER-025).
-- **Bounded model checking** with Kani for selected kernels, nightly (OI-42, [formal-verification](docs/verification/formal-verification.md)).
-- The bare-metal exerciser runs every public API and every vector on Cortex-M4F, Cortex-R5F, and RV32IMAC under QEMU; a big-endian (s390x) build runs the tests.
+Every claim of correctness is backed by a check that the merge gate runs or by a record a person signed, not by assertion. The README does not repeat them; the documents do.
 
-**Traceability and the merge gate**
-- Every requirement cites its CCSDS Blue Book clause; every test names the requirements it covers; `cargo xtask trace` checks that each requirement of a milestone is traced (VER-020).
-- **The merge gate is a reproducible run** of every check in a container image pinned by digest, on the exact commit (VER-056). It produces an **evidence record**, published as a git note, that a pull request must carry to merge (VER-057, VER-058). Every night, every check runs again from scratch on `main` (VER-059).
-- Independent review of every pull request reads the published evidence and audits what no check covers: the Blue Book readings, `unsafe`, the API shape, and every suppression ([AGENTS.md](AGENTS.md)).
-- Open questions are tracked as numbered issues ([open issues](docs/09-open-issues.md)).
-- An [assurance case](docs/verification/assurance-case.md) and systematic [hazard analysis](docs/verification/hazards.md) argue fitness against failure modes and claims (VER-065, VER-066).
+- [Verification](docs/06-verification.md): the lints, link-time panic freedom, coverage, fuzzing, mutation testing, test vectors from blind independent models, cross-checks, and the targets (including bare-metal QEMU runs).
+- [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data and what it is compared against.
+- [Traceability](docs/06-verification.md): every requirement cites its Blue Book clause and every test names the requirements it covers; `cargo xtask trace` reports what is traced.
+- [The merge gate](docs/06-verification.md#7-verification-runs-and-the-merge-gate): a reproducible run of every check in a digest-pinned image, with a published evidence record.
+- [Assurance case](docs/verification/assurance-case.md) and [hazard analysis](docs/verification/hazards.md): the argument from claims to evidence, and the failure modes.
+- [Design rules](docs/02-design-rules.md) and [hardware assumptions](docs/hardware-assumptions.md): what the code may and may not do, and what it assumes of the platform.
+
+## How it is built
+
+Aldis is built by coding agents under rules a person sets. Implementation agents work in their own worktrees, a fresh independent reviewer agent reads every pull request, and the maintainer decides scope, API and ABI, dependencies, releases, and every merge.
+
+- [AGENTS.md](AGENTS.md): the rules for coding agents.
+- [Decision rights](docs/process/decision-rights.md): who decides what.
+- [Independent review](docs/process/review.md) and the [coordinator](docs/process/coordinator.md): the review protocol and the merge trains.
+- `cargo xtask metrics` measures the process (VER-063).
 
 ## Layout
 
@@ -132,6 +144,13 @@ cargo xtask verify                                     # every check in the pinn
 (cd fuzz && cargo +$(cat ../tooling-nightly) fuzz run crc_variants)    # needs cargo-fuzz
 ```
 
+## Where to start
+
+1. [docs/README.md](docs/README.md): reading order and document map (contributors and coding agents: also read [AGENTS.md](AGENTS.md))
+   - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
+2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
+3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed
+
 ## License
 
 Licensed under either of
@@ -142,13 +161,6 @@ Licensed under either of
 at your option. This covers the code, the test vectors, and the documentation.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
-
-## Where to start
-
-1. [docs/README.md](docs/README.md): reading order and document map (contributors and coding agents: also read [AGENTS.md](AGENTS.md))
-   - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
-2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
-3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed
 
 ## About the name
 
