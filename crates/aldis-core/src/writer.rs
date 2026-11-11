@@ -479,12 +479,16 @@ impl<'b, L: Length, P: FramePlan> FrameWriter<'b, L, P, Protected> {
         // The range is the layout's own, inside the buffer sized to it at `reserve`: no wire input.
         let frame = w.frame.get_mut(..w.total).unwrap_or_default();
         w.plan.seal(frame);
-        if !w.layout.fecf().is_empty()
-            && let Some((body, fecf)) = frame.split_at_mut_checked(w.total.saturating_sub(FECF_LEN))
-        {
-            for (d, s) in fecf.iter_mut().zip(crc16(body).to_be_bytes()) {
-                *d = s;
-            }
+        if !w.layout.fecf().is_empty() {
+            // The frame holds its FECF, so the split is the one chunk: no wire input.
+            frame
+                .split_at_mut_checked(w.total.saturating_sub(FECF_LEN))
+                .into_iter()
+                .for_each(|(body, fecf)| {
+                    for (d, s) in fecf.iter_mut().zip(crc16(body).to_be_bytes()) {
+                        *d = s;
+                    }
+                });
         }
         w.into_state()
     }
@@ -528,10 +532,7 @@ mod tests {
     use crate::field;
     use crate::layout::{FECF_LEN, FrameLayout, LayoutSpec};
     use crate::ocf::Ocf;
-    use crate::security::{
-        FrameCtx, HookLayout, NoSecurity, PreFilledSecurity, SecuredFields, SecurityHook,
-        SecurityLayout,
-    };
+    use crate::security::{FrameCtx, HookLayout, SecuredFields, SecurityHook, SecurityLayout};
 
     fn spec(security: SecurityLayout, ocf: bool, fecf: bool, secondary: usize) -> LayoutSpec {
         LayoutSpec {
@@ -552,6 +553,8 @@ mod tests {
     struct Fix;
 
     impl FramePlan for Fix {
+        const OCF_FIELD: crate::error::FieldId = field::OCF;
+
         fn seal(&self, frame: &mut [u8]) {
             if let Some(b) = frame.get_mut(2) {
                 *b = 0xEE;
@@ -585,15 +588,36 @@ mod tests {
         }
     }
 
-    struct Failing;
+    /// A hook for any layout, or for none, that fails or not.
+    struct Hook {
+        layout: HookLayout,
+        fail: bool,
+    }
 
-    impl SecurityHook for Failing {
+    const OK: Hook = Hook {
+        layout: HookLayout::Any,
+        fail: false,
+    };
+    const FAILING: Hook = Hook {
+        layout: HookLayout::Any,
+        fail: true,
+    };
+    const NONE: Hook = Hook {
+        layout: HookLayout::Exact(SecurityLayout::NONE),
+        fail: false,
+    };
+
+    impl SecurityHook for Hook {
         fn layout(&self) -> HookLayout {
-            HookLayout::Any
+            self.layout
         }
 
         fn protect(&mut self, _: &FrameCtx, _: &mut [u8], _: &SecuredFields) -> Result<()> {
-            Err(crate::error::Error::new(ErrorKind::Security))
+            if self.fail {
+                Err(crate::error::Error::new(ErrorKind::Security))
+            } else {
+                Ok(())
+            }
         }
 
         fn verify(
@@ -624,10 +648,7 @@ mod tests {
         w.data_mut().fill(7);
         w.set_ocf(Ocf::decode([9, 9, 9, 9])).unwrap();
         assert_eq!(w.ocf_mut(), &[9, 9, 9, 9]);
-        let done = w
-            .protect(&mut PreFilledSecurity, &ctx())
-            .unwrap()
-            .finalize();
+        let done = w.protect(&mut OK, &ctx()).unwrap().finalize();
         assert_eq!((done.len(), done.is_empty()), (14, false));
         let body = done.octets().to_vec();
         // The seal wrote octet 2 before the FECF over all the octets before it.
@@ -639,37 +660,73 @@ mod tests {
     }
 
     #[test]
+    fn a_frame_taken_as_given_keeps_its_security_octets() {
+        // req: RS-023, API-072
+        let sec = SecurityLayout::new(1, 1).unwrap();
+        let l = layout(spec(sec, false, true, 0), 4);
+        let mut out = [0_u8; 20];
+        let mut w = FrameWriter::reserve_fixed(&mut out, l.clone(), Fix).unwrap();
+        w.security_header_mut().fill(5);
+        let done = w.taken_as_given().finalize();
+        assert_eq!(done.octets()[3], 5);
+        let mut w = FrameWriter::reserve_variable(&mut out, l, Var).unwrap();
+        w.security_header_mut().fill(6);
+        let done = w.taken_as_given(3).unwrap().finalize();
+        assert_eq!(done.len(), 10);
+        assert_eq!(done.octets()[3], 6);
+    }
+
+    #[test]
+    fn the_secondary_data_follows_the_identification_octets() {
+        // req: CMN-040
+        #[derive(Debug)]
+        struct Id;
+        impl FramePlan for Id {
+            const SECONDARY_ID_LEN: usize = 1;
+        }
+        let l = layout(spec(SecurityLayout::NONE, false, false, 3), 2);
+        let mut out = [0_u8; 20];
+        let mut w = FrameWriter::reserve_fixed(&mut out, l.clone(), Id).unwrap();
+        assert_eq!(w.secondary_data_mut().len(), 2);
+        let mut w = FrameWriter::reserve_fixed(
+            &mut out,
+            layout(spec(SecurityLayout::NONE, false, false, 0), 2),
+            Id,
+        )
+        .unwrap();
+        assert_eq!(w.secondary_data_mut().len(), 0);
+    }
+
+    #[test]
     fn a_fixed_frame_without_fecf_or_ocf() {
         // req: RS-023
-        let l = layout(spec(SecurityLayout::NONE, false, false, 1), 4);
-        let mut out = [0xFF_u8; 8];
+        let l = layout(spec(SecurityLayout::NONE, false, true, 1), 4);
+        let mut out = [0xFF_u8; 12];
         let mut w = FrameWriter::reserve_fixed(&mut out, l, Unsealed).unwrap();
         assert_eq!(
             w.set_ocf(Ocf::decode([0; 4])).unwrap_err().field(),
             Some(field::OCF_FLAG)
         );
+        let with_ocf = layout(spec(SecurityLayout::NONE, true, false, 0), 2);
+        let mut ocf_out = [0_u8; 12];
+        let mut o = FrameWriter::reserve_fixed(&mut ocf_out, with_ocf, Unsealed).unwrap();
+        o.set_ocf(Ocf::decode([1, 2, 3, 4])).unwrap();
+        assert_eq!(o.ocf_mut(), &[1, 2, 3, 4]);
         assert_eq!(w.secondary_mut().len(), 1);
         assert_eq!(w.data_field_mut().len(), 4);
         assert_eq!(w.data_header_mut().len(), 0);
-        let done = w.unsecured().unwrap().finalize();
-        assert_eq!(done.octets(), &[0; 8]);
-    }
-
-    #[test]
-    fn the_ocf_error_names_the_plans_field() {
-        // req: RS-023
-        #[derive(Debug)]
-        struct Aos;
-        impl FramePlan for Aos {
-            const OCF_FIELD: crate::error::FieldId = field::OCF;
-        }
         let l = layout(spec(SecurityLayout::NONE, false, false, 0), 2);
-        let mut out = [0_u8; 8];
-        let mut w = FrameWriter::reserve_fixed(&mut out, l, Aos).unwrap();
+        let mut small = [0_u8; 8];
+        let mut f = FrameWriter::reserve_fixed(&mut small, l.clone(), Fix).unwrap();
         assert_eq!(
-            w.set_ocf(Ocf::decode([0; 4])).unwrap_err().field(),
+            f.set_ocf(Ocf::decode([0; 4])).unwrap_err().field(),
             Some(field::OCF)
         );
+        let plain = FrameWriter::reserve_fixed(&mut small, l, Fix).unwrap();
+        assert_eq!(plain.unsecured().unwrap().finalize().len(), 5);
+        let done = w.unsecured().unwrap().finalize();
+        assert_eq!(done.len(), 10);
+        assert_eq!(&done.octets()[..8], &[0; 8]);
     }
 
     #[test]
@@ -692,12 +749,12 @@ mod tests {
         );
         let w = FrameWriter::reserve_fixed(&mut out, l.clone(), Fix).unwrap();
         assert_eq!(
-            w.protect(&mut NoSecurity, &ctx()).unwrap_err().field(),
+            w.protect(&mut NONE, &ctx()).unwrap_err().field(),
             Some(field::SECURITY_HEADER_LEN)
         );
         let w = FrameWriter::reserve_fixed(&mut out, l, Fix).unwrap();
         assert_eq!(
-            w.protect(&mut Failing, &ctx()).unwrap_err().kind(),
+            w.protect(&mut FAILING, &ctx()).unwrap_err().kind(),
             ErrorKind::Security
         );
     }
@@ -728,7 +785,7 @@ mod tests {
         assert_eq!(w.security_header_mut(), &[0]);
         w.security_trailer_mut().copy_from_slice(&[8, 9]);
         w.data_mut().copy_from_slice(&[1, 2, 3, 4, 5, 6]);
-        let w = w.protect(2, &mut PreFilledSecurity, &ctx()).unwrap();
+        let w = w.protect(2, &mut OK, &ctx()).unwrap();
         let done = w.finalize();
         // Trailer is not moved by PreFilled: the trailer octets moved to follow 2 octets.
         let n = done.len();
@@ -786,20 +843,18 @@ mod tests {
         );
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(2, &mut NoSecurity, &ctx()).unwrap_err().field(),
+            w.protect(2, &mut NONE, &ctx()).unwrap_err().field(),
             Some(field::SECURITY_HEADER_LEN)
         );
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(9, &mut PreFilledSecurity, &ctx())
-                .unwrap_err()
-                .field(),
+            w.protect(9, &mut OK, &ctx()).unwrap_err().field(),
             Some(field::USER_LEN)
         );
         // A failing hook leaves the unfinished header: version 3 again.
         let w = FrameWriter::reserve_variable(&mut out, l.clone(), Var).unwrap();
         assert_eq!(
-            w.protect(2, &mut Failing, &ctx()).unwrap_err().kind(),
+            w.protect(2, &mut FAILING, &ctx()).unwrap_err().kind(),
             ErrorKind::Security
         );
         assert_eq!(out[0], 3);
