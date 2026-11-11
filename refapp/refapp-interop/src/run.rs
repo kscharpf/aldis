@@ -77,7 +77,8 @@ fn wait(clock: &mut dyn Clock, port: &mut dyn Port, target: Micros) -> Result<Wa
 ///
 /// `unit` outputs go to the port as datagrams, the datagrams that arrive are `delivered`, and
 /// the next step is at the earliest of the node's deadline, the next downlink slot, and an
-/// arriving datagram (APP-157). `tx_slot` is true at every slot of `slot` µs and in no other
+/// arriving datagram (APP-157); a datagram that arrives after an instant has passed is delivered
+/// after the step of that instant. `tx_slot` is true at every slot of `slot` µs and in no other
 /// step (APP-158).
 ///
 /// # Errors
@@ -102,7 +103,15 @@ pub fn run_flight(
             // happens in a `tx_slot` step (§4.4.2). `last` keeps the instants from going back.
             Wake::Due => (target.max(last), Vec::new()),
             Wake::Datagram(octets) => {
-                let now = clock.now();
+                let now = clock.now().max(last);
+                // An instant that passed before the datagram was seen is served first, at
+                // its own instant; the datagram's step then falls in no slot.
+                while side.next_wake() <= now && side.next_wake() < end {
+                    let at = side.next_wake().max(last);
+                    last = at;
+                    let units = side.step(at, &[], sink)?;
+                    side.transmit(at, units, port, loss, sink)?;
+                }
                 match side.receive(now, octets, loss, sink)? {
                     Some(octets) => (now, vec![octets]),
                     None => continue,
