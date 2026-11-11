@@ -848,7 +848,7 @@ The directive script is that of 0.0 s. Uplink units (all Type-AD, first octets `
 | 3.135 | `clcw_changed` 16 777 220, `fop1_transfer` (3, 3) |
 | 3.385 | `clcw_changed` 16 777 221, `fop1_transfer` (3, 4) |
 | 5.0 | the timer of FDU 5 (started 4.0 s) expires: `Timeout`, E16, the frame is sent again; no event |
-| 5.010 | `frame_gap` (0, 0, 7), `frame_gap` (1, 7, 5) (of the seven dropped frames five are OID frames of VC 7; the other two are the data frames of 5.260 s and 5.510 s below), `clcw_changed` 16 777 222 (N(R) = 6), `fop1_transfer` (3, 5) (E6: FDU 5 is acknowledged by the first CLCW the ground node sees after 4.01 s) |
+| 5.010 | `frame_gap` (0, 0, 7), `frame_gap` (1, 7, 5) (of the seven dropped frames, five are OID frames of VC 7, reported here as the gap of 5 on VC 7; the other two are frames of VC 0 whose gaps are reported by the rows of 5.260 s and 5.510 s below, when the next VC 0 frame arrives), `clcw_changed` 16 777 222 (N(R) = 6), `fop1_transfer` (3, 5) (E6: FDU 5 is acknowledged by the first CLCW the ground node sees after 4.01 s) |
 | 5.260 | `frame_gap` (1, 0, 1) (the housekeeping frame of 4.25 s), then HK 5 arrives and `seq_gap` (16, 1) |
 | 5.385 | `clcw_changed` 16 777 223 (N(R) = 7), `fop1_transfer` (3, 6) |
 | 5.510 | `frame_gap` (1, 1, 1): the second field of payload 2, whose first field (4.5 s) was dropped, is the tail of a packet the extractor never saw and gives no event, as in `a2-downlink-loss`; payload 2 is lost |
