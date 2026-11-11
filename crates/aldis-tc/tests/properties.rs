@@ -9,8 +9,8 @@
 use aldis_core::security::{FrameCtx, PreFilledSecurity};
 use aldis_core::{DecodeMode, ErrorKind};
 use aldis_tc::{
-    Clcw, Delimited, FrameDelimiter, Reason, TcAnomaly, TcFrame, TcFrameWriter, check_frame,
-    encode, next_frame,
+    Clcw, Delimited, FrameDelimiter, Reason, TcAnomaly, TcFrame, TcPlan, check_frame, encode,
+    next_frame,
 };
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{clcw, data_unit, tc_frame, tc_frame_decoder_input};
@@ -56,10 +56,10 @@ proptest! {
         prop_assume!(f.control.is_none());
         let t = &f.channels.table;
         let mut two = vec![fill; f.octets.len()];
-        let mut w = TcFrameWriter::begin(&mut two, t, f.fields, f.segment_header, f.user_data.len()).unwrap();
-        w.user_data_mut().copy_from_slice(&f.user_data);
+        let mut w = TcPlan::begin(&mut two, t, f.fields, f.segment_header, f.user_data.len()).unwrap();
+        w.data_mut().copy_from_slice(&f.user_data);
         let ctx = FrameCtx::Tc { scid: f.fields.spacecraft_id, vcid: f.fields.vc_id, map_id: None };
-        let done = w.protect(f.user_data.len(), &mut PreFilledSecurity, &ctx).unwrap().finalize().unwrap();
+        let done = w.protect(f.user_data.len(), &mut PreFilledSecurity, &ctx).unwrap().finalize();
         prop_assert_eq!(done.len(), f.octets.len());
         prop_assert_eq!(&two, &f.octets);
         // One octet short: nothing is written (API-022).

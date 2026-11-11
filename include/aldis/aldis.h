@@ -9585,7 +9585,7 @@ uint32_t aldis_aos_bpdu_decode(const uint8_t *field,
  * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `vcf_count`, `vc_frame_count_cycle`,
  * `first_header_pointer`, `bitstream_data_pointer`) for a value of `fields` outside its field:
  * a packet offset above `0xFFFD`, or a count of valid bits of 0 or above
- * `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosFrameWriter::begin` checks them,
+ * `ALDIS_AOS_VALID_BITS_MAX`; then, as `AosPlan::begin` checks them,
  * `ALDIS_ERR_INVALID_FIELD` (`vc_id`) for VCID 63, whose frames `aldis_aos_encode_oid`
  * writes; `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for a VC not in `vcs`;
  * `ALDIS_ERR_INVALID_FIELD` (`data_field_content`) for a pointer not of the VC's data unit;

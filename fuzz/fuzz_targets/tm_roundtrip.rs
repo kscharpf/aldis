@@ -13,8 +13,8 @@ use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
-    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -148,8 +148,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.ocf(), ocf);
             assert!(f.check(&mc).is_ok());
             let mut two = vec![0x5A_u8; n];
-            let mut w = TmFrameWriter::begin(&mut two, &mc, &fields).unwrap();
-            w.secondary_header_data_mut().copy_from_slice(&fsh);
+            let mut w = TmPlan::begin(&mut two, &mc, &fields).unwrap();
+            w.secondary_data_mut().copy_from_slice(&fsh);
             w.security_header_mut().copy_from_slice(&sh);
             w.data_field_mut().copy_from_slice(&data);
             w.security_trailer_mut().copy_from_slice(&st);
@@ -189,7 +189,7 @@ fn oid_frame(
     reference.fill(&mut skipped);
     let before = oid.clone();
     let mut frame = vec![0_u8; cap];
-    match TmFrameWriter::begin_oid(&mut frame, mc, vcid, 0, 0, &mut oid) {
+    match TmPlan::begin_oid(&mut frame, mc, vcid, 0, 0, &mut oid) {
         Err(_) => assert_eq!(oid, before, "a rejected OID frame advanced the generator"),
         Ok(w) => {
             let n = w.unsecured().unwrap().finalize().len();

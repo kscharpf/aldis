@@ -7,9 +7,9 @@
 // req: API-020, API-021, API-022, API-023, AOS-013, AOS-014, AOS-015, AOS-016, AOS-019, CMN-021, GEN-042, VER-022
 
 use aldis_aos::{
-    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
-    AosPhysicalChannelConfig, AosVirtualChannelConfig, BitstreamPointer, DataFieldContent,
-    DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
+    AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig, AosPlan,
+    AosVirtualChannelConfig, BitstreamPointer, DataFieldContent, DataUnit, FrameCountCycle,
+    PacketPointer, PduHeader, VcFrameCount, VcTable, encode,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -184,10 +184,10 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             assert_eq!(f.security_trailer(), st.as_slice());
             assert_eq!(f.ocf(), ocf);
             let mut two = vec![0x5A_u8; n];
-            let mut w = AosFrameWriter::begin(&mut two, &pc, &vcs_table, &fields).unwrap();
-            w.insert_zone_mut().copy_from_slice(&iz);
+            let mut w = AosPlan::begin(&mut two, &pc, &vcs_table, &fields).unwrap();
+            w.secondary_mut().copy_from_slice(&iz);
             w.security_header_mut().copy_from_slice(&sh);
-            w.zone_mut().copy_from_slice(&zone);
+            w.data_mut().copy_from_slice(&zone);
             w.security_trailer_mut().copy_from_slice(&st);
             if let Some(ocf) = ocf {
                 w.set_ocf(ocf).unwrap();
@@ -253,7 +253,7 @@ fn oid_frame(
     let before = oid.clone();
     let count = VcFrameCount::new(u.int_in_range(0..=0xFF_FFFF)?).unwrap();
     let mut frame = vec![0_u8; cap];
-    match AosFrameWriter::begin_oid(
+    match AosPlan::begin_oid(
         &mut frame,
         pc,
         vcs_table,

@@ -14,8 +14,7 @@ use aldis_testkit::strategies::proptest::test_runner::TestCaseError;
 use aldis_testkit::strategies::tm::{tm_frame, tm_frame_decoder_input};
 use aldis_testkit::strategies::{self, octets};
 use aldis_tm::{
-    DataFieldStatus, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter, TmMasterChannelConfig,
-    encode,
+    DataFieldStatus, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPlan, encode,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -136,8 +135,8 @@ proptest! {
     fn two_phase_writer_matches_encode(f in tm_frame()) {
         // req: API-020, API-023, TM-009, VER-023
         let mut out = vec![0_u8; f.octets.len()];
-        let mut w = TmFrameWriter::begin(&mut out, &f.mc, &f.fields).unwrap();
-        w.secondary_header_data_mut().copy_from_slice(&f.secondary_header_data);
+        let mut w = TmPlan::begin(&mut out, &f.mc, &f.fields).unwrap();
+        w.secondary_data_mut().copy_from_slice(&f.secondary_header_data);
         w.security_header_mut().copy_from_slice(&f.security_header);
         w.data_field_mut().copy_from_slice(&f.data);
         w.security_trailer_mut().copy_from_slice(&f.security_trailer);

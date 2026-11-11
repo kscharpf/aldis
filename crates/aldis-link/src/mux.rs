@@ -31,6 +31,7 @@ use aldis_core::engine::{Actions, OutRange};
 use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::SecurityLayout;
+use aldis_core::writer::{Fixed, FrameWriter, Unsealed};
 use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
 #[cfg(feature = "tm")]
 use aldis_tm::FshLen;
@@ -1154,11 +1155,11 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 .config
                 .spec(pick.vc.as_ref(), fields.kind.bypass_flag()),
         )?;
-        let frame = out
-            .get_mut(..frame_len)
-            .ok_or(Error::new(ErrorKind::InternalError))?;
-        frame.fill(0);
-        self.write_frame(frame, &layout, &pick, &fields)?;
+        // The frame is zero but for the fields the mux writes: the Security Header and Trailer, the
+        // FHEC, and the FECF stay zero for the caller (LNK-035).
+        let mut writer = FrameWriter::reserve_fixed(out, layout.clone(), Unsealed)?;
+        self.write_frame(&mut writer, &pick, &fields)?;
+        let written = writer.leave_unsealed().len();
         // The frame is built: commit the state (API-058).
         self.commit(selector, &pick, &fields);
         actions.push(MuxOutput::Transmit(Transmit {
@@ -1168,7 +1169,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 FrameClass::Data
             },
             vc: fields.vc.into(),
-            frame: OutRange::new(0, frame_len),
+            frame: OutRange::new(0, written),
             security_header: out_range(&layout.security_header()),
             data: out_range(&layout.data()),
             security_trailer: out_range(&layout.security_trailer()),
@@ -1271,33 +1272,27 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         }
     }
 
-    /// Writes the fields of a frame, all but the Security Header and Trailer, the FHEC, and the
-    /// FECF (LNK-035).
+    /// Writes the fields of a frame through the core frame writer, all but the Security Header and
+    /// Trailer, the FHEC, and the FECF, which stay zero (LNK-035).
     fn write_frame(
         &mut self,
-        frame: &mut [u8],
-        layout: &FrameLayout,
+        writer: &mut FrameWriter<'_, Fixed, Unsealed>,
         pick: &Pick<P>,
         fields: &FrameFields<P>,
     ) -> Result<()> {
-        let header = frame
-            .get_mut(layout.primary_header())
-            .ok_or(Error::new(ErrorKind::InternalError))?;
         P::write_primary_header(
             &P::primary_header(
                 &self.head.config.channel,
                 pick.vc.as_ref().map(|v| &v.params),
                 fields,
             )?,
-            header,
+            writer.primary_header_mut(),
         )?;
-        let secondary = frame
-            .get_mut(layout.secondary())
-            .ok_or(Error::new(ErrorKind::InternalError))?;
         let fsh = pick
             .vc_pos
             .and_then(|p| self.head.vc_fsh.get(p).copied().flatten())
             .or(self.head.mc_fsh);
+        let secondary = writer.secondary_mut();
         if let Some(fsh) = fsh {
             let (id, rest) = secondary
                 .split_first_mut()
@@ -1311,14 +1306,13 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 *d = *s;
             }
         }
-        let data = frame
-            .get_mut(layout.data())
-            .ok_or(Error::new(ErrorKind::InternalError))?;
+        let data_len = writer.layout().data().len();
+        let data = writer.data_field_mut();
         if fields.oid {
             let (head, zone) = data
                 .split_at_mut_checked(P::SDU_HEADER_LEN)
                 .ok_or(Error::new(ErrorKind::InternalError))?;
-            P::write_oid_data_header(layout.data().len(), head);
+            P::write_oid_data_header(data_len, head);
             self.head.oid.fill(zone);
         } else {
             let slot = pick
@@ -1334,10 +1328,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             .and_then(|p| self.head.vc_ocf.get(p).copied().flatten())
             .or(self.head.mc_ocf);
         if let Some(ocf) = ocf {
-            let dst = frame
-                .get_mut(layout.ocf())
-                .ok_or(Error::new(ErrorKind::InternalError))?;
-            for (d, s) in dst.iter_mut().zip(ocf) {
+            for (d, s) in writer.ocf_mut().iter_mut().zip(ocf) {
                 *d = s;
             }
         }

@@ -15,8 +15,8 @@ use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     ConstructionRule, FrameContent, FrameFields, FrameKind, MapConfig, OcfUse,
     PhysicalChannelConfig, SecurityScope, SourceOrDestination, TfdfHeader, TfdzRule,
-    TransferFrameType, Upid, UslpFrame, UslpFrameWriter, UslpMapId, UslpSpacecraftId, UslpVcId,
-    VcConfig, VcParams, VcTable, VcfCountLen, encode, encode_oid,
+    TransferFrameType, Upid, UslpFrame, UslpMapId, UslpPlan, UslpSpacecraftId, UslpVcId, VcConfig,
+    VcParams, VcTable, VcfCountLen, encode, encode_oid,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -58,9 +58,8 @@ fn check_frame(
             assert_eq!(hdr.frame_len(), frame_len_out);
             assert!(aldis_uslp::check_frame(frame, table, DecodeMode::Strict).is_ok());
             let mut two = vec![!fill; frame_len_out];
-            let mut writer =
-                UslpFrameWriter::begin(&mut two, table, fields, content, zone.len()).unwrap();
-            writer.tfdz_mut().unwrap().copy_from_slice(zone);
+            let mut writer = UslpPlan::begin(&mut two, table, fields, content, zone.len()).unwrap();
+            writer.data_mut().copy_from_slice(zone);
             let ctx = FrameCtx::Uslp {
                 scid,
                 vcid,
@@ -69,8 +68,7 @@ fn check_frame(
             let done = writer
                 .protect(zone.len(), &mut PreFilledSecurity, &ctx)
                 .unwrap()
-                .finalize()
-                .unwrap();
+                .finalize();
             assert_eq!(done.len(), frame_len_out);
             assert_eq!(two, frame);
         }
