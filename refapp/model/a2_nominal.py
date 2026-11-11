@@ -72,6 +72,9 @@ class OidLfsr:
         return bytes(out)
 
 
+# The expected octets are the 20-octet OID sequence printed in
+# docs/verification/derivations/link-send.md (frame at line 34), written there
+# before this model; the model's own output is not their source.
 _chk = OidLfsr().octets(20)
 assert _chk.hex().upper() == "FFFFFFFF6DB6D861451F11F19716723CBE7E00B1", _chk.hex()
 
@@ -385,7 +388,9 @@ class Flight:
         """FARM-B counter of the Type-BD frames arrived at or before t
         (4.4.1), in a CLCW with COP in Effect 01 (232.0 4.2.1)."""
         counter = sum(1 for f in self.ul if f["arrive"] <= t) % 4
-        word = self.sc["tm"]["ocf_initial"] + (counter << 9)
+        initial = self.sc["tm"]["ocf_initial"]
+        assert initial & (3 << 9) == 0, "ocf_initial must have CLCW bits 21-22 clear"
+        word = initial | (counter << 9)
         return word.to_bytes(4, "big")
 
     def frame(self, t, mc, vcid, fhp, data):
@@ -462,7 +467,7 @@ def self_check(ul, down):
     assert [down[i]["hex"][:6].hex().upper() for i in (0, 2, 4)] == \
         ["155F00001FFE", "155102001800", "155304001800"]
     last = down[-1]["hex"]
-    assert last[2] == 23 and (279 % 256) == 23
+    assert last[2] == 23
     vc = {0: [], 1: [], 7: []}
     for f in down:
         vc[(f["hex"][0] << 8 | f["hex"][1]) >> 1 & 7].append(f["hex"][3])
@@ -522,8 +527,14 @@ def main(argv):
     while args:
         a = args.pop(0)
         if a == "--compare":
+            if not args:
+                print(__doc__)
+                return 2
             gold = args.pop(0)
         elif a == "--scenario":
+            if not args:
+                print(__doc__)
+                return 2
             scen = args.pop(0)
         elif a == "--self-check":
             check = True

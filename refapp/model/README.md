@@ -37,4 +37,4 @@ A2 D8(c), TV-023. Regenerates every `unit_sent` record of `a2-nominal`: the 280 
 
 `--self-check` asserts the counts, First Header Pointers, VC counts, OCF changes, and uplink headers that §4.4.4 lists, so the model agrees with the hand derivation before any golden trace exists. `--compare` compares the model's records with the `unit_sent` records of a golden trace in order, and exits 1 on a difference.
 
-Valid for `a2-nominal` only: no faults, no rejected command, no immediate command, no idle remainder below 7 octets. The result is recorded in `docs/verification/cross-checks.md` after the comparison runs.
+Valid for `a2-nominal` only: no faults, no rejected command, no immediate command, no idle remainder below 7 octets. The result will be recorded in `docs/verification/cross-checks.md` by the WP-5 golden PR.
