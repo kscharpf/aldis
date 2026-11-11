@@ -8,14 +8,14 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Phase 0: cheap clean-ups | | | #387, #389, #391 (via train #401) |
-| WP-1a Channel-lookup trait | merged | #414 | Phase 1 step 1 |
-| WP-1b One checking pipeline | merged | #424 | Phase 1 step 2; `check_frame` returns `Lenient<Checked<F>, A>` in both modes (empty anomaly set after a strict check); `Checked<F>` replaces the four `Validated…Frame` types, the `Plain…` types stay for WP-1c; refapp needs a companion PR (D8) |
-| WP-1c Generic proof types | merged | #441, #442 | Phase 1 step 3 |
-| WP-1d Generic frame stream | merged | #445 | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
-| WP-2a Frame geometry | merged | #449 | Phase 2 step 1; `FrameFormat` in `aldis-core` (geometry only), implemented by `TmFormat`, `TcFormat`, `AosFormat`, `UslpFormat`; `aldis-link`'s `Tm`, `Tc`, `Aos`, `Uslp` are those markers and exist with the codec feature (the `CltuPacker` impls too) |
-| WP-2b Header writers and parsers | merged | #451, #458 | Phase 2 step 2; `bits` primitives (D2) |
-| WP-2c Managed-parameter sets | merged | #456, #467 | Phase 2 step 3; first slice: the physical-channel set (`FrameFormat::Physical`, the codec's `*PhysicalChannelConfig`) is embedded by the mux and receiver channel types and taken by `Fop1Target::tc`, which no longer restate the frame length, FECF, Insert Zone, FHEC, or edition; second slice: the VC sets, the mux's `TmVc`, `AosVc`, `UslpVc` and the receiver's `TmVc` embed the codec's VC configuration (`TmVirtualChannelConfig`, `AosVirtualChannelConfig`, `VcConfig` of `aldis-uslp`), the segmenters take the FECF and the VCF Count Lengths from the codec's sets, and `UslpChannel` takes `mc_ocf` (#465); the receiver's AOS, TC, and USLP VC params stay (OI-92) |
-| WP-2d One frame writer | in progress | #472, #475 | Phase 2 step 4; the writer: the first PR; FOP-1 through `FrameFormat` (OI-93) follows in a second PR |
+| WP-1a Channel-lookup trait | | | Phase 1 step 1 |
+| WP-1b One checking pipeline | | | Phase 1 step 2; `check_frame` returns `Lenient<Checked<F>, A>` in both modes (empty anomaly set after a strict check); `Checked<F>` replaces the four `Validated…Frame` types, the `Plain…` types stay for WP-1c; refapp needs a companion PR (D8) |
+| WP-1c Generic proof types | | | Phase 1 step 3 |
+| WP-1d Generic frame stream | | | Phase 1 step 4; `VcLookup` aliases removed from the four codecs; refapp needs a companion PR (D8) |
+| WP-2a Frame geometry | | | Phase 2 step 1; `FrameFormat` in `aldis-core` (geometry only), implemented by `TmFormat`, `TcFormat`, `AosFormat`, `UslpFormat`; `aldis-link`'s `Tm`, `Tc`, `Aos`, `Uslp` are those markers and exist with the codec feature (the `CltuPacker` impls too) |
+| WP-2b Header writers and parsers | | | Phase 2 step 2; `bits` primitives (D2) |
+| WP-2c Managed-parameter sets | | | Phase 2 step 3; first slice: the physical-channel set (`FrameFormat::Physical`, the codec's `*PhysicalChannelConfig`) is embedded by the mux and receiver channel types and taken by `Fop1Target::tc`, which no longer restate the frame length, FECF, Insert Zone, FHEC, or edition; second slice: the VC sets, the mux's `TmVc`, `AosVc`, `UslpVc` and the receiver's `TmVc` embed the codec's VC configuration (`TmVirtualChannelConfig`, `AosVirtualChannelConfig`, `VcConfig` of `aldis-uslp`), the segmenters take the FECF and the VCF Count Lengths from the codec's sets, and `UslpChannel` takes `mc_ocf` (#465); the receiver's AOS, TC, and USLP VC params stay (OI-92) |
+| WP-2d One frame writer | | | Phase 2 step 4; the writer (first PR, #472); FOP-1 builds its frames through `FrameFormat` and the codec's frame-writer plans (OI-93; second PR, #475) |
 | WP-2e Link codec dependencies | | | Cut: OI-97 resolved (a), the codec dependencies stay optional (maintainer, chat, 2026-11-10) |
 | WP-3a `InPlace` and `place` | | | Phase 3 step 1 |
 | WP-3b Generic engine entry points | | | Phase 3 step 2 |
@@ -125,7 +125,7 @@ Each is the maintainer's (decision rights: public API and C ABI conventions, sco
 |---|---|---|---|
 | OI-91 | `#[repr(C)]` head and buffers layout in the Rust engines | Plain Rust engines; zero-first in-place construction through an `unsafe trait InPlace` and `place<E>`, both in `aldis-ffi` | WP-3a |
 | OI-92 | Flat C config struct checked twice, and EPP and SPP `check` functions | Protocol-tagged C config (WP-3b, WP-3c); EPP and SPP return proof types (WP-1c). **Resolved (b) by the maintainer, chat, 2026-11-10;** the EPP and SPP part is implemented in WP-1c, the C config is left to WP-3b and WP-3c | WP-3b, WP-3c |
-| OI-93 | FOP-1 internal frame encoding | FOP-1 delegates frame construction to the codec's frame-format trait (`Fop1Output::Transmit` still writes frames to `out`). **Resolved (b) by the maintainer, chat, 2026-11-10; implemented in part by #451, the rest in WP-2d** | WP-2b, WP-2d |
+| OI-93 | FOP-1 internal frame encoding | FOP-1 delegates frame construction to the codec's frame-format trait (`Fop1Output::Transmit` still writes frames to `out`). **Resolved (b) by the maintainer, chat, 2026-11-10; implemented by #451, #472 and #475** | WP-2b, WP-2d |
 | OI-94 | Retired field-code kind (field code 18) | A `retired` kind in [03 §9.1](../03-api-model.md#91-field-codes); the maintainer decides; then the pull request that implements the `retired` kind edits the field code 18 row of 03 §9.1 (crate `core`, API-061), and no other pull request does | none |
 | OI-95 | Testkit generic `ScenarioEngine` driver | Low priority; after WP-3 | none |
 | OI-96 | Duplicated small enums (COP frame kinds in several places, MAP service shapes) | Fold into WP-2b (`aldis-core` for COP frame kinds, `aldis-link` for MAP service). **Resolved (b) by the maintainer, chat, 2026-11-10; implemented in part by #451 (COP frame kind), the MAP service enum by #458** | WP-2b |
