@@ -229,12 +229,7 @@ fn golden_traces_decode_with_the_strict_codecs() {
     let mut frame_traces = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
-        // The a3-* traces are decoded by A3 WP-6 (APP-086): the retransmitted AD frames of
-        // some of them need the reassembly of FramedPackets extended first.
-        let a3 = path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("a3-"));
-        if path.extension().is_some_and(|x| x == "jsonl") && !a3 {
+        if path.extension().is_some_and(|x| x == "jsonl") {
             let text = std::fs::read_to_string(&path).unwrap();
             let d = decode_strict(&scenario, &text)
                 .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
@@ -248,8 +243,8 @@ fn golden_traces_decode_with_the_strict_codecs() {
     }
     assert!(traces >= 5);
     assert_eq!(
-        frame_traces, 4,
-        "the four a2-* traces are decoded as frames"
+        frame_traces, 9,
+        "the four a2-* and the five a3-* traces are decoded as frames"
     );
 }
 
@@ -405,4 +400,54 @@ fn a_corrupt_packet_inside_a_frame_with_a_valid_fecf_fails_the_strict_decode() {
         !e.contains("not a strict TC frame"),
         "the frame itself is valid: {e}"
     );
+}
+
+#[test]
+fn a_planted_invalid_clcw_fails_the_strict_decode_of_a_downlink_frame() {
+    // req: APP-086, APP-134
+    // The CLCW is the last four octets before the FECF; its Reserved Spare of bits 14 to 15
+    // is set (TC-030, strict mode), the FECF recomputed, so only the CLCW is wrong.
+    let scenario = Scenario::load().unwrap();
+    for case in ["a3-nominal", "a3-uplink-loss"] {
+        assert!(
+            decode_strict(
+                &scenario,
+                &std::fs::read_to_string(refapp_harness::golden_path(case)).unwrap()
+            )
+            .is_ok()
+        );
+        let bad = with_unit_changed(case, "down", |o| {
+            o.truncate(o.len() - 2);
+            let at = o.len() - 3;
+            o[at] |= 0x01;
+            *o = with_fecf(std::mem::take(o));
+            true
+        });
+        let e = decode_strict(&scenario, &bad).unwrap_err();
+        assert!(e.contains("not a strict CLCW"), "{case}: {e}");
+    }
+}
+
+#[test]
+fn the_flight_nodes_records_must_match_the_packets_reassembled_from_the_uplink() {
+    // req: APP-086, APP-129, APP-146
+    let scenario = Scenario::load().unwrap();
+    let text = std::fs::read_to_string(refapp_harness::golden_path("a3-uplink-loss")).unwrap();
+    // A command the node never received.
+    let dropped: String = text
+        .split_inclusive('\n')
+        .filter(|l| !(l.contains("\"cmd_received\"") && l.contains("\"args\":[3,1]")))
+        .collect();
+    assert_ne!(dropped, text);
+    let e = decode_strict(&scenario, &dropped).unwrap_err();
+    assert!(e.contains("cmd_received"), "{e}");
+    // A command with another sequence count.
+    let wrong = text.replacen(
+        "\"name\":\"cmd_received\",\"args\":[3,1]",
+        "\"name\":\"cmd_received\",\"args\":[3,9]",
+        1,
+    );
+    assert_ne!(wrong, text);
+    let e = decode_strict(&scenario, &wrong).unwrap_err();
+    assert!(e.contains("cmd_received"), "{e}");
 }
