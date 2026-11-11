@@ -506,11 +506,19 @@ pub fn check_canonical(text: &str) -> Result<(), String> {
 pub fn decode_strict(text: &str) -> Result<usize, String> {
     check_canonical(text)?;
     let mut decoded = 0;
+    // A2 WP-5: the link units of a frame-level case are frames, not packets; their strict
+    // decoding is A2 WP-6 (APP-086), until when only their packets are decoded here.
+    let frames = text
+        .lines()
+        .next()
+        .is_some_and(|h| h.contains("\"case\":\"a2-"));
     for (i, l) in text.split_terminator('\n').enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 1);
         let v: Value = serde_json::from_str(l).map_err(|e| at(e.to_string()))?;
         let kind = v["kind"].as_str().unwrap_or_default();
-        if !matches!(kind, "unit_sent" | "packet_out" | "packet_in") {
+        if !matches!(kind, "unit_sent" | "packet_out" | "packet_in")
+            || (frames && kind == "unit_sent")
+        {
             continue;
         }
         let hex = v["hex"]
