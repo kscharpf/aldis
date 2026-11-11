@@ -540,8 +540,8 @@ impl VariablePlan for UslpPlan {
 /// [`Unprotected`]; the caller fills the TFDZ (`data_mut`) and, with SDLS, the Security Header
 /// and Trailer in place. `protect` (or `unsecured` without SDLS) fixes the TFDZ length, which
 /// decides the Frame Length and where the Security Trailer, the OCF, and the FECF lie, writes the
-/// header and the OCF, and applies SDLS; the writer is then [`Protected`]. `finalize` computes
-/// the FECF, last, and gives the [`Finalized`] writer, the only state that exposes the frame's
+/// header and the OCF, and applies SDLS; the writer is then [`Protected`](aldis_core::finishing::Protected). `finalize` computes
+/// the FECF, last, and gives the [`Finalized`](aldis_core::finishing::Finalized) writer, the only state that exposes the frame's
 /// octets. Each step consumes the writer, so a step out of order does not compile (RS-023,
 /// RS-021). The steps are those of the core [`FrameWriter`].
 ///

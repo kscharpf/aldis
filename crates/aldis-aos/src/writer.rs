@@ -324,8 +324,8 @@ impl FramePlan for AosPlan {
 ///
 /// [`AosPlan::begin`] writes the Primary Header, without its FHEC, and the `M_PDU` or `B_PDU`
 /// Header and returns the writer [`Unprotected`]; the caller fills the other fields in place and
-/// applies SDLS with `protect`, or `unsecured` without it, which gives the writer [`Protected`];
-/// `finalize` computes the FHEC and then the FECF, last, and gives it [`Finalized`], the only
+/// applies SDLS with `protect`, or `unsecured` without it, which gives the writer [`Protected`](aldis_core::finishing::Protected);
+/// `finalize` computes the FHEC and then the FECF, last, and gives it [`Finalized`](aldis_core::finishing::Finalized), the only
 /// state that exposes the frame's octets. Each step consumes the writer, so a step out of order
 /// does not compile (RS-023, RS-021). The steps are those of the core [`FrameWriter`]; the
 /// Insert Zone is its `secondary_mut`, the zone after the `M_PDU` or `B_PDU` Header its

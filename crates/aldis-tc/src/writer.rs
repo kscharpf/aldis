@@ -218,8 +218,8 @@ impl VariablePlan for TcPlan {
 /// [`Unprotected`]; the caller fills the User Data (`data_mut`) and, with SDLS, the Security
 /// Header and Trailer in place. `protect` (or `unsecured` without SDLS) fixes the length of the
 /// User Data, which decides where the Security Trailer lies and the Frame Length, writes the
-/// header, and applies SDLS; the writer is then [`Protected`]. `finalize` computes the FECF,
-/// last, and gives the [`Finalized`] writer, the only state that exposes the frame's octets.
+/// header, and applies SDLS; the writer is then [`Protected`](aldis_core::finishing::Protected). `finalize` computes the FECF,
+/// last, and gives the [`Finalized`](aldis_core::finishing::Finalized) writer, the only state that exposes the frame's octets.
 /// Each step consumes the writer, so a step out of order does not compile (RS-023, RS-021). The
 /// steps are those of the core [`FrameWriter`].
 ///
