@@ -163,6 +163,17 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
+/// The proof that a caller is a one-shot encoder of this module (API-072).
+///
+/// The one-shot encoders take the Security Header and Trailer as given; only this module builds
+/// the proof, so no other caller finishes a frame without the SDLS step (RS-023, API-073).
+///
+/// ```compile_fail
+/// let _ = aldis_tm::writer::TmOneShot(());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TmOneShot(());
+
 /// The plan of a TM frame for [`FrameWriter`] (132.0 §4.1, §4.1.6.2; TM-009).
 ///
 /// Fixed-length, with no step of its own before the FECF. Its associated functions start the
@@ -171,6 +182,7 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
 pub struct TmPlan;
 
 impl FramePlan for TmPlan {
+    type OneShot = TmOneShot;
     const SECONDARY_ID_LEN: usize = 1;
 }
 
@@ -328,7 +340,7 @@ pub fn encode(
         write_at(writer.ocf_mut(), 0, &ocf.to_octets());
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.taken_as_given().finalize().len())
+    Ok(writer.taken_as_given(TmOneShot(())).finalize().len())
 }
 
 /// The fields of an Only Idle Data frame (132.0 §4.1.4.6; TM-010).
@@ -440,7 +452,7 @@ fn oid_frame(
     }
     fill(writer.data_field_mut());
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.taken_as_given().finalize().len())
+    Ok(writer.taken_as_given(TmOneShot(())).finalize().len())
 }
 
 #[cfg(test)]

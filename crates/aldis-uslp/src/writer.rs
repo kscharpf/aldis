@@ -324,7 +324,8 @@ pub fn encode<
         *d = *s;
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    w.taken_as_given(tfdz.len()).map(|w| w.finalize().len())
+    w.taken_as_given(tfdz.len(), UslpOneShot(()))
+        .map(|w| w.finalize().len())
 }
 
 /// Encodes an OID frame into the start of `out` and fills its TFDZ with the next octets of
@@ -410,7 +411,8 @@ fn oid_frame<
     let mut w = start(out, plan, insert_zone)?;
     fill(w.data_mut());
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    w.taken_as_given(tfdz_len).map(|w| w.finalize().len())
+    w.taken_as_given(tfdz_len, UslpOneShot(()))
+        .map(|w| w.finalize().len())
 }
 
 /// Encodes a truncated frame into the start of `out`; returns its length, the VC's truncated
@@ -478,6 +480,17 @@ pub fn encode_truncated<
     Ok(len)
 }
 
+/// The proof that a caller is a one-shot encoder of this module (API-072).
+///
+/// The one-shot encoders take the Security Header and Trailer as given; only this module builds
+/// the proof, so no other caller finishes a frame without the SDLS step (RS-023, API-073).
+///
+/// ```compile_fail
+/// let _ = aldis_uslp::writer::UslpOneShot(());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UslpOneShot(());
+
 /// The plan of a non-truncated USLP frame for [`FrameWriter`] (732.1 §4.1, §6.3; USLP-010).
 ///
 /// Variable-length: its Primary Header and OCF are rewritten when the TFDZ length is fixed (732.1
@@ -496,7 +509,9 @@ pub struct UslpPlan {
     fecf_len: usize,
 }
 
-impl FramePlan for UslpPlan {}
+impl FramePlan for UslpPlan {
+    type OneShot = UslpOneShot;
+}
 
 impl VariablePlan for UslpPlan {
     fn write_header(&self, frame: &mut [u8], total: usize, finished: bool) {

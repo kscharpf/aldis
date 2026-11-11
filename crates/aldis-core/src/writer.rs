@@ -61,6 +61,12 @@ impl Length for Variable {}
 /// The plan of one frame that a codec supplies to [`FrameWriter`]: the part of the finishing
 /// that depends on the protocol (RS-023).
 pub trait FramePlan: Debug {
+    /// The proof, which only the plan's crate can build, that the caller is a one-shot encoder:
+    /// [`FrameWriter::taken_as_given`] takes it and so cannot be called from outside the codec
+    /// (RS-023, API-073). A codec declares a type with a private constructor; [`Unsealed`] has
+    /// none ([`Infallible`](core::convert::Infallible)), so no one can finish its frames this way.
+    type OneShot;
+
     /// The field an error names when [`FrameWriter::set_ocf`] finds no OCF in the frame: the
     /// `ocf_flag` of TM, the `ocf` of AOS.
     const OCF_FIELD: FieldId = field::OCF_FLAG;
@@ -93,12 +99,17 @@ pub trait VariablePlan: FramePlan {
     fn check_data_len(&self, data_len: usize) -> Result<()>;
 }
 
-/// The plan of a frame whose FHEC and FECF stay zero for the caller to compute (LNK-035): the
-/// `ChannelMux` builds its frames with it.
+/// The plan of a frame whose FHEC and FECF stay zero for the caller (LNK-035).
+///
+/// The `ChannelMux` builds its frames with it and ends them with [`FrameWriter::leave_unsealed`],
+/// which only this plan has. It is not for `protect`, `unsecured`, or `finalize`: they would
+/// compute a FECF and no FHEC (the codec plans are the finished frames).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unsealed;
 
-impl FramePlan for Unsealed {}
+impl FramePlan for Unsealed {
+    type OneShot = core::convert::Infallible;
+}
 
 /// A frame in a caller's buffer in the finishing state `S` (RS-023; see the [module](self)).
 ///
@@ -157,6 +168,9 @@ impl<'b, L: Length, P: FramePlan> FrameWriter<'b, L, P, Unprotected> {
 
     /// The octets of `range`, a range of the layout, which lies inside the frame by construction
     /// (CMN-040).
+    ///
+    /// `take` checked once that the buffer holds `layout.frame_len()` octets, so no range of the
+    /// layout lies outside it (`FrameWriter::take`, `BufferTooSmall`).
     fn field_mut(&mut self, range: core::ops::Range<usize>) -> &mut [u8] {
         self.frame.get_mut(range).unwrap_or_default()
     }
@@ -300,16 +314,46 @@ impl<'b, P: FramePlan> FrameWriter<'b, Fixed, P, Unprotected> {
     /// Moves to [`Protected`] with the Security Header and Trailer as the caller filled them, with
     /// no hook and no layout check, for the one-shot encoders, which take them as given
     /// (API-072). The two-phase path is [`protect`](Self::protect) or
-    /// [`unsecured`](Self::unsecured).
+    /// [`unsecured`](Self::unsecured). The [`FramePlan::OneShot`] proof only the codec crate can
+    /// build keeps every other caller from skipping the SDLS step (RS-023, API-073).
     #[must_use = "the protected frame"]
-    pub fn taken_as_given(self) -> FrameWriter<'b, Fixed, P, Protected> {
+    pub fn taken_as_given(self, _: P::OneShot) -> FrameWriter<'b, Fixed, P, Protected> {
         self.into_state()
     }
+}
 
+impl<'b> FrameWriter<'b, Fixed, Unsealed, Unprotected> {
     /// Ends the frame without the SDLS step and the finishing: the Security Header and Trailer,
-    /// the FHEC, and the FECF are the zero octets `reserve` wrote, or what the caller put there,
-    /// for the caller to apply SDLS and finish (LNK-035).
-    pub fn leave_unsealed(self) -> &'b mut [u8] {
+    /// the FHEC, and the FECF are the zero octets `reserve_fixed` wrote, or what the caller put
+    /// there, for the caller to apply SDLS and finish (LNK-035). Only the [`Unsealed`] plan has
+    /// it: a codec's frame leaves its writer only `Finalized` (RS-023).
+    ///
+    /// ```compile_fail
+    /// # use aldis_core::finishing::Unprotected;
+    /// # use aldis_core::layout::{FrameLayout, LayoutSpec};
+    /// # use aldis_core::security::SecurityLayout;
+    /// # use aldis_core::writer::{FramePlan, FrameWriter};
+    /// #[derive(Debug)]
+    /// struct Codec;
+    /// impl FramePlan for Codec {
+    ///     type OneShot = ();
+    /// }
+    /// let spec = LayoutSpec {
+    ///     frame_len: 0,
+    ///     primary_header_len: 2,
+    ///     secondary_len: 0,
+    ///     security: SecurityLayout::NONE,
+    ///     ocf: false,
+    ///     fecf: false,
+    /// };
+    /// let layout = FrameLayout::compute_for_data(&spec, 4).unwrap();
+    /// let mut out = [0_u8; 8];
+    /// let w = FrameWriter::reserve_fixed(&mut out, layout, Codec).unwrap();
+    /// // A codec's plan has no `leave_unsealed`: the frame is not finished.
+    /// let _frame = w.leave_unsealed();
+    /// ```
+    #[must_use = "the frame"]
+    pub const fn leave_unsealed(self) -> &'b mut [u8] {
         self.frame
     }
 }
@@ -390,10 +434,13 @@ impl<'b, P: VariablePlan> FrameWriter<'b, Variable, P, Unprotected> {
     /// take them as given (API-072).
     ///
     /// # Errors
-    /// As [`unsecured`](Self::unsecured), without the SDLS check.
+    /// As [`unsecured`](Self::unsecured), without the SDLS check. The [`FramePlan::OneShot`] proof
+    /// only the codec crate can build keeps every other caller from skipping the SDLS step
+    /// (RS-023, API-073).
     pub fn taken_as_given(
         self,
         data_len: usize,
+        _: P::OneShot,
     ) -> Result<FrameWriter<'b, Variable, P, Protected>> {
         self.fix_length(data_len)
     }
@@ -553,6 +600,8 @@ mod tests {
     struct Fix;
 
     impl FramePlan for Fix {
+        type OneShot = ();
+
         const OCF_FIELD: crate::error::FieldId = field::OCF;
 
         fn seal(&self, frame: &mut [u8]) {
@@ -567,6 +616,8 @@ mod tests {
     struct Var;
 
     impl FramePlan for Var {
+        type OneShot = ();
+
         const OCF_FIELD: crate::error::FieldId = field::OCF;
     }
 
@@ -675,11 +726,11 @@ mod tests {
         let mut out = [0_u8; 20];
         let mut w = FrameWriter::reserve_fixed(&mut out, l.clone(), Fix).unwrap();
         w.security_header_mut().fill(5);
-        let done = w.taken_as_given().finalize();
+        let done = w.taken_as_given(()).finalize();
         assert_eq!(done.octets()[3], 5);
         let mut w = FrameWriter::reserve_variable(&mut out, l, Var).unwrap();
         w.security_header_mut().fill(6);
-        let done = w.taken_as_given(3).unwrap().finalize();
+        let done = w.taken_as_given(3, ()).unwrap().finalize();
         assert_eq!(done.len(), 10);
         assert_eq!(done.octets()[3], 6);
     }
@@ -690,6 +741,7 @@ mod tests {
         #[derive(Debug)]
         struct Id;
         impl FramePlan for Id {
+            type OneShot = ();
             const SECONDARY_ID_LEN: usize = 1;
         }
         let l = layout(spec(SecurityLayout::NONE, false, false, 3), 2);

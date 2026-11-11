@@ -1159,7 +1159,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         // FHEC, and the FECF stay zero for the caller (LNK-035).
         let mut writer = FrameWriter::reserve_fixed(out, layout.clone(), Unsealed)?;
         self.write_frame(&mut writer, &pick, &fields)?;
-        writer.leave_unsealed();
+        let written = writer.leave_unsealed().len();
         // The frame is built: commit the state (API-058).
         self.commit(selector, &pick, &fields);
         actions.push(MuxOutput::Transmit(Transmit {
@@ -1169,7 +1169,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
                 FrameClass::Data
             },
             vc: fields.vc.into(),
-            frame: OutRange::new(0, frame_len),
+            frame: OutRange::new(0, written),
             security_header: out_range(&layout.security_header()),
             data: out_range(&layout.data()),
             security_trailer: out_range(&layout.security_trailer()),

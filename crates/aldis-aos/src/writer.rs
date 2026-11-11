@@ -297,6 +297,17 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
+/// The proof that a caller is a one-shot encoder of this module (API-072).
+///
+/// The one-shot encoders take the Security Header and Trailer as given; only this module builds
+/// the proof, so no other caller finishes a frame without the SDLS step (RS-023, API-073).
+///
+/// ```compile_fail
+/// let _ = aldis_aos::writer::AosOneShot(());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AosOneShot(());
+
 /// The plan of an AOS frame for [`FrameWriter`] (732.0 §4.1, §4.2.7.4; AOS-013, AOS-019).
 ///
 /// Fixed-length, with the FHEC computed before the FECF when the physical channel has one (732.0
@@ -307,6 +318,7 @@ pub struct AosPlan {
 }
 
 impl FramePlan for AosPlan {
+    type OneShot = AosOneShot;
     const OCF_FIELD: FieldId = field::OCF;
 
     fn seal(&self, frame: &mut [u8]) {
@@ -489,7 +501,7 @@ pub fn encode<
         write_at(writer.ocf_mut(), 0, &ocf.to_octets());
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.taken_as_given().finalize().len())
+    Ok(writer.taken_as_given(AosOneShot(())).finalize().len())
 }
 
 /// Encodes an OID Transfer Frame of `fields.scid` into the start of `out`; returns its length
@@ -567,7 +579,7 @@ fn oid_frame<L: ChannelLookup<SpacecraftId<10>, VcId<6>, Vc = AosVirtualChannelC
     write_at(writer.secondary_mut(), 0, insert_zone);
     fill(writer.data_mut());
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.taken_as_given().finalize().len())
+    Ok(writer.taken_as_given(AosOneShot(())).finalize().len())
 }
 
 #[cfg(test)]

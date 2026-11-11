@@ -178,8 +178,20 @@ pub fn encode<
         *d = *s;
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    w.taken_as_given(payload.len()).map(|w| w.finalize().len())
+    w.taken_as_given(payload.len(), TcOneShot(()))
+        .map(|w| w.finalize().len())
 }
+
+/// The proof that a caller is a one-shot encoder of this module (API-072).
+///
+/// The one-shot encoders take the Security Header and Trailer as given; only this module builds
+/// the proof, so no other caller finishes a frame without the SDLS step (RS-023, API-073).
+///
+/// ```compile_fail
+/// let _ = aldis_tc::writer::TcOneShot(());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TcOneShot(());
 
 /// The plan of a TC frame for [`FrameWriter`] (232.0 §4.1, §6.3; TC-007).
 ///
@@ -190,7 +202,9 @@ pub struct TcPlan {
     fields: FrameFields,
 }
 
-impl FramePlan for TcPlan {}
+impl FramePlan for TcPlan {
+    type OneShot = TcOneShot;
+}
 
 impl VariablePlan for TcPlan {
     fn write_header(&self, frame: &mut [u8], total: usize, finished: bool) {
