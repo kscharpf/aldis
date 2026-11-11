@@ -1070,7 +1070,6 @@ mod tests {
             "docs/06-verification.md",
             "docs/milestones/m2-plan.md",
             "docs/process/pr-body.md",
-            "README.md",
             "AGENTS.md",
             "CHANGELOG.md",
             "specs/README.md",
@@ -1086,6 +1085,16 @@ mod tests {
                     c.name
                 );
             }
+        }
+        // README.md is documentation, and also an input of `refapp` (its sequence diagram, APP-153).
+        assert!(DOCS.contains("README.md"));
+        for c in all() {
+            assert_eq!(
+                c.inputs.contains("README.md"),
+                matches!(c.name.as_str(), "spec" | "refapp"),
+                "README.md: {}",
+                c.name
+            );
         }
         let not_docs = [
             "crates/aldis-spp/README.md",
