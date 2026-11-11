@@ -15,8 +15,8 @@
 | WP-4a Ground node: downlink | merged | #398 | Strict TM decoding, `FrameReceiver`, `PacketExtractor`, frame events, CLCW |
 | WP-4b Ground node: uplink | merged | #399 | `MapSegmenter`, FOP-1 for Type-BD, TC frame writer, one frame per uplink slot |
 | WP-5 Golden traces | merged | #479, #480 | `a2-*` cases blessed, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
-| WP-6 Strict decoding of frame traces | in progress | #483 | APP-086 for frames in the `refapp` check |
-| WP-7 Exit | planned | | `trace --scope a2 --strict`; roadmap, README, ACFS entry gate |
+| WP-6 Strict decoding of frame traces | merged | #483 | APP-086 for frames in the `refapp` check |
+| WP-7 Exit | in progress | #486 | `trace --scope a2 --strict`; roadmap, README, ACFS entry gate |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
