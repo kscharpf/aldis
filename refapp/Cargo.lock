@@ -173,6 +173,8 @@ version = "0.1.0"
 dependencies = [
  "aldis",
  "refapp-scenario",
+ "schemars",
+ "serde",
 ]
 
 [[package]]

@@ -471,5 +471,8 @@ fn an_uplink_fault_without_an_index_fails_the_strict_decode() {
         })
         .collect();
     assert_ne!(planted, text);
-    assert!(decode_strict(&scenario, &planted).is_err());
+    let e = decode_strict(&scenario, &planted).unwrap_err();
+    // The canonical check refuses the record first; the decoder's own guard for a missing index
+    // (a second guard in `trace.rs`) is not reached.
+    assert!(e.contains("keys of `fault` must be exactly"), "{e}");
 }

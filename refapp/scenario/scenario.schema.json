@@ -866,10 +866,10 @@
       ]
     },
     "Fop1Directive": {
-      "description": "A FOP-1 directive: the Directive Type and Qualifier of 232.1 Table 4-1 that the cases use\n(§4.5.2, APP-148). Any other value is rejected when the file is parsed.",
+      "description": "A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1\nthat the cases use (§4.5.2, APP-148).\n\nThe ground node owns the type; the scenario file\nparses into it, and any other value is rejected when the file is parsed.",
       "oneOf": [
         {
-          "description": "*Initiate AD Service (without CLCW Check)*, code 1 (232.1 §4.1, Table 5-1 E23).",
+          "description": "*Initiate AD Service (without CLCW Check)*, code 1 (E23).",
           "type": "string",
           "const": "initiate_ad_without_clcw"
         },

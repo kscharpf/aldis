@@ -573,6 +573,9 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             if direction(&v) == Some(Dir::Up)
                 && matches!(v["fault"].as_str(), Some("drop" | "flip" | "truncate"))
             {
+                // A second guard: `check_canonical` already refuses a fault record without an
+                // index, so this line is unreachable after it; it stays so that this function
+                // never reads a missing index as no fault.
                 let index = v["index"]
                     .as_u64()
                     .ok_or_else(|| at("fault record without an index".to_owned()))?;
