@@ -42,6 +42,41 @@ fn main() -> Result<(), aldis::core::Error> {
 
 The decoded packet borrows the buffer: nothing is allocated, and every error is a value, never a panic. Each crate has its own README with an example; the [crate list](#layout) links them.
 
+### A COP-1 run over a lossy link
+
+The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmission. The diagram is generated from the golden trace [`refapp/golden/a3-uplink-loss.jsonl`](refapp/golden/a3-uplink-loss.jsonl), decoded with the strict codecs, and `cargo xtask fix` keeps it current.
+
+<!-- BEGIN GENERATED: sequence-diagram (cargo xtask readme-diagram --write) -->
+```mermaid
+sequenceDiagram
+    participant G as Ground
+    participant F as Flight
+    F-->>G: 0.000 s  CLCW N(R)=0
+    G->>F: 1.000 s  VC 0 AD N(S)=0
+    F-->>G: 1.125 s  CLCW N(R)=1
+    G->>F: 2.000 s  VC 0 AD N(S)=1
+    F-->>G: 2.125 s  CLCW N(R)=2
+    G-xF: 2.250 s  VC 0 AD N(S)=2 (lost)
+    G->>F: 2.500 s  VC 0 AD N(S)=3
+    F-->>G: 2.625 s  CLCW N(R)=2 Retransmit
+    G->>F: 2.750 s  VC 0 AD N(S)=2 retransmission
+    F-->>G: 2.875 s  CLCW N(R)=3
+    G->>F: 3.000 s  VC 0 AD N(S)=3 retransmission
+    F-->>G: 3.125 s  CLCW N(R)=4
+    G->>F: 3.250 s  VC 0 AD N(S)=4
+    F-->>G: 3.375 s  CLCW N(R)=5
+    G->>F: 4.000 s  VC 0 AD N(S)=5
+    F--xG: 4.125 s  7 downlink frames lost
+    G->>F: 5.000 s  VC 0 AD N(S)=5 retransmission
+    F-->>G: 5.000 s  CLCW N(R)=6
+    G->>F: 5.250 s  VC 0 AD N(S)=6
+    F-->>G: 5.375 s  CLCW N(R)=7
+    G-xF: 6.000 s  VC 0 AD N(S)=7 (lost)
+    G->>F: 7.000 s  VC 0 AD N(S)=7 retransmission
+    F-->>G: 7.125 s  CLCW N(R)=8
+```
+<!-- END GENERATED: sequence-diagram -->
+
 ## Status
 
 | Milestone or track | State |
