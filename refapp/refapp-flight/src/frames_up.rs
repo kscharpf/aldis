@@ -83,7 +83,7 @@ const FRAME_AREA: usize = widen(tc::MAX_FRAME_LENGTH);
 /// whole frame, used here as the bound of its data field).
 const REASSEMBLY_AREA: usize = ASSEMBLY.saturating_add(FRAME_AREA);
 
-/// The delivery buffer of FARM-1 (232.0 §4.1.2.6, COP-033; §4.2 of the scenario): `DEPTH` places
+/// The delivery buffer of FARM-1 (232.1 §3.3.2, §6.3.2.3, COP-033; §4.2 of the scenario): `DEPTH` places
 /// that the node owns, one taken for each FDU FARM-1 accepts and released when the reassembler
 /// has the FDU, in the same step, so that no case reaches Wait (§4.5.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -299,6 +299,8 @@ impl FrameUplink {
         self.delivery.reset();
         let mut none = [0_u8; 0];
         let input = ReassemblerInput::Reconfigure(self.reassembler_config);
+        // Cannot happen: the configuration is the node's own, which built the reassembler.
+        // The error is still reported, not unwrapped.
         if let Err(e) = self.reassembler.step(input, &mut none) {
             reject_packet(out, e.kind());
         }
