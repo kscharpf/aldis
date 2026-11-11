@@ -74,6 +74,7 @@ Written before any driver exists, after the maintainer has accepted D1 and D2:
 ### WP-3 Spike: TM into the ground system (S)
 Parallel with WP-2 once its binary sends frames. A TM-only run: the A2 and A3 flight node's frames reach the ground system's TM link (D1 c), which decodes them (frame header, FECF, VC demultiplexing, the Space Packets of the HK, event, payload, and dump applications, the OCF as a CLCW). The ground system's mission database (WP-4) is not needed for frame-level decoding. Every difference between what the ground system shows and what [§4.1, §3](../reference-application.md) says is a discrepancy, classified as in D2 (d) and filed. The spike's notes feed the loss script of WP-1.
 - **Done when:** every discrepancy is an issue (or a row of [09](../09-open-issues.md)), listed in §6, or the spike found none and says so.
+- **Result (2026-11-11):** [§11.8 of the specification](../reference-application.md#118-spike-notes-wp-3). The nominal runs of A2 and A3 gave YAMCS 280 frames each, all accepted and byte-identical to the downlink of the golden traces, with VC demultiplexing, 58 of 58 Space Packets, and the CLCW of every frame matching; no Rust crate defect and no open issue of 09; three findings, listed in §6.
 
 ### WP-4 COP-1 cases against the ground system (L)
 - The ground system's configuration files and the ops script (D7); the mission database of the packets and commands of the scenario.
@@ -119,7 +120,10 @@ AINT is complete when every item below is green on `main`. The requirements WP-1
 
 ## 6. Discrepancies found
 
-Each discrepancy is a GitHub issue, an open issue of [09](../09-open-issues.md), or an upstream report by the maintainer; this list names them as they are filed, with their classification (D2 d). Empty until WP-3.
+Each discrepancy is a GitHub issue, an open issue of [09](../09-open-issues.md), or an upstream report by the maintainer; this list names them as they are filed, with their classification (D2 d). WP-3 found no defect of the Aldis crates and no reading the Blue Books leave open; the attached sync marker question of §11.1 is answered (none; no discrepancy).
 
 | Issue | Found in | Finding | Disposition |
 |---|---|---|---|
+| [#540](https://github.com/kscharpf/aldis/issues/540) | WP-3 | On a real clock the first run aborted at 1.5 s: the flight node reported a deadline not after `now`, because the driver stepped it a little after each slot, which moved its release deadlines between slots (§4.4.2 assumes they fall on slots) | Aldis refapp, track A: the driver is fixed in the WP-3 pull request (a step caused by a scheduled instant is taken at that instant; APP-157 clause; `tests/late_wakeups.rs`); the node's report of a past deadline is left for a track-A decision |
+| [#541](https://github.com/kscharpf/aldis/issues/541) | WP-3 | YAMCS reads the CUC time of VC 1 packets (epoch 1958 TAI) 1 ms late | Other system, cause not established: for the maintainer to report upstream |
+| [#542](https://github.com/kscharpf/aldis/issues/542) | WP-3 | YAMCS accepts a 224-octet frame, drops a 222-octet one without a trace, and counts a wrong-SCID frame as valid; its documentation says such frames are discarded | Other system, outside the nominal profile: for the maintainer to report upstream |

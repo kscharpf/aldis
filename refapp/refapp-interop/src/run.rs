@@ -92,10 +92,15 @@ pub fn run_flight(
     sink: &mut dyn Sink,
 ) -> Result<(), Error> {
     let mut side = Side::new(Role::Flight, flight, slot, Vec::new());
+    let mut last = Micros::new(0);
     while clock.now() < end {
         let target = side.next_wake().min(end);
         let (now, delivered) = match wait(clock, port, target)? {
-            Wake::Due => (clock.now(), Vec::new()),
+            // A step that an instant caused is taken at that instant, not at the clock's later
+            // reading: the node starts its fields at the step that generates the packet, so a
+            // late reading would put every release deadline between slots, and a release only
+            // happens in a `tx_slot` step (§4.4.2). `last` keeps the instants from going back.
+            Wake::Due => (target.max(last), Vec::new()),
             Wake::Datagram(octets) => {
                 let now = clock.now();
                 match side.receive(now, octets, loss, sink)? {
@@ -104,6 +109,7 @@ pub fn run_flight(
                 }
             }
         };
+        last = now;
         if now >= end {
             break;
         }

@@ -1,0 +1,21 @@
+# The YAMCS ground system of the AINT milestone, as a black box (docs/milestones/aint-interoperability.md
+# D1, D2). The image holds the published release distribution of YAMCS and nothing of this repository.
+# It is built locally by scripts/interop-yamcs and is never committed or pushed.
+#
+# Build context: the directory that holds the downloaded release archive (never this one).
+#   ARCHIVE  file name of the release archive in the context
+#   JAVA     the Java runtime base image (the release archive bundles no runtime)
+ARG JAVA=docker.io/library/eclipse-temurin:21-jre
+FROM ${JAVA}
+ARG ARCHIVE
+ARG YAMCS_VERSION=5.14.0
+COPY ${ARCHIVE} /tmp/yamcs.tar.gz
+RUN mkdir -p /opt/yamcs \
+    && tar -xzf /tmp/yamcs.tar.gz -C /opt/yamcs --strip-components=1 \
+    && rm /tmp/yamcs.tar.gz \
+    && mkdir -p /data
+LABEL org.opencontainers.image.title="yamcs ${YAMCS_VERSION} (AINT black box)"
+WORKDIR /opt/yamcs
+# etc/ is mounted from refapp/interop/yamcs/etc at run time; the archive's own etc/ holds samples only.
+EXPOSE 8090/tcp 10015/udp
+ENTRYPOINT ["/opt/yamcs/bin/yamcsd"]
