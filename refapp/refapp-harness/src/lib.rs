@@ -29,29 +29,30 @@ use refapp_ground::GroundNode;
 use crate::scenario::Scenario;
 
 /// Runs a case with the Rust flight and ground nodes, in process, at the case's link level
-/// (the frame-level nodes for `Level::Frames`, APP-071).
+/// (the frame-level nodes for `Level::Frames`, APP-071; the COP-1 nodes for `Level::Cop1`, APP-044).
 ///
 /// # Errors
-/// If the case does not exist or a node breaks the step contract.
+/// If the case does not exist, or a node breaks the step contract.
 pub fn run_case(case_id: &str) -> Result<String, String> {
     let scenario = Scenario::load()?;
     let case = scenario.case(case_id)?;
-    let frames = case.level == scenario::Level::Frames;
-    let mut flight = if frames {
-        FlightNode::new_frames().map_err(|e| format!("case `{case_id}`: {e:?}"))?
-    } else {
-        FlightNode::new()
-    };
+    let level = case.level;
+    let mut flight = match level {
+        scenario::Level::Packets => Ok(FlightNode::new()),
+        scenario::Level::Frames => FlightNode::new_frames(),
+        scenario::Level::Cop1 => FlightNode::new_cop1(),
+    }
+    .map_err(|e| format!("case `{case_id}`: {e:?}"))?;
     let script = case
         .ops
         .iter()
         .map(scenario::OpsEntry::to_node)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("case `{case_id}`: {e}"))?;
-    let mut ground = if frames {
-        GroundNode::new_frames(&script)
-    } else {
-        GroundNode::new(&script)
+    let mut ground = match level {
+        scenario::Level::Packets => GroundNode::new(&script),
+        scenario::Level::Frames => GroundNode::new_frames(&script),
+        scenario::Level::Cop1 => GroundNode::new_cop1(&script),
     }
     .map_err(|e| format!("case `{case_id}`: {e}"))?;
     sim::run(&scenario, case, &mut flight, &mut ground)

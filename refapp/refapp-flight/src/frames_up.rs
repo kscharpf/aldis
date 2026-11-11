@@ -7,11 +7,17 @@
 //! (LNK-070, LNK-071). Each packet it delivers goes to the A1 command handler unchanged
 //! ([`crate::FlightNode`]); the frame-level events of §7.4 are raised in the order of APP-139.
 //!
+//! At the `cop1` level (A3 on, [`FrameUplink::new_cop1`]) FARM-1 also sees the Type-AD and
+//! Type-BC frames and its notifications become application events (APP-146, APP-149): the
+//! state of FARM-1 as `farm1_state`, an Unlock as `farm1_unlock` with the purge of the
+//! reassembler and of the delivery buffer (D4 c of the A3 plan). The `frames` level stays as A2
+//! left it.
+//!
 //! FARM-1 is owned here, and [`FrameUplink::clcw`] is the report the downlink sets into its OCF
 //! slot (§4.4.1, APP-134).
 
 use aldis::cop1::farm1::{Farm1, Farm1Config, Farm1Input, Farm1Notify, Farm1Output, Farm1Window};
-use aldis::cop1::farm1_table::Farm1Event;
+use aldis::cop1::farm1_table::{Farm1Event, Farm1State};
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::security::{NoSecurity, SecurityLayout};
 use aldis::core::time::Instant as CoreInstant;
@@ -47,6 +53,11 @@ pub const APP_UNKNOWN_MAP: u16 = 111;
 /// Code of the application event `sdu_too_long` (§7.4): MAP ID.
 pub const APP_SDU_TOO_LONG: u16 = 112;
 
+/// Code of the application event `farm1_state` (§7.4): the new state, 1 Open, 2 Wait, 3 Lockout.
+pub const APP_FARM1_STATE: u16 = 210;
+/// Code of the application event `farm1_unlock` (§7.4): no argument.
+pub const APP_FARM1_UNLOCK: u16 = 211;
+
 /// Layer of `frame_discarded` for the `FrameReceiver` (§7.4).
 const LAYER_RECEIVER: u64 = 1;
 /// Layer of `frame_discarded` for FARM-1 (§7.4).
@@ -72,6 +83,43 @@ const FRAME_AREA: usize = widen(tc::MAX_FRAME_LENGTH);
 /// whole frame, used here as the bound of its data field).
 const REASSEMBLY_AREA: usize = ASSEMBLY.saturating_add(FRAME_AREA);
 
+/// The delivery buffer of FARM-1 (232.1 §3.3.2, §6.3.2.3, COP-033; §4.2 of the scenario): `DEPTH` places
+/// that the node owns, one taken for each FDU FARM-1 accepts and released when the reassembler
+/// has the FDU, in the same step, so that no case reaches Wait (§4.5.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeliveryBuffer {
+    held: u8,
+}
+
+impl DeliveryBuffer {
+    /// Places of the buffer (`generated::cop1::FARM_BUFFER_DEPTH`, COP-032).
+    const DEPTH: u8 = cop1::FARM_BUFFER_DEPTH;
+
+    const fn empty() -> DeliveryBuffer {
+        DeliveryBuffer { held: 0 }
+    }
+
+    /// The `buffer_available` input of FARM-1: a place is free.
+    const fn has_room(self) -> bool {
+        self.held < Self::DEPTH
+    }
+
+    /// An FDU is delivered into the buffer.
+    const fn take(&mut self) {
+        self.held = self.held.saturating_add(1);
+    }
+
+    /// The FDU has been given to the reassembler.
+    const fn release(&mut self) {
+        self.held = self.held.saturating_sub(1);
+    }
+
+    /// The reset of an Unlock (§4.5.3): no FDU is held.
+    const fn reset(&mut self) {
+        self.held = 0;
+    }
+}
+
 /// The uplink receive chain of the flight node: one VC with MAPs 0 and 1 (§4.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameUplink {
@@ -81,6 +129,11 @@ pub struct FrameUplink {
     receiver: FrameReceiver<Tc, 1>,
     farm: Farm1,
     reassembler: MapReassembler<Tc, 2, ASSEMBLY>,
+    /// The configuration of `reassembler`, to purge it on an Unlock (D4 c).
+    reassembler_config: MapReassemblerConfig<Tc, 2>,
+    delivery: DeliveryBuffer,
+    /// At the `cop1` level the COP-1 events and the purge apply (APP-146, APP-149).
+    cop1: bool,
 }
 
 impl FrameUplink {
@@ -91,6 +144,19 @@ impl FrameUplink {
     /// `InvalidConfig` if a scenario value is not a valid parameter, which the generated
     /// constants rule out.
     pub fn new() -> Result<FrameUplink> {
+        FrameUplink::build(false)
+    }
+
+    /// The chain at the `cop1` level (A3 on): as [`FrameUplink::new`], with the COP-1 events
+    /// of §7.4 (210, 211) and the purge of an Unlock (APP-146).
+    ///
+    /// # Errors
+    /// As [`FrameUplink::new`].
+    pub fn new_cop1() -> Result<FrameUplink> {
+        FrameUplink::build(true)
+    }
+
+    fn build(cop1: bool) -> Result<FrameUplink> {
         let bad = Error::new(ErrorKind::InvalidConfig);
         let scid = TcSpacecraftId::new(SPACECRAFT_ID).ok_or(bad)?;
         let vc = TcVcId::new(tc::VCID).ok_or(bad)?;
@@ -129,16 +195,20 @@ impl FrameUplink {
                 .ok_or(bad)
                 .and_then(|id| ReassemblerMap::packets(vc, id, max_packet))
         };
-        let reassembler = MapReassembler::new(MapReassemblerConfig::new(
+        let reassembler_config = MapReassemblerConfig::new(
             TcReassemblerParams::with_segment_header(),
             &[packets(tc::MAP_COMMANDS)?, packets(tc::MAP_TABLE_UPLOAD)?],
-        )?)?;
+        )?;
+        let reassembler = MapReassembler::new(reassembler_config)?;
         Ok(FrameUplink {
             table,
             vc,
             receiver,
             farm,
             reassembler,
+            reassembler_config,
+            delivery: DeliveryBuffer::empty(),
+            cop1,
         })
     }
 
@@ -183,27 +253,56 @@ impl FrameUplink {
             }
             Err(e) => return self.reject_frame(now, false, e.kind(), out),
         }
-        let input = Farm1Input::from_tc(&validated, true);
+        let input = Farm1Input::from_tc(&validated, self.delivery.has_room());
         let (farm, actions) = match self.farm.step(input, now, &mut area) {
             Ok(stepped) => stepped,
             Err(e) => return self.reject_frame(now, false, e.kind(), out),
         };
         self.farm = farm;
         let mut fdu = None;
+        let mut discarded = None;
+        let mut unlocked = false;
+        let mut new_state = None;
         for action in actions.iter() {
             match action {
                 Farm1Output::Notify(Farm1Notify::FrameDiscarded { event, .. }) => {
-                    out.app_event(APP_FRAME_DISCARDED, &[LAYER_FARM1, event_number(*event)]);
-                    return;
+                    discarded = Some(*event);
                 }
                 Farm1Output::Deliver { data, .. } => fdu = Some(*data),
-                // State changes and unlocks are A3's (D2 of the A2 plan).
-                Farm1Output::Notify(Farm1Notify::StateChanged { .. } | Farm1Notify::Unlocked) => {}
+                Farm1Output::Notify(Farm1Notify::StateChanged { to, .. }) => new_state = Some(*to),
+                Farm1Output::Notify(Farm1Notify::Unlocked) => unlocked = true,
             }
         }
+        // The order of APP-146: the discard, the Unlock, the reassembly, the state, which is
+        // updated after the other outputs of the cell (232.1 §6.3.1).
+        if let Some(event) = discarded {
+            out.app_event(APP_FRAME_DISCARDED, &[LAYER_FARM1, event_number(event)]);
+        }
+        if unlocked && self.cop1 {
+            out.app_event(APP_FARM1_UNLOCK, &[]);
+            self.purge(out);
+        }
         if let Some(range) = fdu {
+            self.delivery.take();
             let header = validated.segment_header();
             self.reassemble(header, range.slice(&area), out, deliver);
+            self.delivery.release();
+        }
+        if let (Some(state), true) = (new_state, self.cop1) {
+            out.app_event(APP_FARM1_STATE, &[state_number(state)]);
+        }
+    }
+
+    /// The purge of an Unlock (232.1 §6.3.2.2 note, D4 c): the delivery buffer is empty and no
+    /// SDU is in progress, so a segment sent after the Unlock does not complete an earlier one.
+    fn purge(&mut self, out: &mut dyn Output) {
+        self.delivery.reset();
+        let mut none = [0_u8; 0];
+        let input = ReassemblerInput::Reconfigure(self.reassembler_config);
+        // Cannot happen: the configuration is the node's own, which built the reassembler.
+        // The error is still reported, not unwrapped.
+        if let Err(e) = self.reassembler.step(input, &mut none) {
+            reject_packet(out, e.kind());
         }
     }
 
@@ -379,6 +478,15 @@ const fn event_number(event: Farm1Event) -> u64 {
         Farm1Event::E9 => 9,
         Farm1Event::E10 => 10,
         Farm1Event::E11 => 11,
+    }
+}
+
+/// The number of the FARM-1 state of `farm1_state` (§7.4): 1 Open, 2 Wait, 3 Lockout.
+const fn state_number(state: Farm1State) -> u64 {
+    match state {
+        Farm1State::Open => 1,
+        Farm1State::Wait => 2,
+        Farm1State::Lockout => 3,
     }
 }
 

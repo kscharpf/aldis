@@ -24,8 +24,7 @@ use aldis::core::time::{Duration, Instant};
 use aldis::link::common::Qos;
 use aldis::link::protocol::Tc;
 use aldis::link::segmenter::{
-    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterOutput, SegmenterService,
-    TcSegmenterParams,
+    MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput, SegmenterService, TcSegmenterParams,
 };
 use aldis::tc::PhysicalChannelConfig;
 use refapp_scenario::generated::{apid, cop1, tc};
@@ -63,7 +62,11 @@ pub(crate) struct Uplink {
     next_handle: u32,
     /// Inputs the engines refused; zero in a run whose script fits the capacities.
     refused: u32,
+    /// The state of the `cop1` level; `None` at `frames`, where only Type-BD frames go out.
+    ad: Option<ad::Ad>,
 }
+
+mod ad;
 
 /// The MAP of the packets of `apid` (APP-041, §4.2).
 const fn map_of(apid: Apid) -> Option<MapId<6>> {
@@ -152,6 +155,7 @@ impl Uplink {
             store: Fop1Store::new(),
             next_handle: 0,
             refused: 0,
+            ad: None,
         })
     }
 
@@ -176,35 +180,30 @@ impl Uplink {
         }
     }
 
-    /// One uplink slot: the next FDU as a Type-BD frame, or `None` if the segmenter holds none
+    /// One uplink slot: at `cop1` the AD service ([`slot_ad`](Self::slot_ad)), where
+    /// `TransmitDone` and its events follow the frame (APP-144); below it the frame of
+    /// [`slot_bd`](Self::slot_bd), output as the last output of the step (APP-133).
+    pub(crate) fn slot(&mut self, now: Instant, out: &mut dyn Output) {
+        let frame = if self.ad.is_some() {
+            self.slot_ad(now, out);
+            None
+        } else {
+            self.slot_bd(now, out)
+        };
+        if let Some(frame) = frame {
+            out.unit(&frame);
+        }
+    }
+
+    /// The next FDU as a Type-BD frame, or `None` if the segmenter holds none
     /// or an engine refused an input, which raises `uplink_refused` (APP-071, APP-133,
     /// APP-143).
-    pub(crate) fn slot(&mut self, now: Instant, out: &mut dyn Output) -> Option<Vec<u8>> {
+    fn slot_bd(&mut self, now: Instant, out: &mut dyn Output) -> Option<Vec<u8>> {
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
         let mut area = [0_u8; FDU];
-        let request = SegmenterInput::NextFdu {
-            handle,
-            qos: Qos::Expedited,
-        };
-        let actions = match self.segmenter.step(request, now, &mut area) {
-            Ok(actions) => actions,
-            Err(error) => {
-                self.refuse(out, STAGE_NEXT_FDU, error, 0);
-                return None;
-            }
-        };
-        let fdu = actions.iter().find_map(|action| match action {
-            SegmenterOutput::Fdu(fdu) => Some(*fdu),
-            SegmenterOutput::Discarded { .. } => None,
-        })?;
-        let Some(octets) = fdu.fdu.slice(&area) else {
-            // Unreachable by construction: the segmenter's FDU lies within the area it was
-            // given. Kept as a refusal so that no index or unwrap is needed (GEN-020).
-            self.refuse(out, STAGE_NEXT_FDU, Error::new(ErrorKind::OutOfRange), 0);
-            return None;
-        };
-        self.request_bd(handle, octets, now, out)
+        let fdu = self.take_fdu(handle, Qos::Expedited, now, &mut area, out)?;
+        self.request_bd(handle, &fdu, now, out)
     }
 
     /// FOP-1 `RequestBd` for `fdu` and the response of the lower procedures that frees the

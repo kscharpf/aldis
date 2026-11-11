@@ -1,14 +1,14 @@
 //! Golden traces: writer, canonical-form check, and comparator (docs/reference-application.md §7).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use aldis::spp::SpacePacket;
 use serde_json::{Map, Value, json};
 
-use crate::frame::{FramedPackets, decode_frame};
+use crate::frame::{FlightIntake, FramedPackets, decode_frame};
 use crate::micros::Micros;
-use crate::scenario::{Level, Scenario};
+use crate::scenario::Scenario;
 
 /// Which node a record belongs to (§7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,6 +119,12 @@ pub const APP_EVENTS: &[(u16, &str)] = &[
     (112, "sdu_too_long"),
     (113, "downlink_refused"),
     (114, "uplink_refused"),
+    (200, "fop1_alert"),
+    (201, "fop1_transfer"),
+    (202, "fop1_directive"),
+    (203, "fop1_state"),
+    (210, "farm1_state"),
+    (211, "farm1_unlock"),
 ];
 
 /// Name of an application event code, if the code is in the vocabulary.
@@ -507,17 +513,29 @@ pub struct Decoded {
     pub framed_packets: usize,
 }
 
+/// The `args` of a flight `app_event`: an array of unsigned integers, else an error.
+fn intake_args(v: &Value, code: u16) -> Result<Vec<u64>, String> {
+    v["args"]
+        .as_array()
+        .and_then(|a| a.iter().map(Value::as_u64).collect::<Option<Vec<u64>>>())
+        .ok_or_else(|| format!("flight app_event {code} without an args array of integers"))
+}
+
 /// Decodes the octets of every `unit_sent`, `packet_out`, and `packet_in` record of `text`, a
 /// canonical trace, strictly (APP-086, API-030).
 ///
 /// `packet_out` and `packet_in` octets must be a strict Space Packet that fills them exactly. A
-/// `unit_sent` is a Space Packet in a case of [`Level::Packets`] and a TM frame (`down`) or TC
-/// frame (`up`) in a case of [`Level::Frames`] ([`crate::frame::decode_frame`]); the level is
-/// that of the case the header names, in `scenario`. In a frame-level case the frames of each
-/// direction also go, in trace order as a clean link, through the engines of the nodes
-/// ([`FramedPackets`]: the `PacketExtractor` of each downlink VC, the `MapReassembler` of the
-/// uplink), and every complete packet they hand out is decoded strictly too. Returns what was
-/// decoded.
+/// `unit_sent` is a Space Packet in a case of [`Level::Packets`](crate::scenario::Level::Packets)
+/// and a TM frame (`down`) or TC frame (`up`) in a case of
+/// [`Level::Frames`](crate::scenario::Level::Frames) or `cop1`
+/// ([`crate::frame::decode_frame`]); the level is that of the case the header names, in
+/// `scenario`. In a frame-level case the frames also go through the engines of the nodes
+/// ([`FramedPackets`]): the downlink frames, in trace order, through the `PacketExtractor` of each
+/// VC; the uplink frames as delivered (`unit_delivered`, not those corrupted in transit), through
+/// FARM-1 (the flight node's `FrameUplink`) into the `MapReassembler`, not in trace order as a
+/// clean link. And every complete packet they hand out is
+/// decoded strictly too, and the packets the uplink gives are set against the flight node's own
+/// intake records ([`FlightIntake`]). Returns what was decoded.
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
@@ -533,10 +551,61 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
     let level = scenario.case(case_id)?.level;
     let mut decoded = Decoded::default();
     let mut framed = FramedPackets::new(scenario)?;
+    // The uplink units as sent, by index, the indices a fault dropped or corrupted, and whether
+    // any was.
+    let mut sent_up: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
+    let mut corrupted_up: BTreeSet<u64> = BTreeSet::new();
+    // The packets the uplink chain handed out, and the flight node's own intake records.
+    let mut up_packets: Vec<Vec<u8>> = Vec::new();
+    let mut intake: Vec<(u16, Vec<u64>)> = Vec::new();
+    let direction = |v: &Value| match v["dir"].as_str() {
+        Some("down") => Some(Dir::Down),
+        Some("up") => Some(Dir::Up),
+        _ => None,
+    };
     for (i, l) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
         let v: Value = serde_json::from_str(l).map_err(|e| at(e.to_string()))?;
         let kind = v["kind"].as_str().unwrap_or_default();
+        if kind == "fault" && level.has_frames() {
+            if direction(&v) == Some(Dir::Up)
+                && matches!(v["fault"].as_str(), Some("drop" | "flip" | "truncate"))
+            {
+                framed.note_up_loss();
+                if let Some(index) = v["index"].as_u64() {
+                    corrupted_up.insert(index);
+                }
+            }
+            continue;
+        }
+        if kind == "unit_delivered" && level.has_frames() {
+            // The reassembler sees the frames as received (APP-146): a unit that FARM-1 discards,
+            // as a retransmitted or reordered Type-AD frame, gives no packet. A corrupted unit
+            // fails the FECF (APP-139) and reaches no engine but FARM-1's invalid-frame input.
+            let index = v["index"]
+                .as_u64()
+                .ok_or_else(|| at("unit_delivered record without an index".to_owned()))?;
+            if direction(&v) == Some(Dir::Up) && !corrupted_up.contains(&index) {
+                let octets = sent_up
+                    .get(&index)
+                    .ok_or_else(|| at(format!("unit {index} delivered but never sent")))?;
+                let now = v["t_us"]
+                    .as_u64()
+                    .ok_or_else(|| at("record without t_us".to_owned()))?;
+                let packets = framed.receive_up(now, octets).map_err(at)?;
+                decoded.framed_packets += packets.len();
+                up_packets.extend(packets);
+            }
+            continue;
+        }
+        if kind == "app_event" && level.has_frames() && v["node"].as_str() == Some("flight") {
+            let code = v["code"].as_u64().and_then(|c| u16::try_from(c).ok());
+            if let Some(code) = code.filter(|c| FlightIntake::CODES.contains(c)) {
+                let args = intake_args(&v, code).map_err(at)?;
+                intake.push((code, args));
+            }
+            continue;
+        }
         if !matches!(kind, "unit_sent" | "packet_out" | "packet_in") {
             continue;
         }
@@ -544,15 +613,20 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             .as_str()
             .ok_or_else(|| at(format!("{kind} record without hex")))?;
         let octets = unhex(hex).map_err(at)?;
-        if kind == "unit_sent" && level == Level::Frames {
-            let dir = match v["dir"].as_str() {
-                Some("down") => Dir::Down,
-                Some("up") => Dir::Up,
-                _ => return Err(at("unit_sent record without a direction".to_owned())),
-            };
+        if kind == "unit_sent" && level.has_frames() {
+            let dir = direction(&v)
+                .ok_or_else(|| at("unit_sent record without a direction".to_owned()))?;
             let frame = decode_frame(scenario, level, dir, &octets).map_err(at)?;
             decoded.frames += 1;
-            decoded.framed_packets += framed.take(dir, &frame).map_err(at)?;
+            match dir {
+                Dir::Down => decoded.framed_packets += framed.take_down(&frame).map_err(at)?,
+                Dir::Up => {
+                    let index = v["index"]
+                        .as_u64()
+                        .ok_or_else(|| at("unit_sent record without an index".to_owned()))?;
+                    sent_up.insert(index, octets);
+                }
+            }
         } else {
             let packet = SpacePacket::decode(&octets)
                 .map_err(|e| at(format!("{kind} is not a strict Space Packet: {e:?}")))?;
@@ -565,6 +639,11 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             }
         }
         decoded.records += 1;
+    }
+    if level.has_frames() {
+        // The node is its own oracle for FARM-1 (§4.5.3); the packets it handled must still be
+        // the ones the strict decode reassembles from the uplink.
+        FlightIntake::check(&up_packets, &intake)?;
     }
     Ok(decoded)
 }
@@ -676,6 +755,27 @@ pub fn compare(expected: &str, actual: &str) -> Result<(), Mismatch> {
                     actual: y.map(|s| s.trim_end_matches('\n').to_owned()),
                 });
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod intake_args_tests {
+    use super::intake_args;
+    use serde_json::json;
+
+    #[test]
+    fn missing_or_non_integer_args_are_an_error() {
+        // req: APP-086
+        assert_eq!(intake_args(&json!({"args": [3, 1]}), 9), Ok(vec![3, 1]));
+        for v in [
+            json!({}),
+            json!({"args": 7}),
+            json!({"args": [3, "x"]}),
+            json!({"args": [3, -1]}),
+        ] {
+            let e = intake_args(&v, 9).unwrap_err();
+            assert!(e.contains("without an args array of integers"), "{v}: {e}");
         }
     }
 }

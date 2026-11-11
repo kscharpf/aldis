@@ -566,7 +566,7 @@ fn due_ops_entries_are_output_as_packet_then_unit_after_deliveries() {
             table_id: TableId::new(1).unwrap(),
             length: TableLength::new(300).unwrap(),
         },
-        OpsEntry::Fop1Directive,
+        OpsEntry::Fop1Directive(crate::Fop1Directive::TerminateAd),
         noop(),
     ];
     let mut n = GroundNode::new(&script).unwrap();

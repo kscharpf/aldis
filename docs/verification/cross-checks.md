@@ -397,3 +397,22 @@ A2 D8(c): the blind model `file:refapp/model/a2_nominal.py` (TV-023) regenerates
 The first comparison found 27 of 288 frames differing, all payload-packet frames, the first at record 4 (octet 22). The cause was the model's misreading of `docs/reference-application.md` §4.4.3: octet *i* of the payload packet data is (n + i) mod 256 for *i* = 4 to 399, and the model counted *i* from 0, an offset of 4. The model was corrected after the golden had been seen; the correction is the one line `range(396)` to `range(4, 400)`, and the comparison then ran again with 0 differences. The model's `--self-check` asserted no payload data, so it could not have found this.
 
 Not covered: only the `unit_sent` records of `a2-nominal`; the other A2 cases are not modelled, and nor are `unit_delivered`, event, and fault records. The model read the hand schedule of §4.4.4, so it is independent of the code but not of that derivation: a mistake in the schedule is in both.
+
+### 7.3 A3: the frames of `a3-nominal` and `a3-uplink-loss`
+
+A3 D8(c): the blind model `file:refapp/model/a3_cases.py` (TV-023) regenerates every `unit_sent` record of `a3-nominal` and `a3-uplink-loss`: the 280 TM downlink frames of each case (packet generators, multiplexing, idle fill, OID frames, the CLCW in the OCF from FARM-1, FECF) and the TC uplink frames (Type-AD, Segment Header, N(S) from FOP-1, retransmissions, FECF), in trace order. It was written from `docs/reference-application.md`, `docs/milestones/a3-cop1.md` D5 and D8, and the Blue Books 232.0-B-4, 232.1-B-2 (Tables 5-1 and 6-1 read from the PDF pages), 132.0-B-3, 133.0-B-2, and 301.0-B-4, without sight of any crate, refapp node, existing model, `exerciser/`, `fuzz/`, `crosscheck/`, or golden trace; the golden traces were read only as the comparison target, after the model was committed. Unlike §7.2 it does not read `refapp/scenario/scenario.json`: every value is taken from the document tables. It implements FOP-1 only in the cells the two cases reach (E1, E2, E5, E6, E8, E10, E12, E16, E19, E23, E41) and FARM-1 E1, E3, E4; any other cell raises `NotModelled`. Its `--self-check` asserts the figures the document states (CRC check value, table CRC `0x0C4F`, the OID pattern, the frame heads and OCF changes of §4.4.4 and §4.5.5, and the uplink table and CLCW changes of §6.8), not the golden traces.
+
+| Item | Value |
+|---|---|
+| Run | `python3 -I refapp/model/a3_cases.py --compare refapp/golden/<case>.jsonl <case>` (Python 3, standard library; no CI step) |
+| Date | 2026-11-11 |
+| Golden files | `refapp/golden/a3-nominal.jsonl` and `a3-uplink-loss.jsonl`, trace version 1, as on branch `a3/wp-5-golden` (#510) at `519813ad` |
+
+| Case | Model records | Golden `unit_sent` records | Mismatches | Result |
+|---|---|---|---|---|
+| `a3-nominal` | 288 (280 down, 8 up) | 288 | 0 | **Match** |
+| `a3-uplink-loss` | 292 (280 down, 12 up) | 292 | 0 | **Match** |
+
+No correction followed the comparison; the model needed two fixes to its own self-check before it, both mistakes in the check's expected values (a malformed head comparison and a wrong CLCW word), found by the self-check.
+
+Not covered: `fault`, `unit_delivered`, `packet_out`, `packet_in`, and `app_event` records; the other three A3 cases (`a3-uplink-disorder`, `a3-uplink-lockout`, `a3-uplink-limit`) and every FOP-1 cell they need (Alerts, Lockout, Unlock and the Type-BC frame, Wait, *Set V(S)*, *Terminate*, the T1 limit); Type-BD frames and FARM-B counting; the strict decode of frames. The model shares the schedule of `docs/reference-application.md` §4.5.5 and §6.8 as input to its self-check, so it is independent of the code but not of the document's reading of the slot model (a held frame leaves in the next slot, one `RequestAd` outstanding, `Timeout` before ops entries); a mistake in those rules is in both.
