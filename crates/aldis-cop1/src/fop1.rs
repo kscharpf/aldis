@@ -435,8 +435,9 @@ impl Fop1Target<UslpFormat> {
             return Err(bad_config(field::UPID));
         }
         let max_frame_len = physical.frame_len();
-        // The Primary Header with the one-octet VCF Count of a Type-AD frame, the TFDF Header (one
-        // octet: the rules with a pointer are refused above), the TFDZ, and the FECF.
+        // The Primary Header with the VCF Count of a Type-AD frame (one octet, because the VCF
+        // Count Length check above refuses any other length; OI-66), the TFDF Header (one octet:
+        // the rules with a pointer are refused above), the TFDZ, and the FECF.
         let max_fdu_len =
             max_fdu_len::<UslpFormat>(&physical, &vc.vcf_count_len(false), tfdf.len());
         if max_fdu_len < SET_VR_LEN {
@@ -552,6 +553,8 @@ impl<P: Fop1Format> Fop1Target<P> {
             octets.len(),
             out,
         )?;
+        // The copy is exact: `P::begin` reserved `octets.len()` octets of data field, which
+        // `data_mut` returns whole, and `unsecured` below fixes that same length (RS-023).
         for (d, s) in writer.data_mut().iter_mut().zip(octets) {
             *d = *s;
         }

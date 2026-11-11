@@ -40,7 +40,7 @@ pub trait Fop1Format: FrameFormat + Hash {
 
     /// Starts a frame of `frame_type` with N(S) = `sequence_number` on `channel`, with room for
     /// `data_len` octets of data field: the Frame Data Field of a TC frame, the TFDZ of a USLP
-    /// frame. `control` says the data field is a Control Command (232.1 §4.1.3.3; 732.1 Table
+    /// frame. `control` says the data field is a Control Command (232.0 §4.1.3.3; 732.1 Table
     /// 4-1) and not an FDU. The caller fills `data_mut` and fixes the length with `unsecured`:
     /// FOP-1 frames have no SDLS fields.
     ///
