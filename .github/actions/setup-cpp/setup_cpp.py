@@ -33,14 +33,14 @@ import shutil
 import subprocess
 import sys
 import urllib.request
-from time import sleep
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import sleep
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_LOCK = REPO / "toolchains.lock"
 # Seconds to wait after a failed download attempt, one entry per retry (the first attempt and three retries;
-# maintainer, 2026-11-11, #361). An offline test sets this to (0, 0) or replaces `sleep`.
+# maintainer, 2026-11-11, #361). An offline test sets this to (0, 0, 0), which keeps the four attempts, or replaces `sleep`.
 RETRY_DELAYS = (10, 30, 90)
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
