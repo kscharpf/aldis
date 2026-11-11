@@ -555,7 +555,7 @@ impl<P: Fop1Format> Fop1Target<P> {
         for (d, s) in writer.data_mut().iter_mut().zip(octets) {
             *d = *s;
         }
-        Ok(writer.unsecured(octets.len())?.finalize().len())
+        writer.unsecured(octets.len()).map(|w| w.finalize().len())
     }
 }
 
