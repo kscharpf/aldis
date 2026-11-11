@@ -105,6 +105,18 @@ pub const APP_EVENTS: &[(u16, &str)] = &[
     (6, "packet_rejected"),
     (20, "cmd_received"),
     (21, "table_received"),
+    (100, "frame_gap"),
+    (101, "frame_discontinuity"),
+    (102, "frame_rejected"),
+    (103, "frame_discarded"),
+    (104, "clcw_changed"),
+    (105, "partial_discarded"),
+    (106, "extraction_error"),
+    (110, "sequence_violation"),
+    (111, "unknown_map"),
+    (112, "sdu_too_long"),
+    (113, "downlink_refused"),
+    (114, "uplink_refused"),
 ];
 
 /// Name of an application event code, if the code is in the vocabulary.
