@@ -50,7 +50,7 @@ fn a_run_equal_to_the_golden_trace_passes() {
 fn a_run_that_differs_from_the_golden_trace_fails() {
     // req: APP-154
     let run = run_case(CASE).unwrap();
-    let changed = run.replacen("\"", "'", 1);
+    let changed = run.replacen('"', "'", 1);
     let (text, ok) = verdict(CASE, &changed, &run);
     assert!(!ok, "{text}");
     assert!(
