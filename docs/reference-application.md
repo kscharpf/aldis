@@ -66,6 +66,8 @@ Within one instant the flight node works in this order: (1) handle delivered lin
 
 **Frame level (A2 on).** Steps 1 to 5 are unchanged and generate the packets as at A1. Each packet is submitted to the `PacketGenerator` of its VC when it is generated (VC 0: APIDs `0x010` and `0x011`; VC 1: `0x020` and `0x021`), so a field is started at the instant of the packet that opens it (LNK-012). In a step with `tx_slot` the node then does (6): for VC 0, then VC 1, feed `Timeout` to the generator if its `next_deadline` is not after `now`, and, if the multiplexer holds no field of that VC, feed `Release` and `Offer` the field it returns; set the OCF slot (§4.4.1); feed `Opportunity` and output the frame, which is the last output of the step. A packet generated at a slot instant is in the field of that instant's frame only if the field is releasable then (full, or past its deadline); otherwise it waits in the field. Step 6 runs only in a step with `tx_slot` (§4.4.2).
 
+**COP-1 level (A3 on).** Steps 1 to 6 are unchanged, and FARM-1 now also sees the Type-AD and Type-BC frames: step 1 handles a delivered TC frame as §4.5.3 and APP-146 say.
+
 ### 2.2 Ground node
 
 | Application | Behaviour |
@@ -78,6 +80,8 @@ Within one instant the flight node works in this order: (1) handle delivered lin
 | Commanding (A3 on) | FOP-1 sending end; transfer and directive notifications become application events |
 
 Within one instant the ground node works in this order: (1) handle the delivered link units, in delivery order (at A2 on, the frame-level events of §7.4 come first, then the packets and events as at A1); (2) release the ops-script entries due, in script order (`packet_out`; at A2 on the packet goes to the `MapSegmenter` and not out); (3) A2 on, in a step with `tx_slot`: ask the segmenter for one FDU and, if it hands one out, output the frame as the last output of the step. The deliveries come before the ops entries, as the flight node's step 1 comes before its other steps (OI-86, resolved 2026-11-08; no case of A1 or A2 has a delivery and an ops entry at one instant). The FDU is taken after the entries, so that the two commands released at 5.0 s in §2.4 share one FDU (APP-042).
+
+**COP-1 level (A3 on).** The ground node works in the order of §4.5.1 (APP-144): the OCF of each delivered frame goes to FOP-1 within step (1), `Timeout` follows the deliveries, the ops entries (directives included) come next, and in a step with `tx_slot` the segmenter's FDU is requested of FOP-1 and the frame FOP-1 holds is output as the last output of the step.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -101,7 +105,7 @@ Applications generate packets while t < 30 s; the run ends at t = 35 s, so every
 
 | Release (s) | Entry | From | Execution (s) | Expected on-board result |
 |---|---|---|---|---|
-| 0.0 | FOP-1 directive *Initiate AD Service (without CLCW Check)* | A3 | — | FOP-1 Active (232.1 §4.1) |
+| 0.0 | FOP-1 directive *Initiate AD Service (without CLCW Check)* | A3 | — | FOP-1 Active (232.1 §4.1; §4.5.2, §4.5.5) |
 | 1.0 | Command `NOOP`, seq 0 | A1 | 6.0 | `CMD_EXECUTED` |
 | 2.0 | Table upload, table 1, 300 octets (APID `0x081`, seq 0) | A1 | — | Stored; no report |
 | 3.0 | Command `ACTIVATE_TABLE` (table 1, CRC `0x0C4F`), seq 1 | A1 | 10.0 | `CMD_EXECUTED`, `TABLE_ACTIVATED` |
@@ -442,6 +446,117 @@ Checked clause by clause against the Blue Books before any node code (A2 WP-1); 
 | APP-136 | The link-engine parameters of §4.4.3 SHALL be in the scenario file and the generated constants, and the nodes of A2 SHALL take them from there. | — | A/I |
 | APP-137 | The golden trace of `a2-nominal` SHALL have the downlink and uplink schedule of §4.4.4: the frame kinds, counts, First Header Pointers, fields, and OCF words, and the uplink frames and their Segment Headers. | 132.0 §4.1.2, §4.1.4.6, §4.2.2; 232.0 §4.1.2, §4.1.3.2, §4.3.1; LNK-011…LNK-014, LNK-030…LNK-033 | T |
 
+### 4.5 COP-1 behaviour (A3 on)
+
+What the nodes do at the link level `cop1` (D2 of the A3 plan), fixed before any node exists: the order of work with FOP-1 and its timer, the directives, the use of FARM-1, and the hand-derived schedule of `a3-nominal`. Below that level (`frames`, the `a2-*` cases) none of it applies: Type-BD frames and the nodes of §4.4 stay as they are (APP-005, APP-043). The fault cases are in §6.8 and the events in §7.4. Every Blue Book value is read from 232.1-B-2 with Cor. 1 and 232.0-B-4; the readings are in §4.5.4.
+
+#### 4.5.1 Order of work
+
+The ground node, in a step at the `cop1` level, does this in order:
+
+1. For each TM frame delivered, in delivery order: the outputs of APP-138 up to and including `clcw_changed`; then the OCF is given to FOP-1 as `Clcw` (as `InvalidClcw` if `Clcw::decode` refuses the word), and the events of FOP-1's actions follow in the order of the actions (§7.4), the `fop1_state` of a change of state last; then the rest of APP-138 (the extractor's events and the packets').
+2. `Timeout` is given to FOP-1, once, if its `next_deadline` is not after `now`; the node reports that deadline as its own (APP-135).
+3. Each ops entry due, in script order: a `fop1_directive` entry gives its directive to FOP-1 (§4.5.2), a command or a table upload goes to the segmenter.
+4. In a step with `tx_slot`: (a) if no `RequestAd` of the node is unanswered (the last one got its Accept or its Reject), the node asks the segmenter for one FDU and gives it to FOP-1 as `RequestAd`; (b) if FOP-1 holds a transmit request, the node outputs its frame as the last output of the step and then gives `TransmitDone` (accepted) for its kind.
+
+The request identifier of the *n*-th FDU given to FOP-1 is *n* − 1 (from 0), whatever the answer. A **held** transmit request is one that FOP-1 returned and that has not yet left in a slot: FOP-1 sets the Out flag of its kind to Not_Ready (232.1 §5.1.6), so there is at most one of each kind. A Type-BC request goes before a Type-AD request, and the other stays held for the next slot (one frame leaves per slot, APP-071). A request that FOP-1 returns in steps 1 to 3 of a slot instant, or in 4(a), leaves in that slot, since 4(b) comes after them; a request that it returns at any other instant, or in answer to `TransmitDone`, leaves in the next slot, up to 250 000 µs later (232.1 §5.1.9.2 a). The Abort Request that begins a retransmission (232.1 §5.2.7 a) is not acted on: a held frame leaves in its slot and gets its `TransmitDone` (the link model has no Lower Procedure to cancel, and the engine changes no Out flag at an Abort).
+
+The order of steps 2 and 3 matters only when a deadline and a directive fall at one instant, and no case has that; a deadline and an ops entry of a command do fall together in `a3-uplink-loss` (5.0 s) and the Timeout then goes first. A CLCW and a deadline never share an instant in the cases, since a CLCW is delivered 10 000 µs after a multiple of 125 000 µs.
+
+The flight node's order at the `cop1` level is that of A2 (§2.1, APP-132, APP-139) with FARM-1 now also seeing the Type-AD and Type-BC frames; §4.5.3 gives what it does with them.
+
+#### 4.5.2 The directives
+
+The `directive` parameter of a `fop1_directive` entry (§6.5) takes the values of the table. The Directive Types and Qualifiers are those of 232.1 Table 4-1, which names the types and gives no number: the **code** is this scenario's, the row number of the table, and is what the events of §7.4 carry. The harness rejects a value it does not know, as it does for a `call` (§6.5); the rows marked "later" are not in scenario version 1 and a later version may add them (APP-002). The state column is Table 5-1.
+
+| Code | Directive Type (Table 4-1) | Qualifier | `directive` value | Table 5-1: event, accepted in, goes to | Used by |
+|---|---|---|---|---|---|
+| 1 | Initiate AD Service (without CLCW check) | none | `"initiate_ad_without_clcw"` | E23: S6 only (Reject in S1–S5); Accept, Initialize, Confirm; S1 | all cases |
+| 2 | Initiate AD Service (with CLCW check) | none | `"initiate_ad_with_clcw"` | E24: S6 only; Accept, Initialize, Start Timer; S4; Confirm on the first clean CLCW (E1 in S4, S1) | `a3-uplink-limit` |
+| 3 | Initiate AD Service (with Unlock) | none | `"initiate_ad_with_unlock"` | E25: S6 only, `BC_Out_Flag` Ready (else E26, Reject); Accept, Initialize, Transmit Unlock Type-BC Frame; S5; Confirm on the first clean CLCW (E1 in S5, S1) | `a3-uplink-lockout` |
+| 4 | Initiate AD Service (with Set V(R)) | V\*(R) | later | E27, E28 | none |
+| 5 | Terminate AD Service | none | `"terminate_ad"` | E29: every state; S1–S5: Accept, Alert[term], Confirm; S6: Accept, Confirm (no Alert); S6 | `a3-uplink-lockout` |
+| 6 | Resume AD Service | none | later | E30–E34 | none |
+| 7 | Set V(S) to V\*(S) | V\*(S), 0 to 255 | `{"set_vs":n}` | E35: S6 only and Suspend_State 0 (else Reject); Accept, V(S) := V\*(S), NN(R) := V\*(S), Confirm; stays S6 | `a3-uplink-lockout`, `a3-uplink-limit` |
+| 8 | Set FOP_Sliding_Window_Width (K) | K | later | E36 | none |
+| 9 | Set T1_Initial | T1_Initial | later | E37 | none |
+| 10 | Set Transmission_Limit | limit | later | E38 | none |
+| 11 | Set Timeout_Type | TT | later | E39 | none |
+
+The *Initiate AD Service* directives and *Set V(S)* are accepted in S6 only (232.1 §4.1 note 3 for Set V(S)), so a case that sets V(S) and starts the service again after the service ran uses *Terminate AD Service* first, or follows an Alert, which also ends in S6. After an Alert no further Alert occurs until FOP-1 receives one of the Initiate AD Service directives (232.1 §4.3.2), and the directive of the same case that follows *Set V(S)* is one of them.
+
+The notifications of a directive are Accept, then Positive Confirm or Negative Confirm (232.1 §4.2, Table 4-2); a Reject ends it. Negative Confirm comes from the Alert action when an Initiate directive is still waiting for its clean CLCW (232.1 §5.2.15 d).
+
+#### 4.5.3 FARM-1 on board
+
+At the `cop1` level the flight node gives FARM-1 every TC frame of the uplink VC that passed the strict decode and the validation checks (TC-021, TC-023), of type AD, BD, and BC, and applies all its outputs:
+
+- **Delivery buffer.** `buffer_available` is true while the node's delivery buffer, of depth 2, has room (§4.2, COP-033). The FDU of an accepted Type-AD or Type-BD frame goes to the `MapReassembler` in the same step, so the buffer is free again at the next frame and no case reaches Wait (E2, E10: the cells have the M3 vectors, COP-005). FARM-1 delivers the data field after the Segment Header, and the reassembler takes the Segment Header octet in front of it (D10 of the A3 plan, #394).
+- **Discards.** A frame that FARM-1 discards (E1 in Lockout, E2 to E5) raises `frame_discarded` with layer 2 and the number of the event (APP-139, §7.4); a frame the strict decode rejects is `frame_rejected` and FARM-1 is given the invalid-frame input (E9), also for a Type-BC frame whose data field is neither Unlock nor Set V(R) (strict decode: `ReservedValue`, 7, TC-005, COP-031; no case sends one).
+- **State.** A change of FARM-1's state raises `farm1_state` (§7.4) after the other outputs of the cell, which is when 232.1 §6.3.1 updates the state.
+- **Unlock.** An accepted *Unlock* (E7) resets only FARM-1 (232.1 §6.3.2.2 note, COP-036); the node raises `farm1_unlock`, then `farm1_state` if the state changed, and resets its `MapReassembler` and its delivery buffer, so that a half-received packet is not completed by a segment sent after the Unlock.
+- **CLCW.** The OCF of every downlink frame is `Farm1::clcw` at the slot instant after the deliveries (§4.4.1, APP-134), now with N(R) = V(R), the Lockout and Retransmit flags, and the FARM-B Counter of the Type-BD and Type-BC frames accepted (232.1 §6.1.6, Table 6-1 E6 to E8). The word is `0x01000000` + `0x2000` × Lockout + `0x1000` × Wait + `0x0800` × Retransmit + `0x0200` × (FARM-B Counter mod 4) + N(R): Lockout, Wait, Retransmit, the counter, and the Report Value are bits 18, 19, 20, 21–22, and 24–31 of the CLCW, with bit 0 the most significant (232.0 §4.2.1.8.4 to §4.2.1.11), and the COP in Effect `01` in bits 6–7 gives `0x01000000` (§4.4.1). In the scenario Wait is always 0.
+
+FARM-1's windows are PW = NW = 4 (W = 8, §4.2): with V(R) = *r*, N(S) = *r* is accepted (E1), *r* + 1 to *r* + 3 is discarded and sets Retransmit (E3), *r* − 4 to *r* − 1 is discarded (E4), and N(S) from *r* + 4 to *r* − 5 (mod 256) is discarded and puts FARM-1 into Lockout (E5; 232.1 §6.1.8.3.1).
+
+#### 4.5.4 Blue Book readings the A3 nodes rely on
+
+Checked clause by clause against 232.1-B-2 (with Cor. 1) and 232.0-B-4 before any node code (A3 WP-1). The Blue Books settle each; where the repository's rule goes beyond them, it says so.
+
+- **Directives (232.1 §4.1, Table 4-1, Table 5-1).** Table 4-1 lists eleven Directive Types (four Initiate, one Terminate, one Resume, five Set); the sentence before it says "twelve" and the four categories above it add to eleven, so the table is what the scenario reads. Which state accepts which directive is Table 5-1 E23 to E39, as the table of §4.5.2 gives it.
+- **Order of the cell's actions and the Alert (232.1 §5.2.15, §4.3.2, Table 4-4).** An Alert cancels the timer, purges the Sent_Queue (a Negative Confirm for each frame, in queue order), purges the Wait_Queue (a Reject), gives a Negative Confirm to a waiting Initiate directive, and then notifies; the state is S6. The reason codes are Limit, T1, Lockout, Synch, NN(R), CLCW, LLIF, and Term; the scenario numbers them 1 to 8 in that order (§7.4), which the Blue Book does not. In S6 every CLCW event is Ignore (Table 5-1 E1 to E15), so after an Alert the CLCWs change nothing until an Initiate directive.
+- **Transfer notifications (232.1 §4.4.2, Table 4-6).** Accept, then Positive Confirm when a CLCW acknowledges the FDU or Negative Confirm when the Sent_Queue is purged; a request refused (in S4, S5, S6, or with a request already waiting, E19, E20) is Rejected and no other notification follows. An FDU is acknowledged by a CLCW whose N(R) passes its N(S) (§5.2.8).
+- **Timer and transmission count (232.1 §5.1.9.1, §5.1.10, §5.2.4 d, §5.2.7 c, §5.2.8, Table 5-1 E2, E6, E10, E16, E17).** The timer is started, or restarted, by each *new* Type-AD or Type-BC frame FOP-1 transmits and by each Initiate AD (or BC) Retransmission, not by each frame of a retransmitted series (§5.2.10 b): it is the single T1 of the Sent_Queue, which runs from the last such event. It is cancelled when a CLCW acknowledges every frame (E2) and left running when it acknowledges some (E6). Transmission_Count is 1 for the first transmission, is incremented by each retransmission initiated (E8, E10, E16), and reset to 1 when frames are acknowledged; Transmission_Limit = 3 therefore allows the first transmission and two retransmissions (§5.1.10.2), and the third expiry with the count at the limit raises Alert[T1] (E17) under Timeout_Type 0.
+- **CLCW classification (232.1 §5.3.2.1).** The table checks the Lockout Flag, then N(R), then the Retransmit and Wait Flags. N(R) is valid when NN(R) ≤ N(R) ≤ V(S) (mod 256); a CLCW with an invalid N(R) in S1 to S4 is E13, Alert[NN(R)]. This is why a Set V(S) that puts V(S) away from FARM-1's V(R) cannot make a lockout alone (§6.8, `a3-uplink-lockout`): the first CLCW after the frame left shows the old N(R) and FOP-1 alerts on N(R) before FARM-1's Lockout reaches it.
+- **FARM-1 (232.1 §6.1.8.3.1, §6.3.2.2, Table 6-1; 232.0 §4.2.1).** The windows, E1 to E8, and the CLCW fields are as §4.5.3 gives them. A Type-BC *Unlock* in any state sets Retransmit, Wait, and Lockout to 0, counts in the FARM-B Counter, and goes to S1 (E7); it does not change V(R).
+- **Frames (232.0 §4.1.2.3.3 Table 4-1, §4.1.2.8 note 3, §4.1.3.1.3, §4.1.3.3).** Type-AD has Bypass 0 and Control Command 0, Type-BD 1 and 0, Type-BC 1 and 1, so the first octet of a frame of the scenario's spacecraft ID is `01` (AD), `21` (BD), or `31` (BC). The Type-C data field holds the Control Command alone, with no Segment Header: Unlock is the octet `00`, and the frame has 5 + 1 + 2 = 8 octets. N(S) of a Type-BC frame is 0 as that of a Type-BD frame is (note 3; COP-010).
+- **Not in the Blue Books:** the instant of the CLCW sample (§4.4.1), when a held frame leaves and when `Timeout` is given (§4.5.1), the codes of §4.5.2 and §7.4, and what the node does with the Abort Request (§4.5.1). They are this scenario's rules.
+
+**The timer against T1_Initial = 1 000 000 µs.** A frame leaves at a slot *u*, arrives at *u* + 10 000 µs, is first reported in the downlink frame of *u* + 125 000 µs, and reaches FOP-1 at *u* + 135 000 µs: every acknowledgement of §4.5.5 and §6.8 comes 135 000 µs after the frame, which is 865 000 µs inside T1_Initial and 260 000 µs inside the 395 000 µs of §4.2. A retransmission series of *n* frames that FOP-1 starts at a CLCW at *t* leaves in the slots after *t* (the first at most 250 000 µs later, then one every 250 000 µs), and its last frame is acknowledged at most 250 000 + 250 000 (*n* − 1) + 135 000 µs after *t*, while the timer started at *t* expires 1 000 000 µs after it: 635 000 µs for *n* = 2 and 885 000 µs for *n* = 3 are inside T1_Initial; four frames (the whole window K = 4) can reach 1 135 000 µs, which is not. No case of A3 queues more than two frames behind a loss, and the schedules below give the margin of each.
+
+#### 4.5.5 Expected schedule of `a3-nominal`
+
+Derived by hand from §4.2, §2.4, §4.4.1, §4.4.4, and the rules of §4.5.1 to §4.5.4, before any node exists (an independent regeneration is D8(c) of the A3 plan); `a3-nominal` reproduces it exactly (APP-150). The downlink is that of `a2-nominal` (§4.4.4) except for the OCF words below, the packet projection is that of `a1-nominal` (APP-003), and the uplink frames leave at the instants of §4.4.4, since every FDU is requested at its slot, accepted at once, and sent in it. The window never fills: at most one frame is unacknowledged at any instant, and the timer of each frame is cancelled 135 000 µs after it starts.
+
+**Uplink frames** (`up` index 0 to 7). Each is a Type-AD frame (first octets `01 55`: version `00`, Bypass 0, Control Command 0, SCID `0x155`), VC 0, with N(S) = V(S) of FOP-1, and has the length and the Segment Header of the frame of the same index in §4.4.4; only the first octet and N(S) differ. FARM-1 accepts every frame with E1.
+
+| Index | t (s) | N(S) | FDU | First five octets and Segment Header |
+|---|---|---|---|---|
+| 0 | 1.0 | 0 | `NOOP`, seq 0 | `01 55 00 15 00` `C0` |
+| 1 | 2.0 | 1 | table upload, octets 0…119 | `01 55 00 7F 01` `41` |
+| 2 | 2.25 | 2 | octets 120…239 | `01 55 00 7F 02` `01` |
+| 3 | 2.5 | 3 | octets 240…308 | `01 55 00 4C 03` `81` |
+| 4 | 3.0 | 4 | `ACTIVATE_TABLE`, seq 1 | `01 55 00 18 04` `C0` |
+| 5 | 4.0 | 5 | `DUMP_MEMORY`, seq 2 | `01 55 00 1B 05` `C0` |
+| 6 | 5.0 | 6 | `SET_PAYLOAD_MODE` (off), seq 3, and `NOOP`, seq 4 | `01 55 00 24 06` `C0` |
+| 7 | 6.0 | 7 | `SET_PAYLOAD_MODE` (on), seq 5 | `01 55 00 16 07` `C0` |
+
+**CLCW.** The OCF is `0x01000000` until the frame of index 0 arrives. FARM-B Counter 0 and the flags 0 throughout; N(R) = V(R) = the number of frames accepted. The word changes in exactly these downlink frames, the first slot after each arrival, and the ground node reports each change as `clcw_changed` at the arrival instant of the downlink frame; FOP-1 receives each of these CLCWs and acknowledges the frame (E2: every outstanding frame acknowledged, the timer cancelled) at the same instant. The CLCWs of the slots between them repeat the last word and give FOP-1 E1 (nothing outstanding) or E5 (a frame outstanding, not yet reported), both Ignore.
+
+| Downlink frame | t (s) | N(R) | OCF word | `clcw_changed` (decimal) | At | Acknowledges | Margin to the timer |
+|---|---|---|---|---|---|---|---|
+| 9 | 1.125 | 1 | `0x01000001` | 16 777 217 | 1.135 | FDU 0 (index 0) | 865 000 µs |
+| 17 | 2.125 | 2 | `0x01000002` | 16 777 218 | 2.135 | FDU 1 (index 1) | 865 000 µs |
+| 19 | 2.375 | 3 | `0x01000003` | 16 777 219 | 2.385 | FDU 2 (index 2) | 865 000 µs |
+| 21 | 2.625 | 4 | `0x01000004` | 16 777 220 | 2.635 | FDU 3 (index 3) | 865 000 µs |
+| 25 | 3.125 | 5 | `0x01000005` | 16 777 221 | 3.135 | FDU 4 (index 4) | 865 000 µs |
+| 33 | 4.125 | 6 | `0x01000006` | 16 777 222 | 4.135 | FDU 5 (index 5) | 865 000 µs |
+| 41 | 5.125 | 7 | `0x01000007` | 16 777 223 | 5.135 | FDU 6 (index 6) | 865 000 µs |
+| 49 | 6.125 | 8 | `0x01000008` | 16 777 224 | 6.135 | FDU 7 (index 7) | 865 000 µs |
+
+**Application events of the ground node** (the flight node raises none: no discard, no change of state, no Unlock). At 0.0 s, in this order: `fop1_directive` (1, 1, 0) (Accept) and `fop1_directive` (3, 1, 0) (Positive Confirm) of *Initiate AD Service (without CLCW check)*, which leaves S6 for S1 in one cell (E23), then `fop1_state` (1). At each instant of the table above, after the frame's `clcw_changed`: `fop1_transfer` (3, *n*) for the FDU *n* in the row (Positive Confirm). FOP-1 sends no retransmission, raises no Alert, and the timer is never within 865 000 µs of expiring, so no `Timeout` is given.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-144 | At the `cop1` level the ground node SHALL do in each step, in this order: for each TM frame delivered, the outputs of APP-138 up to `clcw_changed`, the OCF given to FOP-1 as Clcw (InvalidClcw if it is not a CLCW), FOP-1's events, and the remaining outputs of APP-138; Timeout to FOP-1, once, if its `next_deadline` is not after `now`; each ops entry due, in script order (a directive to FOP-1, a command or table upload to the segmenter); and, in a step with `tx_slot`, a RequestAd of one FDU if none is unanswered, then the frame of the held transmit request (Type-BC before Type-AD) as the last output of the step, followed by TransmitDone for its kind. A transmit request that FOP-1 returns at another time SHALL be held for the next slot, and the Abort Request SHALL NOT be acted on (§4.5.1). | 232.1 §3.2.3, §5.1.6, §5.1.9.1, §5.2.4 to §5.2.10, §5.3.2.1, Table 5-1 E41 to E46; COP-006, COP-013 | T |
+| APP-145 | The ground node SHALL give FOP-1 an FDU only with RequestAd, and only when no earlier RequestAd is unanswered (232.1 §4.4.2); it SHALL number the FDUs from 0 in the order requested; and after an Alert it SHALL do nothing of its own: it SHALL NOT resubmit a negatively confirmed or rejected FDU, and it SHALL report a Reject Response to a request as `fop1_transfer` (§7.4), not as `uplink_refused`, which stays the report of an input that FOP-1 returns an error for (APP-143). Recovery is the directives of the ops script. | 232.1 §4.3.2, §4.4.2; COP-004 | T |
+| APP-146 | At the `cop1` level the flight node SHALL give FARM-1 every TC frame of the uplink VC that passed the strict decode and the validation checks, of type AD, BD, and BC, with `buffer_available` from its delivery buffer of depth 2, and SHALL output, in this order and in addition to APP-139: for a frame that FARM-1 discards, `frame_discarded` (2, event number), and `farm1_state` if the state changed; for an accepted Unlock, `farm1_unlock`, then `farm1_state` if the state changed, and the node SHALL reset its MapReassembler and delivery buffer; for an accepted Type-AD frame, the reassembly and packet outputs of APP-139 in the same step, with the Segment Header octet put in front of the data FARM-1 delivers (D10 of the A3 plan). A Type-BC frame whose data field is neither Unlock nor Set V(R) SHALL be `frame_rejected` (7) with FARM-1 given the invalid-frame input (E9). | 232.1 §3.3.2, §6.1.8.3.1, §6.3.2.1, §6.3.2.2, Table 6-1; 232.0 §4.1.3.3; COP-030, COP-031, COP-033, COP-036; TC-005, TC-021, TC-023 | T |
+| APP-147 | The OCF of every downlink frame at the `cop1` level SHALL be the word `0x01000000` + `0x2000` × Lockout + `0x1000` × Wait + `0x0800` × Retransmit + `0x0200` × (FARM-B Counter mod 4) + N(R), of FARM-1's state after the uplink frames delivered at or before the slot instant (APP-134), with N(R) = V(R). | 232.0 §4.2.1.5 to §4.2.1.11; 232.1 §6.1.3 to §6.1.7, §6.2.4, Table 6-1; COP-034, COP-035 | T |
+| APP-148 | The `directive` parameter of a `fop1_directive` entry SHALL take the values of §4.5.2 (`"initiate_ad_without_clcw"`, `"initiate_ad_with_clcw"`, `"initiate_ad_with_unlock"`, `"terminate_ad"`, and `{"set_vs":n}` with n from 0 to 255), the ground node SHALL give each to FOP-1 as its Directive Type and Qualifier of 232.1 Table 4-1, and the harness SHALL reject any other value when it parses the file. | 232.1 §4.1, Table 4-1, Table 5-1 E23 to E40 | T |
+| APP-149 | The COP-1 events SHALL be those of §7.4 (200 to 203 of the ground node, 210 and 211 of the flight node), raised on the notifications, Alerts, and changes of state of the engines, in the order of the engine's actions and the positions that APP-144 and APP-146 give them. | 232.1 §4.2 to §4.4, Tables 4-2, 4-4, 4-6, §6.3.1; COP-004; API-080 | T |
+| APP-150 | The golden trace of `a3-nominal` SHALL have the uplink schedule, the CLCW words, the acknowledgements, and the events of §4.5.5, and the packet projection of `a1-nominal` (APP-003). | 232.1 §5.1.9.1, Table 5-1 E2, E5; 232.0 §4.1.2.3.3, §4.2.1; COP-010, COP-011 | T |
+
+
 ## 5. Time
 
 | Item | Value | Source |
@@ -510,8 +625,11 @@ Faults are **scripted** per case, not seeded: each entry addresses one link unit
 | `a2-downlink-loss` | A2 | `drop` and `duplicate` of downlink frames | Frame-gap and discontinuity detection, extractor resynchronisation, packet-sequence and dump events (LNK-051, LNK-061, SPP-011); §6.7 |
 | `a2-downlink-corrupt` | A2 | `flip`, `truncate`, and `delay` of downlink frames | The strict codec error path, the `CallerDiscard` path, and frame reordering (LNK-051, LNK-080); §6.7 |
 | `a2-uplink-faults` | A2 | `drop`, `flip`, and `duplicate` of uplink frames | The TC receive and reassembly error paths and the lack of recovery on the Bypass service (APP-043); §6.7 |
-| `a3-nominal` | A3 | none | Same timeline over COP-1; frozen from A3 (APP-004) |
-| `a3-uplink-*` | A3 | Loss, duplication, reordering, a lockout and its recovery with Unlock | Retransmission and COP-1 alerts; defined in A3 |
+| `a3-nominal` | A3 (`cop1`) | none | The timeline of §2.4 over COP-1 (end 35 s); the schedule of §4.5.5; frozen from A3 (APP-004) |
+| `a3-uplink-loss` | A3 | `drop` of uplink and of downlink frames | The headline case: a lost segment with frames behind it (E3, Retransmit flag, retransmission), a lone frame lost (only T1 retransmits), and lost acknowledgements (T1 expiry, E4); §6.8 |
+| `a3-uplink-disorder` | A3 | `duplicate`, `delay`, and `flip` of uplink frames | Reordering through the FARM-1 window (E3, E4) and the FECF path (E9) under COP-1; §6.8 |
+| `a3-uplink-lockout` | A3 | `drop` of one downlink frame; directives *Terminate AD Service*, *Set V(S)*, *Initiate AD Service* | A lockout (E5), Alert[Lockout], and its recovery with Unlock; §6.8 |
+| `a3-uplink-limit` | A3 | `drop` of one frame and its two retransmissions; directives *Set V(S)*, *Initiate AD Service (with CLCW check)* | Transmission_Limit reached, Alert[T1], the negative confirms, and a recovery; §6.8 |
 | `a4-aos-nominal`, `a4-uslp-nominal` | A4 | none | Variants (§4.3) |
 
 The fault scripts of the A2 and A3 cases are fixed by the milestone that adds them (APP-005).
@@ -535,7 +653,7 @@ A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in th
 |---|---|---|
 | `command` | `at_us`; `execution`: `{"mode":"immediate"}` or `{"mode":"time_tagged","exec_us":…}`; `call`: `function` (`noop`, `dump_memory`, `activate_table`, `set_payload_mode`, `unknown`) with its arguments of §3.3.5 (`address` and `length`; `table_id` and `crc`; `mode`; `code`); optional `extra_octets` | A command packet on APID `0x080`, output by the ground node at `at_us` (§6.2). `exec_us` is the execution time as µs after T0. `unknown` carries a function code that no function has. `extra_octets` appends that many `0x00` octets after the arguments, so that the packet length does not match the function code (APP-024) |
 | `table_upload` | `at_us`, `table_id`, `length` | A table-upload packet on APID `0x081` with the table octets of §3.3.6 |
-| `fop1_directive` | `at_us`, `directive` | A FOP-1 directive (§2.4). Reserved from A1: issued from A3 on and ignored below that link level (APP-019). A3 adds the directives it needs (APP-002) |
+| `fop1_directive` | `at_us`, `directive`: `"initiate_ad_without_clcw"`, `"initiate_ad_with_clcw"`, `"initiate_ad_with_unlock"`, `"terminate_ad"`, or `{"set_vs":n}` (n from 0 to 255) | A FOP-1 directive (§2.4, §4.5.2): the Directive Type and Qualifier of 232.1 Table 4-1. Reserved from A1: issued from A3 on and ignored below that link level (APP-019). The harness rejects a value it does not know (APP-148) |
 
 | Fault entry | Parameters | Meaning |
 |---|---|---|
@@ -683,6 +801,181 @@ The consequences are on board: no `CMD_EXECUTED` at 6.0 s; at 10.0 s `CMD_EXECUT
 | APP-141 | In a frame-level case (A2 on) the harness SHALL reject a scenario file that contains an `immediate` command, and a time-tagged command that the flight node rejects at delivery (§2.3: a time tag before the arrival, reason 2, or a full queue, reason 4), which it finds by following the queue of the script as for APP-128. It finds the arrival instant of each command by serving the ops entries in release order, one frame per uplink slot (§4.2): the commands released at one instant share a frame data unit while they fit, a table upload takes the slots of its segments, and a frame arrives 10 000 µs after its slot. Reason: a frame arrives off the 125 000 µs grid (APP-061), so an effect at delivery would be off-grid. | APP-061, APP-128 | T |
 | APP-143 | In frame mode the ground node SHALL count every input that the segmenter (a submit or the request for the next FDU) or FOP-1 refuses, and every packet of the script whose APID has no MAP (error `UnknownChannel`, stage 1, MAP ID 0, since there is none), and raise `uplink_refused` (§7.4) at once with the stage, the error code, and the MAP ID; a refused request or FOP-1 input leaves no frame for that slot, and the node SHALL NOT retry the input. | LNK-040, LNK-043; COP-010 | T |
 
+### 6.8 Cases of A3
+
+The five cases are added by APP-002 (a case, no change of an existing one), with the schedules of §4.5.5 and the rules of §4.5.1 to §4.5.4. Each has the end instant 35 s and the ops script of `a1-nominal` (the entries of §2.4 marked A1) with the entry marked A3 (*Initiate AD Service (without CLCW check)* at 0.0 s) and, where the case says so, further `fop1_directive` entries; none uses an immediate command (APP-141). The cases run at the link level `cop1`. Faults address units by index as sent (§6.5): a downlink index is the slot number, and an uplink index counts every unit the ground node sends, the retransmissions and the Type-BC frame included, in the order sent, so after a retransmission it differs from the indexes of §4.4.4. FDU *n* is the *n*-th frame data unit the ground node requests, from 0: FDU 0 is `NOOP` (seq 0), FDUs 1 to 3 are the three segments of the table upload, FDU 4 is `ACTIVATE_TABLE`, FDU 5 `DUMP_MEMORY`, FDU 6 the two commands of 5.0 s, and FDU 7 `SET_PAYLOAD_MODE` (on); it is the request identifier of §7.4. Arrival instants are the send instants plus 10 000 µs. The fault scripts, the directive scripts, and every table below are fixed here (APP-005) and were derived by hand from Tables 5-1 and 6-1 of 232.1 and the slot model, before any node exists; the blessed traces are compared with them (D8 of the A3 plan). A retransmitted frame has the octets of its first transmission (COP-011), so only the instants and the index change.
+
+In each table, "E*n*" names the cell of Table 5-1 (FOP-1, ground) or Table 6-1 (FARM-1, flight) that the event is, as §4.5.4 reads them, and `clcw_changed` is listed only when the OCF word changes, with the word as decimal (§4.5.3). The downlink of each case has the frame kinds of `a2-nominal` (§4.4.4) in the slots, except where a case drops frames. Events of one instant are in the order of APP-144, APP-146, and APP-149.
+
+**`a3-nominal`** has no fault and no directive entry beyond that of 0.0 s: the schedule of §4.5.5.
+
+#### `a3-uplink-loss`: the headline case
+
+| Fault | Index | Unit | Purpose |
+|---|---|---|---|
+| `drop` | up 2 | the frame of N(S) = 2, the second segment of the table (2.25 s) | a loss with later frames behind it: E3 on board, Retransmit flag in the CLCW, E10 on the ground, a retransmission of the lost frame and of the one behind it |
+| `drop` | down 33 to 39 | the seven frames of 4.125 s to 4.875 s, which carry the acknowledgements of N(S) = 5 | an acknowledged frame whose acknowledgement is lost: T1 expires, the frame is sent again and discarded as a duplicate (E4) |
+| `drop` | up 10 | the frame of N(S) = 7, the last command (6.0 s) | a lone command frame with no later frame behind it: no negative acknowledgement is possible, and only T1 retransmits it |
+
+The directive script is that of 0.0 s. Uplink units (all Type-AD, first octets `01 55`):
+
+| Index | t (s) | N(S) | Content | Arrival | FARM-1 |
+|---|---|---|---|---|---|
+| 0 | 1.0 | 0 | FDU 0 | 1.010 | E1, accepted |
+| 1 | 2.0 | 1 | FDU 1 | 2.010 | E1 |
+| 2 | 2.25 | 2 | FDU 2 | dropped | |
+| 3 | 2.5 | 3 | FDU 3 | 2.510 | E3: discarded, Retransmit flag set |
+| 4 | 2.75 | 2 | FDU 2 again | 2.760 | E1, Retransmit flag reset |
+| 5 | 3.0 | 3 | FDU 3 again | 3.010 | E1; the table is complete |
+| 6 | 3.25 | 4 | FDU 4 (ordered for 3.0 s, behind the two retransmissions) | 3.260 | E1 |
+| 7 | 4.0 | 5 | FDU 5 | 4.010 | E1; the CLCWs of slots 4.125 to 4.875 are dropped |
+| 8 | 5.0 | 5 | FDU 5 again, at the expiry of T1 | 5.010 | E4: discarded as a duplicate |
+| 9 | 5.25 | 6 | FDU 6 (ordered for 5.0 s, behind the retransmission) | 5.260 | E1 |
+| 10 | 6.0 | 7 | FDU 7 | dropped | |
+| 11 | 7.0 | 7 | FDU 7 again, at the expiry of T1 | 7.010 | E1 |
+
+**The retransmissions.** The second segment is lost at 2.25 s, FARM-1 discards the third at 2.51 s with E3 and sets Retransmit, and the first CLCW that shows it (the slot 2.625 s, N(R) = 2) reaches FOP-1 at 2.635 s: some frames outstanding, N(R) = NN(R), Retransmit 1, Transmission_Count 1 below the limit 3, so E10: Initiate AD Retransmission (count 2, timer 2.635 s to 3.635 s, both frames marked), S1 to S2. The frame of N(S) = 2 leaves in the slot of 2.75 s and the one of N(S) = 3 in the slot of 3.0 s; the CLCW of the slot 2.75 s still shows Retransmit (E10 in S2: Ignore), that of 2.875 s shows N(R) = 3 (E6: the first frame is acknowledged, S2 to S1), and that of 3.125 s shows N(R) = 4 (E6). FDU 4, requested at 3.0 s, waits in the Wait_Queue behind the retransmissions and is Accepted when the slot of 3.0 s is answered, with its transmit decision held for 3.25 s, which restarts the timer to 4.0 s; the last retransmission is acknowledged at 3.135 s, 500 000 µs after the order and 500 000 µs before the timer that the order started would have expired (§4.5.4). FDU 6 waits for the same reason behind the retransmission at 5.0 s.
+
+**Ground events** (the events of `a3-nominal` that are not listed are the same: `clcw_changed` and `fop1_transfer` Positive Confirm for each acknowledgement):
+
+| t (s) | Events |
+|---|---|
+| 0.0 | `fop1_directive` (1, 1, 0), `fop1_directive` (3, 1, 0), `fop1_state` (1) |
+| 1.135 | `clcw_changed` 16 777 217, `fop1_transfer` (3, 0) |
+| 2.135 | `clcw_changed` 16 777 218, `fop1_transfer` (3, 1) |
+| 2.635 | `clcw_changed` 16 779 266 (N(R) = 2, Retransmit), `fop1_state` (2) (E10) |
+| 2.885 | `clcw_changed` 16 777 219 (N(R) = 3), `fop1_transfer` (3, 2), `fop1_state` (1) (E6) |
+| 3.135 | `clcw_changed` 16 777 220, `fop1_transfer` (3, 3) |
+| 3.385 | `clcw_changed` 16 777 221, `fop1_transfer` (3, 4) |
+| 5.0 | the timer of FDU 5 (started 4.0 s) expires: `Timeout`, E16, the frame is sent again; no event |
+| 5.010 | `frame_gap` (0, 0, 7), `frame_gap` (1, 7, 5) (of the seven dropped frames, five are OID frames of VC 7, reported here as the gap of 5 on VC 7; the other two are frames of VC 0 whose gaps are reported by the rows of 5.260 s and 5.510 s below, when the next VC 0 frame arrives), `clcw_changed` 16 777 222 (N(R) = 6), `fop1_transfer` (3, 5) (E6: FDU 5 is acknowledged by the first CLCW the ground node sees after 4.01 s) |
+| 5.260 | `frame_gap` (1, 0, 1) (the housekeeping frame of 4.25 s), then HK 5 arrives and `seq_gap` (16, 1) |
+| 5.385 | `clcw_changed` 16 777 223 (N(R) = 7), `fop1_transfer` (3, 6) |
+| 5.510 | `frame_gap` (1, 1, 1): the second field of payload 2, whose first field (4.5 s) was dropped, is the tail of a packet the extractor never saw and gives no event, as in `a2-downlink-loss`; payload 2 is lost |
+| 7.0 | the timer of FDU 7 (started 6.0 s) expires: `Timeout`, E16, the frame is sent again; no event |
+| 7.135 | `clcw_changed` 16 777 224 (N(R) = 8), `fop1_transfer` (3, 7) |
+| 7.510 | payload 3 completes: `seq_gap` (32, 1) |
+
+**Flight events:** 1.010 `cmd_received` (1, 0); 2.510 `frame_discarded` (2, 3); 3.010 `table_received` (1, 300); 3.260 `cmd_received` (3, 1); 4.010 `cmd_received` (2, 2); 5.010 `frame_discarded` (2, 4); 5.260 `cmd_received` (4, 3) and `cmd_received` (1, 4); 7.010 `cmd_received` (4, 5). FARM-1 changes no state.
+
+**Timers.** The timer of N(S) = 5 started at 4.0 s and the CLCWs that could acknowledge it were dropped, so it expires at 5.0 s with the count at 1 (E16): this is the only reason, 1 000 000 µs after the frame left. The timer of N(S) = 7 started at 6.0 s and nothing could acknowledge a frame that never arrived, and expires at 7.0 s (E16). No other timer expires: each of the others is cancelled by E2 135 000 µs after it starts or restarted by a new frame. The `Timeout` of 5.0 s falls at the instant of the ops entries of that slot and goes before them (§4.5.1).
+
+**On board.** Every command executes as in `a3-nominal`: the latest arrival is that of `SET_PAYLOAD_MODE` (on) at 7.010 s, before its execution time 24.0 s. The ground node loses housekeeping packet 4 and payload packet 2 to the dropped frames (their `packet_in` is absent) and everything else of the downlink arrives.
+
+#### `a3-uplink-disorder`
+
+| Fault | Index | Unit | Purpose |
+|---|---|---|---|
+| `duplicate` | up 0 | the frame of N(S) = 0 (1.0 s) | E4 on board: the second copy is in the negative window |
+| `delay` 400 000 µs | up 2 | the frame of N(S) = 2 (2.25 s), so it arrives at 2.660 s, after N(S) = 3 | reordering through the window: E3, a retransmission of both frames, and the delayed original accepted before its retransmission (E4) |
+| `flip` octet 12, bit 7 | up 9 | the frame of N(S) = 7 (6.0 s), in the function code of its command | the FECF catches it (E9); only T1 retransmits it |
+
+The directive script is that of 0.0 s. Uplink units:
+
+| Index | t (s) | N(S) | Content | Arrival | FARM-1 |
+|---|---|---|---|---|---|
+| 0 | 1.0 | 0 | FDU 0 | 1.010, copies 0 and 1 | E1, then E4 |
+| 1 | 2.0 | 1 | FDU 1 | 2.010 | E1 |
+| 2 | 2.25 | 2 | FDU 2 | 2.660 (delayed) | E1, Retransmit flag reset |
+| 3 | 2.5 | 3 | FDU 3 | 2.510 | E3: discarded, Retransmit flag set |
+| 4 | 2.75 | 2 | FDU 2 again | 2.760 | E4: discarded |
+| 5 | 3.0 | 3 | FDU 3 again | 3.010 | E1; the table is complete |
+| 6 | 3.25 | 4 | FDU 4 (as in `a3-uplink-loss`) | 3.260 | E1 |
+| 7 | 4.0 | 5 | FDU 5 | 4.010 | E1 |
+| 8 | 5.0 | 6 | FDU 6 | 5.010 | E1 |
+| 9 | 6.0 | 7 | FDU 7 | 6.010 | FECF fails: not given to the reassembler |
+| 10 | 7.0 | 7 | FDU 7 again, at the expiry of T1 | 7.010 | E1 |
+
+The CLCW of the slot 2.625 s (N(R) = 2, Retransmit 1: after 2.510 s and before 2.660 s) gives E10 at 2.635 s as in `a3-uplink-loss`, and the delayed original arriving at 2.660 s makes the CLCW of the slot 2.75 s show N(R) = 3 and Retransmit 0, which reaches FOP-1 at 2.760 s as E6 (S2 to S1): FDU 2 is acknowledged by its original, and the retransmission that left at 2.75 s is the duplicate. The retransmission of N(S) = 3 (3.0 s) is the frame FARM-1 accepts, with the margins of `a3-uplink-loss` (the series of two frames is acknowledged 500 000 µs after the order).
+
+**Ground events** (as `a3-nominal` for the rest):
+
+| t (s) | Events |
+|---|---|
+| 2.635 | `clcw_changed` 16 779 266, `fop1_state` (2) |
+| 2.760 | `clcw_changed` 16 777 219 (N(R) = 3), `fop1_transfer` (3, 2), `fop1_state` (1) |
+| 3.135 | `clcw_changed` 16 777 220, `fop1_transfer` (3, 3) |
+| 3.385 | `clcw_changed` 16 777 221, `fop1_transfer` (3, 4) |
+| 4.135, 5.135 | `clcw_changed` 16 777 222, 16 777 223, with `fop1_transfer` (3, 5), (3, 6) |
+| 7.0 | the timer of FDU 7 expires: `Timeout`, E16; no event |
+| 7.135 | `clcw_changed` 16 777 224, `fop1_transfer` (3, 7) |
+
+The events of 1.135 s and 2.135 s are those of `a3-nominal`; the frame of 2.0 s is acknowledged at 2.135 s. **Flight events:** 1.010 `cmd_received` (1, 0), then `frame_discarded` (2, 4) (copy 1); 2.510 `frame_discarded` (2, 3); 2.760 `frame_discarded` (2, 4); 3.010 `table_received` (1, 300); 3.260 `cmd_received` (3, 1); 4.010 `cmd_received` (2, 2); 5.010 `cmd_received` (4, 3) and (1, 4); 6.010 `frame_rejected` (8) (`CrcMismatch`; FARM-1 given E9, no change); 7.010 `cmd_received` (4, 5). The downlink has no loss, so the ground node raises no other event; every command executes as in `a3-nominal` (the latest arrival is 7.010 s).
+
+#### `a3-uplink-lockout`
+
+| Fault | Index | Unit | Purpose |
+|---|---|---|---|
+| `drop` | down 16 | the frame of 2.0 s (an OID frame), whose CLCW is the last to show the old N(R) after the *Set V(S)* | without it FOP-1 would alert on N(R) (E13, Alert[NN(R)]) at 2.010 s, before the CLCW with the Lockout Flag reaches it (§4.5.4) |
+
+| At (s) | `fop1_directive` entries, in array order (before the table upload of 2.0 s) |
+|---|---|
+| 0.0 | `"initiate_ad_without_clcw"` (the entry marked A3) |
+| 2.0 | `"terminate_ad"`, then `{"set_vs":128}`, then `"initiate_ad_without_clcw"` |
+| 2.25 | `"terminate_ad"` |
+| 2.375 | `{"set_vs":1}` |
+| 2.5 | `"initiate_ad_with_unlock"` |
+
+The set-up at 2.0 s is *Terminate AD Service* (S1: Accept, Alert[term], Confirm, S6), *Set V(S)* to 128 (S6: accepted, V(S) = NN(R) = 128), and *Initiate AD Service (without CLCW check)* (E23, S1): the variant that precedes a lockout, since E14 raises Alert[Lockout] in S1 to S4 and ignores the Lockout Flag in S5 and S6 (§4.5.2). FDU 1 leaves in the slot of 2.0 s with N(S) = 128 while FARM-1 expects V(R) = 1: 128 is in the lockout area (5 to 252), so FARM-1 discards it, sets the Lockout Flag, and goes to S3 (E5). The CLCW of the slot 2.125 s (the slot 2.0 s is dropped) has Lockout 1 and N(R) = 1 and gives E14 at 2.135 s: Alert[Lockout], FOP-1 purges, negatively confirms FDU 1, and goes to S6. FDUs 2 and 3, requested at 2.25 s and 2.5 s, are rejected by S6 (E19) and the ground node does not resubmit them (APP-145). The recovery is *Terminate AD Service* in S6 (Accept, Confirm, no Alert, E29), *Set V(S)* to 1, the value FARM-1 reports as N(R), and *Initiate AD Service (with Unlock)* (E25, S6 to S5), which transmits a Type-BC frame in the slot of 2.5 s: the CLCW of that slot, sampled before the Unlock arrives, still shows Lockout, and E14 in S5 is Ignore. FARM-1 executes the Unlock at 2.510 s (E7: Lockout, Retransmit, and Wait reset, the FARM-B Counter counts it, S3 to S1), the CLCW of the slot 2.625 s is clean (N(R) = 1, V(S) = NN(R) = 1), and E1 in S5 confirms the directive at 2.635 s, releases the Type-BC frame, cancels its timer, and goes to S1. From 3.0 s every FDU leaves in its own slot.
+
+| Index | t (s) | Frame | Arrival | FARM-1 |
+|---|---|---|---|---|
+| 0 | 1.0 | Type-AD, N(S) = 0, FDU 0 | 1.010 | E1 |
+| 1 | 2.0 | Type-AD, N(S) = 128, FDU 1 (`01 55 00 7F 80` `41`) | 2.010 | E5: discarded, S1 to S3 |
+| 2 | 2.5 | Type-BC, Unlock (`31 55 00 07 00` `00`, 8 octets) | 2.510 | E7: S3 to S1, FARM-B Counter 1 |
+| 3 | 3.0 | Type-AD, N(S) = 1, FDU 4 | 3.010 | E1 |
+| 4 | 4.0 | Type-AD, N(S) = 2, FDU 5 | 4.010 | E1 |
+| 5 | 5.0 | Type-AD, N(S) = 3, FDU 6 | 5.010 | E1 |
+| 6 | 6.0 | Type-AD, N(S) = 4, FDU 7 | 6.010 | E1 |
+
+**Ground events** (the unlisted ones are those of `a3-nominal` with the FDU and N(R) numbers of the table above):
+
+| t (s) | Events |
+|---|---|
+| 0.0 | `fop1_directive` (1, 1, 0), (3, 1, 0), `fop1_state` (1) |
+| 1.135 | `clcw_changed` 16 777 217, `fop1_transfer` (3, 0) |
+| 2.0 | `fop1_directive` (1, 5, 0), `fop1_alert` (8, 29, 1), `fop1_directive` (3, 5, 0), `fop1_state` (6); `fop1_directive` (1, 7, 128), (3, 7, 128); `fop1_directive` (1, 1, 0), (3, 1, 0), `fop1_state` (1) |
+| 2.135 | `frame_gap` (0, 0, 1), `frame_gap` (1, 7, 1), `clcw_changed` 16 785 409 (N(R) = 1, Lockout), `fop1_transfer` (4, 1), `fop1_alert` (3, 14, 1), `fop1_state` (6) |
+| 2.25 | `fop1_directive` (1, 5, 0), (3, 5, 0) (no Alert, no change of state); `fop1_transfer` (2, 2) |
+| 2.375 | `fop1_directive` (1, 7, 1), (3, 7, 1) |
+| 2.5 | `fop1_directive` (1, 3, 0), `fop1_state` (5); `fop1_transfer` (2, 3) (S5 rejects the request) |
+| 2.635 | `clcw_changed` 16 777 729 (N(R) = 1, FARM-B Counter 1), `fop1_directive` (3, 3, 0), `fop1_state` (1) |
+| 3.135, 4.135, 5.135, 6.135 | `clcw_changed` 16 777 730, 16 777 731, 16 777 732, 16 777 733, with `fop1_transfer` (3, 4), (3, 5), (3, 6), (3, 7) |
+
+The timer of FDU 1 (2.0 s to 3.0 s) is cancelled by the Alert at 2.135 s and that of the Type-BC frame (2.5 s to 3.5 s) by E1 at 2.635 s. **Flight events:** 1.010 `cmd_received` (1, 0); 2.010 `frame_discarded` (2, 5), `farm1_state` (3); 2.510 `farm1_unlock`, `farm1_state` (1); 3.010 `cmd_received` (3, 1); 4.010 `cmd_received` (2, 2); 5.010 `cmd_received` (4, 3), (1, 4); 6.010 `cmd_received` (4, 5). **On board:** the table upload is lost (FDU 1 negatively confirmed, FDUs 2 and 3 rejected), so no `table_received`; at 10.0 s `CMD_EXECUTED` (3, 1, 0) and `TABLE_REJECTED` (1, 1, 0) (no table) replace `TABLE_ACTIVATED`, and housekeeping reports no activated table; every other command executes as in `a3-nominal` (the latest arrival is 6.010 s).
+
+#### `a3-uplink-limit`
+
+| Fault | Index | Unit | Purpose |
+|---|---|---|---|
+| `drop` | up 7, 8, 9 | the frame of N(S) = 7 at 6.0 s, and its retransmissions at 7.0 s and 8.0 s | the same frame dropped until Transmission_Limit = 3 transmissions are made: Alert[T1] (E17) at 9.0 s |
+
+| At (s) | `fop1_directive` entries |
+|---|---|
+| 0.0 | `"initiate_ad_without_clcw"` |
+| 10.0 | `{"set_vs":7}` |
+| 11.0 | `"initiate_ad_with_clcw"` |
+
+Indexes 0 to 6 are those of `a3-nominal`. FDU 7 leaves at 6.0 s (index 7), 7.0 s (index 8, T1 expired with the count at 1: E16, count 2), and 8.0 s (index 9, E16, count 3), and every copy is dropped. At 9.0 s the timer expires with the count at the limit (E17, Timeout_Type 0): Alert[T1], FOP-1 purges, negatively confirms FDU 7, and goes to S6 with V(S) = NN(R) = 8 (OI-60). The CLCWs show N(R) = 7 throughout (E5: Ignore), and in S6 every CLCW is ignored. The recovery sets V(S) to 7, the N(R) of the CLCWs (Table 4-1 note 2), in S6 at 10.0 s (E35), and *Initiate AD Service (with CLCW check)* at 11.0 s (E24, S6 to S4, timer 11.0 s to 12.0 s): the CLCW of the slot 11.0 s reaches FOP-1 at 11.010 s with N(R) = V(S) = NN(R) = 7 and no flag (E1 in S4), which confirms the directive, cancels the timer, and goes to S1.
+
+**Ground events** (the events of `a3-nominal` up to 5.135 s, with FDUs 0 to 6, are unchanged; after it the CLCW word stays 16 777 223):
+
+| t (s) | Events |
+|---|---|
+| 7.0, 8.0 | the timer expires (E16); the frame is sent again (a `unit_sent`, dropped); no event |
+| 9.0 | `fop1_transfer` (4, 7), `fop1_alert` (2, 17, 1), `fop1_state` (6) |
+| 10.0 | `fop1_directive` (1, 7, 7), `fop1_directive` (3, 7, 7) |
+| 11.0 | `fop1_directive` (1, 2, 0), `fop1_state` (4) |
+| 11.010 | `fop1_directive` (3, 2, 0), `fop1_state` (1) |
+
+**Flight events:** 1.010 `cmd_received` (1, 0); 2.510 `table_received` (1, 300); 3.010 `cmd_received` (3, 1); 4.010 `cmd_received` (2, 2); 5.010 `cmd_received` (4, 3), (1, 4). **On board:** `SET_PAYLOAD_MODE` (on) never arrives, so the payload mode stays *off* after 20.0 s: no `PAYLOAD_MODE` (1) event (8 event packets), no payload packet at 24.5, 26.5, or 28.5 s (10 payload packets), and housekeeping reports payload mode 0 from 20.0 s. The packet projection differs from `a3-nominal` and is not part of APP-003. Timers: the three timers of FDU 7 are 1 000 000 µs each (6.0 s, 7.0 s, 8.0 s), and none of the others expires.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-151 | The cases `a3-nominal`, `a3-uplink-loss`, `a3-uplink-disorder`, `a3-uplink-lockout`, and `a3-uplink-limit` SHALL be those of §4.5.5 and §6.8, each at the link level `cop1` in the scenario file with its golden trace, with the ops, directive, and fault scripts, the uplink schedules, and the events that the tables of §6.8 give; the fault and directive scripts SHALL NOT change after the traces are blessed (APP-005), and the retransmission instants and indexes of each case SHALL be those of its table, derived from the cells of 232.1 Tables 5-1 and 6-1. | 232.1 §5.1.9.1, §5.1.10, §6.1.8.3.1, Tables 5-1, 6-1 (E1 to E10, E13, E14, E16, E17, E23 to E29, E35); COP-001, COP-002 | T |
+| APP-152 | At the `cop1` level the harness SHALL apply the check of APP-141 to the nominal uplink schedule of §4.2 (one frame per uplink slot in release order, no fault, no retransmission, and no `fop1_directive` entry considered), and SHALL reject a file that contains an `immediate` command. For the cases of §6.8 the arrival of each command under the faults and directives of the case is that of its table, and every execution time is later than that arrival (the latest is 7.010 s, against an execution time of 24.0 s). | APP-141, APP-014 | T |
+
+
 ## 7. Golden traces
 
 ### 7.1 Encoding
@@ -722,7 +1015,7 @@ Library-internal events and step instants are **not** recorded, so an implementa
 
 ### 7.4 Application events
 
-A closed vocabulary with stable codes, mapped by each node from library events and its own state, in the spirit of API-080. Codes are never renumbered or reused. A2 adds frame-level codes in 100–199, A3 COP-1 codes (FOP-1 notifications and alerts, FARM-1 state) in 200–299.
+A closed vocabulary with stable codes, mapped by each node from library events and its own state, in the spirit of API-080. Codes are never renumbered or reused. A2 adds frame-level codes in 100–199, A3 COP-1 codes (FOP-1 notifications and alerts, FARM-1 state) in 200–299: 200 to 203 of the ground node, 210 and 211 of the flight node.
 
 | Code | `name` | Node | `args` |
 |---|---|---|---|
@@ -746,8 +1039,14 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | 112 | `sdu_too_long` | flight | MAP ID |
 | 113 | `downlink_refused` | flight | error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue), and the VCID of the packet when a generator refused one (absent when a slot failed) |
 | 114 | `uplink_refused` | ground | stage (1 submit to the segmenter, 2 request for the next FDU, 3 FOP-1 input), error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue), MAP ID (stage 1 when the APID has a MAP; 0 when it has none, which is error `UnknownChannel`, and for the other stages) |
+| 200 | `fop1_alert` | ground | reason (1 Limit, 2 T1, 3 Lockout, 4 Synch, 5 NN(R), 6 CLCW, 7 LLIF, 8 Term: the Alert reasons of 232.1 Table 4-4 in that order), the number of the FOP-1 event that caused it (1 to 46, 101 to 104, the E of Table 5-1), the FOP-1 state before it (1 to 6 for S1 to S6) |
+| 201 | `fop1_transfer` | ground | notification (2 Reject, 3 Positive Confirm, 4 Negative Confirm: the order of 232.1 Table 4-6, whose Accept, 1, is not an event), request identifier of the FDU (§6.8) |
+| 202 | `fop1_directive` | ground | notification (1 Accept, 2 Reject, 3 Positive Confirm, 4 Negative Confirm: 232.1 Table 4-2), Directive Type (the code of §4.5.2), Qualifier (V\*(S) of *Set V(S)*; 0 when there is none) |
+| 203 | `fop1_state` | ground | the new FOP-1 state (1 to 6 for S1 to S6) |
+| 210 | `farm1_state` | flight | the new FARM-1 state (1 Open, 2 Wait, 3 Lockout; 232.1 §6.1.2) |
+| 211 | `farm1_unlock` | flight | none |
 
-The frame-level events are raised on a change or an error, never per frame, so that a trace of 280 frames stays readable. `frame_gap` and `frame_discontinuity` are the `FrameGap` and `CountDiscontinuity` actions of the `FrameReceiver` (LNK-051): a count ahead of the expected one, with the number missing (modulo 256), and a count that repeats or goes back, which resets the expectation to the count received plus one. `frame_rejected` is a failure of the strict codec, including the FECF (TM-005, TC-006); the `CallerDiscard` that the node gives the receiver for a FECF failure (LNK-080) counts it, and the node does not map the `FrameDiscarded` action it returns to `frame_discarded`. `frame_discarded` is a frame that the codec accepted and an engine discards: no case of A2 raises it (the VCs and MAPs of the codec and the engines agree, and Type-BD frames are always accepted), and A3 gives it its FARM-1 reasons. `clcw_changed` is raised when the OCF word of a frame differs from that of the last frame decoded (initially `0x01000000`, §4.4.1): a CLCW or any other OCF; a frame that is rejected leaves it as it was. `partial_discarded` is the `Discarded` action of the extractor, a packet in progress thrown away because the VC count had a gap or a discontinuity (LNK-061); only a gap of the VC's own count is flagged on its data field, since a frame lost by another VC cuts none of its packets. The reassembly events are those of `ReassemblyEvent` (LNK-070) that TC can raise; `GapDiscard` is USLP's. `downlink_refused` is the flight node's error of the downlink: a generator refused a packet that was built, or an engine failed in a slot and no frame was output (APP-142).
+The frame-level events are raised on a change or an error, never per frame, so that a trace of 280 frames stays readable. `frame_gap` and `frame_discontinuity` are the `FrameGap` and `CountDiscontinuity` actions of the `FrameReceiver` (LNK-051): a count ahead of the expected one, with the number missing (modulo 256), and a count that repeats or goes back, which resets the expectation to the count received plus one. `frame_rejected` is a failure of the strict codec, including the FECF (TM-005, TC-006); the `CallerDiscard` that the node gives the receiver for a FECF failure (LNK-080) counts it, and the node does not map the `FrameDiscarded` action it returns to `frame_discarded`. `frame_discarded` is a frame that the codec accepted and an engine discards: no case of A2 raises it (the VCs and MAPs of the codec and the engines agree, and Type-BD frames are always accepted), and A3 gives it its FARM-1 reasons. `clcw_changed` is raised when the OCF word of a frame differs from that of the last frame decoded (initially `0x01000000`, §4.4.1): a CLCW or any other OCF; a frame that is rejected leaves it as it was. `partial_discarded` is the `Discarded` action of the extractor, a packet in progress thrown away because the VC count had a gap or a discontinuity (LNK-061); only a gap of the VC's own count is flagged on its data field, since a frame lost by another VC cuts none of its packets. The reassembly events are those of `ReassemblyEvent` (LNK-070) that TC can raise; `GapDiscard` is USLP's. `downlink_refused` is the flight node's error of the downlink: a generator refused a packet that was built, or an engine failed in a slot and no frame was output (APP-142). The COP-1 events are raised on a notification, an Alert, or a change of state, never per frame (APP-149). A change of state is raised after the other events of the cell that caused it, which is when 232.1 §5.3.1 and §6.3.1 update the State variable; an Alert is raised after the Negative Confirms and Rejects it causes (232.1 §5.2.15). The Accept of an FDU, whether FOP-1 takes it at once or later from its Wait_Queue, is not an event, so that there is one `fop1_transfer` for each FDU that is rejected or confirmed; the Accept of a directive is `fop1_directive` (1, …). A retransmission is no event: it is a `unit_sent` of the uplink. The codes of the reasons, notifications, directives, and states are this scenario's numbering of the Blue Book's names (§4.5.2, §4.5.4), which the Blue Books do not number.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
