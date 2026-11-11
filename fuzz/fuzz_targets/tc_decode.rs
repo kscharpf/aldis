@@ -10,6 +10,7 @@
 use aldis_core::DecodeMode;
 use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
+use aldis_core::lookup::MapLookup;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     FrameData, MapConfig, PhysicalChannelConfig, Reason, SegmentHeaderUse, TcFrame, TcMapId,
@@ -108,9 +109,16 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     }
     // A strict decode of a frame of a configured channel re-encodes to the same octets (API-020).
     // The Err arms above fail on any rejection but an unknown channel, so "validates Ok" here
-    // means "a configured channel".
+    // means "a configured Spacecraft ID and VC". A MAP ID the channels do not hold passes the
+    // checks (TC-022, OI-98) and cannot be written (`UnknownChannel`), so it is left out (#433).
     if let Ok(f) = strict
         && check_frame(f.octets(), &table, DecodeMode::Lenient).is_ok()
+        && f.segment_header().is_none_or(|sh| {
+            let fields = f.header().fields();
+            table
+                .map(fields.spacecraft_id, fields.vc_id, sh.map_id)
+                .is_some()
+        })
     {
         let mut out = vec![0_u8; f.len()];
         let n = if let Some(cmd) = f.control_command() {

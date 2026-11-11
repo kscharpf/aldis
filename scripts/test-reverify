@@ -764,8 +764,9 @@ expect "--cancel (implies --wait): TIMEOUT, exit status 5" \
 expect "--status --wait: TIMEOUT, exit status 5" \
     bash -c 'grep -Eq "^#7 TIMEOUT: still running; the reverify of pid $2 is stalled" "$0" &&
         [ "$1" -eq 5 ]' "$work/bg.s" "$rc_s" "$h7"
-expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 s)" \
-    grep -Fq "which recorded no deadline, after 16 min" "$work/bg.n"
+# The waiter notices at 16 s or a poll later; a loaded machine adds a second or two (#261).
+expect "no sidecar (lock 9): the waiter's own --timeout plus the margin (16 to 19 s)" \
+    grep -Eq "which recorded no deadline, after 1[6-9] min" "$work/bg.n"
 expect "no deadline recorded: exit status 5" [ "$rc_n" -eq 5 ]
 wait "$(pid_of r)"
 rc_r=$?
@@ -781,7 +782,9 @@ rm -f "$repo/.git/reverify/7.lock" "$repo/.git/reverify/8.lock" "$repo/.git/reve
 reset ok
 touch "$stub/container" "$stub/hold-watch"
 printf '%s\n' fail ok >"$stub/dispatch-script"
-run --timeout 1 7 8
+# PR 7 must end before its watcher is stopped: give a watcher that exits at once 10 s to start, not
+# 1 s, so that a loaded machine does not turn FAILED into TIMEOUT (#261). PR 8 costs the 10 s.
+REVERIFY_SECONDS_PER_MIN=10 run --timeout 1 7 8
 expect "several PRs: the failed PR is printed" said "#7 pr-7 101 FAILED (failure)"
 expect "several PRs: the timed-out PR is printed" said_re "^#8 TIMEOUT: pr-8 run 102 head"
 expect "several PRs: both summaries are printed" \

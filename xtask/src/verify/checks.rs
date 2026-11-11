@@ -845,6 +845,8 @@ cargo xtask trace --scope m6
 cargo xtask trace --scope a1 --strict
 # A2 is closed: every in-scope requirement must keep an artefact (VER-020, a2 plan D1).
 cargo xtask trace --scope a2 --strict
+# A3 is in progress: progress is reported, not enforced, until its exit (VER-020, a3 plan D1).
+cargo xtask trace --scope a3
 ";
 
 const DENY: &str = "\
