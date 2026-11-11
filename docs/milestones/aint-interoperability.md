@@ -63,6 +63,7 @@ Written before any driver exists, after the maintainer has accepted D1 and D2:
 - **The pass criteria (D6)** for the two cases as requirements, and the loss script of the lossy-link case, with the indexes chosen against the first observed schedule (after WP-3).
 - New requirements take the next free ID of area APP and join §4. Checklist: "A spec-readings pull request before a codec", for the readings.
 - **Done when:** `cargo xtask spec-lint` passes.
+- **Split.** WP-1a (this part, [§11](../reference-application.md#11-interoperability-profile-aint) of the specification, APP-155 to APP-166) holds everything above except the drop indexes of the loss script; the Timeout_Type point is settled as far as the public documentation goes ([§11.2](../reference-application.md#112-the-open-point-timeout_type)). **WP-1b**, after WP-3, adds the indexes to [§11.6](../reference-application.md#116-the-loss-script) and the Timeout_Type and Initiate AD observations of the first run.
 
 ### WP-2 Transport driver (M) — the driver requirements of WP-1
 - The crate `refapp-interop` (D4): the library (step loop, the transport and clock traits, the loss script, the run log) and the binary (UDP and the monotonic clock).
@@ -93,12 +94,12 @@ AINT is complete when every item below is green on `main`. The requirements WP-1
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Independent ground system | The ground system, its release, its licence, and the way it is used are recorded (D1, D2); no part of it is in the repository | |
-| Driver | APP-090 (the node's step contract is unchanged) and APP-100 (the facade only); the requirements WP-1 adds for the driver: the step loop, the clock behind a trait, one datagram per frame, the loss script, the run log | |
+| Independent ground system | The ground system, its release, its licence, and the way it is used are recorded (D1, D2; [§11.1](../reference-application.md#111-the-ground-system)): APP-155, APP-156; no part of it is in the repository | |
+| Driver | APP-090 (the node's step contract is unchanged) and APP-100 (the facade only); APP-157 (step loop), APP-158 (slot), APP-159 (one datagram per frame), APP-160 (clock behind a trait), APP-161 (no node changed), APP-162 (run log), APP-163 (loss script) | |
 | Link units | APP-006 (whole frames, no synchronisation or coding) as exchanged with the ground system | |
-| Nominal case | The requirements WP-1 adds for the pass criteria of `a3-nominal` against the ground system (D6), with the record of D9 | |
-| Lossy-link case | The requirements WP-1 adds for the pass criteria of the lossy-link case (D6), with the record of D9 | |
-| Discrepancies | Every discrepancy of WP-3 and WP-4 filed (an issue, an OI, or an upstream report by the maintainer) and listed in §6 | |
+| Nominal case | APP-164 (the pass criteria of `a3-nominal` against the ground system, D6), with the record of D9 | |
+| Lossy-link case | APP-165 (the pass criteria of the lossy-link case, D6), with the record of D9 | |
+| Discrepancies | Every discrepancy of WP-3 and WP-4 filed (an issue, an OI, or an upstream report by the maintainer) and listed in §6: APP-166 | |
 | CI | The driver's loopback self-test runs in the check `refapp` (APP-106); the CI decision of D8 is carried out; `cargo xtask trace --scope aint --strict` passes | |
 | No C ABI change | `include/aldis/aldis.h` and `aldis-ffi` unchanged by AINT (#490 D-a) | |
 | Follow-up issues | Every AINT review follow-up and discrepancy issue closed, or deferred to a named target (#490 D-e) | |

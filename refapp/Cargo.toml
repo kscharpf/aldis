@@ -3,7 +3,7 @@
 # facade, as an integrator would (APP-100), and is not part of the library workspace.
 [workspace]
 resolver = "3"
-members = ["refapp-scenario", "refapp-flight", "refapp-ground", "refapp-harness"]
+members = ["refapp-scenario", "refapp-flight", "refapp-ground", "refapp-harness", "refapp-interop"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,12 +20,13 @@ aldis = { path = "../crates/aldis", default-features = false }
 refapp-scenario = { path = "refapp-scenario" }
 refapp-flight = { path = "refapp-flight" }
 refapp-ground = { path = "refapp-ground" }
+refapp-harness = { path = "refapp-harness" }
 schemars = "1.2.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 
 # Flight lint set (VER-001, docs/profiles/rust.md §5), used by refapp-flight (APP-102) and
-# refapp-ground (APP-103). refapp-scenario and refapp-harness define the tooling profile
+# refapp-ground (APP-103). refapp-scenario, refapp-harness and refapp-interop use the tooling profile
 # (RS-017, APP-104) in their own manifests.
 [workspace.lints.rust]
 unsafe_code = "forbid"
