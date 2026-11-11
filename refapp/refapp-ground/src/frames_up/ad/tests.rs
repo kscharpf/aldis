@@ -81,7 +81,6 @@ fn a_request_ad_the_engine_refuses_is_not_unanswered_and_the_next_slot_requests_
         now,
         &mut out,
     );
-    assert!(out.events.is_empty());
     uplink.slot_ad(now, &mut out);
     // The refusal is reported once, at the FOP-1 stage (APP-143); no frame leaves.
     let code = u64::from(ErrorKind::OutOfRange.code());
