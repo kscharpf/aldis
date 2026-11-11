@@ -380,7 +380,7 @@ class Flight:
 
     def payload(self, t):
         n = self.pl_n
-        d = n.to_bytes(4, "big") + bytes((n + i) % 256 for i in range(396))
+        d = n.to_bytes(4, "big") + bytes((n + i) % 256 for i in range(4, 400))
         self.emit(self.sc["apid"]["payload"], 3, self.clock.cuc(t) + d, 1)
         self.pl_n += 1
 
