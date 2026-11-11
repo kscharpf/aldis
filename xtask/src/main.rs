@@ -83,7 +83,8 @@ commands:
   sana check-live              fail when a SANA registry differs from its snapshot (nightly)
   links                        relative Markdown links resolve inside the repository
   fix                          run the generators (fields, status, vectors schema, sana, header),
-                               then consistency
+                               run `cargo fmt --all` at the root and in exerciser/, fuzz/,
+                               crosscheck/, and refapp/, then consistency
   layers                       crate dependency rules (GEN-001..004)
   consistency                  the registrations agree: crates with code in coverage, features,
                                mutants, the exerciser, layers, READMEs, and the facade; fuzz
@@ -228,7 +229,8 @@ fn run_steps(steps: &[Step]) -> usize {
     failed
 }
 
-/// `xtask fix`: the generators, then `consistency`, which reports what is still missing.
+/// `xtask fix`: the generators, the format of every workspace, then `consistency`, which reports
+/// what is still missing.
 fn fix() -> Result<usize, String> {
     Ok(fields::run(true)?
         + status::run(true)?
@@ -238,7 +240,28 @@ fn fix() -> Result<usize, String> {
         + sana::run(&["--write"])?
         + header::run(true)?
         + refapp::gen_scenario()?
+        + format_workspaces()?
         + consistency::check()?)
+}
+
+/// `xtask fix`: runs `cargo fmt --all` at the repository root and in each separate workspace that
+/// `xtask check` formats (`check::separate_fmt_dirs`), so that every `fmt` step of `xtask check`
+/// finds nothing to change; returns 0, or an error when `cargo fmt` cannot run or fails.
+fn format_workspaces() -> Result<usize, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let root = repo::root();
+    let dirs = std::iter::once(".").chain(check::separate_fmt_dirs());
+    for dir in dirs {
+        let status = std::process::Command::new(&cargo)
+            .current_dir(root.join(dir))
+            .args(["fmt", "--all"])
+            .status()
+            .map_err(|e| format!("cargo fmt ({dir}/): {e}"))?;
+        if !status.success() {
+            return Err(format!("cargo fmt --all ({dir}/) failed: {status}"));
+        }
+    }
+    Ok(0)
 }
 
 fn run(args: &[&str]) -> Result<usize, String> {
