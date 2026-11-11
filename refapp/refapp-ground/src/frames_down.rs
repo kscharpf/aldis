@@ -4,7 +4,7 @@
 //! Specification: `docs/reference-application.md` §2.2, §4.1, §4.4.1, §4.4.3, §7.4; APP-011,
 //! APP-036, APP-133, APP-136, APP-138. The packets the extractors hand out go to the telemetry
 //! path of A1 unchanged ([`Telemetry`]). The OCF is decoded as a CLCW and reported when it
-//! changes; it is not given to FOP-1 in A2 (D2 of `docs/milestones/a2-frames.md`).
+//! changes; at the `cop1` level (A3) it also goes to FOP-1 (D3 a).
 
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::ocf::Ocf;
@@ -25,10 +25,11 @@ use aldis::tm::{
     DataFieldContent, TmFrame, TmMasterChannelConfig, TmPhysicalChannelConfig,
     TmVirtualChannelConfig,
 };
-use refapp_scenario::Output;
 use refapp_scenario::generated::{SPACECRAFT_ID, tm};
+use refapp_scenario::{Instant, Output};
 
 use crate::GroundError;
+use crate::frames_up::Uplink;
 use crate::telemetry::Telemetry;
 
 /// Event code `frame_gap` (§7.4).
@@ -161,7 +162,17 @@ impl FrameDownlink {
     }
 
     /// Handles one delivered TM frame, outputting in the order of APP-138.
-    pub(crate) fn receive(&mut self, unit: &[u8], telemetry: &mut Telemetry, out: &mut dyn Output) {
+    ///
+    /// At the `cop1` level `uplink` gets the OCF of the frame as FOP-1's `Clcw` right after
+    /// `clcw_changed` (D3 a, APP-144).
+    pub(crate) fn receive(
+        &mut self,
+        unit: &[u8],
+        telemetry: &mut Telemetry,
+        mut uplink: Option<&mut Uplink>,
+        now: Instant,
+        out: &mut dyn Output,
+    ) {
         let frame = match self.decode(unit) {
             Ok(frame) => frame,
             Err(e) => {
@@ -192,7 +203,12 @@ impl FrameDownlink {
                     let (scope, vcid) = scope_args(scope);
                     out.app_event(FRAME_DISCONTINUITY, &[scope, vcid]);
                 }
-                ReceiverOutput::Ocf { ocf, .. } => self.observe(ocf, out),
+                ReceiverOutput::Ocf { ocf, .. } => {
+                    let word = self.observe(ocf, out);
+                    if let Some(uplink) = uplink.as_deref_mut() {
+                        uplink.clcw(word, now, out);
+                    }
+                }
                 ReceiverOutput::DataField {
                     vc,
                     data,
@@ -254,8 +270,8 @@ impl FrameDownlink {
             .map(|_| ())
     }
 
-    /// Reports a change of the OCF word and keeps it as a CLCW (§4.4.1; D2 of the plan: not given to FOP-1).
-    fn observe(&mut self, ocf: Ocf, out: &mut dyn Output) {
+    /// Reports a change of the OCF word and keeps it as a CLCW (§4.4.1); returns the word.
+    fn observe(&mut self, ocf: Ocf, out: &mut dyn Output) -> u32 {
         let word = u32::from_be_bytes(ocf.to_octets());
         self.clcw = match ocf {
             Ocf::Clcw(report) => Clcw::decode_report(report).ok(),
@@ -265,6 +281,7 @@ impl FrameDownlink {
             self.ocf_word = word;
             out.app_event(CLCW_CHANGED, &[u64::from(word)]);
         }
+        word
     }
 }
 
@@ -368,3 +385,5 @@ fn discarded(reason: DiscardReason, out: &mut dyn Output) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cop1;

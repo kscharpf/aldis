@@ -576,3 +576,35 @@ fn a_directive_below_cop1_is_ignored() {
             .any(|r| matches!(r, Record::UnitSent { dir: Dir::Down, .. }))
     );
 }
+
+#[test]
+fn a_directive_entry_reaches_the_ground_node_with_its_value() {
+    // req: APP-148, APP-019
+    use refapp_ground::{Fop1Directive as Node, OpsEntry as NodeEntry};
+    let cases = [
+        (
+            Fop1Directive::InitiateAdWithoutClcw,
+            Node::InitiateAdWithoutClcw,
+        ),
+        (Fop1Directive::InitiateAdWithClcw, Node::InitiateAdWithClcw),
+        (
+            Fop1Directive::InitiateAdWithUnlock,
+            Node::InitiateAdWithUnlock,
+        ),
+        (Fop1Directive::TerminateAd, Node::TerminateAd),
+        (
+            Fop1Directive::SetVs(Ranged::new(9).unwrap()),
+            Node::SetVs(9),
+        ),
+    ];
+    for (parsed, expected) in cases {
+        let entry = directive(0, parsed).to_node().unwrap();
+        assert_eq!(entry, NodeEntry::Fop1Directive(expected));
+        // The code and the qualifier of the events are the harness type's, and the ground
+        // node's agree.
+        assert_eq!(
+            (parsed.code(), parsed.qualifier()),
+            (expected.code(), expected.qualifier())
+        );
+    }
+}
