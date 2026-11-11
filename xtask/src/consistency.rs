@@ -101,6 +101,8 @@ struct Crates {
     readmes: BTreeSet<String>,
     /// The root `README.md`.
     root_readme: String,
+    /// `crates/aldis/README.md`, whose example is a doctest.
+    facade_readme: String,
     /// Features of the facade `aldis`: name → entries.
     facade: Vec<(String, Vec<String>)>,
     /// Dependencies of the facade.
@@ -418,6 +420,13 @@ fn crate_problems(c: &Crates) -> Vec<String> {
     p
 }
 
+/// The first fenced `rust` block of `text`, from its opening fence to its closing fence.
+fn first_rust_block(text: &str) -> Option<&str> {
+    let start = text.find("```rust\n")?;
+    let end = text.get(start..)?.find("\n```")?;
+    text.get(start..start + end + 4)
+}
+
 /// Problems with the READMEs and the facade features of the crates.
 fn packaging_problems(c: &Crates, layered: &BTreeSet<String>) -> Vec<String> {
     let mut p = Vec::new();
@@ -428,6 +437,15 @@ fn packaging_problems(c: &Crates, layered: &BTreeSet<String>) -> Vec<String> {
         if !c.root_readme.contains(&format!("crates/{n}/README.md")) {
             p.push(format!("{n}: README.md does not link crates/{n}/README.md"));
         }
+    }
+    match first_rust_block(&c.root_readme) {
+        None => p.push("README.md: no ```rust example".to_owned()),
+        Some(block) if !c.facade_readme.contains(block) => p.push(
+            "README.md: its first ```rust example is not in crates/aldis/README.md, where a \
+             doctest compiles it"
+                .to_owned(),
+        ),
+        Some(_) => {}
     }
     let feature = |name: &str| c.facade.iter().find(|(f, _)| f == name).map(|(_, e)| e);
     for n in layered {
@@ -855,6 +873,7 @@ fn crates() -> Result<Crates, String> {
         ffi_group: read("exerciser/src/main.rs")?.contains("mod ffi;")
             && read("exerciser/src/exercise.rs")?.contains("crate::ffi::run("),
         root_readme: read("README.md")?,
+        facade_readme: read("crates/aldis/README.md")?,
         ffi_areas: ffi_areas(),
         ..Crates::default()
     };
@@ -1198,7 +1217,9 @@ mod tests {
                 .iter()
                 .map(|n| format!("[{n}](crates/{n}/README.md)"))
                 .collect::<Vec<_>>()
-                .join(" "),
+                .join(" ")
+                + "\n```rust\nfn main() {}\n```\n",
+            facade_readme: "```rust\nfn main() {}\n```\n".to_owned(),
             facade,
             facade_deps: names(&members),
             ffi_areas: names(&["time", "spp", "epp", "tm", "tc", "aos", "uslp"]),
@@ -1246,6 +1267,12 @@ mod tests {
         let mut c = consistent();
         c.members.remove("aldis-link");
         assert!(crate_problems(&c)[0].contains("not a workspace member"));
+        // The example of the root README is the one the facade README compiles.
+        let mut c = consistent();
+        c.facade_readme = "```rust\nfn main() { drop(()); }\n```\n".to_owned();
+        assert_eq!(crate_problems(&c).len(), 1, "{:?}", crate_problems(&c));
+        c.root_readme = "no example".to_owned();
+        assert!(crate_problems(&c).iter().any(|m| m.contains("no ```rust")));
     }
 
     #[test]
