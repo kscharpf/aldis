@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::frame::{FramedPackets, decode_frame};
 use crate::micros::Micros;
-use crate::scenario::{Level, Scenario};
+use crate::scenario::Scenario;
 
 /// Which node a record belongs to (§7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -511,12 +511,14 @@ pub struct Decoded {
 /// canonical trace, strictly (APP-086, API-030).
 ///
 /// `packet_out` and `packet_in` octets must be a strict Space Packet that fills them exactly. A
-/// `unit_sent` is a Space Packet in a case of [`Level::Packets`] and a TM frame (`down`) or TC
-/// frame (`up`) in a case of [`Level::Frames`] ([`crate::frame::decode_frame`]); the level is
-/// that of the case the header names, in `scenario`. In a frame-level case the frames of each
-/// direction also go, in trace order as a clean link, through the engines of the nodes
-/// ([`FramedPackets`]: the `PacketExtractor` of each downlink VC, the `MapReassembler` of the
-/// uplink), and every complete packet they hand out is decoded strictly too. Returns what was
+/// `unit_sent` is a Space Packet in a case of [`Level::Packets`](crate::scenario::Level::Packets)
+/// and a TM frame (`down`) or TC frame (`up`) in a case of
+/// [`Level::Frames`](crate::scenario::Level::Frames) or `cop1`
+/// ([`crate::frame::decode_frame`]); the level is that of the case the header names, in
+/// `scenario`. In a frame-level case the frames of each direction also go, in trace order as a
+/// clean link, through the engines of the nodes ([`FramedPackets`]: the `PacketExtractor` of each
+/// downlink VC, the `MapReassembler` of the uplink), and every complete packet they hand out is
+/// decoded strictly too. Returns what was
 /// decoded.
 ///
 /// # Errors
@@ -544,7 +546,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             .as_str()
             .ok_or_else(|| at(format!("{kind} record without hex")))?;
         let octets = unhex(hex).map_err(at)?;
-        if kind == "unit_sent" && level == Level::Frames {
+        if kind == "unit_sent" && level.has_frames() {
             let dir = match v["dir"].as_str() {
                 Some("down") => Dir::Down,
                 Some("up") => Dir::Up,

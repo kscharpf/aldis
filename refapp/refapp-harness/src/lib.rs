@@ -29,14 +29,22 @@ use refapp_ground::GroundNode;
 use crate::scenario::Scenario;
 
 /// Runs a case with the Rust flight and ground nodes, in process, at the case's link level
-/// (the frame-level nodes for `Level::Frames`, APP-071).
+/// (the frame-level nodes for `Level::Frames`, APP-071; none yet for `Level::Cop1`).
 ///
 /// # Errors
-/// If the case does not exist or a node breaks the step contract.
+/// If the case does not exist, its level has no nodes yet, or a node breaks the step contract.
 pub fn run_case(case_id: &str) -> Result<String, String> {
     let scenario = Scenario::load()?;
     let case = scenario.case(case_id)?;
-    let frames = case.level == scenario::Level::Frames;
+    let frames = match case.level {
+        scenario::Level::Packets => false,
+        scenario::Level::Frames => true,
+        scenario::Level::Cop1 => {
+            return Err(format!(
+                "case `{case_id}`: the nodes of the level `cop1` come with A3 WP-3 and WP-4"
+            ));
+        }
+    };
     let mut flight = if frames {
         FlightNode::new_frames().map_err(|e| format!("case `{case_id}`: {e:?}"))?
     } else {

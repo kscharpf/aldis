@@ -13,7 +13,7 @@
 | WP-3 Flight node: FARM-1 | planned | — | FARM-1 for Type-AD and Type-BC frames, the delivery buffer, the CLCW, COP-1 events |
 | WP-4 Ground node: FOP-1 | planned | — | `RequestAd`, CLCW and timer inputs, transmit responses, directives, notifications and alerts as events, one frame per uplink slot |
 | WP-5 Golden traces | planned | — | `a3-*` cases blessed and frozen, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
-| WP-6 Strict decoding of COP-1 traces | planned | — | APP-086 for AD and BC frames and the CLCW in the `refapp` check |
+| WP-6 Strict decoding of COP-1 traces | planned | — | APP-086 for AD and BC frames and the CLCW in the `refapp` check; also carries the retransmitted AD frames through `FramedPackets` (WP-2 passes the frames of a clean link only) |
 | WP-7 Exit | planned | — | `trace --scope a3 --strict`; every A3 follow-up issue closed or deferred; roadmap, README, ACFS and AINT entry gates |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
@@ -88,8 +88,8 @@ Only what the document lacks; nothing in it is restated. The gaps found while wr
 - **Done when:** `cargo xtask spec-lint` passes.
 
 ### WP-2 Harness: COP-1 level (M) — APP-071, APP-075, APP-090
-- `Level::Cop1` and its serialisation (`cop1`) in the scenario model, the generated schema, and the scenario file's validation (`gen-scenario`, APP-107); the `fop1_directive` entry with the directives of WP-1 and their range checks; `fop1_directive` entries are accepted only at `cop1` and still ignored below it (APP-019).
-- The scheduler's slot handling and the `tx_slot` rules of §8.1 hold at the new level as at `frames`; the one-frame-per-slot rule is tested with scripted test nodes that send AD frames. The check that a command arrives before its execution time (APP-141) follows retransmissions at `cop1`, by applying the fault script to the nominal arrival schedule of WP-1.
+- `Level::Cop1` and its serialisation (`cop1`) in the scenario model, the generated schema, and the scenario file's validation (`gen-scenario`, APP-107); the `fop1_directive` entry with the directives of WP-1 and their range checks; `fop1_directive` entries are accepted at every level and ignored below `cop1` (APP-019).
+- The scheduler's slot handling and the `tx_slot` rules of §8.1 hold at the new level as at `frames`; the one-frame-per-slot rule is tested with scripted test nodes that send AD frames. The check that a command arrives before its execution time (APP-141) is checked at `cop1` against the nominal arrival schedule of WP-1 only (APP-152); the arrival of each command under faults is checked by the case tables and tests of WP-5.
 - The decoding of an AD frame and a BC frame by level for the trace tests, through the `tc` and `tm` features the harness already has; the function is here, the check is WP-6.
 - **#484:** `FramedPackets::take_up` (`refapp-harness/src/frame.rs`) keeps the uplink reassembly area in the struct, as the downlink keeps `extract_area`, instead of allocating `REASSEMBLY_AREA` for every frame. WP-2 is the first work package to change this code, so it carries the fix and closes #484.
 - Tests with `// req:`; `a0-empty`, the four `a1-*` traces, and the four `a2-*` traces stay byte-identical.

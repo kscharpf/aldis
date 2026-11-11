@@ -263,8 +263,22 @@ pub struct Cop1 {
 pub enum Level {
     /// A1: one Space Packet per link unit, sent when output.
     Packets,
-    /// A2 on: one frame per slot.
+    /// A2: one frame per slot, Type-BD frames only.
     Frames,
+    /// A3 on: one frame per slot with COP-1 (FOP-1 and FARM-1): Type-AD, Type-BD, and Type-BC
+    /// frames, and the FOP-1 directives of the ops script (APP-019, APP-148).
+    Cop1,
+}
+
+impl Level {
+    /// The link carries frames in slots: every level from A2 on (APP-071).
+    #[must_use]
+    pub const fn has_frames(self) -> bool {
+        match self {
+            Level::Packets => false,
+            Level::Frames | Level::Cop1 => true,
+        }
+    }
 }
 
 /// One case (§6.4, APP-076).
@@ -322,7 +336,8 @@ pub enum OpsEntry {
         /// Table length, octets.
         length: Ranged<u16, { TableLength::MIN as u64 }, { TableLength::MAX as u64 }>,
     },
-    /// A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).
+    /// A FOP-1 directive: reserved from A1, issued at the level `cop1`, ignored below it
+    /// (APP-019, APP-148).
     Fop1Directive {
         /// Release instant, µs.
         at_us: Micros,
@@ -504,12 +519,47 @@ impl JsonSchema for UnknownCode {
     }
 }
 
-/// A FOP-1 directive (§2.4).
+/// A FOP-1 directive: the Directive Type and Qualifier of 232.1 Table 4-1 that the cases use
+/// (§4.5.2, APP-148). Any other value is rejected when the file is parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Fop1Directive {
-    /// *Initiate AD Service (without CLCW Check)* (232.1 §4.1).
+    /// *Initiate AD Service (without CLCW Check)*, code 1 (232.1 §4.1, Table 5-1 E23).
     InitiateAdWithoutClcw,
+    /// *Initiate AD Service (with CLCW Check)*, code 2 (E24).
+    InitiateAdWithClcw,
+    /// *Initiate AD Service (with Unlock)*, code 3 (E25).
+    InitiateAdWithUnlock,
+    /// *Terminate AD Service*, code 5 (E29).
+    TerminateAd,
+    /// *Set V(S) to V\*(S)*, code 7, with the Qualifier V\*(S) (E35).
+    SetVs(Ranged<u8, 0, 255>),
+}
+
+impl Fop1Directive {
+    /// The code of the directive in the events of §7.4: the row of 232.1 Table 4-1 (§4.5.2).
+    #[must_use]
+    pub const fn code(self) -> u8 {
+        match self {
+            Fop1Directive::InitiateAdWithoutClcw => 1,
+            Fop1Directive::InitiateAdWithClcw => 2,
+            Fop1Directive::InitiateAdWithUnlock => 3,
+            Fop1Directive::TerminateAd => 5,
+            Fop1Directive::SetVs(_) => 7,
+        }
+    }
+
+    /// The Qualifier of the event: V\*(S) of *Set V(S)*, 0 for a directive with none (§7.4).
+    #[must_use]
+    pub const fn qualifier(self) -> u8 {
+        match self {
+            Fop1Directive::SetVs(vs) => vs.get(),
+            Fop1Directive::InitiateAdWithoutClcw
+            | Fop1Directive::InitiateAdWithClcw
+            | Fop1Directive::InitiateAdWithUnlock
+            | Fop1Directive::TerminateAd => 0,
+        }
+    }
 }
 
 /// Direction of a link unit (§6.3).
@@ -650,12 +700,14 @@ impl Scenario {
                 } => {
                     let arrival = match c.level {
                         Level::Packets => at_us.saturating_add(self.link.one_way_delay_us),
-                        Level::Frames => {
+                        // At `cop1` the nominal schedule: no fault, no retransmission, and no
+                        // directive considered (APP-152).
+                        Level::Frames | Level::Cop1 => {
                             uplink.command(*at_us, call.packet_length(extra_octets.unwrap_or(0)))
                         }
                     };
                     match execution {
-                        Execution::Immediate {} if c.level == Level::Frames => {
+                        Execution::Immediate {} if c.level.has_frames() => {
                             return Err(format!(
                                 "ops[{i}]: an immediate command acts at its delivery, off the \
                                  {slot} µs grid at a frame level (APP-141)"
@@ -726,7 +778,7 @@ fn check_tagged(
     queue.retain(|e| *e >= arrival);
     if exec_us >= arrival && queue.len() < QUEUE_CAPACITY {
         queue.push(exec_us);
-    } else if level == Level::Frames {
+    } else if level.has_frames() {
         return Err(
             "a command rejected at delivery has an effect off the grid at a frame level (APP-141)"
                 .to_owned(),

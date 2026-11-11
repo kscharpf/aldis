@@ -579,9 +579,14 @@
           "const": "packets"
         },
         {
-          "description": "A2 on: one frame per slot.",
+          "description": "A2: one frame per slot, Type-BD frames only.",
           "type": "string",
           "const": "frames"
+        },
+        {
+          "description": "A3 on: one frame per slot with COP-1 (FOP-1 and FARM-1): Type-AD, Type-BD, and Type-BC\nframes, and the FOP-1 directives of the ops script (APP-019, APP-148).",
+          "type": "string",
+          "const": "cop1"
         }
       ]
     },
@@ -667,7 +672,7 @@
           ]
         },
         {
-          "description": "A FOP-1 directive: reserved from A1, issued from A3 on, ignored below (APP-019).",
+          "description": "A FOP-1 directive: reserved from A1, issued at the level `cop1`, ignored below it\n(APP-019, APP-148).",
           "type": "object",
           "properties": {
             "kind": {
@@ -861,12 +866,43 @@
       ]
     },
     "Fop1Directive": {
-      "description": "A FOP-1 directive (§2.4).",
+      "description": "A FOP-1 directive: the Directive Type and Qualifier of 232.1 Table 4-1 that the cases use\n(§4.5.2, APP-148). Any other value is rejected when the file is parsed.",
       "oneOf": [
         {
-          "description": "*Initiate AD Service (without CLCW Check)* (232.1 §4.1).",
+          "description": "*Initiate AD Service (without CLCW Check)*, code 1 (232.1 §4.1, Table 5-1 E23).",
           "type": "string",
           "const": "initiate_ad_without_clcw"
+        },
+        {
+          "description": "*Initiate AD Service (with CLCW Check)*, code 2 (E24).",
+          "type": "string",
+          "const": "initiate_ad_with_clcw"
+        },
+        {
+          "description": "*Initiate AD Service (with Unlock)*, code 3 (E25).",
+          "type": "string",
+          "const": "initiate_ad_with_unlock"
+        },
+        {
+          "description": "*Terminate AD Service*, code 5 (E29).",
+          "type": "string",
+          "const": "terminate_ad"
+        },
+        {
+          "description": "*Set V(S) to V\\*(S)*, code 7, with the Qualifier V\\*(S) (E35).",
+          "type": "object",
+          "properties": {
+            "set_vs": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "required": [
+            "set_vs"
+          ],
+          "additionalProperties": false
         }
       ]
     },
