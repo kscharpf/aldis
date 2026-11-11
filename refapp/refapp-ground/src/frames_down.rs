@@ -161,7 +161,7 @@ impl FrameDownlink {
         self.clcw
     }
 
-    /// Handles one delivered TM frame, outputting in the order of APP-138.
+    /// Handles one delivered TM frame, outputting in the order of APP-138 (and APP-144 at `cop1`).
     ///
     /// At the `cop1` level `uplink` gets the OCF of the frame as FOP-1's `Clcw` right after
     /// `clcw_changed` (D3 a, APP-144).

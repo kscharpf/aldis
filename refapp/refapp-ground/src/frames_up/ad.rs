@@ -121,8 +121,16 @@ impl Uplink {
                 && let Some(ad) = &mut self.ad
             {
                 ad.next_request = ad.next_request.wrapping_add(1);
+                // The request counts as unanswered unless the engine refuses it with an error
+                // (APP-145); a notification inside `drive` clears the flag again.
                 ad.unanswered = true;
-                self.drive(Fop1Input::RequestAd { handle, fdu: &fdu }, now, out);
+                if !self.drive(Fop1Input::RequestAd { handle, fdu: &fdu }, now, out)
+                    && let Some(ad) = &mut self.ad
+                {
+                    // Refused: the FDU taken is lost, reported by `uplink_refused` and not
+                    // retried (APP-143); the next slot requests the next FDU.
+                    ad.unanswered = false;
+                }
             }
         }
         let Some(ad) = &mut self.ad else {
@@ -148,12 +156,16 @@ impl Uplink {
 
     /// One FOP-1 input: the engine decides, the node commits, holds the frame it returns, and
     /// raises the events of the actions in their order, `fop1_state` of a change last (§7.4).
-    fn drive(&mut self, input: Fop1Input<'_>, now: Instant, out: &mut dyn Output) {
+    /// Returns `false` if the engine refused the input with an error (`uplink_refused`).
+    fn drive(&mut self, input: Fop1Input<'_>, now: Instant, out: &mut dyn Output) -> bool {
         let before = self.fop.state();
         let mut area = [0_u8; FRAME];
         let decision = match self.fop.decide(&self.store, input, now, &mut area) {
             Ok(decision) => decision,
-            Err(error) => return self.refuse(out, STAGE_FOP1, error, 0),
+            Err(error) => {
+                self.refuse(out, STAGE_FOP1, error, 0);
+                return false;
+            }
         };
         let actions = self.fop.commit(&mut self.store, decision);
         for action in actions.iter() {
@@ -173,6 +185,7 @@ impl Uplink {
         if after != before {
             out.app_event(FOP1_STATE, &[state_number(after)]);
         }
+        true
     }
 
     /// Holds the frame of a transmit request until a slot (§4.5.1). A second request of a kind
@@ -358,3 +371,6 @@ const fn event_number(event: Fop1Event) -> u64 {
         E104 => 104,
     }
 }
+
+#[cfg(test)]
+mod tests;

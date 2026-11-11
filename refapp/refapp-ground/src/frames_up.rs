@@ -180,8 +180,9 @@ impl Uplink {
         }
     }
 
-    /// One uplink slot: at `cop1` the AD service ([`slot_ad`](Self::slot_ad)); below it the
-    /// frame of [`slot_bd`](Self::slot_bd), output as the last output of the step (APP-133).
+    /// One uplink slot: at `cop1` the AD service ([`slot_ad`](Self::slot_ad)), where
+    /// `TransmitDone` and its events follow the frame (APP-144); below it the frame of
+    /// [`slot_bd`](Self::slot_bd), output as the last output of the step (APP-133).
     pub(crate) fn slot(&mut self, now: Instant, out: &mut dyn Output) {
         let frame = if self.ad.is_some() {
             self.slot_ad(now, out);
