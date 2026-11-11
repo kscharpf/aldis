@@ -124,11 +124,13 @@ impl FrameDownlink {
             channel =
                 channel.with_vc(TmVirtualChannelConfig::new(id, DataFieldContent::Packets))?;
         }
+        // The receiver checks a frame's OCF Flag against its VC's configuration: the frames carry the
+        // MC_OCF, so each received VC expects the flag set (`ocf = true` of the former constructor).
         let entry = |id: VcId<3>| -> VcEntry<Tm> {
             VcEntry::new(
                 id,
                 TmVc::new(
-                    TmVirtualChannelConfig::new(id, DataFieldContent::Packets),
+                    TmVirtualChannelConfig::new(id, DataFieldContent::Packets).with_ocf(),
                     true,
                 ),
             )
