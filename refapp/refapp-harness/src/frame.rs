@@ -47,6 +47,8 @@ pub struct DecodedFrame {
     pub sequence: Option<u8>,
     /// TC: the Control Command of a Type-BC frame (232.0 §4.1.3.3).
     pub control_command: Option<ControlCommand>,
+    /// TM: the CLCW of the OCF, when the frame has one (232.0 §4.2.1).
+    pub clcw: Option<Clcw>,
 }
 
 impl DecodedFrame {
@@ -99,12 +101,15 @@ pub fn decode_frame(
                 ));
             }
             // The OCF of every TM frame is a CLCW (APP-134), decoded strictly (D8 a, APP-086).
-            if let Some(ocf) = frame.ocf() {
-                let Ocf::Clcw(report) = ocf else {
+            let clcw = match frame.ocf() {
+                Some(Ocf::Clcw(report)) => Some(
+                    Clcw::decode_report(report).map_err(|e| format!("not a strict CLCW: {e:?}"))?,
+                ),
+                Some(Ocf::ProjectSpecific(_) | Ocf::SdlsFsr(_)) => {
                     return Err("the OCF of a TM frame is not a CLCW".to_owned());
-                };
-                Clcw::decode_report(report).map_err(|e| format!("not a strict CLCW: {e:?}"))?;
-            }
+                }
+                None => None,
+            };
             Ok(DecodedFrame {
                 vcid: frame.vcid().get(),
                 data: frame.data_field().to_vec(),
@@ -113,6 +118,7 @@ pub fn decode_frame(
                 frame_type: None,
                 sequence: None,
                 control_command: None,
+                clcw,
             })
         }
         Dir::Up => {
@@ -167,6 +173,7 @@ pub fn decode_frame(
                 frame_type: Some(frame_type),
                 sequence: Some(frame.sequence_number().get()),
                 control_command: frame.control_command(),
+                clcw: None,
             })
         }
     }

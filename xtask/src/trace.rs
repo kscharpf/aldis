@@ -56,7 +56,7 @@ pub const CHECK_REQUIREMENTS: [(&str, &str); 16] = [
     ("fmt", "VER-004"),
     (
         "spec",
-        "VER-020, VER-024, VER-066, VER-072, TV-023, TV-024, APP-108",
+        "VER-020, VER-024, VER-066, VER-072, TV-023, TV-024, APP-108, APP-153",
     ),
     ("coverage", "VER-024"),
     ("big-endian", "VER-030, GEN-007"),

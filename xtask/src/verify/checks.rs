@@ -810,6 +810,9 @@ cargo xtask status
 cargo xtask layouts
 # The SANA registry snapshots of specs/sana/ and the tables generated from them (M2 plan D13).
 cargo xtask sana
+# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl
+# (APP-153). Inputs: that trace and README.md; `spec` reads every path, so both are covered.
+cargo xtask readme-diagram
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency

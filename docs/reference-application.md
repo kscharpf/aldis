@@ -1125,6 +1125,7 @@ The harness sends one message and waits for its answer; it never reads the wall 
 | APP-106 | `refapp/` SHALL be a separate Cargo workspace on the pinned toolchain (RS-001). CI SHALL check its formatting (VER-004), Clippy, tests, the `thumbv7em-none-eabihf` build of `refapp-flight`, and its licences and advisories (VER-003); from A1 CI SHALL reproduce every golden trace. | VER-001 | A |
 | APP-107 | All scenario values SHALL come from one language-neutral file in `refapp/scenario/`, validated against a published JSON Schema; the Rust constants SHALL be generated from it (a C++ header from A5), and CI SHALL check that the generated files are current. | — | A |
 | APP-108 | Tests in `refapp/` SHALL carry `// req:` annotations (VER-020), and `cargo xtask trace` SHALL read them and the `requirements` of golden-trace headers. | VER-020 | A |
+| APP-153 | The sequence diagram in `README.md` SHALL be generated, between marker comments, from the golden trace of `a3-uplink-loss`: every frame and CLCW in it SHALL be decoded with the strict decoders of APP-086, the frame the link dropped and the retransmission SHALL be marked, and `cargo xtask readme-diagram` SHALL fail while the region differs from the trace (`cargo xtask fix` rewrites it). | APP-086, APP-151 | T |
 
 ## 10. cFS flight side
 
