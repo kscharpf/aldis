@@ -191,6 +191,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "refapp-interop"
+version = "0.1.0"
+dependencies = [
+ "refapp-flight",
+ "refapp-ground",
+ "refapp-harness",
+ "refapp-scenario",
+]
+
+[[package]]
 name = "refapp-scenario"
 version = "0.1.0"
 dependencies = [

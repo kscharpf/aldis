@@ -284,6 +284,8 @@ jobs:
       - run: cargo xtask trace --scope a2 --strict
       # A3 is closed: every in-scope requirement must keep an artefact (VER-020, a3 plan D1).
       - run: cargo xtask trace --scope a3 --strict
+      # AINT is in progress: progress is reported, not enforced, until its exit (VER-020, aint plan D3).
+      - run: cargo xtask trace --scope aint
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trace-m0
