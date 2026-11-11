@@ -6,7 +6,7 @@ use std::fmt;
 use aldis::spp::SpacePacket;
 use serde_json::{Map, Value, json};
 
-use crate::frame::decode_frame;
+use crate::frame::{FramedPackets, decode_frame};
 use crate::micros::Micros;
 use crate::scenario::{Level, Scenario};
 
@@ -496,18 +496,33 @@ pub fn check_canonical(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// What [`decode_strict`] decoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Decoded {
+    /// `unit_sent`, `packet_out`, and `packet_in` records decoded.
+    pub records: usize,
+    /// Of those, the `unit_sent` records decoded as frames.
+    pub frames: usize,
+    /// The packets found inside the frames and decoded.
+    pub framed_packets: usize,
+}
+
 /// Decodes the octets of every `unit_sent`, `packet_out`, and `packet_in` record of `text`, a
 /// canonical trace, strictly (APP-086, API-030).
 ///
 /// `packet_out` and `packet_in` octets must be a strict Space Packet that fills them exactly. A
 /// `unit_sent` is a Space Packet in a case of [`Level::Packets`] and a TM frame (`down`) or TC
 /// frame (`up`) in a case of [`Level::Frames`] ([`crate::frame::decode_frame`]); the level is
-/// that of the case the header names, in `scenario`. Returns the number of records decoded.
+/// that of the case the header names, in `scenario`. In a frame-level case the frames of each
+/// direction also go, in trace order as a clean link, through the engines of the nodes
+/// ([`FramedPackets`]: the `PacketExtractor` of each downlink VC, the `MapReassembler` of the
+/// uplink), and every complete packet they hand out is decoded strictly too. Returns what was
+/// decoded.
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
 /// whose octets do not decode, with its 1-based line number.
-pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<usize, String> {
+pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String> {
     check_canonical(text)?;
     let mut lines = text.split_terminator('\n');
     let header: Value = serde_json::from_str(lines.next().unwrap_or_default())
@@ -516,7 +531,8 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<usize, String> {
         .as_str()
         .ok_or_else(|| "line 1: header without a case".to_owned())?;
     let level = scenario.case(case_id)?.level;
-    let mut decoded = 0;
+    let mut decoded = Decoded::default();
+    let mut framed = FramedPackets::new(scenario)?;
     for (i, l) in lines.enumerate() {
         let at = |e: String| format!("line {}: {e}", i + 2);
         let v: Value = serde_json::from_str(l).map_err(|e| at(e.to_string()))?;
@@ -534,7 +550,9 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<usize, String> {
                 Some("up") => Dir::Up,
                 _ => return Err(at("unit_sent record without a direction".to_owned())),
             };
-            decode_frame(scenario, level, dir, &octets).map_err(at)?;
+            let frame = decode_frame(scenario, level, dir, &octets).map_err(at)?;
+            decoded.frames += 1;
+            decoded.framed_packets += framed.take(dir, &frame).map_err(at)?;
         } else {
             let packet = SpacePacket::decode(&octets)
                 .map_err(|e| at(format!("{kind} is not a strict Space Packet: {e:?}")))?;
@@ -546,7 +564,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<usize, String> {
                 )));
             }
         }
-        decoded += 1;
+        decoded.records += 1;
     }
     Ok(decoded)
 }
