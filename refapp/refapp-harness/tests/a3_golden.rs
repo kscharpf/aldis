@@ -754,7 +754,7 @@ fn tc_header(f: &[u8]) -> [u32; 8] {
 
 /// A CLCW, field by field (232.0 §4.2.1): type, version, status, COP in effect, VCID, spare,
 /// No RF, No Bit Lock, Lockout, Wait, Retransmit, FARM-B Counter, spare, Report Value.
-fn clcw(w: u32) -> [u32; 14] {
+const fn clcw(w: u32) -> [u32; 14] {
     [
         field(w, 32, 0, 1),
         field(w, 32, 1, 2),
