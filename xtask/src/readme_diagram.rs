@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn the_readme_holds_each_region_once() {
         // req: APP-153, APP-154
-        let readme = include_str!("../../README.md");
+        let readme = crate::repo::read(&crate::repo::root().join("README.md")).unwrap();
         for r in &REGIONS {
             assert!(splice(readme, r.begin, r.end, "x\n").is_ok(), "{}", r.begin);
         }
