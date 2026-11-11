@@ -20,6 +20,20 @@ use aldis_testkit::{ScenarioFile, VectorFile, hex};
 use aldis_uslp::{Upid, VcfCountLen};
 use serde_json::{Map, Value, json};
 
+/// The physical channel of a TC VC: the longest frame the standard allows.
+fn tc_physical(fecf: bool) -> aldis_tc::PhysicalChannelConfig {
+    aldis_tc::PhysicalChannelConfig::new(1024, fecf).unwrap()
+}
+
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 const FILES: [&str; 2] = [
     "link/send/map_segmenter_tc.json",
     "link/send/map_segmenter_uslp.json",
@@ -68,9 +82,12 @@ impl Proto for Tc {
         let fecf = c["fecf"].as_bool().unwrap();
         let header = c["segment_header"].as_bool().unwrap();
         let channel = if header {
-            TcSegmenterParams::with_segment_header(fecf)
+            TcSegmenterParams::with_segment_header(tc_physical(fecf))
         } else {
-            TcSegmenterParams::without_segment_header(fecf, c["blocking"].as_bool().unwrap())
+            TcSegmenterParams::without_segment_header(
+                tc_physical(fecf),
+                c["blocking"].as_bool().unwrap(),
+            )
         };
         let entries = maps::<Tc>(c, |m| {
             let id = MapId::<6>::new(u8::try_from(num(&m["map_id"])).unwrap()).unwrap();
@@ -129,7 +146,7 @@ impl Proto for Uslp {
         });
         MapSegmenterConfig::new(
             VcId::<6>::new(1).unwrap(),
-            UslpSegmenterParams::new(count, count),
+            uslp_params(count, count),
             usize_of(&c["max_tfdf_len"]),
             &entries,
         )

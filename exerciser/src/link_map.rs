@@ -23,7 +23,8 @@ use aldis_link::segmenter::{
     Framing, MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterConfig, SegmenterInput,
     SegmenterOutput, SegmenterService, TcSegmenterParams, UslpSegmenterParams,
 };
-use aldis_uslp::{Upid, VcfCountLen};
+use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
+use aldis_uslp::{TransferFrameType, Upid, VcParams, VcfCountLen};
 
 use crate::exercise::Tally;
 
@@ -68,7 +69,11 @@ fn tc(t: &mut Tally) {
     t.check(sdu_map.id() == m1 && sdu_map.segmentation() == Some(40) && !sdu_map.blocking());
     t.check(packet_map.blocking() && packet_map.service() == SegmenterService::Any);
     let () = *packet_map.params();
-    let channel = TcSegmenterParams::with_segment_header(bb(true));
+    let Ok(physical) = TcPhysicalChannelConfig::new(bb(1024), bb(true)) else {
+        t.check(false);
+        return;
+    };
+    let channel = TcSegmenterParams::with_segment_header(physical);
     t.check(channel.segment_header() && channel.fecf());
     let Ok(config) = MapSegmenterConfig::<Tc, 2>::new(vc, channel, bb(12), &[sdu_map, packet_map])
     else {
@@ -267,7 +272,11 @@ fn tc(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let plain = TcSegmenterParams::without_segment_header(bb(false), bb(true));
+    let Ok(plain_physical) = TcPhysicalChannelConfig::new(bb(1024), bb(false)) else {
+        t.check(false);
+        return;
+    };
+    let plain = TcSegmenterParams::without_segment_header(plain_physical, bb(true));
     let Ok(pconfig) = MapSegmenterConfig::<Tc, 1>::new(vc, plain, bb(20), &[]) else {
         t.check(false);
         return;
@@ -356,8 +365,18 @@ fn uslp(t: &mut Tally) {
         t.check(false);
         return;
     };
-    let channel = UslpSegmenterParams::new(two, one);
+    let counts = |sc, exp| {
+        let mut vc = VcParams::new(bb(TransferFrameType::Variable));
+        vc.vcf_count_len_sequence = sc;
+        vc.vcf_count_len_expedited = exp;
+        UslpSegmenterParams::new(vc)
+    };
+    let Ok(channel) = counts(two, one) else {
+        t.check(false);
+        return;
+    };
     t.check(channel.vcf_len_sc() == two && channel.vcf_len_exp() == one);
+    t.check(UslpSegmenterParams::new(VcParams::new(bb(TransferFrameType::Fixed))).is_err());
     let Ok(sdus) = MapEntry::<Uslp>::new(m1, SegmenterService::Sdu, Upid::OctetStream)
         .with_segmentation(bb(30))
     else {
@@ -380,7 +399,7 @@ fn uslp(t: &mut Tally) {
     t.check(
         MapSegmenterConfig::<Uslp, 3>::new(
             vc,
-            UslpSegmenterParams::new(VcfCountLen::NONE, one),
+            counts(VcfCountLen::NONE, one).unwrap_or(channel),
             bb(9),
             &[packets],
         )

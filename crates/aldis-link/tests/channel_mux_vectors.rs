@@ -8,23 +8,24 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
-use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
+use aldis_aos::{
+    AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
+};
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{Error, ErrorKind, field};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh, MuxInput, MuxOutput,
-    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer, UslpVc,
-    VcConfig,
+    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel, UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{
-    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
-    VcfCountLen,
+    OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SecurityScope, SourceOrDestination,
+    TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 use serde_json::{Map, Value, json};
 
@@ -77,14 +78,18 @@ fn policy(c: &Map<String, Value>) -> MuxPolicy {
     }
 }
 
-/// The VC of `c`'s entry `v`, with the parameters every protocol has.
+/// The VC of `c`'s entry `v`, with the multiplexing parameters every protocol has.
 fn vc<P: MuxProtocol>(v: &Value, params: P::VcParams) -> VcConfig<P> {
     let c = v.as_object().unwrap();
-    let get = |k: &str| c.get(k).map_or(0, |n| usize::try_from(num(n)).unwrap());
-    VcConfig::<P>::new(P::Vc::try_from(small(&c["vcid"])).unwrap(), params)
+    VcConfig::<P>::new(params)
         .with_priority(small(&c["priority"]))
         .with_weight(Weight::new(u16::try_from(num(&c["weight"])).unwrap()).unwrap())
-        .with_security(SecurityLayout::new(get("sec_header_len"), get("sec_trailer_len")).unwrap())
+}
+
+/// The Security Header and Trailer lengths of the entry `c`.
+fn security(c: &Map<String, Value>) -> SecurityLayout {
+    let get = |k: &str| c.get(k).map_or(0, |n| usize::try_from(num(n)).unwrap());
+    SecurityLayout::new(get("sec_header_len"), get("sec_trailer_len")).unwrap()
 }
 
 /// A protocol of the scenarios, with its configuration from a scenario's `config`.
@@ -145,13 +150,30 @@ impl Proto for Tm {
             .iter()
             .map(|v| {
                 let o = v.as_object().unwrap();
-                let mut params = TmVc::new(match o["role"].as_str().unwrap() {
-                    "packets" => TmRole::Packets,
-                    "vca" => TmRole::Vca,
-                    other => panic!("unknown role {other}"),
-                });
-                params.ocf = ocf(o, "ocf_init_hex");
-                params.fsh = octets(o, "fsh_init_hex").map(|d| Fsh::new(&d).unwrap());
+                let mut config = TmVirtualChannelConfig::new(
+                    VcId::<3>::new(small(&o["vcid"])).unwrap(),
+                    match o["role"].as_str().unwrap() {
+                        "packets" => DataFieldContent::Packets,
+                        "vca" => DataFieldContent::VcaSdu,
+                        other => panic!("unknown role {other}"),
+                    },
+                )
+                .with_security(security(o));
+                let ocf = ocf(o, "ocf_init_hex");
+                let fsh = octets(o, "fsh_init_hex").map(|d| Fsh::new(&d).unwrap());
+                if ocf.is_some() {
+                    config = config.with_ocf();
+                }
+                if let Some(fsh) = &fsh {
+                    config = config.with_fsh(fsh.fsh_len().unwrap());
+                }
+                let mut params = TmVc::new(config);
+                if let Some(ocf) = ocf {
+                    params = params.with_initial_ocf(ocf).unwrap();
+                }
+                if let Some(fsh) = fsh {
+                    params = params.with_initial_fsh(fsh).unwrap();
+                }
                 vc::<Tm>(v, params)
             })
             .collect();
@@ -189,9 +211,22 @@ impl Proto for Aos {
             .unwrap()
             .iter()
             .map(|v| {
-                let params = AosVc {
-                    ocf: ocf(v.as_object().unwrap(), "ocf_init_hex"),
-                };
+                let o = v.as_object().unwrap();
+                let mut config = AosVirtualChannelConfig::new(
+                    SpacecraftId::<10>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
+                    VcId::<6>::new(small(&o["vcid"])).unwrap(),
+                    AosContent::VcaSdu,
+                )
+                .unwrap()
+                .with_security(security(o));
+                let ocf = ocf(o, "ocf_init_hex");
+                if ocf.is_some() {
+                    config = config.with_ocf();
+                }
+                let mut params = AosVc::new(config);
+                if let Some(ocf) = ocf {
+                    params = params.with_initial_ocf(ocf).unwrap();
+                }
                 vc::<Aos>(v, params)
             })
             .collect();
@@ -230,25 +265,36 @@ impl Proto for Uslp {
             fecf(c),
         )
         .unwrap();
-        let mut channel = UslpChannel::new(
+        let scid = SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap();
+        let mc_ocf = ocf(c, "mc_ocf_init_hex");
+        let channel = UslpChannel::new(
             physical,
-            SpacecraftId::<16>::new(u16::try_from(num(&c["scid"])).unwrap()).unwrap(),
+            scid,
             SourceOrDestination::from_bit(num(&c["source_or_destination"]) == 1),
             VcfCountLen::new(small(&c["oid"]["vcf_len"])).unwrap(),
+            mc_ocf,
         )
         .unwrap();
-        channel.mc_ocf = ocf(c, "mc_ocf_init_hex");
         let vcs: Vec<_> = c["vcs"]
             .as_array()
             .unwrap()
             .iter()
             .map(|v| {
                 let o = v.as_object().unwrap();
+                let mut codec = VcParams::new(TransferFrameType::Fixed);
+                codec.vcf_count_len_sequence = VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap();
+                codec.vcf_count_len_expedited = VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap();
+                codec.security = SecurityScope::Vc(security(o));
+                if mc_ocf.is_some() {
+                    codec.ocf = OcfUse::Required;
+                }
+                let config =
+                    UslpVcConfig::new(scid, VcId::<6>::new(small(&o["vcid"])).unwrap(), codec)
+                        .unwrap();
                 let params = UslpVc::new(
+                    config,
                     MapId::<4>::new(small(&o["map_id"])).unwrap(),
                     qos(o["qos"].as_str().unwrap()),
-                    VcfCountLen::new(small(&o["vcf_len_sc"])).unwrap(),
-                    VcfCountLen::new(small(&o["vcf_len_exp"])).unwrap(),
                     o.get("cop").and_then(Value::as_bool).unwrap_or(false),
                 )
                 .unwrap();

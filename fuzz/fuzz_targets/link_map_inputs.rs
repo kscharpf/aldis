@@ -25,6 +25,15 @@ use aldis_uslp::{Upid, VcfCountLen};
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 const fn vc() -> VcId<6> {
     VcId::<6>::new(1).unwrap()
 }
@@ -69,7 +78,7 @@ fn segmenter(u: &mut Unstructured<'_>) -> Result<()> {
     ];
     let config = MapSegmenterConfig::<Uslp, 4>::new(
         vc(),
-        UslpSegmenterParams::new(two, VcfCountLen::NONE),
+        uslp_params(two, VcfCountLen::NONE),
         u.int_in_range(2..=12)?,
         &maps,
     )

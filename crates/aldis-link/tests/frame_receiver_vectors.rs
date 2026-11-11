@@ -11,17 +11,17 @@ mod support;
 
 use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
 use aldis_core::engine::OutRange;
-use aldis_core::ids::MapId;
+use aldis_core::ids::{MapId, VcId};
 use aldis_core::ocf::Ocf;
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
     AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
     DiscardReason, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol, ReceiverInput,
-    ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
+    ReceiverOutput, TcChannel, TcVc, TmChannel, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 use serde_json::{Map, Value, json};
 use support::Plained;
@@ -75,19 +75,24 @@ impl Proto for Tm {
         )
     }
     fn vc_params(vc: &Value, _: &Map<String, Value>) -> TmVc {
-        let content = match vc["role"].as_str().unwrap() {
-            "packets" => TmContent::Packets,
-            "vca" => TmContent::Vca,
-            "unserved" => TmContent::Unserved,
+        let (content, served) = match vc["role"].as_str().unwrap() {
+            "packets" => (DataFieldContent::Packets, true),
+            "vca" => (DataFieldContent::VcaSdu, true),
+            "unserved" => (DataFieldContent::Packets, false),
             other => panic!("unknown role {other}"),
         };
-        let fsh = num(&vc["fsh_len"]);
-        TmVc::new(
+        let mut config = TmVirtualChannelConfig::new(
+            VcId::<3>::new(u8::try_from(num(&vc["vcid"])).unwrap()).unwrap(),
             content,
-            vc["ocf"].as_bool().unwrap(),
-            (fsh > 0).then_some(fsh),
-        )
-        .unwrap()
+        );
+        if vc["ocf"].as_bool().unwrap() {
+            config = config.with_ocf();
+        }
+        let fsh = num(&vc["fsh_len"]);
+        if fsh > 0 {
+            config = config.with_fsh(FshLen::new(u8::try_from(fsh).unwrap()).unwrap());
+        }
+        TmVc::new(config, served)
     }
 }
 

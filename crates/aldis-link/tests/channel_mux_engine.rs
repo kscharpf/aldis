@@ -9,24 +9,26 @@
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"
 )]
 
-use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
+use aldis_aos::{
+    AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
+};
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_core::security::SecurityLayout;
 use aldis_core::{ErrorKind, field};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, Cop, FrameClass, Fsh,
-    MuxInput, MuxOutput, MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel,
+    MuxInput, MuxOutput, MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel,
     UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{
-    PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
-    VcfCountLen,
+    OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination,
+    TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -42,16 +44,24 @@ type TmMux = ChannelMux<Tm, V, F>;
 type AosMux = ChannelMux<Aos, V, F>;
 type UslpMux = ChannelMux<Uslp, V, F>;
 
-const fn tm_vc(id: u8, role: TmRole, priority: u8) -> VcConfig<Tm> {
-    VcConfig::<Tm>::new(VcId::<3>::new(id).unwrap(), TmVc::new(role)).with_priority(priority)
+const fn tm_config_of(id: u8, content: DataFieldContent) -> TmVirtualChannelConfig {
+    TmVirtualChannelConfig::new(VcId::<3>::new(id).unwrap(), content)
+}
+
+const fn tm_vc_of(config: TmVirtualChannelConfig, priority: u8) -> VcConfig<Tm> {
+    VcConfig::<Tm>::new(TmVc::new(config)).with_priority(priority)
+}
+
+const fn tm_vc(id: u8, content: DataFieldContent, priority: u8) -> VcConfig<Tm> {
+    tm_vc_of(tm_config_of(id, content), priority)
 }
 
 fn tm_vcs() -> Vec<VcConfig<Tm>> {
     vec![
-        tm_vc(1, TmRole::Packets, 1),
-        tm_vc(2, TmRole::Packets, 3),
-        tm_vc(3, TmRole::Vca, 2),
-        tm_vc(7, TmRole::Packets, 0),
+        tm_vc(1, DataFieldContent::Packets, 1),
+        tm_vc(2, DataFieldContent::Packets, 3),
+        tm_vc(3, DataFieldContent::VcaSdu, 2),
+        tm_vc(7, DataFieldContent::Packets, 0),
     ]
 }
 
@@ -82,8 +92,21 @@ fn aos_channel() -> AosChannel {
     aos_channel_of(28, 0)
 }
 
+fn aos_config_of(scid: u16, id: u8) -> AosVirtualChannelConfig {
+    AosVirtualChannelConfig::new(
+        SpacecraftId::<10>::new(scid).unwrap(),
+        VcId::<6>::new(id).unwrap(),
+        AosContent::VcaSdu,
+    )
+    .unwrap()
+}
+
+fn aos_vc_of(scid: u16, id: u8, priority: u8) -> VcConfig<Aos> {
+    VcConfig::<Aos>::new(AosVc::new(aos_config_of(scid, id))).with_priority(priority)
+}
+
 fn aos_vc(id: u8, priority: u8) -> VcConfig<Aos> {
-    VcConfig::<Aos>::new(VcId::<6>::new(id).unwrap(), AosVc::default()).with_priority(priority)
+    aos_vc_of(421, id, priority)
 }
 
 fn aos_config() -> ChannelMuxConfig<Aos, V> {
@@ -104,14 +127,31 @@ fn aos_config_iz(insert_zone_len: usize) -> ChannelMuxConfig<Aos, V> {
     .unwrap()
 }
 
+fn uslp_params(sc: u8, exp: u8, mc_ocf: bool) -> VcParams {
+    let mut params = VcParams::new(TransferFrameType::Fixed);
+    params.vcf_count_len_sequence = VcfCountLen::new(sc).unwrap();
+    params.vcf_count_len_expedited = VcfCountLen::new(exp).unwrap();
+    if mc_ocf {
+        params.ocf = OcfUse::Required;
+    }
+    params
+}
+
+fn uslp_vc_config(id: u8, params: VcParams) -> UslpVcConfig {
+    UslpVcConfig::new(
+        SpacecraftId::<16>::new(0x1234).unwrap(),
+        VcId::<6>::new(id).unwrap(),
+        params,
+    )
+    .unwrap()
+}
+
 fn uslp_vc(id: u8, cop: bool) -> VcConfig<Uslp> {
     VcConfig::<Uslp>::new(
-        VcId::<6>::new(id).unwrap(),
         UslpVc::new(
+            uslp_vc_config(id, uslp_params(2, 1, false)),
             MapId::<4>::new(3).unwrap(),
             Qos::SequenceControlled,
-            VcfCountLen::new(2).unwrap(),
-            VcfCountLen::new(1).unwrap(),
             cop,
         )
         .unwrap(),
@@ -126,6 +166,7 @@ fn try_uslp_channel_of(frame_len: usize) -> Result<UslpChannel, aldis_core::Erro
         SpacecraftId::<16>::new(0x1234).unwrap(),
         SourceOrDestination::Source,
         VcfCountLen::NONE,
+        None,
     )
 }
 
@@ -203,7 +244,9 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     };
     let fixed = MuxPolicy::FixedPriority;
     // More VCs than the capacity.
-    let many: Vec<_> = (0..8).map(|i| tm_vc(i, TmRole::Packets, i)).collect();
+    let many: Vec<_> = (0..8)
+        .map(|i| tm_vc(i, DataFieldContent::Packets, i))
+        .collect();
     assert!(tm(&many, tm_channel(), fixed).is_ok());
     assert_eq!(
         failure(ChannelMuxConfig::<Tm, 3>::new(
@@ -215,14 +258,14 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     );
     // A VCID twice.
     let mut twice = tm_vcs();
-    twice.push(tm_vc(2, TmRole::Packets, 9));
+    twice.push(tm_vc(2, DataFieldContent::Packets, 9));
     assert_eq!(
         failure(tm(&twice, tm_channel(), fixed)),
         invalid(field::VC_ID)
     );
     // Equal priorities under fixed priority, and under no other policy.
     let mut equal = tm_vcs();
-    equal.push(tm_vc(4, TmRole::Packets, 3));
+    equal.push(tm_vc(4, DataFieldContent::Packets, 3));
     assert_eq!(
         failure(tm(&equal, tm_channel(), fixed)),
         invalid(field::VC_PRIORITY)
@@ -236,13 +279,17 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
         invalid(field::VC_ID)
     );
     let mut vca_oid = tm_vcs();
-    vca_oid[3] = tm_vc(7, TmRole::Vca, 0);
+    vca_oid[3] = tm_vc(7, DataFieldContent::VcaSdu, 0);
     assert_eq!(
         failure(tm(&vca_oid, tm_channel(), fixed)),
         invalid(field::IDLE_POLICY)
     );
     let mut sdls_oid = tm_vcs();
-    sdls_oid[3] = tm_vc(7, TmRole::Packets, 0).with_security(SecurityLayout::new(2, 0).unwrap());
+    sdls_oid[3] = tm_vc_of(
+        tm_config_of(7, DataFieldContent::Packets)
+            .with_security(SecurityLayout::new(2, 0).unwrap()),
+        0,
+    );
     assert_eq!(
         failure(tm(&sdls_oid, tm_channel(), fixed)),
         invalid(field::IDLE_POLICY)
@@ -252,28 +299,28 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     both_ocf.mc_ocf = Some([0; 4]);
     let mut vcs = tm_vcs();
     vcs[0] = VcConfig::<Tm>::new(
-        VcId::<3>::new(1).unwrap(),
-        TmVc {
-            ocf: Some([1; 4]),
-            ..TmVc::new(TmRole::Packets)
-        },
+        TmVc::new(tm_config_of(1, DataFieldContent::Packets).with_ocf())
+            .with_initial_ocf([1; 4])
+            .unwrap(),
     )
     .with_priority(1);
     assert_eq!(failure(tm(&vcs, both_ocf, fixed)), invalid(field::OCF_FLAG));
     let mut both_fsh = tm_channel();
     both_fsh.mc_fsh = Some(Fsh::new(&[1]).unwrap());
     vcs[0] = VcConfig::<Tm>::new(
-        VcId::<3>::new(1).unwrap(),
-        TmVc {
-            fsh: Some(Fsh::new(&[2, 3]).unwrap()),
-            ..TmVc::new(TmRole::Packets)
-        },
+        TmVc::new(tm_config_of(1, DataFieldContent::Packets).with_fsh(FshLen::new(3).unwrap()))
+            .with_initial_fsh(Fsh::new(&[2, 3]).unwrap())
+            .unwrap(),
     )
     .with_priority(1);
     assert_eq!(failure(tm(&vcs, both_fsh, fixed)), invalid(field::FSH_LEN));
     // A frame that leaves no data field to some VC: 6 header + 2 FECF + 4 + 2 security.
     let mut secured = tm_vcs();
-    secured[0] = tm_vc(1, TmRole::Packets, 1).with_security(SecurityLayout::new(4, 2).unwrap());
+    secured[0] = tm_vc_of(
+        tm_config_of(1, DataFieldContent::Packets)
+            .with_security(SecurityLayout::new(4, 2).unwrap()),
+        1,
+    );
     assert!(tm(&secured, tm_channel_of(15, true), fixed).is_ok());
     assert_eq!(
         failure(tm(&secured, tm_channel_of(14, true), fixed)),
@@ -327,7 +374,11 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
     // 65 536 octets.
     let aos = |vcs: &[VcConfig<Aos>], channel| ChannelMuxConfig::<Aos, V>::new(channel, fixed, vcs);
     assert_eq!(
-        failure(aos(&[aos_vc(63, 1)], aos_channel())),
+        failure(AosVirtualChannelConfig::new(
+            SpacecraftId::<10>::new(421).unwrap(),
+            VcId::<6>::new(63).unwrap(),
+            AosContent::VcaSdu
+        )),
         invalid(field::VC_ID)
     );
     let issue4 = |scid| {
@@ -337,7 +388,12 @@ fn a_configuration_the_blue_books_forbid_is_refused() {
         AosChannel::new(physical, SpacecraftId::<10>::new(scid).unwrap(), false)
     };
     assert_eq!(failure(issue4(256)), invalid(field::SPACECRAFT_ID));
-    assert!(aos(&[aos_vc(1, 1)], issue4(255).unwrap()).is_ok());
+    assert!(aos(&[aos_vc_of(255, 1, 1)], issue4(255).unwrap()).is_ok());
+    // Each VC belongs to the master channel of the channel's SCID.
+    assert_eq!(
+        failure(aos(&[aos_vc(1, 1)], issue4(255).unwrap())),
+        invalid(field::SPACECRAFT_ID)
+    );
     // A TM frame is at most 4 095 octets (TM-001, OI-51, HZ-TM-04).
     // The physical channel's managed parameters check the length (WP-2c).
     assert!(TmPhysicalChannelConfig::new(4095, true).is_ok());
@@ -389,7 +445,7 @@ fn the_configuration_reports_what_it_holds() {
     assert_eq!(vc.vc().get(), 2);
     assert_eq!((vc.priority(), vc.weight()), (3, Weight::ONE));
     assert_eq!(vc.security(), SecurityLayout::NONE);
-    assert_eq!(vc.params().role, TmRole::Packets);
+    assert_eq!(vc.params().config().content(), DataFieldContent::Packets);
     assert_eq!(MuxPolicy::default(), MuxPolicy::FixedPriority);
     // The VCs are kept in ascending VCID order whatever the order given.
     let mut shuffled = tm_vcs();
@@ -434,7 +490,8 @@ fn the_configuration_reports_what_it_holds() {
             variable,
             SpacecraftId::<16>::new(1).unwrap(),
             SourceOrDestination::Source,
-            VcfCountLen::NONE
+            VcfCountLen::NONE,
+            None
         )),
         named(ErrorKind::InvalidConfig, field::TRANSFER_FRAME_TYPE)
     );
@@ -964,8 +1021,8 @@ proptest! {
 fn the_protocols_without_cop_have_no_vcf_count_to_take() {
     // req: LNK-076, LNK-001
     use aldis_core::CopFrameKind;
-    let tm = TmVc::new(TmRole::Packets);
-    let aos = AosVc::default();
+    let tm = TmVc::new(tm_config_of(1, DataFieldContent::Packets));
+    let aos = AosVc::new(aos_config_of(421, 1));
     assert!(Tm::vc_fsh(&tm).is_none() && Aos::vc_fsh(&aos).is_none());
     let admitted = Aos::admit(&aos, &()).unwrap();
     assert_eq!(admitted.kind, CopFrameKind::Ad);
@@ -1049,7 +1106,7 @@ fn an_issue_4_aos_frame_has_an_8_bit_scid_and_zero_spare_bits() {
     )
     .unwrap();
     let config =
-        ChannelMuxConfig::<Aos, V>::new(channel, MuxPolicy::FixedPriority, &[aos_vc(1, 1)])
+        ChannelMuxConfig::<Aos, V>::new(channel, MuxPolicy::FixedPriority, &[aos_vc_of(255, 1, 1)])
             .unwrap();
     let mut mux = AosMux::new(config).unwrap();
     let mut out = [0; F];
@@ -1064,10 +1121,9 @@ fn a_uslp_vc_with_cop_needs_a_count_field_for_the_frame_sequence_number() {
     // req: LNK-078, LNK-076, RS-020, OI-78
     let make = |sc, cop| {
         UslpVc::new(
+            uslp_vc_config(1, uslp_params(sc, 0, false)),
             MapId::<4>::new(3).unwrap(),
             Qos::Expedited,
-            VcfCountLen::new(sc).unwrap(),
-            VcfCountLen::new(0).unwrap(),
             cop,
         )
     };
@@ -1213,4 +1269,166 @@ fn an_offer_the_adapter_refuses_is_counted_and_returned() {
     assert_eq!(mux.refuse(e), e);
     assert_eq!(mux.status().refused.get(), 1);
     assert_eq!(mux.status().offers.get(), 0);
+}
+
+#[test]
+fn a_tm_vc_takes_its_slots_from_the_codecs_configuration() {
+    // req: LNK-078, LNK-033, RS-020
+    let invalid = |f| named(ErrorKind::InvalidConfig, f);
+    let plain = tm_config_of(1, DataFieldContent::Packets);
+    // Without a `VC_OCF` or `VC_FSH` in the configuration there is no slot to start.
+    let vc = TmVc::new(plain);
+    assert_eq!(vc.config(), &plain);
+    assert!(Tm::vc_ocf(&vc).is_none() && Tm::vc_fsh(&vc).is_none());
+    assert_eq!(
+        failure(vc.with_initial_ocf([1; 4])),
+        invalid(field::OCF_FLAG)
+    );
+    assert_eq!(
+        failure(vc.with_initial_fsh(Fsh::new(&[1]).unwrap())),
+        invalid(field::FSH_LEN)
+    );
+    // With them, the slots start as 0 and take the initial values of the right length.
+    let configured = plain.with_ocf().with_fsh(FshLen::new(3).unwrap());
+    let vc = TmVc::new(configured);
+    assert_eq!(Tm::vc_ocf(&vc), Some([0; 4]));
+    assert_eq!(
+        Tm::vc_fsh(&vc).unwrap().octets().collect::<Vec<_>>(),
+        [0, 0]
+    );
+    let vc = vc
+        .with_initial_ocf([7; 4])
+        .unwrap()
+        .with_initial_fsh(Fsh::new(&[8, 9]).unwrap())
+        .unwrap();
+    assert_eq!(Tm::vc_ocf(&vc), Some([7; 4]));
+    assert_eq!(
+        Tm::vc_fsh(&vc).unwrap().octets().collect::<Vec<_>>(),
+        [8, 9]
+    );
+    // A Secondary Header of another length than the configuration's.
+    assert_eq!(
+        failure(TmVc::new(configured).with_initial_fsh(Fsh::new(&[8]).unwrap())),
+        invalid(field::FSH_LEN)
+    );
+    assert_eq!(Fsh::new(&[1, 2, 3]).unwrap().fsh_len(), FshLen::new(4));
+    // The VC and the SDLS lengths are the configuration's.
+    let secured = TmVc::new(configured.with_security(SecurityLayout::new(2, 1).unwrap()));
+    let vc = VcConfig::<Tm>::new(secured);
+    assert_eq!(vc.vc().get(), 1);
+    assert_eq!(vc.security(), SecurityLayout::new(2, 1).unwrap());
+}
+
+#[test]
+fn an_aos_vc_takes_its_slot_from_the_codecs_configuration() {
+    // req: LNK-078, LNK-033, RS-020
+    let plain = aos_config_of(421, 3);
+    let vc = AosVc::new(plain);
+    assert_eq!(vc.config(), &plain);
+    assert!(Aos::vc_ocf(&vc).is_none());
+    assert_eq!(
+        failure(vc.with_initial_ocf([1; 4])),
+        named(ErrorKind::InvalidConfig, field::OCF_FLAG)
+    );
+    let vc = AosVc::new(plain.with_ocf());
+    assert_eq!(Aos::vc_ocf(&vc), Some([0; 4]));
+    assert_eq!(
+        Aos::vc_ocf(&vc.with_initial_ocf([5; 4]).unwrap()),
+        Some([5; 4])
+    );
+    assert_eq!(Aos::vc_id(&vc).get(), 3);
+    assert_eq!(
+        Aos::security(&AosVc::new(
+            plain.with_security(SecurityLayout::new(1, 2).unwrap())
+        )),
+        SecurityLayout::new(1, 2).unwrap()
+    );
+}
+
+#[test]
+fn a_uslp_vc_and_its_channel_agree_with_the_codecs_configuration() {
+    // req: LNK-078, LNK-032, LNK-033, RS-020, OI-76
+    let invalid = |f| named(ErrorKind::InvalidConfig, f);
+    let map = MapId::<4>::new(3).unwrap();
+    let make = |params: VcParams, cop| {
+        UslpVc::new(uslp_vc_config(1, params), map, Qos::SequenceControlled, cop)
+    };
+    // The VCF Count Length of COP-1 is the first of the checks.
+    let mut variable = VcParams::new(TransferFrameType::Variable);
+    assert_eq!(failure(make(variable, true)), invalid(field::VCF_COUNT_LEN));
+    assert_eq!(
+        failure(UslpVc::check_count_len(true, VcfCountLen::NONE)),
+        invalid(field::VCF_COUNT_LEN)
+    );
+    assert!(UslpVc::check_count_len(true, VcfCountLen::new(1).unwrap()).is_ok());
+    assert!(UslpVc::check_count_len(false, VcfCountLen::NONE).is_ok());
+    // The mux builds fixed-length frames, and has no MAP configuration for SDLS per MAP.
+    assert_eq!(
+        failure(make(variable, false)),
+        invalid(field::TRANSFER_FRAME_TYPE)
+    );
+    variable.frame_type = TransferFrameType::Fixed;
+    variable.security = aldis_uslp::SecurityScope::PerMap;
+    assert_eq!(
+        failure(make(variable, false)),
+        invalid(field::SECURITY_HEADER_LEN)
+    );
+    let vc = uslp_vc(2, true);
+    assert_eq!(vc.params().config().vc_id().get(), 2);
+    assert_eq!(vc.vc().get(), 2);
+    assert_eq!(vc.security(), SecurityLayout::NONE);
+    // Each VC belongs to the master channel of the channel's SCID.
+    let channel = uslp_channel();
+    let other = UslpVc::new(
+        UslpVcConfig::new(
+            SpacecraftId::<16>::new(1).unwrap(),
+            VcId::<6>::new(1).unwrap(),
+            uslp_params(2, 1, false),
+        )
+        .unwrap(),
+        map,
+        Qos::SequenceControlled,
+        false,
+    )
+    .unwrap();
+    let uslp = |channel, vcs: &[VcConfig<Uslp>]| {
+        ChannelMuxConfig::<Uslp, V>::new(channel, MuxPolicy::FixedPriority, vcs)
+    };
+    assert_eq!(
+        failure(uslp(channel, &[VcConfig::new(other)])),
+        invalid(field::SPACECRAFT_ID)
+    );
+    // "Inclusion of OCF Required" is the master channel's, and so every VC's (732.1 §4.1.5.3).
+    let required = |id| {
+        VcConfig::<Uslp>::new(
+            UslpVc::new(
+                uslp_vc_config(id, uslp_params(2, 1, true)),
+                map,
+                Qos::SequenceControlled,
+                false,
+            )
+            .unwrap(),
+        )
+    };
+    let with_ocf = |ocf| {
+        UslpChannel::new(
+            UslpPhysicalChannelConfig::new(TransferFrameType::Fixed, 32, 0, true).unwrap(),
+            SpacecraftId::<16>::new(0x1234).unwrap(),
+            SourceOrDestination::Source,
+            VcfCountLen::NONE,
+            ocf,
+        )
+        .unwrap()
+    };
+    assert_eq!(with_ocf(Some([9; 4])).mc_ocf(), Some([9; 4]));
+    assert_eq!(with_ocf(None).mc_ocf(), None);
+    assert!(uslp(with_ocf(Some([9; 4])), &[required(1)]).is_ok());
+    assert_eq!(
+        failure(uslp(with_ocf(None), &[required(1)])),
+        invalid(field::OCF_FLAG)
+    );
+    assert_eq!(
+        failure(uslp(with_ocf(Some([9; 4])), &[uslp_vc(1, false)])),
+        invalid(field::OCF_FLAG)
+    );
 }

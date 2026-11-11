@@ -30,9 +30,10 @@ use aldis_link::protocol::{
 use aldis_link::receiver::{
     AosChannel, AosContent, AosVc, CallerDiscardReason, DeliveryService, DiscardReason,
     FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet, ReceiveProtocol,
-    ReceiverActions, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmContent, TmVc,
-    UslpChannel, UslpVc, VcEntry,
+    ReceiverActions, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmVc, UslpChannel,
+    UslpVc, VcEntry,
 };
+use aldis_tm::{DataFieldContent, FshLen, TmVirtualChannelConfig};
 use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType, Upid};
 
 use crate::exercise::Tally;
@@ -558,13 +559,15 @@ fn receivers(t: &mut Tally) {
     const LEN: usize = 40;
     let mut area = [0u8; LEN + 4];
     // TM: VC 1 with an OCF and a Secondary Header of 2 octets.
-    let tm_vc = TmVc::new(bb(TmContent::Packets), bb(true), Some(bb(2)));
-    let config = tm_vc.and_then(|vc| {
-        let vcid = <Tm as Protocol>::Vc::try_from(bb(1))?;
+    let config = <Tm as Protocol>::Vc::try_from(bb(1)).and_then(|vcid| {
+        let fsh = FshLen::new(bb(2)).ok_or(Error::new(ErrorKind::InvalidConfig))?;
+        let content = TmVirtualChannelConfig::new(vcid, bb(DataFieldContent::Packets))
+            .with_ocf()
+            .with_fsh(fsh);
         let physical = aldis_tm::TmPhysicalChannelConfig::new(bb(LEN), bb(false))?;
         FrameReceiverConfig::<Tm, 4>::new(
             TmChannel::new(physical, DeliveryService::Vc, DeliveryService::Mc),
-            &[VcEntry::new(vcid, vc)],
+            &[VcEntry::new(vcid, TmVc::new(content, bb(true)))],
         )
     });
     let Ok(config) = config else {

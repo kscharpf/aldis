@@ -20,10 +20,10 @@ use aldis_ffi::error::*;
 use aldis_ffi::field::{
     ALDIS_FIELD_CAPACITY, ALDIS_FIELD_COP_IN_EFFECT, ALDIS_FIELD_DATA_FIELD_CONTENT,
     ALDIS_FIELD_FIELD_LEN, ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN,
-    ALDIS_FIELD_FSH_LEN, ALDIS_FIELD_INSERT_ZONE_LEN, ALDIS_FIELD_LINK_PROTOCOL,
-    ALDIS_FIELD_MAP_ID, ALDIS_FIELD_PROTOCOL_CONTROL_COMMAND_FLAG, ALDIS_FIELD_SECURITY_HEADER_LEN,
-    ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID, ALDIS_FIELD_VC_PRIORITY, ALDIS_FIELD_VC_WEIGHT,
-    ALDIS_FIELD_VCF_COUNT_LEN,
+    ALDIS_FIELD_FSH_LEN, ALDIS_FIELD_IDLE_POLICY, ALDIS_FIELD_INSERT_ZONE_LEN,
+    ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_PROTOCOL_CONTROL_COMMAND_FLAG,
+    ALDIS_FIELD_SECURITY_HEADER_LEN, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_VC_PRIORITY, ALDIS_FIELD_VC_WEIGHT, ALDIS_FIELD_VCF_COUNT_LEN,
 };
 use aldis_ffi::link::*;
 use aldis_ffi::link_mux::*;
@@ -1050,4 +1050,101 @@ fn the_frame_checks_report_the_same_field_and_order_as_before_the_physical_sets(
     let mut c = aos_config();
     c.insert_zone_len = 20;
     assert_eq!(refuse(&c), invalid_frame_len);
+}
+
+#[test]
+fn the_vc_relations_of_the_codec_sets_report_the_same_field_and_order_as_before() {
+    // req: LNK-078, CABI-040, API-040, RS-020
+    // TM: the OID VC is listed, carries Packets, and has no SDLS.
+    let mut c = tm_config();
+    c.vcs[3].vc_id = 6;
+    assert_eq!(refused(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID));
+    let mut c = tm_config();
+    c.vcs[3].role = ALDIS_LINK_CONTENT_VCA;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_IDLE_POLICY)
+    );
+    let mut c = tm_config();
+    c.vcs[3].sec_header_len = 2;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_IDLE_POLICY)
+    );
+    // The members of a VC are refused in the order role, OCF, Secondary Header, VCID, weight,
+    // Security Header, before the channel's.
+    let mut c = tm_config();
+    c.vcs[0].role = ALDIS_LINK_CONTENT_BITSTREAM;
+    c.vcs[0].vc_id = 8;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_DATA_FIELD_CONTENT)
+    );
+    let mut c = tm_config();
+    c.vcs[0].fsh_len = 64;
+    c.vcs[0].vc_id = 8;
+    assert_eq!(refused(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FSH_LEN));
+    let mut c = tm_config();
+    c.vcs[0].vc_id = 8;
+    c.vcs[0].weight = 0;
+    assert_eq!(refused(&c), (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID));
+    for mut c in [tm_config(), aos_config(), uslp_config()] {
+        c.vcs[0].weight = 0;
+        c.vcs[0].sec_header_len = 65;
+        c.frame_len = 8;
+        assert_eq!(
+            refused(&c),
+            (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_WEIGHT)
+        );
+        c.vcs[0].weight = 1;
+        assert_eq!(
+            refused(&c),
+            (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_SECURITY_HEADER_LEN)
+        );
+    }
+    // The channel's members come before the relations between the channel and its VCs.
+    let mut c = tm_config();
+    c.scid = 1024;
+    c.vcs[3].role = ALDIS_LINK_CONTENT_VCA;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_SPACECRAFT_ID)
+    );
+    // AOS: VCID 63, which the codec's VC configuration refuses, comes after the channel's SCID
+    // and the policy, and after the members of its own VC.
+    let mut c = aos_config();
+    c.vcs[0].vc_id = 63;
+    c.scid = 1024;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_SPACECRAFT_ID)
+    );
+    let mut c = aos_config();
+    c.vcs[0].vc_id = 63;
+    c.vcs[0].ocf = 2;
+    assert_eq!(refused(&c).0, ALDIS_ERR_INVALID_FIELD);
+    let mut c = aos_config();
+    c.vcs[0].vc_id = 63;
+    assert_eq!(refused(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID));
+    // USLP: COP-1 with a VCF Count Length of 0 is refused before the VCID, the weight, and the
+    // channel's frame length; VCID 63 is not a VC of the mux.
+    let mut c = uslp_config();
+    c.vcs[0].uslp_vcf_len_sc = 0;
+    c.vcs[0].vc_id = 64;
+    assert_eq!(
+        refused(&c),
+        (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VCF_COUNT_LEN)
+    );
+    c.vcs[0].uslp_vcf_len_sc = 2;
+    assert_eq!(refused(&c), (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID));
+    let mut c = uslp_config();
+    c.vcs[0].vc_id = 63;
+    assert_eq!(refused(&c), (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_VC_ID));
+    // USLP: the master channel's OCF is that of every VC, and the config is accepted either way.
+    let mut c = uslp_config();
+    c.mc_ocf = 1;
+    c.mc_ocf_init = 0xA1A2_A3A4;
+    let mut s = storage();
+    let mut d = detail();
+    assert_eq!(init(&mut s, &c, &mut d), 0);
 }

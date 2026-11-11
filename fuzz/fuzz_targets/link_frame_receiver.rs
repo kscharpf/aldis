@@ -17,11 +17,11 @@ use aldis_core::ids::{MapId, VcId};
 use aldis_link::protocol::{Aos, Tc, Tm, Uslp};
 use aldis_link::receiver::{
     AosChannel, AosContent, AosVc, DeliveryService, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver,
-    FrameReceiverConfig, MapSet, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel,
-    TmContent, TmVc, UslpChannel, UslpVc, VcEntry,
+    FrameReceiverConfig, MapSet, ReceiverInput, ReceiverOutput, TcChannel, TcVc, TmChannel, TmVc,
+    UslpChannel, UslpVc, VcEntry,
 };
 use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 use libfuzzer_sys::fuzz_target;
 use support::Plained;
@@ -30,6 +30,19 @@ const LEN: usize = 40;
 
 fn vc<const B: u32>(n: u8) -> VcId<B> {
     VcId::<B>::new(n).unwrap()
+}
+
+/// A TM VC of the receiver: the codec's configuration of VC `id`, served or not, with an OCF if
+/// `ocf` and a Secondary Header of `fsh` octets if given.
+fn tm_vc(id: u8, content: DataFieldContent, served: bool, ocf: bool, fsh: Option<u8>) -> TmVc {
+    let mut config = TmVirtualChannelConfig::new(vc(id), content);
+    if ocf {
+        config = config.with_ocf();
+    }
+    if let Some(len) = fsh {
+        config = config.with_fsh(FshLen::new(len).unwrap());
+    }
+    TmVc::new(config, served)
 }
 
 fn tm() -> FrameReceiver<Tm, 8> {
@@ -41,11 +54,14 @@ fn tm() -> FrameReceiver<Tm, 8> {
                 DeliveryService::Vc,
             ),
             &[
-                VcEntry::new(vc(0), TmVc::new(TmContent::Packets, false, None).unwrap()),
-                VcEntry::new(vc(1), TmVc::new(TmContent::Vca, false, None).unwrap()),
+                VcEntry::new(
+                    vc(0),
+                    tm_vc(0, DataFieldContent::Packets, true, false, None),
+                ),
+                VcEntry::new(vc(1), tm_vc(1, DataFieldContent::VcaSdu, true, false, None)),
                 VcEntry::new(
                     vc(5),
-                    TmVc::new(TmContent::Unserved, true, Some(2)).unwrap(),
+                    tm_vc(5, DataFieldContent::Packets, false, true, Some(2)),
                 ),
             ],
         )

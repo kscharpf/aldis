@@ -25,7 +25,7 @@ use aldis_link::receiver::{
     UslpChannel, UslpVc, VcEntry,
 };
 use aldis_tc::PhysicalChannelConfig as TcPhysicalChannelConfig;
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{PhysicalChannelConfig as UslpPhysicalChannelConfig, TransferFrameType};
 mod support;
 
@@ -217,6 +217,28 @@ fn uslp_variable(len: usize, ocf: DeliveryService) -> UslpChannel {
     .unwrap()
 }
 
+/// A TM VC of the receiver: the codec's configuration of VC `id` that carries what `content`
+/// says (the receiver serves it unless `content` is `Unserved`), with an OCF if `ocf`, and a
+/// Secondary Header of `fsh` octets if given (M6 plan WP-2c).
+fn tm_vc(id: u8, content: TmContent, ocf: bool, fsh: Option<u8>) -> TmVc {
+    let carried = match content {
+        TmContent::Vca => DataFieldContent::VcaSdu,
+        TmContent::Packets | TmContent::Unserved => DataFieldContent::Packets,
+    };
+    let mut config = TmVirtualChannelConfig::new(vc(id), carried);
+    if ocf {
+        config = config.with_ocf();
+    }
+    if let Some(len) = fsh {
+        config = config.with_fsh(FshLen::new(len).unwrap());
+    }
+    TmVc::new(config, content != TmContent::Unserved)
+}
+
+fn tm_entry(id: u8, content: TmContent, ocf: bool, fsh: Option<u8>) -> VcEntry<Tm> {
+    VcEntry::new(vc(id), tm_vc(id, content, ocf, fsh))
+}
+
 fn tc_channel(len: usize, fecf: bool) -> TcChannel {
     TcChannel::new(TcPhysicalChannelConfig::new(len, fecf).unwrap())
 }
@@ -225,12 +247,9 @@ fn tm_config(ocf: DeliveryService, fsh: DeliveryService) -> FrameReceiverConfig<
     FrameReceiverConfig::new(
         tm_channel(LEN, false, ocf, fsh),
         &[
-            VcEntry::new(vc(0), TmVc::new(TmContent::Packets, false, None).unwrap()),
-            VcEntry::new(vc(1), TmVc::new(TmContent::Vca, false, None).unwrap()),
-            VcEntry::new(
-                vc(5),
-                TmVc::new(TmContent::Unserved, true, Some(2)).unwrap(),
-            ),
+            tm_entry(0, TmContent::Packets, false, None),
+            tm_entry(1, TmContent::Vca, false, None),
+            tm_entry(5, TmContent::Unserved, true, Some(2)),
         ],
     )
     .unwrap()
@@ -354,10 +373,7 @@ fn the_worst_case_of_each_protocol_returns_exactly_the_bound() {
     // A served TM frame has five too: two gaps, FSH, OCF, field.
     let config = FrameReceiverConfig::<Tm, 8>::new(
         tm_channel(LEN, false, DeliveryService::Vc, DeliveryService::Vc),
-        &[VcEntry::new(
-            vc(0),
-            TmVc::new(TmContent::Packets, true, Some(2)).unwrap(),
-        )],
+        &[tm_entry(0, TmContent::Packets, true, Some(2))],
     )
     .unwrap();
     let mut rx = TmRx::new(config);
@@ -1172,10 +1188,7 @@ fn counters_count_and_persist_across_a_reconfiguration() {
     // Reconfiguring to another channel serves it at once.
     let other = FrameReceiverConfig::<Tm, 8>::new(
         tm_channel(LEN, false, DeliveryService::None, DeliveryService::None),
-        &[VcEntry::new(
-            vc(4),
-            TmVc::new(TmContent::Vca, false, None).unwrap(),
-        )],
+        &[tm_entry(4, TmContent::Vca, false, None)],
     )
     .unwrap();
     rx.step(ReceiverInput::Reconfigure(other), &mut area)
@@ -1192,11 +1205,11 @@ fn counters_count_and_persist_across_a_reconfiguration() {
 #[test]
 fn a_configuration_is_checked_where_it_is_built() {
     // req: API-040, RS-020, LNK-079
-    let tm_vc = TmVc::new(TmContent::Vca, false, None).unwrap();
+    let wide_vc = tm_vc(1, TmContent::Vca, false, None);
     let channel_of =
         |len, fecf| tm_channel(len, fecf, DeliveryService::None, DeliveryService::None);
     let channel = channel_of(LEN, false);
-    let one = [VcEntry::<Tm>::new(vc(1), tm_vc)];
+    let one = [VcEntry::<Tm>::new(vc(1), wide_vc)];
     // The physical channel's managed parameters refuse a frame with no data field.
     let e = TmPhysicalChannelConfig::new(7, true).unwrap_err();
     assert_eq!(
@@ -1210,28 +1223,34 @@ fn a_configuration_is_checked_where_it_is_built() {
         (e.kind(), e.field()),
         (ErrorKind::InvalidConfig, Some(field::VC_ID))
     );
-    let e = FrameReceiverConfig::<Tm, 1>::new(channel, &[one[0], VcEntry::new(vc(2), tm_vc)])
-        .unwrap_err();
+    let e = FrameReceiverConfig::<Tm, 1>::new(
+        channel,
+        &[
+            one[0],
+            VcEntry::new(vc(2), tm_vc(2, TmContent::Vca, false, None)),
+        ],
+    )
+    .unwrap_err();
     assert_eq!(
         (e.kind(), e.field()),
         (ErrorKind::CapacityExceeded, Some(field::VC_ID))
     );
     // A VC whose OCF and Secondary Header do not fit.
-    let wide = TmVc::new(TmContent::Vca, true, Some(64)).unwrap();
+    let wide = tm_vc(1, TmContent::Vca, true, Some(64));
     let e = FrameReceiverConfig::<Tm, 8>::new(channel_of(60, false), &[VcEntry::new(vc(1), wide)])
         .unwrap_err();
     assert_eq!(e.field(), Some(field::FRAME_LEN));
-    for bad in [1, 65] {
-        let e = TmVc::new(TmContent::Vca, false, Some(bad)).unwrap_err();
-        assert_eq!(
-            (e.kind(), e.field()),
-            (ErrorKind::InvalidConfig, Some(field::FSH_LEN))
-        );
-    }
-    let v = TmVc::new(TmContent::Packets, true, Some(64)).unwrap();
+    let v = tm_vc(1, TmContent::Packets, true, Some(64));
     assert_eq!(
         (v.content(), v.ocf(), v.fsh_len()),
         (TmContent::Packets, true, Some(64))
+    );
+    // The entry's VC is the VC of the codec's configuration the parameters embed.
+    assert_eq!(v.config().vcid(), vc(1));
+    let e = FrameReceiverConfig::<Tm, 8>::new(channel, &[VcEntry::new(vc(2), v)]).unwrap_err();
+    assert_eq!(
+        (e.kind(), e.field()),
+        (ErrorKind::InvalidConfig, Some(field::VC_ID))
     );
     // Raw frames need an Insert Zone.
     let e = tm_config(DeliveryService::Vc, DeliveryService::Vc)
@@ -1278,7 +1297,7 @@ fn a_configuration_is_checked_where_it_is_built() {
     // The other value of each flag.
     assert!(!aos_config(true).raw_frames());
     assert!(!config.vcs().nth(1).unwrap().params().ocf());
-    assert!(!TmVc::new(TmContent::Vca, false, None).unwrap().ocf());
+    assert!(!tm_vc(1, TmContent::Vca, false, None).ocf());
     let q = UslpVc::new(MapSet::default(), false, true);
     assert!(!q.cop() && q.served());
     assert!(!MapSet::default().contains(MapId::<4>::new(0).unwrap()));

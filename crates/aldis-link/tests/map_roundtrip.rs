@@ -30,6 +30,20 @@ use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::proptest::test_runner::{Config, RngSeed};
 use aldis_uslp::{Upid, VcfCountLen};
 
+/// The physical channel of a TC VC: the longest frame the standard allows.
+fn tc_physical(fecf: bool) -> aldis_tc::PhysicalChannelConfig {
+    aldis_tc::PhysicalChannelConfig::new(1024, fecf).unwrap()
+}
+
+/// The segmenter's parameters of a variable-length USLP VC with the VCF Count Lengths `sc` and
+/// `exp`.
+fn uslp_params(sc: VcfCountLen, exp: VcfCountLen) -> UslpSegmenterParams {
+    let mut vc = aldis_uslp::VcParams::new(aldis_uslp::TransferFrameType::Variable);
+    vc.vcf_count_len_sequence = sc;
+    vc.vcf_count_len_expedited = exp;
+    UslpSegmenterParams::new(vc).unwrap()
+}
+
 /// Failing cases are saved here and replayed first.
 const REGRESSIONS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -151,7 +165,7 @@ fn tc_trip(fdu_len: usize, items: &[Item], qos_bits: &[bool]) -> Result<Delivere
     ];
     let config = MapSegmenterConfig::<Tc, 4>::new(
         vc(),
-        TcSegmenterParams::with_segment_header(false),
+        TcSegmenterParams::with_segment_header(tc_physical(false)),
         fdu_len,
         &maps,
     )
@@ -248,13 +262,8 @@ fn uslp_trip(
             4,
         ),
     ];
-    let config = MapSegmenterConfig::<Uslp, 4>::new(
-        vc(),
-        UslpSegmenterParams::new(two, two),
-        fdu_len,
-        &maps,
-    )
-    .unwrap();
+    let config =
+        MapSegmenterConfig::<Uslp, 4>::new(vc(), uslp_params(two, two), fdu_len, &maps).unwrap();
     let mut seg = MapSegmenter::<Uslp, 4, Q>::new(config).unwrap();
     let mut area = vec![0_u8; AREA];
     let mut sent = Vec::new();
@@ -411,7 +420,7 @@ proptest! {
         ];
         let config = MapSegmenterConfig::<Uslp, 4>::new(
             vc(),
-            UslpSegmenterParams::new(two, VcfCountLen::NONE),
+            uslp_params(two, VcfCountLen::NONE),
             8,
             &maps,
         )

@@ -7,21 +7,22 @@
 
 // req: VER-022, LNK-030, LNK-032, LNK-074, LNK-075, LNK-076, API-057, API-058, GEN-020
 
-use aldis_aos::{AosEdition, AosPhysicalChannelConfig};
+use aldis_aos::{
+    AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
+};
 use aldis_core::ErrorKind;
 use aldis_core::ids::{MapId, SpacecraftId, VcId};
 use aldis_link::common::Qos;
 use aldis_link::mux::{
     AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxConfig, MuxInput, MuxOutput,
-    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmRole, TmVc, UslpChannel, UslpOffer, UslpVc,
-    VcConfig,
+    MuxProtocol, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel, UslpOffer, UslpVc, VcConfig,
 };
 use aldis_link::policy::MuxPolicy;
 use aldis_link::protocol::{Aos, Tm, Uslp};
-use aldis_tm::TmPhysicalChannelConfig;
+use aldis_tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
 use aldis_uslp::{
     PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
-    VcfCountLen,
+    VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -38,8 +39,9 @@ fn policy(u: &mut Unstructured<'_>) -> Result<MuxPolicy> {
 }
 
 fn tm_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Tm, V> {
-    let vc = |id: u8, role, priority| {
-        VcConfig::<Tm>::new(VcId::<3>::new(id).unwrap(), TmVc::new(role)).with_priority(priority)
+    let vc = |id: u8, content, priority| {
+        let config = TmVirtualChannelConfig::new(VcId::<3>::new(id).unwrap(), content);
+        VcConfig::<Tm>::new(TmVc::new(config)).with_priority(priority)
     };
     ChannelMuxConfig::new(
         TmChannel::new(
@@ -49,10 +51,10 @@ fn tm_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Tm, V> {
         ),
         policy,
         &[
-            vc(1, TmRole::Packets, 1),
-            vc(2, TmRole::Packets, 3),
-            vc(3, TmRole::Vca, 2),
-            vc(7, TmRole::Packets, 0),
+            vc(1, DataFieldContent::Packets, 1),
+            vc(2, DataFieldContent::Packets, 3),
+            vc(3, DataFieldContent::VcaSdu, 2),
+            vc(7, DataFieldContent::Packets, 0),
         ],
     )
     .unwrap()
@@ -60,7 +62,13 @@ fn tm_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Tm, V> {
 
 fn aos_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Aos, V> {
     let vc = |id: u8, priority| {
-        VcConfig::<Aos>::new(VcId::<6>::new(id).unwrap(), AosVc::default()).with_priority(priority)
+        let config = AosVirtualChannelConfig::new(
+            SpacecraftId::<10>::new(421).unwrap(),
+            VcId::<6>::new(id).unwrap(),
+            AosContent::VcaSdu,
+        )
+        .unwrap();
+        VcConfig::<Aos>::new(AosVc::new(config)).with_priority(priority)
     };
     ChannelMuxConfig::new(
         AosChannel::new(
@@ -77,13 +85,20 @@ fn aos_config(policy: MuxPolicy, frame_len: usize) -> ChannelMuxConfig<Aos, V> {
 
 fn uslp_config(policy: MuxPolicy, frame_len: usize, cop: bool) -> ChannelMuxConfig<Uslp, V> {
     let vc = |id: u8| {
-        VcConfig::<Uslp>::new(
+        let mut params = VcParams::new(TransferFrameType::Fixed);
+        params.vcf_count_len_sequence = VcfCountLen::new(2).unwrap();
+        params.vcf_count_len_expedited = VcfCountLen::new(1).unwrap();
+        let config = UslpVcConfig::new(
+            SpacecraftId::<16>::new(0x1234).unwrap(),
             VcId::<6>::new(id).unwrap(),
+            params,
+        )
+        .unwrap();
+        VcConfig::<Uslp>::new(
             UslpVc::new(
+                config,
                 MapId::<4>::new(3).unwrap(),
                 Qos::SequenceControlled,
-                VcfCountLen::new(2).unwrap(),
-                VcfCountLen::new(1).unwrap(),
                 cop,
             )
             .unwrap(),
@@ -96,6 +111,7 @@ fn uslp_config(policy: MuxPolicy, frame_len: usize, cop: bool) -> ChannelMuxConf
             SpacecraftId::<16>::new(0x1234).unwrap(),
             SourceOrDestination::Source,
             VcfCountLen::NONE,
+            None,
         )
         .unwrap(),
         policy,
