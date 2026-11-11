@@ -61,9 +61,12 @@ impl SppConfig {
     }
 
     /// Checks the parts of a packet against 133.0 and this configuration; the result is the only
-    /// input [`encode`](crate::writer::encode) takes (RS-020). The Secondary Header Flag is set
-    /// exactly when `secondary_header` is non-empty, so a flag without a secondary header cannot
-    /// be expressed (SPP-005, API-021).
+    /// input [`encode`](crate::writer::encode) takes (RS-020). The checks run here through
+    /// `check_parts` and `SppConfig::check_len`, which produce the proofs (`CheckedParts`,
+    /// `PacketLen`); this constructor discards them and does not store them: [`PacketData`] holds the checked parts, and
+    /// its private fields and this constructor are what make it a proof (OI-92). The Secondary
+    /// Header Flag is set exactly when `secondary_header` is non-empty, so a flag without a
+    /// secondary header cannot be expressed (SPP-005, API-021).
     ///
     /// # Errors
     /// - `InvalidField` (`data_field`) if both parts are empty (133.0 §4.1.4.1.2, SPP-005).
@@ -77,8 +80,8 @@ impl SppConfig {
         user_data: &'a [u8],
     ) -> Result<PacketData<'a>> {
         let data_len = secondary_header.len().saturating_add(user_data.len());
-        check_parts(fields, secondary_header.len(), data_len)?;
-        self.check_len(data_len.saturating_add(PRIMARY_HEADER_LEN))?;
+        let _ = check_parts(fields, secondary_header.len(), data_len)?;
+        let _ = self.check_len(data_len.saturating_add(PRIMARY_HEADER_LEN))?;
         Ok(PacketData {
             fields,
             secondary_header,
@@ -90,6 +93,7 @@ impl SppConfig {
 /// A total packet length that [`SppConfig::check_len`] accepted (SPP-006, RS-020). Only that
 /// function builds one, so code that takes it need not compare against the maximum again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct PacketLen(usize);
 
 impl PacketLen {
@@ -102,6 +106,7 @@ impl PacketLen {
 /// A Packet Data Field length that [`check_parts`] accepted: non-empty, and without a secondary
 /// header for an Idle Packet (SPP-005, RS-020). Only `check_parts` builds one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
 pub(crate) struct CheckedParts {
     data_len: usize,
 }

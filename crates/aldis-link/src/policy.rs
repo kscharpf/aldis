@@ -14,7 +14,8 @@ use aldis_core::{Error, ErrorKind, Result, field};
 /// The policy that chooses the Virtual Channel of the next frame (LNK-031; field `mux_policy`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum MuxPolicy {
-    /// The offered VC with the highest `vc_priority`; priorities are unique.
+    /// The offered VC with the highest `vc_priority` (a higher value is served first, not a rank
+    /// in which 1 is served first; see `VcConfig::with_priority`); priorities are unique.
     #[default]
     FixedPriority,
     /// The next offered VC after the one served last, in ascending VCID order, wrapping.
