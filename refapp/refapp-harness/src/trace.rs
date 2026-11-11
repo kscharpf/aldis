@@ -521,6 +521,33 @@ fn intake_args(v: &Value, code: u16) -> Result<Vec<u64>, String> {
         .ok_or_else(|| format!("flight app_event {code} without an args array of integers"))
 }
 
+/// Checks the octets of a `packet_out`, `packet_in`, or packet-level `unit_sent` record `v`: a
+/// strict Space Packet that fills them exactly, and for the first two the APID of the record's
+/// `apid` field (APP-086, APP-003). A `unit_sent` has no `apid` field.
+fn check_packet(kind: &str, v: &Value, octets: &[u8]) -> Result<(), String> {
+    let packet = SpacePacket::decode(octets)
+        .map_err(|e| format!("{kind} is not a strict Space Packet: {e:?}"))?;
+    if packet.len() != octets.len() {
+        return Err(format!(
+            "{kind} has {} octet(s) after its packet of {}",
+            octets.len() - packet.len(),
+            packet.len()
+        ));
+    }
+    if kind != "unit_sent" {
+        let field = v["apid"]
+            .as_u64()
+            .ok_or_else(|| format!("{kind} record without an apid"))?;
+        let apid = packet.apid().get();
+        if field != u64::from(apid) {
+            return Err(format!(
+                "{kind} apid {field} differs from the APID {apid} in its octets"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Decodes the octets of every `unit_sent`, `packet_out`, and `packet_in` record of `text`, a
 /// canonical trace, strictly (APP-086, API-030).
 ///
@@ -541,7 +568,8 @@ fn intake_args(v: &Value, code: u16) -> Result<Vec<u64>, String> {
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
-/// whose octets do not decode, with its 1-based line number.
+/// whose octets do not decode, or whose `apid` differs from the APID in its octets, with its
+/// 1-based line number.
 pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String> {
     check_canonical(text)?;
     let mut lines = text.split_terminator('\n');
@@ -634,15 +662,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
                 }
             }
         } else {
-            let packet = SpacePacket::decode(&octets)
-                .map_err(|e| at(format!("{kind} is not a strict Space Packet: {e:?}")))?;
-            if packet.len() != octets.len() {
-                return Err(at(format!(
-                    "{kind} has {} octet(s) after its packet of {}",
-                    octets.len() - packet.len(),
-                    packet.len()
-                )));
-            }
+            check_packet(kind, &v, &octets).map_err(at)?;
         }
         decoded.records += 1;
     }
