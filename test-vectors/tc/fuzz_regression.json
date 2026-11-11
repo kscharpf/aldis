@@ -1,0 +1,131 @@
+{
+  "kind": "codec",
+  "standard": "232.0-B-4 Cor. 1 \u00a74.1.2, \u00a74.1.3, \u00a74.4.9.3.3 \u2014 fuzz regressions",
+  "provenance": "fuzz-regression",
+  "provenance_note": "Fuzz regression for issue #433 (nightly run 42806757101, target tc_decode, artefact crash-e2130b2c92d9ea806638d99ce39eab0008793de8). The crash was in the fuzz target, not the codec: it re-encoded every strict decode that check_frame accepts and assumed that meant a configured MAP, but a frame whose Segment Header names a MAP ID the channels do not hold passes the Frame Validation Checks (232.0-B-4 Cor. 1 \u00a74.4.9.3.3 tests the Transfer Frame Header and the FECF only; TC-022, OI-98). The frame is the 7 octets the fuzzer produced (AD, SCID 0x155, VC 2 with a Segment Header, no FECF, Segment Header FE = flags 11, MAP 62, one data octet FD), read off the octets by the field widths of \u00a74.1.2 and \u00a74.1.3. Expected values are the codec's behaviour as TC-022 states it; no independent model covers this file.",
+  "cases": [
+    {
+      "id": "tc-fuzz-dec-001",
+      "requirements": [
+        "TC-021",
+        "TC-022",
+        "TC-004",
+        "VER-022"
+      ],
+      "description": "Fuzz #433: MAP 62 is not configured on VC 2, no FECF: decoded with its Segment Header and no SDLS fields",
+      "operation": "decode",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": false,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9
+          }
+        ]
+      },
+      "input_hex": "01550806F6FEFD",
+      "expect": {
+        "ok": true,
+        "frame_type": "AD",
+        "bypass_flag": 0,
+        "control_command_flag": 0,
+        "spacecraft_id": 341,
+        "vc_id": 2,
+        "frame_len": 7,
+        "sequence_number": 246,
+        "segment_header": {
+          "sequence_flags": 3,
+          "map_id": 62
+        },
+        "security_header_hex": "",
+        "data_hex": "FD",
+        "security_trailer_hex": "",
+        "fecf_hex": null,
+        "control_command": null,
+        "set_vr_value": null,
+        "consumed": 7,
+        "anomalies": []
+      }
+    },
+    {
+      "id": "tc-fuzz-val-001",
+      "requirements": [
+        "TC-021",
+        "TC-022",
+        "TC-004",
+        "VER-022"
+      ],
+      "description": "Fuzz #433: the same frame passes the Frame Validation Checks, because they do not test the Segment Header (TC-022)",
+      "operation": "validate",
+      "mode": "strict",
+      "config": {
+        "max_frame_len": 1024,
+        "fecf": false,
+        "vcs": [
+          {
+            "scid": 341,
+            "vcid": 1,
+            "max_frame_len": 1024,
+            "segment_header": false
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "max_frame_len": 1024,
+            "segment_header": true
+          }
+        ],
+        "maps": [
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 0
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 5
+          },
+          {
+            "scid": 341,
+            "vcid": 2,
+            "map_id": 9
+          }
+        ]
+      },
+      "input_hex": "01550806F6FEFD",
+      "expect": {
+        "ok": true,
+        "accepted": true,
+        "frame_len": 7
+      }
+    }
+  ]
+}

@@ -3382,6 +3382,7 @@ mod tc {
     vector_test!(tc_validation_failures, "tc", "validation_failures", run);
     vector_test!(tc_decode_errors, "tc", "decode_errors", run);
     vector_test!(tc_unconfigured_channel, "tc", "unconfigured_channel", run);
+    vector_test!(tc_fuzz_regression, "tc", "fuzz_regression", run);
     vector_test!(tc_config, "tc", "config", run);
     vector_test!(tc_clcw, "tc", "clcw", run);
 }
