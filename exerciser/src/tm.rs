@@ -11,7 +11,7 @@ use aldis_core::{Anomaly as _, AnomalySet, Check, DecodeMode, Error, ErrorKind};
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
     PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
-    TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
+    TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan, TmPrimaryHeader,
     TmVirtualChannelConfig, UncheckedTmFrame, encode, encode_oid as encode_oid_frame,
     encode_oid_galois, security_layout,
 };
@@ -140,9 +140,9 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
         bb(2),
         DataFieldStatus::Packets(PacketPointer::StartsAt(offset)),
     );
-    match TmFrameWriter::begin(bb(&mut frame), mc, bb(&fields)) {
+    match TmPlan::begin(bb(&mut frame), mc, bb(&fields)) {
         Ok(mut w) => {
-            t.check(copy(w.secondary_header_data_mut(), &[1, 2, 3]));
+            t.check(copy(w.secondary_data_mut(), &[1, 2, 3]));
             t.check(copy(w.security_header_mut(), &[0xA5, 0xA5]));
             w.data_field_mut().fill(bb(0xD0));
             t.check(copy(w.security_trailer_mut(), &[0x5A]));
@@ -204,7 +204,7 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     // An OID frame needs a VC without SDLS (132.0 §6.4.6.2): VC 0 of `mc` has it, the VC of
     // `plain` does not.
     t.check(
-        TmFrameWriter::begin_oid(bb(&mut frame), mc, vc0, 0, 0, &mut oid)
+        TmPlan::begin_oid(bb(&mut frame), mc, vc0, 0, 0, &mut oid)
             .is_err_and(|e| e.kind() == ErrorKind::InvalidField),
     );
     let plain = TmVirtualChannelConfig::new(vc0, DataFieldContent::Packets).with_fsh(bb(fsh));
@@ -214,7 +214,7 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
         return;
     };
     t.check(
-        TmFrameWriter::begin_oid(bb(&mut frame), &oid_mc, vc0, 0, 0, &mut oid)
+        TmPlan::begin_oid(bb(&mut frame), &oid_mc, vc0, 0, 0, &mut oid)
             .and_then(TmFrameWriter::unsecured)
             .is_ok_and(|w| w.finalize().len() == 32),
     );
@@ -398,9 +398,9 @@ fn encode_case(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut 
         bb(&content),
         bb(fresh(&mut scratch.a, len)?),
     )?;
-    let mut w = TmFrameWriter::begin(bb(fresh(&mut scratch.b, n)?), mc, &fields)
-        .map_err(|_| Fail::Vector)?;
-    let ok = copy(w.secondary_header_data_mut(), content.secondary_header_data)
+    let mut w =
+        TmPlan::begin(bb(fresh(&mut scratch.b, n)?), mc, &fields).map_err(|_| Fail::Vector)?;
+    let ok = copy(w.secondary_data_mut(), content.secondary_header_data)
         && copy(w.security_header_mut(), content.security_header)
         && copy(w.data_field_mut(), content.data)
         && copy(w.security_trailer_mut(), content.security_trailer)
@@ -428,7 +428,7 @@ fn encode_oid(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut S
     for f in p.list("frames")? {
         let f = need(f.obj())?;
         let buf = fresh(&mut scratch.a, mc.pc().frame_len())?;
-        let mut w = TmFrameWriter::begin_oid(
+        let mut w = TmPlan::begin_oid(
             bb(buf),
             mc,
             vcid,
@@ -437,7 +437,7 @@ fn encode_oid(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut S
             &mut oid,
         )?;
         if let Some(data) = crate::vectors::get(f, "fsh_data_hex")
-            && !copy(w.secondary_header_data_mut(), need(data.bytes())?)
+            && !copy(w.secondary_data_mut(), need(data.bytes())?)
         {
             return Err(Fail::Vector);
         }

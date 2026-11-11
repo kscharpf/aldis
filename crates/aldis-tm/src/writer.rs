@@ -1,27 +1,21 @@
 //! Encoders: one-shot [`encode`] and the two-phase [`TmFrameWriter`].
 //!
-//! The writer has a finishing typestate and writes OID frames ([`TmFrameWriter::begin_oid`]) (132.0-B-3 §4.1, §4.1.4.6, §6.3; TM-009,
+//! The writer has a finishing typestate and writes OID frames ([`TmPlan::begin_oid`]) (132.0-B-3 §4.1, §4.1.4.6, §6.3; TM-009,
 //! TM-010, API-020…API-023, API-072, API-074, RS-023, GEN-014, GEN-042, GEN-052).
 
-use core::marker::PhantomData;
-use core::ops::Range;
-
-use aldis_core::crc::crc16;
-use aldis_core::finishing::{
-    Finalized, FrameState, Protected, Unprotected, require_layout, require_unsecured,
-};
+use aldis_core::finishing::Unprotected;
 use aldis_core::ids::VcId;
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::security::{FrameCtx, SecuredFields, SecurityHook};
+use aldis_core::writer::{Fixed, FramePlan, FrameWriter};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::TmMasterChannelConfig;
 use crate::field;
 use crate::header::{
-    DataFieldStatus, FirstHeaderPointer, FshLen, PRIMARY_HEADER_LEN, PacketPointer,
-    SegmentLengthId, TmPrimaryHeader, len_u64, mismatch,
+    DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId, TmPrimaryHeader,
+    len_u64, mismatch,
 };
 
 /// The Primary Header fields a caller chooses (132.0 §4.1.2; TM-009).
@@ -169,38 +163,44 @@ fn write_at(buf: &mut [u8], at: usize, src: &[u8]) {
     }
 }
 
+/// The proof that a caller is a one-shot encoder of this module (API-072).
+///
+/// The one-shot encoders take the Security Header and Trailer as given; only this module builds
+/// the proof, so no other caller finishes a frame without the SDLS step (RS-023, API-073).
+///
+/// ```compile_fail
+/// let _ = aldis_tm::writer::TmOneShot(());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TmOneShot(());
+
+/// The plan of a TM frame for [`FrameWriter`] (132.0 §4.1, §4.1.6.2; TM-009).
+///
+/// Fixed-length, with no step of its own before the FECF. Its associated functions start the
+/// writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TmPlan;
+
+impl FramePlan for TmPlan {
+    type OneShot = TmOneShot;
+    const SECONDARY_ID_LEN: usize = 1;
+}
+
 /// Two-phase frame writer (132.0 §4.1; TM-009, API-020…API-023, API-072, API-074, RS-023).
 ///
-/// [`begin`](Self::begin) writes the Primary Header and the Secondary Header Identification
+/// [`TmPlan::begin`] writes the Primary Header and the Secondary Header Identification
 /// Field and returns the writer [`Unprotected`]; the caller fills the other fields in place and
-/// applies SDLS with [`protect`](TmFrameWriter::protect), or
-/// [`unsecured`](TmFrameWriter::unsecured) without it, which gives the writer
-/// [`Protected`]; [`finalize`](TmFrameWriter::finalize) computes the FECF last and gives it
-/// [`Finalized`], the only state that exposes the frame's octets. Each step consumes the
-/// writer, so a step out of order does not compile (RS-023, RS-021).
+/// applies SDLS with `protect`, or `unsecured` without it, which gives the writer [`Protected`](aldis_core::finishing::Protected);
+/// `finalize` computes the FECF last and gives it [`Finalized`](aldis_core::finishing::Finalized), the only state that exposes the
+/// frame's octets. Each step consumes the writer, so a step out of order does not compile
+/// (RS-023, RS-021). The steps are those of the core [`FrameWriter`].
 ///
 /// `begin` zero-fills every octet after the headers, so until `finalize` the frame is defined:
 /// its headers final, the fields the caller has not filled zero, and the FECF, if configured,
 /// zero (API-023).
-#[derive(Debug)]
-pub struct TmFrameWriter<'b, S: FrameState = Unprotected> {
-    frame: &'b mut [u8],
-    layout: FrameLayout,
-    state: PhantomData<S>,
-}
+pub type TmFrameWriter<'b, S = Unprotected> = FrameWriter<'b, Fixed, TmPlan, S>;
 
-impl<'b, S: FrameState> TmFrameWriter<'b, S> {
-    /// The same frame in state `T`: the one place a state changes.
-    const fn into_state<T: FrameState>(self) -> TmFrameWriter<'b, T> {
-        TmFrameWriter {
-            frame: self.frame,
-            layout: self.layout,
-            state: PhantomData,
-        }
-    }
-}
-
-impl<'b> TmFrameWriter<'b, Unprotected> {
+impl TmPlan {
     /// Starts a frame of `fields.vcid` in the first frame-length octets of `out` (TM-009).
     ///
     /// # Errors
@@ -213,13 +213,13 @@ impl<'b> TmFrameWriter<'b, Unprotected> {
     /// - `InvalidField` (`vc_id`) for `Packets(OnlyIdleData)`, an Only Idle Data frame, on a VC
     ///   that uses SDLS (132.0 §6.4.6.2; TM-010);
     /// - `BufferTooSmall` (`needed` = frame length) if `out` is shorter than a frame.
-    pub fn begin(
+    pub fn begin<'b>(
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
         fields: &TmFrameFields,
-    ) -> Result<TmFrameWriter<'b, Unprotected>> {
+    ) -> Result<TmFrameWriter<'b>> {
         let plan = Plan::new(mc, fields)?;
-        TmFrameWriter::start(out, plan)
+        start(out, plan)
     }
 
     /// Starts an Only Idle Data frame on `vcid`: First Header Pointer `0x7FE` and the data field
@@ -237,180 +237,31 @@ impl<'b> TmFrameWriter<'b, Unprotected> {
     /// The Idle Data cannot be checked on decode: it depends on where `oid` stands in the
     /// sequence, which a stateless decoder does not know (CMN-021), and receivers discard it
     /// (132.0 §4.1.4.6.2).
-    pub fn begin_oid(
+    pub fn begin_oid<'b>(
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
         vcid: VcId<3>,
         mc_frame_count: u8,
         vc_frame_count: u8,
         oid: &mut OidGenerator,
-    ) -> Result<TmFrameWriter<'b, Unprotected>> {
+    ) -> Result<TmFrameWriter<'b>> {
         let fields = oid_fields(vcid, mc_frame_count, vc_frame_count);
         let plan = Plan::new(mc, &fields)?;
-        let mut writer = TmFrameWriter::start(out, plan)?;
+        let mut writer = start(out, plan)?;
         oid.fill(writer.data_field_mut());
         Ok(writer)
     }
-
-    /// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary
-    /// Header and the Identification Field.
-    fn start(out: &'b mut [u8], plan: Plan) -> Result<TmFrameWriter<'b, Unprotected>> {
-        let frame_len = plan.layout.frame_len();
-        let frame = out
-            .get_mut(..frame_len)
-            .ok_or(Error::buffer_too_small(frame_len))?;
-        frame.fill(0);
-        write_at(frame, 0, &plan.header.to_octets());
-        if let Some(octet) = plan.fsh.map(FshLen::id_octet) {
-            write_at(frame, PRIMARY_HEADER_LEN, &[octet]);
-        }
-        Ok(TmFrameWriter {
-            frame,
-            layout: plan.layout,
-            state: PhantomData,
-        })
-    }
-
-    /// The octets of `range`, which lies inside the frame by construction (CMN-040).
-    fn field_mut(&mut self, range: Range<usize>) -> &mut [u8] {
-        self.frame.get_mut(range).unwrap_or_default()
-    }
-
-    /// The Secondary Header Data Field to fill in place, after the Identification Field; empty
-    /// without a Secondary Header (132.0 §4.1.3.3; TM-009).
-    pub fn secondary_header_data_mut(&mut self) -> &mut [u8] {
-        let fsh = self.layout.secondary();
-        // The first octet is the Identification Field; an absent Secondary Header is empty.
-        match self.field_mut(fsh).split_first_mut() {
-            Some((_, data)) => data,
-            None => &mut [],
-        }
-    }
-
-    /// The Security Header to fill in place; empty without SDLS (132.0 §6.3.4; API-072).
-    pub fn security_header_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.security_header())
-    }
-
-    /// The Transfer Frame Data Field to fill in place, never empty (132.0 §4.1.4; GEN-014).
-    pub fn data_field_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.data())
-    }
-
-    /// The Security Trailer to fill in place; empty without SDLS (132.0 §6.3.6; API-072).
-    pub fn security_trailer_mut(&mut self) -> &mut [u8] {
-        self.field_mut(self.layout.security_trailer())
-    }
-
-    /// Writes the Operational Control Field (132.0 §4.1.5; TM-009).
-    ///
-    /// # Errors
-    /// `InvalidField` (`ocf_flag`) if frames of this VC carry no OCF (132.0 §4.1.2.4.3).
-    pub fn set_ocf(&mut self, ocf: Ocf) -> Result<()> {
-        let range = self.layout.ocf();
-        if range.is_empty() {
-            return Err(mismatch(ErrorKind::InvalidField, field::OCF_FLAG, 0, 1));
-        }
-        write_at(self.frame, range.start, &ocf.to_octets());
-        Ok(())
-    }
-
-    /// The octet ranges of the frame's fields, for a security hook (CMN-040, API-074).
-    #[must_use]
-    pub const fn layout(&self) -> &FrameLayout {
-        &self.layout
-    }
-
-    /// Applies `hook` to the Security Header, the data field, and the Security Trailer, after
-    /// every other field except the FECF is final (355.0 §2.3; API-074, RS-023). `ctx`
-    /// identifies the channel for the hook's Security Association.
-    ///
-    /// # Errors
-    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the hook is for
-    /// another layout than the VC's ([`SecurityHook::layout`]), such as `NoSecurity` on a VC with
-    /// SDLS; the hook's error, `Security`; the frame is then dropped and must not be
-    /// transmitted.
-    pub fn protect<H: SecurityHook + ?Sized>(
-        self,
-        hook: &mut H,
-        ctx: &FrameCtx,
-    ) -> Result<TmFrameWriter<'b, Protected>> {
-        let fields = SecuredFields::from_layout(&self.layout);
-        let result = require_layout(
-            hook.layout(),
-            self.layout.security_header().len(),
-            self.layout.security_trailer().len(),
-        )
-        .and_then(|()| hook.protect(ctx, &mut *self.frame, &fields));
-        self.protected(result)
-    }
-
-    /// The writer [`Protected`] if the hook succeeded; the part of `protect` that does not
-    /// depend on the hook type.
-    fn protected(self, result: Result<()>) -> Result<TmFrameWriter<'b, Protected>> {
-        result.map(|()| self.into_state())
-    }
-
-    /// Moves to [`Protected`] on a channel without SDLS, the `NoSecurity` path (API-073,
-    /// RS-023).
-    ///
-    /// # Errors
-    /// `InvalidField` (`security_header_len` or `security_trailer_len`) if the VC reserves a
-    /// Security Header or Trailer, which need [`protect`](Self::protect).
-    pub fn unsecured(self) -> Result<TmFrameWriter<'b, Protected>> {
-        require_unsecured(
-            self.layout.security_header().len(),
-            self.layout.security_trailer().len(),
-        )?;
-        Ok(self.into_state())
-    }
 }
 
-impl<'b> TmFrameWriter<'b, Protected> {
-    /// Completes the frame: computes the FECF, if configured, over every other octet, last
-    /// (132.0 §4.1.6.2; TM-009, API-021, API-074, RS-023).
-    #[must_use = "the finalized frame"]
-    pub fn finalize(self) -> TmFrameWriter<'b, Finalized> {
-        let fecf = self.layout.fecf();
-        if !fecf.is_empty() {
-            // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-            let crc = crc16(self.frame.get(..fecf.start).unwrap_or_default());
-            write_at(self.frame, fecf.start, &crc.to_be_bytes());
-        }
-        self.into_state()
+/// Takes up the frame of a checked plan in `out`: zero-fills it and writes the Primary Header and
+/// the Identification Field.
+fn start(out: &mut [u8], plan: Plan) -> Result<TmFrameWriter<'_>> {
+    let mut writer = FrameWriter::reserve_fixed(out, plan.layout, TmPlan)?;
+    write_at(writer.primary_header_mut(), 0, &plan.header.to_octets());
+    if let Some(octet) = plan.fsh.map(FshLen::id_octet) {
+        write_at(writer.secondary_mut(), 0, &[octet]);
     }
-}
-
-impl<'b> TmFrameWriter<'b, Finalized> {
-    /// The frame length (132.0 §4.1; TM-009).
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.layout.frame_len()
-    }
-
-    /// Always `false`: a frame holds at least its Primary Header.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        false
-    }
-
-    /// The octets of the finalized frame, for transmission (RS-023).
-    #[must_use]
-    pub fn octets(&self) -> &[u8] {
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.frame
-            .get(..self.layout.frame_len())
-            .unwrap_or_default()
-    }
-
-    /// The octets of the finalized frame, borrowed from the buffer `begin` took, for
-    /// transmission (RS-023).
-    #[must_use]
-    pub fn into_octets(self) -> &'b [u8] {
-        let len = self.layout.frame_len();
-        // The range is the plan's own, inside the buffer sized to the plan at `begin`: no wire input.
-        self.frame.get(..len).unwrap_or_default()
-    }
+    Ok(writer)
 }
 
 /// Encodes one frame of `fields.vcid` into the start of `out`; returns the frame length
@@ -420,7 +271,7 @@ impl<'b> TmFrameWriter<'b, Finalized> {
 /// from the configuration (API-021).
 ///
 /// # Errors
-/// On error `out` is unchanged (API-022). The errors of [`TmFrameWriter::begin`], checked
+/// On error `out` is unchanged (API-022). The errors of [`TmPlan::begin`], checked
 /// first, and then:
 /// - `LengthMismatch` (`fsh_len`, `security_header_len`, `frame_data_field`, or
 ///   `security_trailer_len`) for a field of `content` whose length is not the configured one,
@@ -475,25 +326,21 @@ pub fn encode(
             u64::from(content.ocf.is_some()),
         ));
     }
-    let writer = TmFrameWriter::start(out, plan)?;
+    let mut writer = start(out, plan)?;
     // Each field has the length checked above, so it fills its range exactly.
-    let layout = &writer.layout;
-    for (at, src) in [
-        (
-            layout.secondary().start.saturating_add(1),
-            content.secondary_header_data,
-        ),
-        (layout.security_header().start, content.security_header),
-        (layout.data().start, content.data),
-        (layout.security_trailer().start, content.security_trailer),
-    ] {
-        write_at(writer.frame, at, src);
-    }
+    write_at(
+        writer.secondary_data_mut(),
+        0,
+        content.secondary_header_data,
+    );
+    write_at(writer.security_header_mut(), 0, content.security_header);
+    write_at(writer.data_field_mut(), 0, content.data);
+    write_at(writer.security_trailer_mut(), 0, content.security_trailer);
     if let Some(ocf) = content.ocf {
-        write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
+        write_at(writer.ocf_mut(), 0, &ocf.to_octets());
     }
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.into_state::<Protected>().finalize().len())
+    Ok(writer.taken_as_given(TmOneShot(())).finalize().len())
 }
 
 /// The fields of an Only Idle Data frame (132.0 §4.1.4.6; TM-010).
@@ -511,12 +358,12 @@ const fn oid_fields(vcid: VcId<3>, mc_frame_count: u8, vc_frame_count: u8) -> Tm
 ///
 /// The data field is filled with the next octets of `oid`.
 ///
-/// The frame is that of [`TmFrameWriter::begin_oid`] with `secondary_header_data` in the
+/// The frame is that of [`TmPlan::begin_oid`] with `secondary_header_data` in the
 /// Secondary Header Data Field, empty without a Secondary Header, and `ocf` as the OCF, present
 /// exactly when the VC carries one (132.0 §4.1.4.6.3 note 1).
 ///
 /// # Errors
-/// The errors of [`TmFrameWriter::begin_oid`], checked first, and then `LengthMismatch`
+/// The errors of [`TmPlan::begin_oid`], checked first, and then `LengthMismatch`
 /// (`fsh_len`) for a `secondary_header_data` of another length than the configured one, and
 /// `InvalidField` (`ocf_flag`) for an OCF given where none is configured, or missing where one
 /// is. On error neither `out` nor `oid` is changed (GEN-042).
@@ -597,20 +444,15 @@ fn oid_frame(
             u64::from(ocf.is_some()),
         ));
     }
-    let mut writer = TmFrameWriter::start(out, plan)?;
+    let mut writer = start(out, plan)?;
     // Each field has the length checked above, so it fills its range exactly.
-    let layout = &writer.layout;
-    write_at(
-        writer.frame,
-        layout.secondary().start.saturating_add(1),
-        secondary_header_data,
-    );
+    write_at(writer.secondary_data_mut(), 0, secondary_header_data);
     if let Some(ocf) = ocf {
-        write_at(writer.frame, layout.ocf().start, &ocf.to_octets());
+        write_at(writer.ocf_mut(), 0, &ocf.to_octets());
     }
     fill(writer.data_field_mut());
     // The one-shot encoders take the Security Header and Trailer as given (API-072).
-    Ok(writer.into_state::<Protected>().finalize().len())
+    Ok(writer.taken_as_given(TmOneShot(())).finalize().len())
 }
 
 #[cfg(test)]
@@ -621,9 +463,7 @@ mod tests {
 
     use aldis_core::Check;
 
-    use super::{
-        TmFrameContent, TmFrameFields, TmFrameWriter, encode, encode_oid, encode_oid_galois,
-    };
+    use super::{TmFrameContent, TmFrameFields, TmPlan, encode, encode_oid, encode_oid_galois};
     use crate::config::{
         DataFieldContent, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig,
     };
@@ -689,12 +529,12 @@ mod tests {
                 first_header_pointer: FirstHeaderPointer::NO_PACKET_START,
             },
         );
-        let mut w = TmFrameWriter::begin(&mut out, &mc, &sdu).unwrap();
+        let mut w = TmPlan::begin(&mut out, &mc, &sdu).unwrap();
         assert_eq!(w.layout().secondary().len(), 0);
-        assert_eq!(w.secondary_header_data_mut().len(), 0);
-        let mut w = TmFrameWriter::begin(&mut out, &mc, &packets(5, starts_at(0))).unwrap();
+        assert_eq!(w.secondary_data_mut().len(), 0);
+        let mut w = TmPlan::begin(&mut out, &mc, &packets(5, starts_at(0))).unwrap();
         assert_eq!(w.layout().secondary().len(), 4);
-        assert_eq!(w.secondary_header_data_mut().len(), 3);
+        assert_eq!(w.secondary_data_mut().len(), 3);
     }
 
     #[test]
@@ -702,9 +542,9 @@ mod tests {
         // req: TM-009, API-020, API-021, API-072, GEN-014
         let mc = mc();
         let mut out = [0xEE_u8; 40];
-        let mut w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let mut w = TmPlan::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         assert_eq!(w.layout().frame_len(), 32);
-        w.secondary_header_data_mut().copy_from_slice(&[1, 2, 3]);
+        w.secondary_data_mut().copy_from_slice(&[1, 2, 3]);
         w.security_header_mut().copy_from_slice(&[0xA5, 0xA5]);
         assert_eq!(w.data_field_mut().len(), 32 - 6 - 4 - 2 - 1 - 4 - 2);
         w.data_field_mut().fill(0xD0);
@@ -803,7 +643,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let w = TmPlan::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         let e = w.protect(&mut NoSecurity, &ctx).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -820,7 +660,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let w = TmPlan::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         let e = w.protect(&mut Refuse, &ctx).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::Security);
     }
@@ -834,7 +674,7 @@ mod tests {
             vcid: vcid(0),
         };
         let mut out = [0xEE_u8; 32];
-        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let w = TmPlan::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         let octets = w
             .protect(&mut OrderHook, &ctx)
             .unwrap()
@@ -853,7 +693,7 @@ mod tests {
         // req: RS-023, API-070
         let mc = mc();
         let mut out = [0xEE_u8; 32];
-        let w = TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
+        let w = TmPlan::begin(&mut out, &mc, &packets(0, starts_at(3))).unwrap();
         let e = w.unsecured().unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
@@ -866,7 +706,7 @@ mod tests {
         // req: API-023
         let mc = mc();
         let mut out = [0xEE_u8; 32];
-        TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::NoPacketStart)).unwrap();
+        TmPlan::begin(&mut out, &mc, &packets(0, PacketPointer::NoPacketStart)).unwrap();
         assert_eq!(out[..7], [0x0A, 0xB1, 7, 9, 0x9F, 0xFF, 0x03]);
         assert!(out[7..].iter().all(|&b| b == 0));
     }
@@ -877,7 +717,7 @@ mod tests {
         let mc = mc();
         let mut out = [0xEE_u8; 32];
         let check = |out: &mut [u8], fields: &TmFrameFields, kind, field| {
-            let e = TmFrameWriter::begin(out, &mc, fields).unwrap_err();
+            let e = TmPlan::begin(out, &mc, fields).unwrap_err();
             assert_eq!((e.kind(), e.field()), (kind, field));
             assert!(out.iter().all(|&b| b == 0xEE));
             e
@@ -931,12 +771,12 @@ mod tests {
                 found: 13
             }
         );
-        let e = TmFrameWriter::begin(&mut out[..31], &mc, &packets(0, starts_at(12))).unwrap_err();
+        let e = TmPlan::begin(&mut out[..31], &mc, &packets(0, starts_at(12))).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::BufferTooSmall, ErrorDetail::Needed(32))
         );
-        assert!(TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(12))).is_ok());
+        assert!(TmPlan::begin(&mut out, &mc, &packets(0, starts_at(12))).is_ok());
     }
 
     #[test]
@@ -950,7 +790,7 @@ mod tests {
             ))
             .unwrap();
         let mut out = vec![0; 2100];
-        assert!(TmFrameWriter::begin(&mut out, &mc, &packets(0, starts_at(0x7FD))).is_ok());
+        assert!(TmPlan::begin(&mut out, &mc, &packets(0, starts_at(0x7FD))).is_ok());
         // 0x7FE is no offset: the type rejects it where it is parsed (RS-020).
         let e = crate::header::PacketOffset::try_from(0x7FE).unwrap_err();
         assert_eq!(
@@ -1100,13 +940,13 @@ mod tests {
             .unwrap();
         let mut out = [0_u8; 16];
         let mut w =
-            TmFrameWriter::begin(&mut out, &mc, &packets(0, PacketPointer::NoPacketStart)).unwrap();
+            TmPlan::begin(&mut out, &mc, &packets(0, PacketPointer::NoPacketStart)).unwrap();
         let e = w.set_ocf(Ocf::decode([0; 4])).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::OCF_FLAG))
         );
-        assert_eq!(w.secondary_header_data_mut().len(), 0);
+        assert_eq!(w.secondary_data_mut().len(), 0);
         assert_eq!(w.unsecured().unwrap().finalize().len(), 16);
         let f = TmFrame::decode(&out, &pc).unwrap();
         assert_eq!((f.fecf(), f.ocf()), (None, None));
@@ -1128,9 +968,9 @@ mod tests {
         let mut oid = OidGenerator::new();
         let mut first = [0_u8; 32];
         let mut second = [0_u8; 32];
-        let writer = TmFrameWriter::begin_oid(&mut first, &mc, vcid(5), 1, 1, &mut oid).unwrap();
+        let writer = TmPlan::begin_oid(&mut first, &mc, vcid(5), 1, 1, &mut oid).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
-        let writer = TmFrameWriter::begin_oid(&mut second, &mc, vcid(5), 2, 2, &mut oid).unwrap();
+        let writer = TmPlan::begin_oid(&mut second, &mc, vcid(5), 2, 2, &mut oid).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 32];
@@ -1147,7 +987,7 @@ mod tests {
         // Rejected on a `VCA_SDU` channel without advancing the generator.
         let before = oid.clone();
         let mut third = [0_u8; 32];
-        let e = TmFrameWriter::begin_oid(&mut third, &mc, vcid(1), 3, 3, &mut oid).unwrap_err();
+        let e = TmPlan::begin_oid(&mut third, &mc, vcid(1), 3, 3, &mut oid).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::SYNC_FLAG))
@@ -1155,14 +995,14 @@ mod tests {
         assert_eq!(oid, before);
         // A buffer that is too short is rejected without advancing the generator.
         let mut short = [0_u8; 31];
-        let e = TmFrameWriter::begin_oid(&mut short, &mc, vcid(5), 3, 3, &mut oid).unwrap_err();
+        let e = TmPlan::begin_oid(&mut short, &mc, vcid(5), 3, 3, &mut oid).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!((short, oid.clone()), ([0; 31], before.clone()));
         // Rejected on a channel that uses SDLS (132.0 §6.4.6.2), also when the buffer is short.
         for cap in [32, 4] {
             let mut fourth = [0_u8; 32];
-            let e = TmFrameWriter::begin_oid(&mut fourth[..cap], &mc, vcid(0), 3, 3, &mut oid)
-                .unwrap_err();
+            let e =
+                TmPlan::begin_oid(&mut fourth[..cap], &mc, vcid(0), 3, 3, &mut oid).unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::InvalidField, Some(field::VC_ID))
@@ -1179,7 +1019,7 @@ mod tests {
                 (ErrorKind::InvalidField, Some(field::VC_ID))
             );
         };
-        rejected(TmFrameWriter::begin(&mut out, &mc, &idle_sdls).unwrap_err());
+        rejected(TmPlan::begin(&mut out, &mc, &idle_sdls).unwrap_err());
         let data = [0_u8; 32];
         rejected(encode(&mc, &idle_sdls, &TmFrameContent::new(&data), &mut out).unwrap_err());
         assert_eq!(out, [0; 32]);
@@ -1222,10 +1062,8 @@ mod tests {
         .unwrap();
         assert_eq!(n, 32);
         let mut writer =
-            TmFrameWriter::begin_oid(&mut two_frame, &mc, vcid(5), 1, 2, &mut two_phase).unwrap();
-        writer
-            .secondary_header_data_mut()
-            .copy_from_slice(&[1, 2, 3]);
+            TmPlan::begin_oid(&mut two_frame, &mc, vcid(5), 1, 2, &mut two_phase).unwrap();
+        writer.secondary_data_mut().copy_from_slice(&[1, 2, 3]);
         writer.set_ocf(ocf).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         assert_eq!(fib_frame[..32], two_frame);

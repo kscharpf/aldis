@@ -12,8 +12,8 @@ use aldis_core::ErrorKind;
 use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
-    FrameData, MapConfig, PhysicalChannelConfig, Reason, SegmentHeaderUse, TcFrame, TcFrameWriter,
-    TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
+    FrameData, MapConfig, PhysicalChannelConfig, Reason, SegmentHeaderUse, TcFrame, TcMapId,
+    TcPlan, TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -122,7 +122,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
             )
         } else {
             let data = f.data_field();
-            let mut w = TcFrameWriter::begin(
+            let mut w = TcPlan::begin(
                 &mut out,
                 &table,
                 f.header().fields(),
@@ -130,7 +130,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 data.len(),
             )
             .unwrap();
-            w.user_data_mut().copy_from_slice(data);
+            w.data_mut().copy_from_slice(data);
             w.security_header_mut().copy_from_slice(f.security_header());
             w.security_trailer_mut()
                 .copy_from_slice(f.security_trailer());
@@ -141,8 +141,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 map_id: f.segment_header().map(|s| s.map_id),
             };
             w.protect(data.len(), &mut PreFilledSecurity, &ctx)
-                .and_then(TcFrameWriter::finalize)
-                .map(|w| w.len())
+                .map(|w| w.finalize().len())
         };
         assert_eq!(n, Ok(f.len()));
         assert_eq!(out, f.octets());

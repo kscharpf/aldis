@@ -13,7 +13,7 @@ use aldis_uslp::{
     ChannelFields, ConstructionRule, Delimited, FirstHeaderPointer, FrameContent, FrameDelimiter,
     FrameFields, FrameKind, LastValidOctet, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
     SecurityScope, SourceOrDestination, TfdfHeader, TfdzOffset, TfdzRule, TransferFrameType,
-    TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpFrameWriter, UslpMapId,
+    TruncatedFrameLen, UnassignedUpid, Upid, UslpAnomaly, UslpFrame, UslpMapId, UslpPlan,
     UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCount, VcfCountLen, check_frame,
     encode, encode_oid, encode_oid_galois, encode_truncated, next_frame,
 };
@@ -261,22 +261,15 @@ fn frame_group(t: &mut Tally) {
             .is_ok_and(|v| v.anomalies().is_empty() && v.len() == 18),
     );
     let mut two = [0_u8; 64];
-    match UslpFrameWriter::begin(&mut two, &vt, full, content, bb(10)) {
+    match UslpPlan::begin(&mut two, &vt, full, content, bb(10)) {
         Ok(mut w) => {
-            t.check(
-                w.security_header_mut().is_ok_and(|s| s.is_empty())
-                    && w.security_trailer_mut().is_ok_and(|s| s.is_empty()),
-            );
-            let ok = w.tfdz_mut().is_ok_and(|z| {
-                crate::vectors::copy(z.get_mut(..3).unwrap_or_default(), &[1, 2, 3])
-            });
+            t.check(w.security_header_mut().is_empty() && w.security_trailer_mut().is_empty());
+            let ok =
+                crate::vectors::copy(w.data_mut().get_mut(..3).unwrap_or_default(), &[1, 2, 3]);
             t.check(ok);
             match w.unsecured(bb(3)) {
                 Ok(p) => {
-                    let Ok(done) = p.finalize() else {
-                        t.check(false);
-                        return;
-                    };
+                    let done = p.finalize();
                     t.check(done.len() == 18 && !done.is_empty() && done.octets().len() == 18);
                     t.check(done.into_octets().len() == 18);
                 }
@@ -669,8 +662,8 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
     let n = encode(&tbl, fields, content, bb(zone), &mut scratch.a)?;
     // The two-phase writer must produce the same octets (API-020).
     let two = need(scratch.b.get_mut(..n))?;
-    let mut w = UslpFrameWriter::begin(two, &tbl, fields, content, zone.len())?;
-    if !w.tfdz_mut().is_ok_and(|z| crate::vectors::copy(z, zone)) {
+    let mut w = UslpPlan::begin(two, &tbl, fields, content, zone.len())?;
+    if !crate::vectors::copy(w.data_mut(), zone) {
         return Err(Fail::Vector);
     }
     let ctx = FrameCtx::Uslp {
@@ -679,7 +672,7 @@ fn encode_case(case: &Case, o: &mut Out, scratch: &mut Scratch) -> Run {
         map_id: Some(fields.map_id),
     };
     if w.protect(zone.len(), &mut PreFilledSecurity, &ctx)?
-        .finalize()?
+        .finalize()
         .len()
         != n
     {

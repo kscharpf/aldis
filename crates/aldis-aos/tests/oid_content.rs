@@ -3,7 +3,7 @@
 //! sequence still decodes it as idle data.
 
 use aldis_aos::{
-    AosEdition, AosFrame, AosFrameFields, AosFrameWriter, AosPhysicalChannelConfig,
+    AosEdition, AosFrame, AosFrameFields, AosPhysicalChannelConfig, AosPlan,
     AosVirtualChannelConfig, DataFieldContent, DataUnit, VcFrameCount, VcTable,
 };
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -20,7 +20,7 @@ fn an_oid_frame_with_data_that_is_not_the_sequence_decodes() {
     let mut out = [0_u8; 40];
     let count = VcFrameCount::new(0).unwrap();
     let mut oid = OidGenerator::new();
-    let written = AosFrameWriter::begin_oid(
+    let written = AosPlan::begin_oid(
         &mut out,
         &pc,
         &table,

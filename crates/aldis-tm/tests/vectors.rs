@@ -17,9 +17,8 @@ use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::TmAnomaly;
 use aldis_tm::{
     DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmFrameWriter,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig, UncheckedTmFrame,
-    encode,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig, UncheckedTmFrame, encode,
 };
 use serde_json::{Map, Value, json};
 
@@ -204,8 +203,8 @@ fn encode_case(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Er
     }
     let n = n?;
     let mut two = vec![0_u8; n];
-    let mut w = TmFrameWriter::begin(&mut two, mc, &fields).unwrap();
-    w.secondary_header_data_mut().copy_from_slice(&fsh_data);
+    let mut w = TmPlan::begin(&mut two, mc, &fields).unwrap();
+    w.secondary_data_mut().copy_from_slice(&fsh_data);
     w.security_header_mut().copy_from_slice(&sh);
     w.data_field_mut().copy_from_slice(&data);
     w.security_trailer_mut().copy_from_slice(&st);
@@ -231,7 +230,7 @@ fn encode_oid(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Err
     for f in get(p, case, "frames").as_array().unwrap() {
         let f = f.as_object().unwrap();
         let mut out = vec![0_u8; mc.pc().frame_len()];
-        let mut w = TmFrameWriter::begin_oid(
+        let mut w = TmPlan::begin_oid(
             &mut out,
             mc,
             vcid,
@@ -240,7 +239,7 @@ fn encode_oid(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Err
             &mut oid,
         )?;
         if let Some(data) = f.get("fsh_data_hex") {
-            w.secondary_header_data_mut().copy_from_slice(&octets(data));
+            w.secondary_data_mut().copy_from_slice(&octets(data));
         }
         if let Some(ocf) = ocf_of(f.get("ocf_hex")) {
             w.set_ocf(ocf)?;

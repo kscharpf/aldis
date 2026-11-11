@@ -15,7 +15,7 @@ use aldis_core::crc::crc16;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     Delimited, FrameContent, FrameFields, MapConfig, OcfUse, PhysicalChannelConfig, Reason,
-    SecurityScope, TransferFrameType, TruncatedFrameLen, UslpFrame, UslpFrameWriter, UslpMapId,
+    SecurityScope, TransferFrameType, TruncatedFrameLen, UslpFrame, UslpMapId, UslpPlan,
     UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, check_frame,
     encode_truncated, next_frame,
 };
@@ -117,14 +117,11 @@ fn re_encode(table: &VcTable<4, 4>, f: &UslpFrame<'_>) {
                 ocf: full.ocf(),
             };
             let zone = full.tfdz();
-            let mut w =
-                UslpFrameWriter::begin(&mut out, table, fields, content, zone.len()).unwrap();
-            w.tfdz_mut().unwrap().copy_from_slice(zone);
+            let mut w = UslpPlan::begin(&mut out, table, fields, content, zone.len()).unwrap();
+            w.data_mut().copy_from_slice(zone);
             w.security_header_mut()
-                .unwrap()
                 .copy_from_slice(full.security_header());
             w.security_trailer_mut()
-                .unwrap()
                 .copy_from_slice(full.security_trailer());
             let ctx = FrameCtx::Uslp {
                 scid: fields.spacecraft_id,
@@ -134,8 +131,7 @@ fn re_encode(table: &VcTable<4, 4>, f: &UslpFrame<'_>) {
             let done = w
                 .protect(zone.len(), &mut PreFilledSecurity, &ctx)
                 .unwrap()
-                .finalize()
-                .unwrap();
+                .finalize();
             assert_eq!(done.len(), f.len());
             assert_eq!(out, f.octets());
         }

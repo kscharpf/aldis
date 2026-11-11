@@ -3,7 +3,7 @@
 //! hazard HZ-TC-16, proposal P-TC-06).
 //!
 //! The buffer is filled with a pattern and is longer than the frame. After `encode`, and after
-//! `UslpFrameWriter::begin` and `finish` (also below the reservation, with and without a
+//! `UslpPlan::begin` and `finish` (also below the reservation, with and without a
 //! Security Trailer, which `finish` moves), every octet from the end of the reservation on is
 //! the pattern; a rejected `encode` or `begin`, and a failed `finish`, change no octet of the
 //! frame or the reservation.
@@ -18,8 +18,8 @@ use aldis_core::ErrorKind;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_uslp::{
     FrameContent, FrameFields, FrameKind, MapConfig, PhysicalChannelConfig, SecurityScope,
-    SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid, UslpFrame, UslpFrameWriter,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, check_frame, encode,
+    SourceOrDestination, TfdfHeader, TfdzRule, TransferFrameType, Upid, UslpFrame, UslpMapId,
+    UslpPlan, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, check_frame, encode,
 };
 
 const BUFFER: usize = 300;
@@ -124,20 +124,17 @@ fn begin_and_finish_write_only_the_reservation() {
         for tfdz_len in [max_tfdz, 25, 1] {
             let before = pattern(BUFFER);
             let mut out = before.clone();
-            let mut w =
-                UslpFrameWriter::begin(&mut out, &t, fields(vc), CONTENT, max_tfdz).unwrap();
-            assert_eq!(w.tfdz_mut().unwrap().len(), max_tfdz);
-            let security =
-                w.security_header_mut().unwrap().len() + w.security_trailer_mut().unwrap().len();
+            let mut w = UslpPlan::begin(&mut out, &t, fields(vc), CONTENT, max_tfdz).unwrap();
+            assert_eq!(w.data_mut().len(), max_tfdz);
+            let security = w.security_header_mut().len() + w.security_trailer_mut().len();
             // The Primary Header (7), the TFDF Header (1), the reservation, and the FECF (2).
             let total = 7 + 1 + security + max_tfdz + 2;
-            w.tfdz_mut().unwrap()[..tfdz_len].fill(0x5C);
+            w.data_mut()[..tfdz_len].fill(0x5C);
             let ctx = ctx(vc);
             let n = w
                 .protect(tfdz_len, &mut PreFilledSecurity, &ctx)
                 .unwrap()
                 .finalize()
-                .unwrap()
                 .len();
             assert_eq!(n, total - (max_tfdz - tfdz_len));
             assert_eq!(out[total..], before[total..], "vc {vc}, {tfdz_len}");
@@ -154,17 +151,17 @@ fn a_failed_begin_or_finish_changes_nothing_of_the_frame() {
     let before = pattern(BUFFER);
     // Too small for the reservation: 7 + 1 + 40 + 2 = 50 octets.
     let mut out = before[..49].to_vec();
-    let e = UslpFrameWriter::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap_err();
+    let e = UslpPlan::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
     assert_eq!(out, before[..49]);
     // A failed finish leaves the unfinished frame as `begin` wrote it.
     let mut begun = before.clone();
     {
-        let _begun = UslpFrameWriter::begin(&mut begun, &t, fields(1), CONTENT, 40).unwrap();
+        let _begun = UslpPlan::begin(&mut begun, &t, fields(1), CONTENT, 40).unwrap();
     }
     for tfdz_len in [0, 41] {
         let mut out = before.clone();
-        let w = UslpFrameWriter::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap();
+        let w = UslpPlan::begin(&mut out, &t, fields(1), CONTENT, 40).unwrap();
         w.protect(tfdz_len, &mut PreFilledSecurity, &ctx(1))
             .unwrap_err();
         assert_eq!(out, begun, "tfdz_len {tfdz_len}");

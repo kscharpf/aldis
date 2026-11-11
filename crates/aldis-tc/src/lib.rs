@@ -57,7 +57,7 @@ pub use header::{
 };
 pub use stream::{DiscardReason, FrameStream, IntakeItem, LenientFrameStream, TcIntake};
 pub use view::TcFrame;
-pub use writer::{FrameData, TcFrameWriter, encode};
+pub use writer::{FrameData, TcFrameWriter, TcPlan, encode};
 
 /// Compiles and runs the examples in `README.md` as doctests; not part of the API.
 #[cfg(doctest)]

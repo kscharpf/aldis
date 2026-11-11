@@ -6,8 +6,8 @@ use core::hint::black_box as bb;
 use aldis_aos::fhec::{self, CorrectedSymbols};
 use aldis_aos::{
     AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
-    AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, Bpdu,
-    DataFieldContent, DataUnit, FrameCountCycle, Mpdu, OID_VCID, PacketPointer, PduHeader,
+    AosPhysicalChannelConfig, AosPlan, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer,
+    Bpdu, DataFieldContent, DataUnit, FrameCountCycle, Mpdu, OID_VCID, PacketPointer, PduHeader,
     VcFrameCount, VcTable, encode, encode_oid as encode_oid_frame, encode_oid_galois,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
@@ -207,11 +207,11 @@ fn frames(
             PduHeader::Mpdu(PacketPointer::StartsAt(offset)),
         )
     };
-    match AosFrameWriter::begin(bb(&mut frame), pc, table, bb(&fields)) {
+    match AosPlan::begin(bb(&mut frame), pc, table, bb(&fields)) {
         Ok(mut w) => {
-            t.check(copy(w.insert_zone_mut(), &[1, 2, 3, 4]));
+            t.check(copy(w.secondary_mut(), &[1, 2, 3, 4]));
             t.check(copy(w.security_header_mut(), &[0xA5, 0xA5]));
-            w.zone_mut().fill(bb(0xD0));
+            w.data_mut().fill(bb(0xD0));
             t.check(copy(w.security_trailer_mut(), &[0x5A]));
             t.check(w.set_ocf(Ocf::decode(bb([0x01, 0, 0, 0]))).is_ok());
             t.check(w.layout().frame_len() == 40);
@@ -280,7 +280,7 @@ fn frames(
         return;
     };
     t.check(
-        AosFrameWriter::begin_oid(
+        AosPlan::begin_oid(
             bb(&mut frame),
             pc,
             table,
@@ -538,11 +538,11 @@ fn encode_case(
         bb(&content),
         bb(fresh(&mut scratch.a, len)?),
     )?;
-    let mut w = AosFrameWriter::begin(bb(fresh(&mut scratch.b, n)?), pc, table, &fields)
+    let mut w = AosPlan::begin(bb(fresh(&mut scratch.b, n)?), pc, table, &fields)
         .map_err(|_| Fail::Vector)?;
-    let ok = copy(w.insert_zone_mut(), content.insert_zone)
+    let ok = copy(w.secondary_mut(), content.insert_zone)
         && copy(w.security_header_mut(), content.security_header)
-        && copy(w.zone_mut(), content.zone)
+        && copy(w.data_mut(), content.zone)
         && copy(w.security_trailer_mut(), content.security_trailer)
         && content.ocf.is_none_or(|o| w.set_ocf(o).is_ok());
     let ctx = FrameCtx::Aos {
@@ -579,9 +579,9 @@ fn encode_oid(
             ..AosFrameFields::oid(scid, count)
         };
         let buf = fresh(&mut scratch.a, pc.frame_len())?;
-        let mut w = AosFrameWriter::begin_oid(bb(buf), pc, table, &fields, &mut oid)?;
+        let mut w = AosPlan::begin_oid(bb(buf), pc, table, &fields, &mut oid)?;
         if let Some(iz) = crate::vectors::get(f, "insert_zone_hex")
-            && !copy(w.insert_zone_mut(), need(iz.bytes())?)
+            && !copy(w.secondary_mut(), need(iz.bytes())?)
         {
             return Err(Fail::Vector);
         }

@@ -8,8 +8,8 @@
 )]
 
 use aldis_aos::{
-    AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter, CorrectedSymbols, DataUnit,
-    PduHeader, encode,
+    AosFrame, AosFrameContent, AosFrameFields, AosPlan, CorrectedSymbols, DataUnit, PduHeader,
+    encode,
 };
 use aldis_core::lookup::ChannelLookup;
 use aldis_core::oid::OidGenerator;
@@ -163,10 +163,10 @@ proptest! {
         // req: API-020, API-023, AOS-019, VER-023
         let pc = f.pc();
         let mut out = vec![0_u8; f.octets.len()];
-        let mut w = AosFrameWriter::begin(&mut out, &pc, &f.table, &f.fields).unwrap();
-        w.insert_zone_mut().copy_from_slice(&f.insert_zone);
+        let mut w = AosPlan::begin(&mut out, &pc, &f.table, &f.fields).unwrap();
+        w.secondary_mut().copy_from_slice(&f.insert_zone);
         w.security_header_mut().copy_from_slice(&f.security_header);
-        w.zone_mut().copy_from_slice(&f.zone);
+        w.data_mut().copy_from_slice(&f.zone);
         w.security_trailer_mut().copy_from_slice(&f.security_trailer);
         if let Some(ocf) = f.ocf {
             w.set_ocf(ocf).unwrap();
@@ -219,7 +219,7 @@ proptest! {
         oid.fill(&mut skipped);
         reference.fill(&mut skipped);
         let mut out = vec![0_u8; pc.frame_len()];
-        let w = AosFrameWriter::begin_oid(&mut out, &pc, &t, &AosFrameFields::oid(scid, count), &mut oid).unwrap();
+        let w = AosPlan::begin_oid(&mut out, &pc, &t, &AosFrameFields::oid(scid, count), &mut oid).unwrap();
         prop_assert_eq!(w.unsecured().unwrap().finalize().len(), pc.frame_len());
         let d = AosFrame::decode(&out, &pc, &t).unwrap();
         prop_assert!(d.is_oid());

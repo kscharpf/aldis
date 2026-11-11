@@ -15,8 +15,8 @@ use aldis_core::{AnomalySet, DecodeMode, Error, FieldId};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, Delimited, FarmBCounter, FrameData,
     FrameDelimiter, FrameFields, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeader,
-    SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcFrameWriter, TcMapId, TcSpacecraftId,
-    TcVcId, VcConfig, VcTable, check_frame, encode,
+    SegmentHeaderUse, SequenceFlags, TcAnomaly, TcFrame, TcMapId, TcPlan, TcSpacecraftId, TcVcId,
+    VcConfig, VcTable, check_frame, encode,
 };
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use serde_json::{Map, Value, json};
@@ -170,8 +170,8 @@ fn encode_fdu(
     let n = encode(channels, frame_fields, fdu, out)?;
     // The two-phase writer must produce the same octets (API-020).
     let mut two = vec![0_u8; n];
-    let mut w = TcFrameWriter::begin(&mut two, channels, frame_fields, segment, user.len())?;
-    w.user_data_mut().copy_from_slice(&user);
+    let mut w = TcPlan::begin(&mut two, channels, frame_fields, segment, user.len())?;
+    w.data_mut().copy_from_slice(&user);
     let ctx = FrameCtx::Tc {
         scid: frame_fields.spacecraft_id,
         vcid: frame_fields.vc_id,
@@ -179,8 +179,7 @@ fn encode_fdu(
     };
     let done = w
         .protect(user.len(), &mut PreFilledSecurity, &ctx)?
-        .finalize()
-        .unwrap();
+        .finalize();
     assert_eq!(done.len(), n, "{}", case.id);
     assert_eq!(two, out[..n], "{}: two-phase writer differs", case.id);
     Ok(n)

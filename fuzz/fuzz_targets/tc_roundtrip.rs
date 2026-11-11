@@ -9,8 +9,8 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tc::{
     ControlCommand, FrameData, FrameFields, FrameType, MapConfig, PhysicalChannelConfig,
-    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcFrameWriter, TcMapId,
-    TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
+    SegmentHeader, SegmentHeaderUse, SequenceFlags, TcFrame, TcMapId, TcPlan, TcSpacecraftId,
+    TcVcId, VcConfig, VcTable, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -113,8 +113,8 @@ fn two_phase(
     frame: &[u8],
 ) {
     let mut two = vec![0x5A_u8; frame.len()];
-    let mut w = TcFrameWriter::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
-    w.user_data_mut().copy_from_slice(user);
+    let mut w = TcPlan::begin(&mut two, table, fields, segment_header, user.len()).unwrap();
+    w.data_mut().copy_from_slice(user);
     let ctx = FrameCtx::Tc {
         scid: fields.spacecraft_id,
         vcid: fields.vc_id,
@@ -123,8 +123,7 @@ fn two_phase(
     let done = w
         .protect(user.len(), &mut PreFilledSecurity, &ctx)
         .unwrap()
-        .finalize()
-        .unwrap();
+        .finalize();
     assert_eq!(done.len(), frame.len());
     assert_eq!(two, frame);
 }

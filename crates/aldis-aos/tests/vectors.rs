@@ -9,10 +9,9 @@
 )]
 
 use aldis_aos::{
-    AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosFrameWriter,
-    AosPhysicalChannelConfig, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer,
-    DataFieldContent, DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable,
-    encode, fhec,
+    AosAnomaly, AosEdition, AosFrame, AosFrameContent, AosFrameFields, AosPhysicalChannelConfig,
+    AosPlan, AosPrimaryHeader, AosVirtualChannelConfig, BitstreamPointer, DataFieldContent,
+    DataUnit, FrameCountCycle, PacketPointer, PduHeader, VcFrameCount, VcTable, encode, fhec,
 };
 use aldis_aos::{PacketOffset, ValidBitCount};
 use aldis_core::ids::{SpacecraftId, VcId};
@@ -253,10 +252,10 @@ fn encode_case(case: &CodecCase, pc: &AosPhysicalChannelConfig, t: &Table) -> Re
     }
     let n = n?;
     let mut two = vec![0_u8; n];
-    let mut w = AosFrameWriter::begin(&mut two, pc, t, &fields).unwrap();
-    w.insert_zone_mut().copy_from_slice(&iz);
+    let mut w = AosPlan::begin(&mut two, pc, t, &fields).unwrap();
+    w.secondary_mut().copy_from_slice(&iz);
     w.security_header_mut().copy_from_slice(&sh);
-    w.zone_mut().copy_from_slice(&zone);
+    w.data_mut().copy_from_slice(&zone);
     w.security_trailer_mut().copy_from_slice(&st);
     if let Some(ocf) = ocf {
         w.set_ocf(ocf).unwrap();
@@ -289,9 +288,9 @@ fn encode_oid(
             ..AosFrameFields::oid(scid, count)
         };
         let mut out = vec![0_u8; pc.frame_len()];
-        let mut w = AosFrameWriter::begin_oid(&mut out, pc, table, &fields, &mut oid)?;
+        let mut w = AosPlan::begin_oid(&mut out, pc, table, &fields, &mut oid)?;
         if let Some(iz) = f.get("insert_zone_hex") {
-            w.insert_zone_mut().copy_from_slice(&octets(Some(iz)));
+            w.secondary_mut().copy_from_slice(&octets(Some(iz)));
         }
         let n = w.unsecured().unwrap().finalize().len();
         frames.push(hex::encode(&out[..n]));
