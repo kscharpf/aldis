@@ -14,7 +14,7 @@
 | WP-4 Ground node: FOP-1 | merged | #506 | `RequestAd`, CLCW and timer inputs, transmit responses, directives, notifications and alerts as events, one frame per uplink slot |
 | WP-5 Golden traces | merged | #510, #511 | `a3-*` cases blessed and frozen, hand-checked against the Blue Books, APP-003 against `a1-nominal`, independent check (D8) |
 | WP-6 Strict decoding of COP-1 traces | merged | #512 | APP-086 for AD and BC frames and the CLCW in the `refapp` check; also carries the retransmitted AD frames through `FramedPackets` (WP-2 passes the frames of a clean link only) |
-| WP-7 Exit | in progress | — | `trace --scope a3 --strict`; every A3 follow-up issue closed or deferred; roadmap, README, ACFS and AINT entry gates |
+| WP-7 Exit | merged | #517 | `trace --scope a3 --strict`; every A3 follow-up issue closed or deferred; roadmap, README, ACFS and AINT entry gates |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
