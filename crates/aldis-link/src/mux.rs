@@ -482,7 +482,10 @@ impl<P: MuxProtocol> VcConfig<P> {
         }
     }
 
-    /// The same VC with the priority of fixed-priority multiplexing (LNK-031).
+    /// The same VC with the priority of fixed-priority multiplexing (LNK-031). A higher value is
+    /// served first: [`MuxPolicy::FixedPriority`] picks the offered VC with the highest priority,
+    /// the opposite of a rank in which 1 is served first (as in the scenario and the Blue Books'
+    /// wording); a caller that holds a rank passes it inverted (for example 255 less the rank).
     #[must_use]
     pub const fn with_priority(self, priority: u8) -> VcConfig<P> {
         VcConfig { priority, ..self }

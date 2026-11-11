@@ -292,7 +292,10 @@ pub struct FduIn<'a, P: ReassemblerProtocol> {
     /// The MAP and the gap flag on USLP; nothing on TC.
     pub meta: P::Meta,
     /// TC: the Frame Data Field with its Segment Header (if the VC has one). USLP: the TFDF, the
-    /// TFDF Header and the TFDZ.
+    /// TFDF Header and the TFDZ. A caller that gets the data from `Farm1Output::Deliver` holds the
+    /// frame data field after the Segment Header, so it puts `SegmentHeader::octet` back in front,
+    /// in a buffer it owns, before it feeds a `MapReassembler<Tc>`; without it the MAP is read
+    /// from the first data octet and the FDU surfaces as `unknown_map` events, with no error.
     pub data: &'a [u8],
 }
 
