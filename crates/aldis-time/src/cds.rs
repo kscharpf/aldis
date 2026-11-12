@@ -16,15 +16,27 @@ pub const MAX_MS_OF_DAY: u32 = 86_400_999;
 bounded!(
     /// Milliseconds of day, 0 to 86 400 999: one positive leap second is allowed (301.0 Annex
     /// A, TIME-021).
-    MsOfDay, u32, field::MS_OF_DAY, 0, 86_400_999
+    MsOfDay,
+    u32,
+    field::MS_OF_DAY,
+    0,
+    86_400_999
 );
 bounded!(
     /// Microseconds of millisecond, 0–999 (301.0 Annex A, TIME-021).
-    Micros, u16, field::SUBMS, 0, 999
+    Micros,
+    u16,
+    field::SUBMS,
+    0,
+    999
 );
 bounded!(
     /// Picoseconds of millisecond, 0–999 999 999 (301.0 Annex A, TIME-021).
-    Picos, u32, field::SUBMS, 0, 999_999_999
+    Picos,
+    u32,
+    field::SUBMS,
+    0,
+    999_999_999
 );
 
 /// The submillisecond segment of a CDS value; its resolution must match the format's

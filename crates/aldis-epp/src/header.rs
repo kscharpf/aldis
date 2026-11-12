@@ -53,17 +53,23 @@ small_id!(
     /// Encapsulation Protocol ID, 3 bits (133.1 §4.1.2.3). Values other than the three
     /// constants are assigned by SANA and are checked against a caller-supplied set
     /// ([`EppConfig`](crate::config::EppConfig), EPP-010).
-    Epi, field::EPI, 0b111
+    Epi,
+    field::EPI,
+    0b111
 );
 small_id!(
     /// Encapsulation Protocol ID Extension, 4 bits; present in 4- and 8-octet headers
     /// (133.1 §4.1.2.6; EPP-006, EPP-008, EPP-011).
-    EpiExtension, field::EPI_EXTENSION, 0xF
+    EpiExtension,
+    field::EPI_EXTENSION,
+    0xF
 );
 small_id!(
     /// User Defined field, 4 bits of mission-specific header data; present in 4- and 8-octet
     /// headers (133.1 §4.1.2.5; EPP-008, EPP-011).
-    UserDefined, field::USER_DEFINED, 0xF
+    UserDefined,
+    field::USER_DEFINED,
+    0xF
 );
 
 impl Epi {

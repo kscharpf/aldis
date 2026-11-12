@@ -31,19 +31,23 @@ macro_rules! up_to {
 
 up_to!(
     /// `0..=max` for 64-bit fields, the edges drawn more often (VER-054).
-    up_to_u64, u64
+    up_to_u64,
+    u64
 );
 up_to!(
     /// `0..=max` for 32-bit fields, the edges drawn more often (VER-054).
-    up_to_u32, u32
+    up_to_u32,
+    u32
 );
 up_to!(
     /// `0..=max` for 16-bit fields, the edges drawn more often (VER-054).
-    up_to_u16, u16
+    up_to_u16,
+    u16
 );
 up_to!(
     /// `0..=max` for 8-bit fields, the edges drawn more often (VER-054).
-    up_to_u8, u8
+    up_to_u8,
+    u8
 );
 
 /// `max + 1..=u16::MAX`, with `max + 1` drawn most often: raw values one past a 16-bit field's

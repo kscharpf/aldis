@@ -308,9 +308,7 @@ fn split(
             len: ancillary_len,
         },
         has_time: time.is_some(),
-        time: time
-            .map(|t| decoded(&t, time_anomalies))
-            .unwrap_or_default(),
+        time: time.map_or_default(|t| decoded(&t, time_anomalies)),
     });
     Ok(())
 }

@@ -317,8 +317,9 @@ mod model_tests {
                         let mut out = [0_u8; 40];
                         let got = q.pop_into(&mut out).unwrap();
                         let expected = model.pop_front();
-                        prop_assert_eq!(got.map(|n| out[..n].to_vec()), expected.clone());
-                        used -= expected.map_or(0, |e| e.len() + 4);
+                        let freed = expected.as_ref().map_or(0, |e| e.len() + 4);
+                        prop_assert_eq!(got.map(|n| out[..n].to_vec()), expected);
+                        used -= freed;
                     }
                     QueueOp::Discard => {
                         let expected = model.pop_front();
