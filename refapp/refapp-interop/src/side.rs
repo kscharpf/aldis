@@ -122,7 +122,9 @@ impl<'n> Side<'n> {
 
     /// Steps the node at `now` with the datagrams `delivered`, if anything is due for it, and
     /// reports its outputs to `sink`. `tx_slot` is true in the first step at or after each
-    /// slot's instant and in no other (APP-158). Returns the units the node sent, in order.
+    /// slot's instant and in no other (APP-158). `wall` is the clock's reading when the step
+    /// runs: a `tx_slot` step with the clock in a later slot than the step's own is reported as
+    /// `SlotsMissed` (APP-162). Returns the units the node sent, in order.
     ///
     /// # Errors
     /// If the node breaks the contract of §8.1: a deadline not after `now`, or a number of units
@@ -130,6 +132,7 @@ impl<'n> Side<'n> {
     pub fn step(
         &mut self,
         now: Micros,
+        wall: Micros,
         delivered: &[Vec<u8>],
         sink: &mut dyn Sink,
     ) -> Result<Vec<Vec<u8>>, Error> {
@@ -151,10 +154,12 @@ impl<'n> Side<'n> {
         }
         if tx_slot {
             let current = now.get() / self.slot.get();
-            let missed = current.saturating_sub(self.next_slot);
+            let clock_slot = wall.max(now).get() / self.slot.get();
+            let missed = clock_slot.saturating_sub(self.next_slot);
             if missed > 0 && self.role == Role::Flight {
                 sink.record(Event::SlotsMissed {
                     t_us: now,
+                    wall_us: wall.max(now),
                     count: missed,
                 })?;
             }
@@ -219,13 +224,14 @@ impl<'n> Side<'n> {
     }
 
     /// Sends the units a step returned, one datagram each (APP-159), after the loss script
-    /// (APP-163). Returns how many datagrams went on the wire.
+    /// (APP-163). `wall` is the clock's reading at the send, logged next to `now`. Returns how many datagrams went on the wire.
     ///
     /// # Errors
     /// If the port or the sink fails.
     pub fn transmit(
         &mut self,
         now: Micros,
+        wall: Micros,
         units: Vec<Vec<u8>>,
         port: &mut dyn Port,
         loss: &LossScript,
@@ -257,6 +263,7 @@ impl<'n> Side<'n> {
                 };
                 sink.record(Event::Datagram(Datagram {
                     t_us: now,
+                    wall_us: wall.max(now),
                     dir,
                     index,
                     kind,
@@ -267,7 +274,7 @@ impl<'n> Side<'n> {
         Ok(on_wire)
     }
 
-    /// Takes a datagram from the wire at `now`: counts it, applies the loss script (the flight
+    /// Takes a datagram from the wire at `now` (`wall` as for `transmit`): counts it, applies the loss script (the flight
     /// side's uplink, APP-163), and logs it. Returns the octets to deliver to the node, or
     /// `None` for a dropped datagram.
     ///
@@ -276,6 +283,7 @@ impl<'n> Side<'n> {
     pub fn receive(
         &mut self,
         now: Micros,
+        wall: Micros,
         octets: Vec<u8>,
         loss: &LossScript,
         sink: &mut dyn Sink,
@@ -304,6 +312,7 @@ impl<'n> Side<'n> {
             };
             sink.record(Event::Datagram(Datagram {
                 t_us: now,
+                wall_us: wall.max(now),
                 dir,
                 index,
                 kind,
@@ -347,11 +356,16 @@ mod tests {
         let mut side = Side::new(Role::Flight, &mut probe, slot, Vec::new());
         let mut sink: Vec<crate::log::Event> = Vec::new();
         assert_eq!(side.next_wake(), Micros::new(0));
-        assert_eq!(side.step(Micros::new(0), &[], &mut sink).unwrap().len(), 1);
+        assert_eq!(
+            side.step(Micros::new(0), Micros::new(0), &[], &mut sink)
+                .unwrap()
+                .len(),
+            1
+        );
         // The node's deadline (40 000) is before the slot (125 000).
         assert_eq!(side.next_wake(), Micros::new(40_000));
         assert_eq!(
-            side.step(Micros::new(40_000), &[], &mut sink)
+            side.step(Micros::new(40_000), Micros::new(40_000), &[], &mut sink)
                 .unwrap()
                 .len(),
             0
@@ -359,21 +373,28 @@ mod tests {
         // An arriving datagram steps the node without a slot.
         let arrived = vec![vec![9_u8]];
         assert_eq!(
-            side.step(Micros::new(50_000), &arrived, &mut sink)
-                .unwrap()
-                .len(),
+            side.step(
+                Micros::new(50_000),
+                Micros::new(50_000),
+                &arrived,
+                &mut sink
+            )
+            .unwrap()
+            .len(),
             0
         );
         // Nothing is due at 60 000, so the node is not stepped.
         assert_eq!(
-            side.step(Micros::new(60_000), &[], &mut sink)
+            side.step(Micros::new(60_000), Micros::new(60_000), &[], &mut sink)
                 .unwrap()
                 .len(),
             0
         );
         assert_eq!(side.next_wake(), Micros::new(90_000));
-        side.step(Micros::new(90_000), &[], &mut sink).unwrap();
-        side.step(Micros::new(130_000), &[], &mut sink).unwrap();
+        side.step(Micros::new(90_000), Micros::new(90_000), &[], &mut sink)
+            .unwrap();
+        side.step(Micros::new(130_000), Micros::new(130_000), &[], &mut sink)
+            .unwrap();
         // The slot at 125 000 was served by the first step after it, once.
         assert_eq!(
             probe.seen,
@@ -394,22 +415,39 @@ mod tests {
         let slot = NonZeroU64::new(125_000).unwrap();
         let mut side = Side::new(Role::Flight, &mut probe, slot, Vec::new());
         let mut sink: Vec<crate::log::Event> = Vec::new();
-        side.step(Micros::new(0), &[], &mut sink).unwrap();
+        side.step(Micros::new(0), Micros::new(0), &[], &mut sink)
+            .unwrap();
         // Slot 1 is due at 125 000; a step at 130 000 is still in slot 1: nothing missed.
-        side.step(Micros::new(130_000), &[], &mut sink).unwrap();
+        side.step(Micros::new(130_000), Micros::new(130_000), &[], &mut sink)
+            .unwrap();
         assert_eq!(sink.len(), 0);
         // Slot 2 is due at 250 000; a step at 400 000 is in slot 3, so slot 2 is skipped.
-        side.step(Micros::new(400_000), &[], &mut sink).unwrap();
+        side.step(Micros::new(400_000), Micros::new(400_000), &[], &mut sink)
+            .unwrap();
         assert_eq!(
             sink,
             vec![crate::log::Event::SlotsMissed {
                 t_us: Micros::new(400_000),
+                wall_us: Micros::new(400_000),
                 count: 1
             }]
         );
         // The next slot is 4 again: a step at 500 000 misses none.
-        side.step(Micros::new(500_000), &[], &mut sink).unwrap();
+        side.step(Micros::new(500_000), Micros::new(500_000), &[], &mut sink)
+            .unwrap();
         assert_eq!(sink.len(), 1);
+        // Slot 5 is due at 625 000; a step of that instant with the clock at 760 000, in slot 6,
+        // is late by one slot though the node's instant is on time.
+        side.step(Micros::new(625_000), Micros::new(760_000), &[], &mut sink)
+            .unwrap();
+        assert_eq!(
+            sink.last(),
+            Some(&crate::log::Event::SlotsMissed {
+                t_us: Micros::new(625_000),
+                wall_us: Micros::new(760_000),
+                count: 1
+            })
+        );
     }
 
     #[test]
@@ -426,9 +464,10 @@ mod tests {
         let slot = NonZeroU64::new(125_000).unwrap();
         let mut side = Side::new(Role::Flight, &mut rude, slot, Vec::new());
         let mut sink: Vec<crate::log::Event> = Vec::new();
-        side.step(Micros::new(0), &[], &mut sink).unwrap();
+        side.step(Micros::new(0), Micros::new(0), &[], &mut sink)
+            .unwrap();
         let err = side
-            .step(Micros::new(1), &[vec![1]], &mut sink)
+            .step(Micros::new(1), Micros::new(1), &[vec![1]], &mut sink)
             .unwrap_err();
         assert!(err.to_string().contains("tx_slot false"), "{err}");
     }
