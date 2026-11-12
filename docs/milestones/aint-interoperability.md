@@ -18,6 +18,7 @@ A pull request that starts or merges a work package changes only its row ([roadm
 
 History:
 - 2026-11-11: plan drafted after the A3 exit (#517), from the development plan #490 §5 and the roadmap rows; D1–D9 proposed. The `--scope aint` trace (non-strict) is wired into `cargo xtask ci`, the check `spec`, and `ci.yml` by the plan's pull request (D3). AINT adds no C ABI surface (#490 D-a).
+- 2026-11-12: WP-4 run against YAMCS ([§11.9](../reference-application.md#119-results-wp-4)); the failure of the table upload and two other findings filed (#559, #560, #561); the loss script re-chosen against the observed schedule (§11.6). The follow-ups of #550 are settled in the same pull request.
 
 ## 1. Starting point
 
@@ -63,7 +64,7 @@ Written before any driver exists, after the maintainer has accepted D1 and D2:
 - **The pass criteria (D6)** for the two cases as requirements, and the loss script of the lossy-link case, with the indexes chosen against the first observed schedule (after WP-3).
 - New requirements take the next free ID of area APP and join §4. Checklist: "A spec-readings pull request before a codec", for the readings.
 - **Done when:** `cargo xtask spec-lint` passes.
-- **Split.** WP-1a (this part, [§11](../reference-application.md#11-interoperability-profile-aint) of the specification, APP-155 to APP-166) holds everything above except the drop indexes of the loss script; the Timeout_Type point is settled as far as the public documentation goes ([§11.2](../reference-application.md#112-the-open-point-timeout_type)). **WP-1b**, after WP-3, adds the indexes to [§11.6](../reference-application.md#116-the-loss-script); the Timeout_Type and Initiate AD observations of the first run move to WP-4, since WP-3 had no uplink (coordinator's decision).
+- **Split.** WP-1a (this part, [§11](../reference-application.md#11-interoperability-profile-aint) of the specification, APP-155 to APP-166) holds everything above except the drop indexes of the loss script; the Timeout_Type point is settled as far as the public documentation goes ([§11.2](../reference-application.md#112-the-open-point-timeout_type)). **WP-1b**, after WP-3, adds the indexes to [§11.6](../reference-application.md#116-the-loss-script); the Timeout_Type and Initiate AD observations of the first run move to WP-4, since WP-3 had no uplink (maintainer, 2026-11-11).
 
 ### WP-2 Transport driver (M) — the driver requirements of WP-1
 - The crate `refapp-interop` (D4): the library (step loop, the transport and clock traits, the loss script, the run log) and the binary (UDP and the monotonic clock).
@@ -81,6 +82,7 @@ Parallel with WP-2 once its binary sends frames. A TM-only run: the A2 and A3 fl
 - `a3-nominal` and the lossy-link case run against the ground system, with the driver's loss script, and are judged by the criteria of D6.
 - Every failure is classified (D2 d); a Rust defect is a track-R pull request with a regression vector and a link to the issue, not part of this work package.
 - **Done when:** both cases meet their criteria, or each failed criterion is a filed discrepancy with its disposition.
+- **Result (2026-11-12):** [§11.9 of the specification](../reference-application.md#119-results-wp-4), YAMCS 5.14.0 with its TC frame link, COP-1, and the ops script of §2.4 issued through its HTTP API. YAMCS cannot send the table upload (no TC segmentation), so `a3-nominal` and the lossy-link case are **not met as written** and the failure is filed (#559); with a table of 100 octets in one frame every other criterion of `a3-nominal` was met, and the loss script of §11.6 (re-chosen against the observed schedule, reason recorded there) reached E3, E1 with the Retransmit reset, E4, and the lone frame retransmitted by T1 in three runs. Timeout_Type: YAMCS starts with Suspend (1), settable by its API only, and `cop1TxLimit: 3` counts transmissions (#561); *Initiate AD Service* without CLCW check sends no frame, as in the Aldis node. No defect of the Aldis crates and no open reading of a Blue Book; three findings, listed in §6.
 
 ### WP-5 Exit (S) — VER-020
 - `trace --scope aint --strict` replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec` (checklist "Milestone exit").
@@ -120,10 +122,13 @@ AINT is complete when every item below is green on `main`. The requirements WP-1
 
 ## 6. Discrepancies found
 
-Each discrepancy is a GitHub issue, an open issue of [09](../09-open-issues.md), or an upstream report by the maintainer; this list names them as they are filed, with their classification (D2 d). WP-3 found no defect of the Aldis crates and no reading the Blue Books leave open; the attached sync marker question of §11.1 is answered (none; no discrepancy).
+Each discrepancy is a GitHub issue, an open issue of [09](../09-open-issues.md), or an upstream report by the maintainer; this list names them as they are filed, with their classification (D2 d). WP-3 and WP-4 found no defect of the Aldis crates and no reading the Blue Books leave open; the attached sync marker question of §11.1 is answered (none; no discrepancy).
 
 | Issue | Found in | Finding | Disposition |
 |---|---|---|---|
 | [#540](https://github.com/kscharpf/aldis/issues/540) | WP-3 | On a real clock the first run aborted at 1.5 s: the flight node reported a deadline not after `now`, because the driver stepped it a little after each slot, which moved its release deadlines between slots (§4.4.2 assumes they fall on slots) | Aldis refapp, track A: the driver is fixed in the WP-3 pull request (a step caused by a scheduled instant is taken at that instant; APP-157 clause; `tests/late_wakeups.rs`); the node's report of a past deadline is left for a track-A decision |
 | [#541](https://github.com/kscharpf/aldis/issues/541) | WP-3 | YAMCS reads the CUC time of VC 1 packets (epoch 1958 TAI) 1 ms late | Other system, cause not established: for the maintainer to report upstream |
 | [#542](https://github.com/kscharpf/aldis/issues/542) | WP-3 | YAMCS accepts a 224-octet frame, drops a 222-octet one without a trace, and counts a wrong-SCID frame as valid; its documentation says such frames are discarded | Other system, outside the nominal profile: for the maintainer to report upstream |
+| [#559](https://github.com/kscharpf/aldis/issues/559) | WP-4 | YAMCS does not segment a TC packet over frames (its documentation says so), so the table upload of §2.4 (309 octets, three segments on MAP 1) is refused and nothing is sent; APP-164 and APP-165 are not met as written. With a 100-octet table in one frame the other criteria were met | Other system, a documented limitation, and a profile question: the maintainer decides whether the YAMCS runs use the table variant (recommended) or the exit records the failure; filed under APP-166 |
+| [#560](https://github.com/kscharpf/aldis/issues/560) | WP-4 | YAMCS neither sends nor refuses a command whose frame would be 129 octets (no datagram, no NOK, no log), while a 309-octet one gets a NOK and a log line | Other system, outside the profile (the largest packet is 120 octets): for the maintainer to report upstream |
+| [#561](https://github.com/kscharpf/aldis/issues/561) | WP-4 | YAMCS starts with Timeout_Type 1 (`SUSPEND`), not the profile's 0; it is settable only through the HTTP API, not in the instance file; `cop1TxLimit` counts transmissions in all (3 = Transmission_Limit 3) | Other system's configuration, the profile's value reachable (the ops script sets it): recorded in §11.2; no decision needed |

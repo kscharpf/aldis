@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The commands of the Aldis reference application (docs/reference-application.md §3.3.5, §3.3.6),
+     as an XTCE mission database for the YAMCS black box (AINT WP-4, plan D7). Written by this
+     project in the public XTCE format. Each command is one Space Packet: the 6-octet primary
+     header (APID 0x080 or 0x081, Sequence Flags 11), the data field of §3.3.5 or §3.3.6.
+     The Packet Data Length of a command is fixed by the command (the table upload, 309 octets, has
+     a fixed 300-octet table). The Sequence Count and the execution time are arguments of the ops
+     script, which gives the octets of §2.4. -->
+<SpaceSystem xmlns="http://www.omg.org/space/xtce" name="Aldis">
+  <CommandMetaData>
+    <ArgumentTypeSet>
+      <IntegerArgumentType name="u1" signed="false"><IntegerDataEncoding sizeInBits="1" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u2" signed="false"><IntegerDataEncoding sizeInBits="2" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u3" signed="false"><IntegerDataEncoding sizeInBits="3" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u8" signed="false"><IntegerDataEncoding sizeInBits="8" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u11" signed="false"><IntegerDataEncoding sizeInBits="11" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u14" signed="false"><IntegerDataEncoding sizeInBits="14" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u16" signed="false"><IntegerDataEncoding sizeInBits="16" encoding="unsigned"/></IntegerArgumentType>
+      <IntegerArgumentType name="u32" signed="false"><IntegerDataEncoding sizeInBits="32" encoding="unsigned"/></IntegerArgumentType>
+      <BinaryArgumentType name="table100"><BinaryDataEncoding bitOrder="mostSignificantBitFirst"><SizeInBits><FixedValue>800</FixedValue></SizeInBits></BinaryDataEncoding></BinaryArgumentType>
+      <BinaryArgumentType name="table300"><BinaryDataEncoding bitOrder="mostSignificantBitFirst"><SizeInBits><FixedValue>2400</FixedValue></SizeInBits></BinaryDataEncoding></BinaryArgumentType>
+    </ArgumentTypeSet>
+
+    <MetaCommandSet>
+      <!-- The primary header of §3: version 0, type 1 (telecommand), no secondary header flag. -->
+      <MetaCommand name="Aldis_TC" abstract="true">
+        <ArgumentList>
+          <Argument name="version" argumentTypeRef="u3" initialValue="0"/>
+          <Argument name="type" argumentTypeRef="u1" initialValue="1"/>
+          <Argument name="sec_hdr" argumentTypeRef="u1" initialValue="0"/>
+          <Argument name="apid" argumentTypeRef="u11"/>
+          <Argument name="seq_flags" argumentTypeRef="u2" initialValue="3"/>
+          <Argument name="seq_count" argumentTypeRef="u14"/>
+          <Argument name="pkt_len" argumentTypeRef="u16"/>
+        </ArgumentList>
+        <CommandContainer name="Aldis_TC_container">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="version"/>
+            <ArgumentRefEntry argumentRef="type"/>
+            <ArgumentRefEntry argumentRef="sec_hdr"/>
+            <ArgumentRefEntry argumentRef="apid"/>
+            <ArgumentRefEntry argumentRef="seq_flags"/>
+            <ArgumentRefEntry argumentRef="seq_count"/>
+            <ArgumentRefEntry argumentRef="pkt_len"/>
+          </EntryList>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- Commands, APID 0x080 (§3.3.5): function code, execution mode, execution time. -->
+      <MetaCommand name="Aldis_Cmd" abstract="true">
+        <BaseMetaCommand metaCommandRef="Aldis_TC">
+          <ArgumentAssignmentList><ArgumentAssignment argumentName="apid" argumentValue="128"/></ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="func" argumentTypeRef="u8"/>
+          <Argument name="exec_mode" argumentTypeRef="u8" initialValue="1"/>
+          <Argument name="t_coarse" argumentTypeRef="u32"/>
+          <Argument name="t_fine" argumentTypeRef="u16" initialValue="0"/>
+        </ArgumentList>
+        <CommandContainer name="Aldis_Cmd_container">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="func"/>
+            <ArgumentRefEntry argumentRef="exec_mode"/>
+            <ArgumentRefEntry argumentRef="t_coarse"/>
+            <ArgumentRefEntry argumentRef="t_fine"/>
+          </EntryList>
+          <BaseContainer containerRef="Aldis_TC_container"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <MetaCommand name="NOOP">
+        <BaseMetaCommand metaCommandRef="Aldis_Cmd">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="func" argumentValue="1"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="7"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <CommandContainer name="NOOP_container"><EntryList/><BaseContainer containerRef="Aldis_Cmd_container"/></CommandContainer>
+      </MetaCommand>
+
+      <MetaCommand name="DUMP_MEMORY">
+        <BaseMetaCommand metaCommandRef="Aldis_Cmd">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="func" argumentValue="2"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="13"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="address" argumentTypeRef="u32"/>
+          <Argument name="length" argumentTypeRef="u16"/>
+        </ArgumentList>
+        <CommandContainer name="DUMP_MEMORY_container">
+          <EntryList><ArgumentRefEntry argumentRef="address"/><ArgumentRefEntry argumentRef="length"/></EntryList>
+          <BaseContainer containerRef="Aldis_Cmd_container"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <MetaCommand name="ACTIVATE_TABLE">
+        <BaseMetaCommand metaCommandRef="Aldis_Cmd">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="func" argumentValue="3"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="10"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="table_id" argumentTypeRef="u8"/>
+          <Argument name="crc" argumentTypeRef="u16"/>
+        </ArgumentList>
+        <CommandContainer name="ACTIVATE_TABLE_container">
+          <EntryList><ArgumentRefEntry argumentRef="table_id"/><ArgumentRefEntry argumentRef="crc"/></EntryList>
+          <BaseContainer containerRef="Aldis_Cmd_container"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <MetaCommand name="SET_PAYLOAD_MODE">
+        <BaseMetaCommand metaCommandRef="Aldis_Cmd">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="func" argumentValue="4"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="8"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="mode" argumentTypeRef="u8"/>
+        </ArgumentList>
+        <CommandContainer name="SET_PAYLOAD_MODE_container">
+          <EntryList><ArgumentRefEntry argumentRef="mode"/></EntryList>
+          <BaseContainer containerRef="Aldis_Cmd_container"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- Table upload, APID 0x081 (§3.3.6): table ID, length L, L table octets. -->
+      <MetaCommand name="TABLE_UPLOAD">
+        <BaseMetaCommand metaCommandRef="Aldis_TC">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="apid" argumentValue="129"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="302"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="table_id" argumentTypeRef="u8"/>
+          <Argument name="table_len" argumentTypeRef="u16" initialValue="300"/>
+          <Argument name="table" argumentTypeRef="table300"/>
+        </ArgumentList>
+        <CommandContainer name="TABLE_UPLOAD_container">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="table_id"/>
+            <ArgumentRefEntry argumentRef="table_len"/>
+            <ArgumentRefEntry argumentRef="table"/>
+          </EntryList>
+          <BaseContainer containerRef="Aldis_TC_container"/>
+        </CommandContainer>
+      </MetaCommand>
+
+      <!-- A table of 100 octets (packet 109, one TC frame), for the variant of the ops script that
+           YAMCS can send: it does not segment a packet over frames (section 11.9). -->
+      <MetaCommand name="TABLE_UPLOAD_SHORT">
+        <BaseMetaCommand metaCommandRef="Aldis_TC">
+          <ArgumentAssignmentList>
+            <ArgumentAssignment argumentName="apid" argumentValue="129"/>
+            <ArgumentAssignment argumentName="pkt_len" argumentValue="102"/>
+          </ArgumentAssignmentList>
+        </BaseMetaCommand>
+        <ArgumentList>
+          <Argument name="table_id" argumentTypeRef="u8"/>
+          <Argument name="table_len" argumentTypeRef="u16" initialValue="100"/>
+          <Argument name="table" argumentTypeRef="table100"/>
+        </ArgumentList>
+        <CommandContainer name="TABLE_UPLOAD_SHORT_container">
+          <EntryList>
+            <ArgumentRefEntry argumentRef="table_id"/>
+            <ArgumentRefEntry argumentRef="table_len"/>
+            <ArgumentRefEntry argumentRef="table"/>
+          </EntryList>
+          <BaseContainer containerRef="Aldis_TC_container"/>
+        </CommandContainer>
+      </MetaCommand>
+    </MetaCommandSet>
+  </CommandMetaData>
+</SpaceSystem>
