@@ -1,0 +1,59 @@
+run: {'kind': 'header', 'log': 'aldis-interop-run', 'log_version': 1, 'case': 'a3-nominal', 'ground_version': '5.14.0', 'image_digest': 'sha256:0a4da6e050cb6bd5aa8a331e77397637366ff02dda300e1f13058adb54d84dfe', 'node_commit': '3e1739bc04006589405b5f044bae3087ac147ed5'}
+loss script: []
+--- uplink units, in order (index, instant, N(S), type, MAP/flags, packets, event)
+   0 1.081s wall 1.081s received N(S)=0 ctrl=0 seg=0xc0 len=22 pk=[('0x080', 0, 1)]
+   1 2.032s wall 2.032s received N(S)=1 ctrl=0 seg=0xc0 len=117 pk=[('0x081', 0, 1)]
+   2 3.034s wall 3.034s received N(S)=2 ctrl=0 seg=0xc0 len=25 pk=[('0x080', 1, 3)]
+   3 4.024s wall 4.024s received N(S)=3 ctrl=0 seg=0xc0 len=28 pk=[('0x080', 2, 2)]
+   4 5.027s wall 5.027s received N(S)=4 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 3, 4)]
+   5 5.041s wall 5.041s received N(S)=5 ctrl=0 seg=0xc0 len=22 pk=[('0x080', 4, 1)]
+   6 6.034s wall 6.034s received N(S)=6 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 5, 4)]
+--- uplink frames whose Segment Header and data field equal a frame of the golden trace: units [0, 3, 6]
+--- flight node events
+  1.081s cmd_received [1, 0]
+  2.032s table_received [1, 100]
+  3.034s cmd_received [3, 1]
+  4.024s cmd_received [2, 2]
+  5.027s cmd_received [4, 3]
+  5.041s cmd_received [1, 4]
+  6.034s cmd_received [4, 5]
+--- CLCWs (changes only)
+  down   0 0.000s 0x01000000 N(R)=0 retransmit=0 lockout=0 wait=0 farm_b=0
+  down   9 1.125s 0x01000001 N(R)=1 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  17 2.125s 0x01000002 N(R)=2 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  25 3.125s 0x01000003 N(R)=3 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  33 4.125s 0x01000004 N(R)=4 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  41 5.125s 0x01000006 N(R)=6 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  49 6.125s 0x01000007 N(R)=7 retransmit=0 lockout=0 wait=0 farm_b=0
+--- criteria
+APP-164 (a3-nominal) / APP-165 (lossy link)
+=> no Lockout in any CLCW: met
+  CLCW N(R) vs V(S): 0 CLCWs outside [previous N(R), V(S)] (V(S) taken from the frames the flight node received)
+=> N(R) advances within [previous N(R), V(S)] modulo 256: met
+  last CLCW N(R) = 7; highest N(S) received = 6
+=> N(R) after the last command equals V(S): met
+  CLCWs with Retransmit that the ground system received: []
+  flight accepted commands (cmd_received, table_received): 7; a3-nominal: 7
+=> the projection of the commands equals a3-nominal's: NOT met
+    differs: golden-only [('table_received', [1, 300])], run-only [('table_received', [1, 100])]
+    equal to a3-nominal's except the length of the table: True
+  flight packets out: 58; a3-nominal packets in at the ground: 58 (equal as multisets: False); 0 downlink frames dropped by the script
+    golden-only APIDs ['0x11', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10'], run-only ['0x11', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10']
+  YAMCS command history: ('/Aldis/NOOP', 'OK', None, None)
+  YAMCS command history: ('/Aldis/TABLE_UPLOAD_SHORT', 'OK', None, None)
+  YAMCS command history: ('/Aldis/ACTIVATE_TABLE', 'OK', None, None)
+  YAMCS command history: ('/Aldis/DUMP_MEMORY', 'OK', None, None)
+  YAMCS command history: ('/Aldis/SET_PAYLOAD_MODE', 'OK', None, None)
+  YAMCS command history: ('/Aldis/NOOP', 'OK', None, None)
+  YAMCS command history: ('/Aldis/SET_PAYLOAD_MODE', 'OK', None, None)
+=> YAMCS reports every command acknowledged (Sent OK, none NOK): met
+  COP-1 states seen in the polls: {'ACTIVE': 141}
+  COP-1 status at the end: {'cop1Active': True, 'clcw': {'receptionTime': '2026-11-12T14:56:29.987Z', 'lockout': False, 'wait': False, 'nR': 7}, 'state': 'ACTIVE', 'vS': 7, 'nnR': 7, 'waitQueueNumTC': 0, 'sentQueueNumFrames': 0, 'outQueueNumFrames': 0, 'txCount': 1}
+  largest txCount seen: 1
+  YAMCS log: 0 warning(s) 'Incomplete packet dropped because of frame loss' (the dropped downlink frames)
+=> no YAMCS warning or error in its log, except those of the dropped downlink frames: met
+  first ACTIVE at poll 0; UNINITIALIZED or SUSPENDED after it: {}
+=> no UNINITIALIZED or SUSPENDED state after the first ACTIVE (no alert, no limit reached): met
+--- frames that appear more than once on the uplink (YAMCS retransmissions)
+  frame_discarded events of the flight node (layer, FARM-1 event): []
+verdict of this program: at least one criterion line says NOT met
