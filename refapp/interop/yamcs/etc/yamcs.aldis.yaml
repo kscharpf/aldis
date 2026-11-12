@@ -1,19 +1,28 @@
 # Instance of the AINT interoperability run (written by this project; reference-application.md §11.3).
-# TM only (AINT WP-3): the TM frame link of §11.1. No mission database: the packets are
-# archived and indexed, not decoded into parameters.
+# The TM frame link and the TC frame link with COP-1 of §11.1 (WP-3, WP-4). The mission database holds
+# the commands of the scenario only (mdb/aldis.xml): the telemetry packets are archived and indexed,
+# not decoded into parameters.
 # Public documentation: https://docs.yamcs.org/yamcs-server-manual/links/ccsds-frame-processing/
 services:
   - class: org.yamcs.archive.CcsdsTmIndex
+  - class: org.yamcs.archive.CommandHistoryRecorder
+  - class: org.yamcs.ProcessorCreatorService
+    args:
+      name: realtime
+      type: realtime
 
 mdb:
-  - type: emptyNode
-    spec: aldis
+  - type: xtce
+    spec: etc/mdb/aldis.xml
 
 streamConfig:
   tm:
     - name: tm_vc0
     - name: tm_vc1
     - name: tm_vc7
+  tc:
+    - name: tc_realtime
+      processor: realtime
   event: [events_realtime]
   cmdHist: [cmdhist_realtime]
   param: [pp_realtime, sys_param]
@@ -67,3 +76,27 @@ dataLinks:
         packetPreprocessorArgs:
           timestampOffset: -1
           seqCountOffset: 0
+
+  # TC link (WP-4): VC 0, MAP service on, COP-1 with K = 4, T1 = 1 s (whole seconds), no CLTU
+  # (no cltuEncoding, APP-006), one frame per datagram (APP-159). The driver listens on UDP
+  # 10025 of the host; the container reaches the host as host.containers.internal.
+  - name: aldis-tc
+    class: org.yamcs.tctm.ccsds.UdpTcFrameLink
+    host: host.containers.internal
+    port: 10025
+    spacecraftId: 0x155
+    maxFrameLength: 128
+    errorDetection: CRC16
+    priorityScheme: FIFO
+    virtualChannels:
+      - vcId: 0
+        service: PACKET
+        mapId: 0
+        commandPostprocessorClassName: org.yamcs.tctm.GenericCommandPostprocessor
+        stream: tc_realtime
+        useCop1: true
+        clcwStream: clcw
+        initialClcwWait: 0
+        slidingWindowWidth: 4
+        cop1T1: 1
+        cop1TxLimit: 3
