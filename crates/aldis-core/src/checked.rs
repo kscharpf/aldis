@@ -111,7 +111,8 @@ impl<F> Deref for Checked<F> {
 /// the crate that defines the frame can write it (the orphan rule: `Check` is foreign to every
 /// other crate, and so is the frame, and no local type appears in `impl Check for Frame`).
 /// A [`Checked`] frame is therefore a proof that the codec's check ran. An outside crate that
-/// implements the trait for a codec's frame with a lookup type of its own is refused (E0117).
+/// implements the trait for a codec's frame is refused (E0117).
+///
 /// The compile-fail example on `aldis_tm`'s implementation shows the attack: another crate
 /// implements `Check` for `TmFrame` with a lookup type of its own.
 ///

@@ -211,7 +211,8 @@ struct Outcome {
     suspensions: usize,
     /// The AD Service is suspended when the run ends (`Suspend_State` is not 0, §5.1.11).
     ended_suspended: bool,
-    /// The head frame is at the transmission limit when the run ends (§5.1.10.4, §5.2.14 c).
+    /// The head frame is at the transmission limit when the run ends, and the limit suspended the
+    /// transfer (§5.1.10.4, §5.2.14 c).
     ended_at_limit: bool,
     expedited_delivered: Vec<u16>,
     retransmissions: usize,
@@ -337,6 +338,12 @@ impl World {
             .decide(input, now, &mut self.out)
             .unwrap_or_else(|e| panic!("{}: FOP-1 refused {input:?}: {e:?}", self.s.name));
         let actions = self.ground.commit(decision);
+        // The head frame is never transmitted more often than the limit (232.1 §5.1.10.2).
+        assert!(
+            self.ground.transmission_count() <= self.ground.transmission_limit().get(),
+            "{}: Transmission_Count above Transmission_Limit",
+            self.s.name
+        );
         for action in actions.iter() {
             match *action {
                 Fop1Output::Transmit {
@@ -487,8 +494,11 @@ impl World {
             }
         }
         self.outcome.ended_suspended = self.ground.suspend_state() != SuspendState::NotSuspended;
-        self.outcome.ended_at_limit =
-            self.ground.transmission_count() >= self.ground.transmission_limit().get();
+        // At the limit the Timer expiry sends no retransmission and, under Timeout Type 1,
+        // suspends instead (232.1 §5.1.10.4, §5.2.14 c): the limit counts only with a Suspend
+        // seen, so a run that stalled with the count at the limit for another reason fails.
+        self.outcome.ended_at_limit = self.outcome.suspensions > 0
+            && self.ground.transmission_count() == self.ground.transmission_limit().get();
         self.outcome
     }
 }

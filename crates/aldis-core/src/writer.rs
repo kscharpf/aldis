@@ -328,8 +328,8 @@ impl<'b> FrameWriter<'b, Fixed, Unsealed, Unprotected> {
     /// there, for the caller to apply SDLS and finish (LNK-035). Only the [`Unsealed`] plan has
     /// it: a codec's frame leaves its writer only `Finalized` (RS-023).
     ///
-    /// The same code compiles with the [`Unsealed`] plan, so the case below fails only for
-    /// the missing method:
+    /// The same code compiles with the [`Unsealed`] plan, so the `compile_fail` example
+    /// after it fails only for the missing method.
     ///
     /// ```
     /// # use aldis_core::layout::{FrameLayout, LayoutSpec};
