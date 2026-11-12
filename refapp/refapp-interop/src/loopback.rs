@@ -88,21 +88,21 @@ pub fn run_pair(case_id: &str, loss: &LossScript, sink: &mut dyn Sink) -> Result
             match dir {
                 Dir::Down => to_ground.push(octets),
                 Dir::Up => {
-                    if let Some(o) = flight_side.receive(t, octets, loss, sink)? {
+                    if let Some(o) = flight_side.receive(t, t, octets, loss, sink)? {
                         to_flight.push(o);
                     }
                 }
             }
         }
-        let units = ground_side.step(t, &to_ground, sink)?;
-        let sent = ground_side.transmit(t, units, &mut ground_port, &none, sink)?;
+        let units = ground_side.step(t, t, &to_ground, sink)?;
+        let sent = ground_side.transmit(t, t, units, &mut ground_port, &none, sink)?;
         for _ in 0..sent {
             number = number.saturating_add(1);
             let octets = recv_now(&mut flight_port)?;
             in_flight.push((t.saturating_add(delay), t, Dir::Up, number, octets));
         }
-        let units = flight_side.step(t, &to_flight, sink)?;
-        let sent = flight_side.transmit(t, units, &mut flight_port, loss, sink)?;
+        let units = flight_side.step(t, t, &to_flight, sink)?;
+        let sent = flight_side.transmit(t, t, units, &mut flight_port, loss, sink)?;
         for _ in 0..sent {
             number = number.saturating_add(1);
             let octets = recv_now(&mut ground_port)?;
