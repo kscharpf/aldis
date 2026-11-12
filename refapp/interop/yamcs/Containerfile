@@ -5,7 +5,8 @@
 # Build context: the directory that holds the downloaded release archive (never this one).
 #   ARCHIVE  file name of the release archive in the context
 #   JAVA     the Java runtime base image (the release archive bundles no runtime)
-ARG JAVA=docker.io/library/eclipse-temurin:21-jre
+# Pinned by the digest of the multi-platform index of eclipse-temurin:21-jre (Temurin 21.0.13+9), read 2026-11-11 (D2 a).
+ARG JAVA=docker.io/library/eclipse-temurin@sha256:194729a50fcca3b498180858b54cf1b2e3816208cf8d8a1fca9856635f72ca8a
 FROM ${JAVA}
 ARG ARCHIVE
 ARG YAMCS_VERSION=5.14.0

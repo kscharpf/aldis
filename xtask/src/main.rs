@@ -165,7 +165,7 @@ commands:
                                trace --scope m5 --strict, trace --scope m6,
                                trace --scope a1 --strict, trace --scope a2 --strict,
                                trace --scope a3 --strict,
-                               trace --scope aint; a step that
+                               trace --scope aint --strict; a step that
                                cannot run counts as a problem, and the others still run
 
 ";
@@ -217,8 +217,10 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope a2 --strict", || trace::run(Some("a2"), true)),
     // A3 is closed: every in-scope requirement must keep an artefact (a3 plan D1).
     ("trace --scope a3 --strict", || trace::run(Some("a3"), true)),
-    // AINT is in progress: progress is reported, not enforced, until its exit (aint plan D3).
-    ("trace --scope aint", || trace::run(Some("aint"), false)),
+    // AINT is closed: every in-scope requirement must keep an artefact (aint plan D3).
+    ("trace --scope aint --strict", || {
+        trace::run(Some("aint"), true)
+    }),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
