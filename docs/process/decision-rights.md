@@ -68,7 +68,7 @@ A file name is a promise about its contents: a case that does not fit its file's
 
 **Blocking** is defined in [review.md](review.md#reporting-findings). Instead of asking: fix or defer, and say which and why in the reply. Standing maintainer decision (2026-11-08): the coordinator reads a fix round instead of dispatching a fresh review when it changes only what a list of allowed changes names (code comments and a few Markdown files); the conditions are in [coordinator.md](coordinator.md#a-comments-only-fix-round). A finding of an architecture review (a design review outside a pull request) that is not fixed in the same pull request is opened as a GitHub issue by the coordinator, or by the reviewing agent when the coordinator asks; a finding that exists only in chat is lost.
 
-Review rounds (maintainer, 2026-11-08): a hard cap of three reviews by `reviewer` per pull request; after the third, the coordinator opens the remaining non-blocking findings and nits as follow-up issues, and a blocking finding left then goes to the maintainer as one question ([coordinator.md](coordinator.md), "At most three reviews").
+Review rounds (maintainer, 2026-11-08): a hard cap of three reviews by `reviewer` per pull request; after the third, the coordinator opens the remaining non-blocking findings and nits as follow-up issues, and a blocking finding left then goes to the maintainer as one question ([coordinator.md](coordinator.md), "At most three reviews"). A review with no blocking finding starts no further round (maintainer, 2026-11-12; same section).
 
 ### 2.7 Process and tooling
 

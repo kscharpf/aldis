@@ -49,6 +49,10 @@ A build directory takes 7 to 10 GiB per worktree; on 2026-11-07 the disk filled 
 - **Slice-fallback proof.** No check finds the `unwrap_or_default` / `.min(` / `unwrap_or(0)` pattern, because telling a violation from an allowed use is a judgement call (maintainer, 2026-11-01).
 - **Doc/code nits as one batch.** The implementer fixes them in the same round as the code findings, so they cost no round of their own (OI-63).
 
+### Convergence of reviews
+
+Follow-ups #364 (on #362) and #370 (on #366) were nitpick findings that outlived the three-review cap: each final review still raised new non-blocking items, on lines earlier reviews had read. The maintainer decided on 2026-11-12 that review 1 is the only full review, later reviews check the fixes and the changed lines, non-blocking findings start no review round, a review gives at most 5 nits as replacement text, a documentation-only pull request is reviewed only for contradictions, unactionable instructions and broken references, and every finding states its consequence.
+
 ## coordinator.md
 
 ### Dispatch
@@ -64,7 +68,7 @@ A build directory takes 7 to 10 GiB per worktree; on 2026-11-07 the disk filled 
 
 ### A comments-only fix round
 
-In the A1 retrospective follow-up of 2026-11-07/08 every fix round got a fresh `reviewer`; #349 took six review rounds and #350 five, each fresh reviewer raising new nits on the previous round's nit fixes, while the last rounds of #349, #352 and #353, which changed only comments, doc comments, or Markdown prose, were read by the coordinator without a comment recording the read on the pull request (which the rule requires), and readied for the train (#356; maintainer decision, 2026-11-08). Under the list of allowed changes, #352 (code comments) and #353 (a checklist) would still qualify; the last round of #349 changed `docs/reference-application.md`, which no longer does and would get a fresh review.
+In the A1 retrospective follow-up of 2026-11-07/08 every fix round got a fresh `reviewer`; #349 took six review rounds and #350 five, each fresh reviewer raising new nits on the previous round's nit fixes, while the last rounds of #349, #352 and #353, which changed only comments, doc comments, or Markdown prose, were read by the coordinator without a comment recording the read on the pull request (which the rule requires), and readied for the train (#356; maintainer decision, 2026-11-08). Under the list of allowed changes, #352 (code comments), #353 (one doc comment in `xtask/src/consistency.rs`) and #349 (doc comments in `refapp/refapp-scenario/src/table.rs`) would still qualify.
 
 ### Verification
 
