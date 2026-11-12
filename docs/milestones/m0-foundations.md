@@ -119,7 +119,7 @@ Each module is done when its requirements are covered by tests annotated `// req
 | 5 | `crc` | CRC-16 bitwise (default) and table (`crc-table` feature); incremental API; FECF verify both ways | CMN-001…004 | Vectors pass for both variants; property test: both equal on random input |
 | 6 | `oid` | `OidGenerator` Fibonacci (reference) and Galois forms; `fill(&mut [u8])` | CMN-020…023 | Property test: forms identical over 10⁶ octets; cross-fill continuity |
 | 7 | `counter` | `ModCounter` 1–64 bits; `increment`, `distance`, `classify → InSequence / Gap{missing} / Repeat / Backwards` | CMN-030, CMN-031, GEN-024 | Exhaustive tests for 8-bit; property tests for wider |
-| 8 | `container` | `FixedQueue<T, N>`, `ByteQueue<N>` (variable-length records in one byte ring), `FixedVec<T, N>` | GEN-010, GEN-011, GEN-012, API-051, API-061 | No `alloc`; `WouldBlock` on full; fuzz push/pop against a model |
+| 8 | `container` | `FixedQueue<T, N>`, `ByteQueue<N>` (variable-length records in one byte ring; moved to `aldis-testkit` by #377), `FixedVec<T, N>` | GEN-010, GEN-011, GEN-012, API-051, API-061 | No `alloc`; `WouldBlock` on full; fuzz push/pop against a model |
 | 9 | `security` | `SecurityLayout` (header ≤ 64), `SecurityHook` trait, `NoSecurity`, `FixedPatternSecurity` (test feature) | API-070…075 | Trait shape reviewed against 355.0 §2.3 / §4.1 |
 | 10 | `layout` | `FrameLayout`: ordered, non-overlapping ranges for all frame fields per protocol; rejects empty data field | CMN-040, CMN-041 | Property test: ranges contiguous and cover the frame |
 
