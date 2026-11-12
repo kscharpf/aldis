@@ -73,15 +73,24 @@ macro_rules! width_id {
 width_id!(
     /// Spacecraft Identifier of `BITS` width (132.0 §4.1.2.2.3, 232.0 §4.1.2.5, 732.0 §4.1.2.2.3,
     /// 732.1 §4.1.2.2.3).
-    SpacecraftId, field::SPACECRAFT_ID, u16, 16
+    SpacecraftId,
+    field::SPACECRAFT_ID,
+    u16,
+    16
 );
 width_id!(
     /// Virtual Channel Identifier of `BITS` width: 3 (TM) or 6 (TC, AOS, USLP).
-    VcId, field::VC_ID, u8, 8
+    VcId,
+    field::VC_ID,
+    u8,
+    8
 );
 width_id!(
     /// Multiplexer Access Point Identifier of `BITS` width: 6 (TC Segment Header) or 4 (USLP).
-    MapId, field::MAP_ID, u8, 8
+    MapId,
+    field::MAP_ID,
+    u8,
+    8
 );
 
 /// Application Process Identifier, 0–2047 (133.0 §4.1.3.3.4).

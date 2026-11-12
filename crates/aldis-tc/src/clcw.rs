@@ -66,16 +66,22 @@ macro_rules! clcw_field {
 clcw_field!(
     /// Status Field, 3 bits, mission-specific and passed through unchanged (232.0 §4.2.1.4;
     /// TC-031).
-    ClcwStatus, 0b111, field::CLCW_STATUS
+    ClcwStatus,
+    0b111,
+    field::CLCW_STATUS
 );
 clcw_field!(
     /// COP in Effect, 2 bits: `01` is COP-1 (232.0 §4.2.1.5). The decoder accepts and exposes
     /// every value; FOP-1 rejects the others itself (TC-030).
-    CopInEffect, 0b11, field::COP_IN_EFFECT
+    CopInEffect,
+    0b11,
+    field::COP_IN_EFFECT
 );
 clcw_field!(
     /// FARM-B Counter, 2 bits: the two low bits of the FARM-B counter (232.0 §4.2.1.9).
-    FarmBCounter, 0b11, field::FARM_B_COUNTER
+    FarmBCounter,
+    0b11,
+    field::FARM_B_COUNTER
 );
 
 impl FarmBCounter {

@@ -103,24 +103,44 @@ pub(crate) const fn civil(day: u32) -> (u32, u8, u8) {
 
 bounded!(
     /// Year A.D., 1–9999 (301.0 Annex A, §3.5.1; TIME-030).
-    Year, u16, field::YEAR, 1, 9999
+    Year,
+    u16,
+    field::YEAR,
+    1,
+    9999
 );
 bounded!(
     /// Month of year, 1–12 (301.0 Annex A; TIME-030).
-    Month, u8, field::MONTH, 1, 12
+    Month,
+    u8,
+    field::MONTH,
+    1,
+    12
 );
 bounded!(
     /// Hour of day, 0–23 (301.0 Annex A; TIME-030).
-    Hour, u8, field::HOUR, 0, 23
+    Hour,
+    u8,
+    field::HOUR,
+    0,
+    23
 );
 bounded!(
     /// Minute of hour, 0–59 (301.0 Annex A; TIME-030).
-    Minute, u8, field::MINUTE, 0, 59
+    Minute,
+    u8,
+    field::MINUTE,
+    0,
+    59
 );
 bounded!(
     /// Second of minute, 0–60: 60 is a positive leap second, accepted at any minute because
     /// leap-second handling is the caller's (301.0 Annex A, TIME-022, TIME-030).
-    Second, u8, field::SECOND, 0, 60
+    Second,
+    u8,
+    field::SECOND,
+    0,
+    60
 );
 
 /// How a [`CalendarDate`] names its day.
