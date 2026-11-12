@@ -1,8 +1,8 @@
 # Aldis: Specification
 
-**Status:** Draft 0.1 · **Scope:** v1 (core packets and links) · **Applies to:** Rust reference implementation, C ABI, native C++ implementation, and future native C port
+**Status:** pre-release (0.x); milestones M0–M5 are released and M6 is in progress ([roadmap](08-roadmap.md)) · **Scope:** v1 (core packets and links) · **Applies to:** the Rust reference implementation, the C ABI over it, and the header-only C++ wrapper `aldis.hpp`; native C and C++ implementations are deferred to Phase 3
 
-This directory holds the specification for a family of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The specification is **language-neutral**. Language-specific *profiles* define how each implementation exposes it. A shared **conformance test-vector suite** keeps every implementation behaving the same.
+This directory holds the specification for a family of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The specification is **language-neutral**. Language-specific *profiles* define how each implementation exposes it. A shared **conformance test-vector suite** keeps every implementation behaving the same. For what the project is and how to use it, read the [root README](../README.md) first.
 
 ## Reading order
 
@@ -10,15 +10,15 @@ This directory holds the specification for a family of libraries that add CCSDS 
 |---|---|---|
 | 00 | [Introduction](00-introduction.md) | Purpose, v1 scope, non-goals, terminology, requirement conventions |
 | — | [Glossary](glossary.md) | Acronyms and abbreviations (OCF, CLCW, FHP, …) with their Blue Book clauses, Aldis terms (tracks, WPs, provenance, verification run, …), and the Blue Book document numbers. Keep it open while reading the rest |
-| 01 | [Architecture](01-architecture.md) | Layers (codecs → engines → framework), crate map, dependency rules, data flows |
+| 01 | [Architecture](01-architecture.md) | Layers (codecs → engines; the framework layer is outside v1), crate map, dependency rules, data flows |
 | 02 | [Design rules](02-design-rules.md) | `no_std`/no-heap, panic freedom, bounded resources, error model, bit conventions |
 | — | [Hardware assumptions](hardware-assumptions.md) | What Aldis assumes of the platform: memory protected against single-event upsets (GEN-015), and what an upset in unprotected memory does |
 | 03 | [API model](03-api-model.md) | Language-neutral concepts: views, writers, configs, sans-I/O engine step contract, SDLS applied by the caller, error catalogue |
 | 04 | [Engines](04-engines.md) | Stateful protocol behavior: packet multiplexing and extraction, channel multiplexing, segmentation |
-| 05 | [Framework](05-framework.md) | Optional layer: transport/clock traits, run loop, reference adapters |
+| 05 | [Framework](05-framework.md) | Outside v1 (release: later; no crate yet): optional layer of transport/clock traits, run loop, reference adapters |
 | 06 | [Verification](06-verification.md) | Mission-grade assurance: lints, panic-freedom, fuzzing, coverage, traceability |
 | 07 | [Test vectors](07-test-vectors.md) | Shared, language-neutral conformance vector format |
-| 08 | [Roadmap](08-roadmap.md) | The three v1 tracks (Rust reference, native C++, reference application): milestones, entry gates, releases, rules for parallel work; later standards; language rollout; which CCSDS documents and sections each milestone covers (§9) |
+| 08 | [Roadmap](08-roadmap.md) | The tracks (R, Rust reference; A, reference application; C, native C++, retired from v1 and deferred to Phase 3): milestones, entry gates, releases, rules for parallel work; later standards; language rollout; which CCSDS documents and sections each milestone covers (§9) |
 | 09 | [Open issues](09-open-issues.md) | Decisions and verifications still pending |
 
 ### Verification records
@@ -51,12 +51,22 @@ This directory holds the specification for a family of libraries that add CCSDS 
 
 | Document | Milestone |
 |---|---|
-| [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` |
-| [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (complete) |
-| [M2 Frame codecs](milestones/m2-frame-codecs.md) | C ABI for the M1 codecs, field codes, shared property-test strategies; `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` (planned) |
+| [M0 Foundations](milestones/m0-foundations.md) | Repository, CI, verification tooling, `aldis-core` (complete, `v0.1.0-m0`) |
+| [M1 Packets and time](milestones/m1-packets-time.md) | `aldis-time`, `aldis-spp`, `aldis-epp` (complete, `v0.2.0-m1`) |
+| [M2 Frame codecs](milestones/m2-frame-codecs.md) | C ABI for the M1 codecs, field codes, shared property-test strategies; `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` (complete, `v0.3.0-m2`) |
+| [M3 COP-1](milestones/m3-cop1.md) | `aldis-cop1`: FOP-1 and FARM-1, with their C ABI handles (complete, `v0.4.0-m3`) |
+| [M4 Link engines](milestones/m4-link-engines.md) | `aldis-link`: generators, multiplexer, receiver, extractor, segmentation, CLTU packer (complete, `v0.5.0-m4`) |
+| [M5 C ABI completion](milestones/m5-c-abi-completion.md) | `aldis-sync` (ASM, CADU, randomizer), C test harness, ABI versioning, `aldis.hpp` (complete, `v0.6.0-m5`) |
+| [M6 Crate architecture simplification](milestones/m6-architecture.md) | One checking pipeline, one frame-format trait per codec, a generic C ABI over the engines (phases 1–2 merged; phase 3 and the exit deferred until after AINT) |
 | [C0 Foundations (native C++)](milestones/c0-foundations.md) | Native C++ track foundations (retired; deferred to Phase 3) |
-| [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (plan approved) |
+| [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (exited) |
+| [A1 Packets](milestones/a1-packets.md) | Reference application: housekeeping Space Packets and the first golden trace (exited) |
+| [A2 Frames](milestones/a2-frames.md) | Reference application: TM and TC frames through the `aldis-link` engines (exited) |
+| [A3 COP-1](milestones/a3-cop1.md) | Reference application: FOP-1, FARM-1 and the CLCW over a lossy link (exited) |
+| [AINT Interoperability](milestones/aint-interoperability.md) | The Rust flight node against an independent ground system run as a black box (plan accepted; not started) |
 | [ACFS cFS flight side](milestones/acfs-flight-side.md) | Reference application: a cFS flight side over the C ABI, reproducing the golden traces in three phases (plan approved; decisions D1–D19 accepted) |
+
+A4 (AOS and USLP variants), A5 (C and C++ flight side), and A6 (bare-metal target) have no plan yet; the roadmap ([§3](08-roadmap.md)) lists them. Track-A milestones cut no release; the tags `v0.N.0-mN` mark the track-R milestones.
 
 ### Per-standard specifications ([`standards/`](standards/))
 
@@ -80,7 +90,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [Rust profile](profiles/rust.md) | Crate names, API shapes, feature flags, MSRV, lint configuration |
 | [Rust lint rationale](profiles/rust-lints.md) | Why each restriction and nursery lint is denied, deferred, or not adopted (for human readers) |
 | [C ABI profile](profiles/c-abi.md) | C linkage, naming, memory model (caller-owned storage), status codes, header generation, C++ wrapper guidance, rules for native C/C++ ports |
-| [C++ profile](profiles/cpp.md) | Native C++ implementation: language subset, API shapes, build, lint configuration, verification, differential testing against the Rust reference (draft) |
+| [C++ profile](profiles/cpp.md) | Outside v1 (withdrawn; Phase 3): the native C++ implementation's language subset, API shapes, build, lint configuration, and differential testing. The Rust-backed C++ wrapper is in the C ABI profile |
 
 ## Source material
 
