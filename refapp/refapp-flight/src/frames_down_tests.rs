@@ -465,6 +465,25 @@ fn the_deadline_is_the_generators_and_never_in_the_past() {
 }
 
 #[test]
+fn a_step_off_the_grid_past_a_deadline_reports_the_next_slot() {
+    // req: APP-167, APP-090, APP-135
+    let mut run = Run::new();
+    // The payload packet of 0.5 s is generated at 500 600 µs off the grid: its VC 1 field
+    // starts there, with the deadline at 1 500 600 µs.
+    run.step(0, true, &[]);
+    let started = run.step(500_600, false, &[]);
+    assert!(started.is_some_and(|next| next > 500_600));
+    // A step at 1 501 000 µs without `tx_slot` is past that deadline, which only a slot step
+    // releases: the report is the next slot instant, 1 625 000 µs, not the deadline.
+    let next = run.step(1_501_000, false, &[]).unwrap();
+    assert!(next > 1_501_000, "not after now: {next}");
+    assert_eq!(next, 1_625_000);
+    // A step on the grid reports after its own instant.
+    let next = run.step(1_625_000, true, &[]).unwrap();
+    assert!(next > 1_625_000, "not after now: {next}");
+}
+
+#[test]
 fn extra_wakeups_between_slots_change_nothing() {
     // req: APP-074, APP-135
     let plain = nominal();
