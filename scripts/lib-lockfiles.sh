@@ -29,7 +29,7 @@ blob() { # blob <git dir> <spec> <out>: the file at <spec> (rev:path or :stage:p
     git -C "$1" show "$2" >"$3" 2>/dev/null || : >"$3"
 }
 
-# resolve_lockfiles <worktree>: finish a conflicted merge when every conflicted path is a
+# resolve_lockfiles <worktree> <pr>: finish a conflicted merge when every conflicted path is a
 # lockfile. The side already in the train is kept (it holds the versions accepted so far), then
 # `cargo metadata --offline` adds what the merged manifests need: cargo changes a lockfile only
 # where a manifest requires it, never upgrades a locked version, and --offline forbids the
