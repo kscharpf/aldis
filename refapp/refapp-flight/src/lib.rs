@@ -189,14 +189,14 @@ impl FlightNode {
     }
 
     /// The earliest instant after `now` at which a periodic application is due.
-    fn next_deadline(&self) -> Option<Instant> {
+    fn next_deadline(&self, now: Instant) -> Option<Instant> {
         let [queued, dump] = self.next_command_deadline();
         [
             Periodic::HOUSEKEEPING.at(self.hk_slot),
             Periodic::PAYLOAD.at(self.payload_slot),
             queued,
             dump,
-            self.frames.as_ref().and_then(FrameDownlink::next_deadline),
+            self.frames.as_ref().and_then(|f| f.next_deadline(now)),
         ]
         .into_iter()
         .flatten()
@@ -214,7 +214,7 @@ impl Node for FlightNode {
         self.payload(input.now, out);
         // §2.1 step 6 (A2 on): the frame of the slot.
         self.downlink_frame(input.tx_slot, input.now, out);
-        self.next_deadline()
+        self.next_deadline(input.now)
     }
 }
 
