@@ -190,8 +190,8 @@ mod tests {
     fn a_second_run_is_refused_naming_the_holder() {
         // req: VER-069
         let l = lock();
-        let first = acquire_in(&*l, 1, &live).unwrap();
-        let err = acquire_in(&*l, 2, &live).err().unwrap();
+        let first = acquire_in(&l, 1, &live).unwrap();
+        let err = acquire_in(&l, 2, &live).err().unwrap();
         assert!(err.contains("pid 1") && err.contains("started t1"), "{err}");
         drop(first);
     }
@@ -200,9 +200,9 @@ mod tests {
     fn dropping_the_guard_frees_the_lock() {
         // req: VER-069
         let l = lock();
-        drop(acquire_in(&*l, 1, &live).unwrap());
-        assert_eq!(target(&*l), None);
-        assert!(acquire_in(&*l, 2, &live).is_ok());
+        drop(acquire_in(&l, 1, &live).unwrap());
+        assert_eq!(target(&l), None);
+        assert!(acquire_in(&l, 2, &live).is_ok());
     }
 
     #[test]
@@ -211,23 +211,23 @@ mod tests {
         let l = lock();
         // Pid 99 is gone; it left its lock behind.
         std::os::unix::fs::symlink("99|t99", &*l).unwrap();
-        let g = acquire_in(&*l, 2, &live).unwrap();
-        assert_eq!(target(&*l).as_deref(), Some("2|t2"));
+        let g = acquire_in(&l, 2, &live).unwrap();
+        assert_eq!(target(&l).as_deref(), Some("2|t2"));
         drop(g);
         // A reused pid (another start time) is stale as well.
         std::os::unix::fs::symlink("1|earlier", &*l).unwrap();
-        assert!(acquire_in(&*l, 2, &live).is_ok());
+        assert!(acquire_in(&l, 2, &live).is_ok());
     }
 
     #[test]
     fn a_guard_does_not_remove_a_lock_it_no_longer_owns() {
         // req: VER-069
         let l = lock();
-        let g = acquire_in(&*l, 1, &live).unwrap();
+        let g = acquire_in(&l, 1, &live).unwrap();
         std::fs::remove_file(&*l).unwrap();
         std::os::unix::fs::symlink("5|t5", &*l).unwrap();
         drop(g);
-        assert_eq!(target(&*l).as_deref(), Some("5|t5"));
+        assert_eq!(target(&l).as_deref(), Some("5|t5"));
     }
 
     #[test]
