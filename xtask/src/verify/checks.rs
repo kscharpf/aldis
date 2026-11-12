@@ -656,10 +656,14 @@ const RUST_LEON3: &str = r#"
 t=sparc-unknown-none-elf
 nightly="$(cat tooling-nightly)"
 std=(-Z build-std=core)
-# The flag of exerciser/.cargo/config.toml, which RUSTFLAGS replaces. xtask, a host build,
-# keeps the flags it had.
+# The flag of exerciser/.cargo/config.toml, which the variable replaces. It is the flags of
+# this target alone, not RUSTFLAGS: RUSTFLAGS also reaches the host rustc that `cargo metadata`
+# (clippy's `multiple_crate_versions`) queries, and on an aarch64 host `-C target-cpu=leon3`
+# makes that rustc fail with "target feature `neon` must be enabled" (nightly of 2026-11-11).
+# xtask, a host build, keeps the flags it had.
 host_flags="${RUSTFLAGS:-}"
-export RUSTFLAGS="$host_flags -C target-cpu=leon3"
+unset RUSTFLAGS
+export CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS="$host_flags -C target-cpu=leon3"
 cargo +"$nightly" build "${std[@]}" -p aldis --no-default-features --features full --target $t
 cargo +"$nightly" clippy "${std[@]}" -p aldis --no-default-features --features full --target $t
 cargo +"$nightly" build "${std[@]}" -p aldis-ffi --no-default-features --features panic-handler \
@@ -667,7 +671,7 @@ cargo +"$nightly" build "${std[@]}" -p aldis-ffi --no-default-features --feature
 # CABI-004 is reported, not checked, on this target: the compiler_builtins that build-std makes
 # for 32-bit SPARC refers to the quad-float routines of the SPARC ABI (_Q_add, ...), which
 # nothing in the archive defines (OI-08).
-RUSTFLAGS="$host_flags" cargo xtask ffi-imports $t || echo "ffi-imports $t: CABI-004 not met (OI-08)"
+env -u CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS RUSTFLAGS="$host_flags" cargo xtask ffi-imports $t || echo "ffi-imports $t: CABI-004 not met (OI-08)"
 cd exerciser
 # Panic-freedom link check (VER-010).
 cargo +"$nightly" build "${std[@]}" --release --locked --target $t
@@ -994,12 +998,20 @@ mod tests {
         assert!(s.contains(r#"nightly="$(cat tooling-nightly)""#));
         assert!(s.contains("std=(-Z build-std=core)"));
         assert!(s.contains("-C target-cpu=leon3"));
+        // The CPU flag is the target's own variable: RUSTFLAGS would reach the host rustc of
+        // `cargo metadata`, which fails on an aarch64 host.
+        assert!(s.contains(
+            r#"CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS="$host_flags -C target-cpu=leon3""#
+        ));
+        assert!(s.contains("\nunset RUSTFLAGS\n"));
+        assert!(!s.contains(r#"export RUSTFLAGS="#));
         assert!(s.contains("--no-default-features --features full --target $t"));
         assert!(s.contains("--features inject-panic"));
         assert!(s.contains("grep -q aldis_panic_is_unreachable"));
         assert!(s.contains(r#"timeout 120 cargo +"$nightly" run "${std[@]}" --release"#));
         // xtask, a host build, runs without the LEON3 CPU flag.
         assert!(s.contains(r#"RUSTFLAGS="$host_flags" cargo xtask ffi-imports $t"#));
+        assert!(s.contains("env -u CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS RUSTFLAGS="));
         // Every other cargo command of the check builds core from source on the nightly.
         for line in s.lines().filter(|l| l.contains("cargo +")) {
             assert!(line.contains(r#"cargo +"$nightly" "#), "{line}");
