@@ -183,7 +183,7 @@ The [aldis-ffi README](crates/aldis-ffi/README.md) has the conventions, the bare
 | Reference application: flight and ground nodes with packets, TM and TC frames, and COP-1 over a lossy link, golden traces | Complete |
 | Reference application: AOS and USLP variants, C and C++ flight side, bare-metal target | Planned |
 | Simplifying the crate architecture | In progress |
-| Interoperability against an independent ground system | Planned |
+| Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete (no release; no new vectors or hazards) |
 
 Each released row has its tests, test vectors, and hazard analysis. The [roadmap](docs/08-roadmap.md) has the milestone detail, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) lists the CCSDS documents and sections covered.
 
@@ -191,7 +191,7 @@ Each released row has its tests, test vectors, and hazard analysis. The [roadmap
 
 - v1.0 is not released: it waits on the architecture simplification and the last reference-application milestone ([roadmap §5](docs/08-roadmap.md#5-releases)).
 - Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
-- Exercising its wire behaviour against an independent implementation is under way, through the AINT milestone (interoperability): the reference application's Rust flight node exchanges frames and COP-1 with YAMCS, an independent ground system run as a black box. The COP-1 cases have run against YAMCS since [#565](https://github.com/kscharpf/aldis/pull/565), and some criteria are not met as written (YAMCS does not segment). The milestone has not reached its exit and has no evidence record yet ([plan](docs/milestones/aint-interoperability.md)).
+- Its wire behaviour has been exercised against one independent implementation, YAMCS 5.14.0, in the nominal and lossy-link COP-1 cases (AINT, [record](docs/verification/records/APP-155.md)); YAMCS cannot send the scenario's segmented table upload, so the YAMCS runs use a 100-octet table. Other ground systems and the other cases are not exercised.
 - Its API may change in any 0.x release (pre-1.0 versions promise no stability); the [changelog](CHANGELOG.md) lists the breaking changes.
 - Outside contributions are not being accepted yet. The repository is public as a showcase, which also lets it use free verification tools that require a public repository ([open issues](docs/09-open-issues.md)).
 

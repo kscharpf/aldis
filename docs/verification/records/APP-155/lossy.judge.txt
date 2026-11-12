@@ -1,0 +1,82 @@
+run: {'kind': 'header', 'log': 'aldis-interop-run', 'log_version': 1, 'case': 'a3-nominal', 'ground_version': '5.14.0', 'image_digest': 'sha256:0a4da6e050cb6bd5aa8a331e77397637366ff02dda300e1f13058adb54d84dfe', 'node_commit': '3e1739bc04006589405b5f044bae3087ac147ed5'}
+loss script: [{'dir': 'up', 'index': 5}, {'dir': 'up', 'index': 9}, {'dir': 'down', 'index': 25}, {'dir': 'down', 'index': 26}, {'dir': 'down', 'index': 27}, {'dir': 'down', 'index': 28}, {'dir': 'down', 'index': 29}, {'dir': 'down', 'index': 30}, {'dir': 'down', 'index': 31}, {'dir': 'down', 'index': 32}, {'dir': 'down', 'index': 33}, {'dir': 'down', 'index': 34}, {'dir': 'down', 'index': 35}]
+--- uplink units, in order (index, instant, N(S), type, MAP/flags, packets, event)
+   0 1.087s wall 1.087s received N(S)=0 ctrl=0 seg=0xc0 len=22 pk=[('0x080', 0, 1)]
+   1 2.046s wall 2.046s received N(S)=1 ctrl=0 seg=0xc0 len=117 pk=[('0x081', 0, 1)]
+   2 3.033s wall 3.033s received N(S)=2 ctrl=0 seg=0xc0 len=25 pk=[('0x080', 1, 3)]
+   3 4.036s wall 4.036s received N(S)=2 ctrl=0 seg=0xc0 len=25 pk=[('0x080', 1, 3)]
+   4 4.337s wall 4.337s received N(S)=3 ctrl=0 seg=0xc0 len=28 pk=[('0x080', 2, 2)]
+   5 5.039s wall 5.039s dropped  N(S)=4 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 3, 4)]
+   6 5.060s wall 5.060s received N(S)=5 ctrl=0 seg=0xc0 len=22 pk=[('0x080', 4, 1)]
+   7 5.130s wall 5.130s received N(S)=4 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 3, 4)]
+   8 5.130s wall 5.130s received N(S)=5 ctrl=0 seg=0xc0 len=22 pk=[('0x080', 4, 1)]
+   9 6.030s wall 6.030s dropped  N(S)=6 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 5, 4)]
+  10 7.030s wall 7.030s received N(S)=6 ctrl=0 seg=0xc0 len=23 pk=[('0x080', 5, 4)]
+  fault down 25 at 3.125s: drop
+  fault down 26 at 3.250s: drop
+  fault down 27 at 3.375s: drop
+  fault down 28 at 3.500s: drop
+  fault down 29 at 3.625s: drop
+  fault down 30 at 3.750s: drop
+  fault down 31 at 3.875s: drop
+  fault down 32 at 4.000s: drop
+  fault down 33 at 4.125s: drop
+  fault down 34 at 4.250s: drop
+  fault down 35 at 4.375s: drop
+  fault up 5 at 5.039s: drop
+  fault up 9 at 6.030s: drop
+--- uplink frames whose Segment Header and data field equal a frame of the golden trace: units [0, 4, 9, 10]
+--- flight node events
+  1.087s cmd_received [1, 0]
+  2.046s table_received [1, 100]
+  3.033s cmd_received [3, 1]
+  4.036s frame_discarded [2, 4]
+  4.337s cmd_received [2, 2]
+  5.060s frame_discarded [2, 3]
+  5.130s cmd_received [4, 3]
+  5.130s cmd_received [1, 4]
+  7.030s cmd_received [4, 5]
+--- CLCWs (changes only)
+  down   0 0.000s 0x01000000 N(R)=0 retransmit=0 lockout=0 wait=0 farm_b=0
+  down   9 1.125s 0x01000001 N(R)=1 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  17 2.125s 0x01000002 N(R)=2 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  36 4.500s 0x01000004 N(R)=4 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  41 5.125s 0x01000804 N(R)=4 retransmit=1 lockout=0 wait=0 farm_b=0
+  down  42 5.250s 0x01000006 N(R)=6 retransmit=0 lockout=0 wait=0 farm_b=0
+  down  57 7.125s 0x01000007 N(R)=7 retransmit=0 lockout=0 wait=0 farm_b=0
+--- criteria
+APP-164 (a3-nominal) / APP-165 (lossy link)
+=> no Lockout in any CLCW: met
+  CLCW N(R) vs V(S): 0 CLCWs outside [previous N(R), V(S)] (V(S) taken from the frames the flight node received)
+=> N(R) advances within [previous N(R), V(S)] modulo 256: met
+  last CLCW N(R) = 7; highest N(S) received = 6
+=> N(R) after the last command equals V(S): met
+  CLCWs with Retransmit that the ground system received: [(41, '5.125s')]
+  flight accepted commands (cmd_received, table_received): 7; a3-nominal: 7
+=> the projection of the commands equals a3-nominal's: NOT met
+    differs: golden-only [('table_received', [1, 300])], run-only [('table_received', [1, 100])]
+    equal to a3-nominal's except the length of the table: True
+  flight packets out: 58; a3-nominal packets in at the ground: 58 (equal as multisets: False); 11 downlink frames dropped by the script
+    golden-only APIDs ['0x10', '0x11', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10'], run-only ['0x10', '0x11', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10', '0x10']
+  YAMCS command history: ('/Aldis/NOOP', 'OK', None, None)
+  YAMCS command history: ('/Aldis/TABLE_UPLOAD_SHORT', 'OK', None, None)
+  YAMCS command history: ('/Aldis/ACTIVATE_TABLE', 'OK', None, None)
+  YAMCS command history: ('/Aldis/DUMP_MEMORY', 'OK', None, None)
+  YAMCS command history: ('/Aldis/SET_PAYLOAD_MODE', 'OK', None, None)
+  YAMCS command history: ('/Aldis/NOOP', 'OK', None, None)
+  YAMCS command history: ('/Aldis/SET_PAYLOAD_MODE', 'OK', None, None)
+=> YAMCS reports every command acknowledged (Sent OK, none NOK): met
+  COP-1 states seen in the polls: {'ACTIVE': 141}
+  COP-1 status at the end: {'cop1Active': True, 'clcw': {'receptionTime': '2026-11-12T14:58:21.606Z', 'lockout': False, 'wait': False, 'nR': 7}, 'state': 'ACTIVE', 'vS': 7, 'nnR': 7, 'waitQueueNumTC': 0, 'sentQueueNumFrames': 0, 'outQueueNumFrames': 0, 'txCount': 1}
+  largest txCount seen: 2
+  YAMCS log: 1 warning(s) 'Incomplete packet dropped because of frame loss' (the dropped downlink frames)
+=> no YAMCS warning or error in its log, except those of the dropped downlink frames: met
+  first ACTIVE at poll 0; UNINITIALIZED or SUSPENDED after it: {}
+=> no UNINITIALIZED or SUSPENDED state after the first ACTIVE (no alert, no limit reached): met
+--- frames that appear more than once on the uplink (YAMCS retransmissions)
+  N(S)=2: unit 2 3.033s received, unit 3 4.036s received
+  N(S)=4: unit 5 5.039s dropped, unit 7 5.130s received
+  N(S)=5: unit 6 5.060s received, unit 8 5.130s received
+  N(S)=6: unit 9 6.030s dropped, unit 10 7.030s received
+  frame_discarded events of the flight node (layer, FARM-1 event): [('4.036s', [2, 4]), ('5.060s', [2, 3])]
+verdict of this program: at least one criterion line says NOT met
