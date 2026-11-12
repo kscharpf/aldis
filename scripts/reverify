@@ -561,7 +561,7 @@ resolve_oi_table() {
 # head is not yet an ancestor of the train branch, checking `READY FOR TRAIN` first.
 update_train_constituents() {
     local pr="$1" dir="$2" body c c_old c_info c_state c_branch c_sha c_owner c_title
-    local c_verdict c_now
+    local c_verdict c_now tmproot
     body="$(gh pr view "$pr" --json body --jq .body)" ||
         fail "cannot read the pull request" || return 1
     while IFS= read -r c; do
@@ -571,7 +571,8 @@ update_train_constituents() {
             --jq '[.state, .headRefName, .headRefOid, .headRepositoryOwner.login, .title]
                 | @tsv')" || fail "cannot read constituent #$c" || return 1
         IFS=$'\t' read -r c_state c_branch c_sha c_owner c_title <<<"$c_info"
-        [ "$c_state" = "OPEN" ] || fail "constituent #$c is $c_state, not OPEN" || return 1
+        [ "$c_state" = "OPEN" ] || fail "constituent #$c is $c_state, not OPEN: rebuild with \
+scripts/train --rebuild $pr --without $c" || return 1
         git -C "$main_checkout" fetch --quiet origin "$c_branch" ||
             fail "cannot fetch $c_branch for #$c" || return 1
         if git -C "$dir" merge-base --is-ancestor "$c_sha" HEAD; then
