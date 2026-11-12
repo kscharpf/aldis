@@ -30,7 +30,7 @@ use aldis::link::mux::{
 use aldis::link::policy::MuxPolicy;
 use aldis::link::protocol::{Tm, TmParams};
 use aldis::tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
-use refapp_scenario::generated::{SPACECRAFT_ID, tm};
+use refapp_scenario::generated::{SPACECRAFT_ID, link, tm};
 use refapp_scenario::{Duration, Instant, Output};
 
 use crate::FlightNode;
@@ -188,13 +188,23 @@ impl FrameDownlink {
         none(generator.step(GeneratorInput::SubmitPacket(packet), now, &mut [])?)
     }
 
-    /// The earliest release deadline of the generators (APP-135).
+    /// The earliest release deadline of the generators (APP-135), after `now` (APP-090,
+    /// API-053). A deadline that is not after `now` (a step off the frame slot grid, past the
+    /// deadline; §4.4.2) is released only by the next step with `tx_slot`, so it is reported as
+    /// the next slot instant after `now`.
     #[must_use]
-    pub fn next_deadline(&self) -> Option<Instant> {
-        self.generators
+    pub fn next_deadline(&self, now: Instant) -> Option<Instant> {
+        let earliest = self
+            .generators
             .iter()
             .filter_map(PacketGenerator::next_deadline)
-            .min()
+            .min()?;
+        if earliest > now {
+            return Some(earliest);
+        }
+        let slot = link::FRAME_SLOT_US;
+        let next = now.as_micros().checked_div(slot)?.saturating_add(1);
+        Some(Instant::from_micros(next.saturating_mul(slot)))
     }
 
     /// Step 6 of §2.1 at a slot instant (APP-132): signals the deadlines, moves the field of each
