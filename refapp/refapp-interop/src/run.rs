@@ -114,6 +114,7 @@ pub fn run_flight(
                 }
                 match side.receive(now, octets, loss, sink)? {
                     Some(octets) => (now, vec![octets]),
+                    // No step follows, and `last` already holds the latest served instant.
                     None => continue,
                 }
             }
