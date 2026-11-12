@@ -328,6 +328,27 @@ impl<'b> FrameWriter<'b, Fixed, Unsealed, Unprotected> {
     /// there, for the caller to apply SDLS and finish (LNK-035). Only the [`Unsealed`] plan has
     /// it: a codec's frame leaves its writer only `Finalized` (RS-023).
     ///
+    /// The same code compiles with the [`Unsealed`] plan, so the `compile_fail` example
+    /// after it fails only for the missing method.
+    ///
+    /// ```
+    /// # use aldis_core::layout::{FrameLayout, LayoutSpec};
+    /// # use aldis_core::security::SecurityLayout;
+    /// # use aldis_core::writer::{FrameWriter, Unsealed};
+    /// let spec = LayoutSpec {
+    ///     frame_len: 0,
+    ///     primary_header_len: 2,
+    ///     secondary_len: 0,
+    ///     security: SecurityLayout::NONE,
+    ///     ocf: false,
+    ///     fecf: false,
+    /// };
+    /// let layout = FrameLayout::compute_for_data(&spec, 4).unwrap();
+    /// let mut out = [0_u8; 8];
+    /// let w = FrameWriter::reserve_fixed(&mut out, layout, Unsealed).unwrap();
+    /// let _frame = w.leave_unsealed();
+    /// ```
+    ///
     /// ```compile_fail
     /// # use aldis_core::finishing::Unprotected;
     /// # use aldis_core::layout::{FrameLayout, LayoutSpec};

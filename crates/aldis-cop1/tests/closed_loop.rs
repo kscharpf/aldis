@@ -35,7 +35,7 @@ mod common;
 
 use aldis_cop1::{
     Alert, Directive, Farm1, Farm1Config, Farm1Input, Farm1Output, Farm1Window, FduKind,
-    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, SuspendState, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
 use aldis_core::DecodeMode;
@@ -209,6 +209,11 @@ struct Outcome {
     negative: Vec<u32>,
     alerts: Vec<Alert>,
     suspensions: usize,
+    /// The AD Service is suspended when the run ends (`Suspend_State` is not 0, §5.1.11).
+    ended_suspended: bool,
+    /// The head frame is at the transmission limit when the run ends, and the limit suspended the
+    /// transfer (§5.1.10.4, §5.2.14 c).
+    ended_at_limit: bool,
     expedited_delivered: Vec<u16>,
     retransmissions: usize,
     stalls: usize,
@@ -333,6 +338,12 @@ impl World {
             .decide(input, now, &mut self.out)
             .unwrap_or_else(|e| panic!("{}: FOP-1 refused {input:?}: {e:?}", self.s.name));
         let actions = self.ground.commit(decision);
+        // The head frame is never transmitted more often than the limit (232.1 §5.1.10.2).
+        assert!(
+            self.ground.transmission_count() <= self.ground.transmission_limit().get(),
+            "{}: Transmission_Count above Transmission_Limit",
+            self.s.name
+        );
         for action in actions.iter() {
             match *action {
                 Fop1Output::Transmit {
@@ -482,6 +493,12 @@ impl World {
                 break;
             }
         }
+        self.outcome.ended_suspended = self.ground.suspend_state() != SuspendState::NotSuspended;
+        // At the limit the Timer expiry sends no retransmission and, under Timeout Type 1,
+        // suspends instead (232.1 §5.1.10.4, §5.2.14 c): the limit counts only with a Suspend
+        // seen, so a run that stalled with the count at the limit for another reason fails.
+        self.outcome.ended_at_limit = self.outcome.suspensions > 0
+            && self.ground.transmission_count() == self.ground.transmission_limit().get();
         self.outcome
     }
 }
@@ -519,14 +536,15 @@ fn assert_guarantee(s: &Scenario, seed: u64, o: &Outcome) {
 
 /// Asserts the outcome COP-040 allows (232.1 §1, §5.2.14 c, §5.2.17): the prefix, and then all
 /// FDUs delivered and confirmed, or an Alert, or, under Timeout Type 1 only, a transfer that has
-/// been suspended and was still unfinished and without Alert when the run ended.
+/// been suspended and was still unfinished and without Alert when the run ended: it ends in a
+/// Suspend, or with the head frame at the transmission limit (§5.2.14 c, §5.2.17).
 fn assert_outcome(s: &Scenario, seed: u64, o: &Outcome) {
     assert_prefix(s, seed, o);
     let complete = o.confirmed.len() == usize::from(s.fdus);
     if !complete && o.alerts.is_empty() {
         assert!(
-            s.timeout_type == TimeoutType::Tt1 && o.suspensions > 0,
-            "neither complete, nor an Alert, nor suspended under Timeout Type 1: {} seed {seed}: {o:?}",
+            s.timeout_type == TimeoutType::Tt1 && (o.ended_suspended || o.ended_at_limit),
+            "neither complete, nor an Alert, nor ended suspended or at the transmission limit under Timeout Type 1: {} seed {seed}: {o:?}",
             s.name
         );
     }
