@@ -148,7 +148,7 @@ Each released row has its tests, test vectors, and hazard analysis. The [roadmap
 
 Every claim of correctness is backed by a check that the merge gate runs or by a record a person signed, not by assertion. The README does not repeat them; the documents do.
 
-- [Verification](docs/06-verification.md): the lints, link-time panic freedom, coverage, fuzzing, mutation testing, test vectors from blind independent models, cross-checks, and the targets (including bare-metal QEMU runs).
+- [Verification](docs/06-verification.md): the lints, link-time panic freedom, coverage, fuzzing, mutation testing, hand-derived test vectors from blind independent models, cross-checks, and the targets (including bare-metal QEMU runs).
 - [Test vectors](docs/07-test-vectors.md) and [cross-checks](docs/verification/cross-checks.md): the shared conformance data, which is also run through other implementations of the standards: the `spacepackets` Rust crate, and NASA cFE's `MSG` module (v7.0.1, vendored unmodified), which agrees with `aldis-spp` on the Space Packet primary header, the sequence count, and cFE's CUC telemetry time.
 - [Traceability](docs/06-verification.md): every requirement cites its Blue Book clause and every test names the requirements it covers; `cargo xtask trace` reports what is traced.
 - [The merge gate](docs/06-verification.md#7-verification-runs-and-the-merge-gate): a reproducible run of every check in a digest-pinned image, with a published evidence record.
