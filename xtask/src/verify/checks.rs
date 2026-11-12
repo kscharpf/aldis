@@ -1004,7 +1004,7 @@ mod tests {
             r#"CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS="$host_flags -C target-cpu=leon3""#
         ));
         assert!(s.contains("\nunset RUSTFLAGS\n"));
-        assert!(!s.contains(r#"export RUSTFLAGS="#));
+        assert!(!s.contains(r"export RUSTFLAGS="));
         assert!(s.contains("--no-default-features --features full --target $t"));
         assert!(s.contains("--features inject-panic"));
         assert!(s.contains("grep -q aldis_panic_is_unreachable"));
