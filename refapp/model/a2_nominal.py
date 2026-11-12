@@ -437,7 +437,9 @@ class Flight:
 # ------------------------------------------------------------------ driver --
 def model(scenario_path):
     sc = load(scenario_path)
-    case = next(c for c in sc["cases"] if c["id"] == CASE)
+    case = next((c for c in sc["cases"] if c["id"] == CASE), None)
+    if case is None:
+        sys.exit("no a2-nominal case in the scenario")
     ops = [e for e in case["ops"] if e["kind"] != "fop1_directive"]
     end = case["end_us"]
     ul = Uplink(sc, ops, end).run()

@@ -866,30 +866,30 @@
       ]
     },
     "Fop1Directive": {
-      "description": "A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1\nthat the cases use (232.1 §4.1, Table 5-1; §4.5.2, APP-148).\n\nThe ground node owns the type; the scenario file\nparses into it, and any other value is rejected when the file is parsed.",
+      "description": "A FOP-1 directive of the ops script: the Directive Type and Qualifier of 232.1 Table 4-1\nthat the cases use (232.1 §4.1, Table 4-1; §4.5.2, APP-148).\n\nThe ground node owns the type; the scenario file\nparses into it, and any other value is rejected when the file is parsed.",
       "oneOf": [
         {
-          "description": "*Initiate AD Service (without CLCW Check)*, code 1 (E23) (232.1 §4.1, Table 5-1).",
+          "description": "*Initiate AD Service (without CLCW Check)*, code 1 (E23) (232.1 §4.1, Table 4-1; the event is in Table 5-1).",
           "type": "string",
           "const": "initiate_ad_without_clcw"
         },
         {
-          "description": "*Initiate AD Service (with CLCW Check)*, code 2 (E24) (232.1 §4.1, Table 5-1).",
+          "description": "*Initiate AD Service (with CLCW Check)*, code 2 (E24) (232.1 §4.1, Table 4-1; the event is in Table 5-1).",
           "type": "string",
           "const": "initiate_ad_with_clcw"
         },
         {
-          "description": "*Initiate AD Service (with Unlock)*, code 3 (E25) (232.1 §4.1, Table 5-1).",
+          "description": "*Initiate AD Service (with Unlock)*, code 3 (E25) (232.1 §4.1, Table 4-1; the event is in Table 5-1).",
           "type": "string",
           "const": "initiate_ad_with_unlock"
         },
         {
-          "description": "*Terminate AD Service*, code 5 (E29) (232.1 §4.1, Table 5-1).",
+          "description": "*Terminate AD Service*, code 5 (E29) (232.1 §4.1, Table 4-1; the event is in Table 5-1).",
           "type": "string",
           "const": "terminate_ad"
         },
         {
-          "description": "*Set V(S) to V\\*(S)*, code 7, with the Qualifier V\\*(S) (E35; 232.1 §4.1, Table 5-1).",
+          "description": "*Set V(S) to V\\*(S)*, code 7, with the Qualifier V\\*(S) (E35; 232.1 §4.1, Table 4-1; the event is in Table 5-1).",
           "type": "object",
           "properties": {
             "set_vs": {
