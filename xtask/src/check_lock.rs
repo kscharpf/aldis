@@ -142,15 +142,43 @@ mod tests {
 
     static N: AtomicU32 = AtomicU32::new(0);
 
-    /// A lock path in a fresh directory.
-    fn lock() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "xtask-check-lock-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join("xtask-check.lock")
+    /// A lock path in a directory that no earlier run left behind, removed on drop.
+    struct TempLock {
+        dir: PathBuf,
+        path: PathBuf,
+    }
+
+    impl std::ops::Deref for TempLock {
+        type Target = PathBuf;
+        fn deref(&self) -> &PathBuf {
+            &self.path
+        }
+    }
+
+    impl Drop for TempLock {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A lock path in a fresh directory: `create_dir` fails on an existing one (a leftover of an
+    /// earlier process with the same pid), and the next name is tried.
+    fn lock() -> TempLock {
+        loop {
+            let dir = std::env::temp_dir().join(format!(
+                "xtask-check-lock-{}-{}",
+                std::process::id(),
+                N.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => {
+                    let path = dir.join("xtask-check.lock");
+                    return TempLock { dir, path };
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => panic!("cannot create {}: {e}", dir.display()),
+            }
+        }
     }
 
     /// Every process is alive and started at `t<pid>`, except pid 99.
@@ -162,8 +190,8 @@ mod tests {
     fn a_second_run_is_refused_naming_the_holder() {
         // req: VER-069
         let l = lock();
-        let first = acquire_in(&l, 1, &live).unwrap();
-        let err = acquire_in(&l, 2, &live).err().unwrap();
+        let first = acquire_in(&*l, 1, &live).unwrap();
+        let err = acquire_in(&*l, 2, &live).err().unwrap();
         assert!(err.contains("pid 1") && err.contains("started t1"), "{err}");
         drop(first);
     }
@@ -172,9 +200,9 @@ mod tests {
     fn dropping_the_guard_frees_the_lock() {
         // req: VER-069
         let l = lock();
-        drop(acquire_in(&l, 1, &live).unwrap());
-        assert_eq!(target(&l), None);
-        assert!(acquire_in(&l, 2, &live).is_ok());
+        drop(acquire_in(&*l, 1, &live).unwrap());
+        assert_eq!(target(&*l), None);
+        assert!(acquire_in(&*l, 2, &live).is_ok());
     }
 
     #[test]
@@ -182,24 +210,24 @@ mod tests {
         // req: VER-069
         let l = lock();
         // Pid 99 is gone; it left its lock behind.
-        std::os::unix::fs::symlink("99|t99", &l).unwrap();
-        let g = acquire_in(&l, 2, &live).unwrap();
-        assert_eq!(target(&l).as_deref(), Some("2|t2"));
+        std::os::unix::fs::symlink("99|t99", &*l).unwrap();
+        let g = acquire_in(&*l, 2, &live).unwrap();
+        assert_eq!(target(&*l).as_deref(), Some("2|t2"));
         drop(g);
         // A reused pid (another start time) is stale as well.
-        std::os::unix::fs::symlink("1|earlier", &l).unwrap();
-        assert!(acquire_in(&l, 2, &live).is_ok());
+        std::os::unix::fs::symlink("1|earlier", &*l).unwrap();
+        assert!(acquire_in(&*l, 2, &live).is_ok());
     }
 
     #[test]
     fn a_guard_does_not_remove_a_lock_it_no_longer_owns() {
         // req: VER-069
         let l = lock();
-        let g = acquire_in(&l, 1, &live).unwrap();
-        std::fs::remove_file(&l).unwrap();
-        std::os::unix::fs::symlink("5|t5", &l).unwrap();
+        let g = acquire_in(&*l, 1, &live).unwrap();
+        std::fs::remove_file(&*l).unwrap();
+        std::os::unix::fs::symlink("5|t5", &*l).unwrap();
         drop(g);
-        assert_eq!(target(&l).as_deref(), Some("5|t5"));
+        assert_eq!(target(&*l).as_deref(), Some("5|t5"));
     }
 
     #[test]

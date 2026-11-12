@@ -340,8 +340,10 @@ out="$(run --rebuild 99 --without 11)"
 status=$?
 { [ "$status" -eq 0 ] && remote_has "train/$today-2"; }
 check "--rebuild builds a new train" $?
-git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#12" &&
-    ! git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2" | grep -Fq "#11"
+# Capture the log first: `git log | grep -q` under pipefail fails when grep exits on its first
+# match and git is killed by SIGPIPE while it still writes (#531).
+log="$(git -C "$work/origin.git" log --first-parent --format=%s "train/$today-2")"
+contains "$log" "#12" && ! contains "$log" "#11"
 check "--rebuild leaves the dropped PR out" $?
 grep -Fq "pr close 99" "$STUB/calls" && contains "$(cat "$STUB/close-comment")" "without #11"
 check "--rebuild closes the old train PR" $?
@@ -507,7 +509,7 @@ check "the build regenerates a stale lockfile" $?
 t [ "$(git -C "$work/origin.git" log --format=%s -n 1 "$tb")" = \
     "chore(train): regenerate Cargo.lock for the merged manifests" ] &&
     t [ "$(git -C "$work/origin.git" show "$tb:Cargo.lock" | tail -n 1)" = regenerated ] &&
-    ! git -C "$work/origin.git" show "$tb:Cargo.lock" | grep -q '^stale'
+    ! grep -q '^stale' <<<"$(git -C "$work/origin.git" show "$tb:Cargo.lock")"
 check "it commits the regenerated lock on the train branch" $?
 
 run >/dev/null
