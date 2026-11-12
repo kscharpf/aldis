@@ -4,8 +4,8 @@
 A2 D8(c), TV-023.  Written from docs/reference-application.md (sections 2, 3,
 4, 6, 7), docs/milestones/a2-frames.md D8 and docs/standards/; protocol values
 came from those documents, not from the Blue Book text (132.0-B-3, 232.0-B-4,
-133.0-B-2, 301.0-B-4 are the standards they cite); `refapp/scenario/scenario.json` is read as input
-data only.  No implementation file was read.  Python 3, standard library only.
+133.0-B-2, 301.0-B-4 are the standards they cite); `refapp/scenario/scenario.json`
+is read as input data only.  No implementation file was read.  Python 3, standard library only.
 
 It simulates the flight node's applications and its per-virtual-channel field
 generators and multiplexer, and the ground node's segmenter, then prints (or
@@ -19,9 +19,7 @@ command (APP-141), no COP-1 (Type-BD, A2).
 import json
 import sys
 
-# Parameters come from scenario.json (the file is input data); the case itself
-# is not in the file until its golden PR lands, so the ops of `a1-nominal` and
-# the end instant 35 s are used (reference-application.md 6.7).
+# Parameters, ops, and the end instant come from scenario.json (the file is input data).
 
 CASE = "a2-nominal"
 
@@ -439,9 +437,7 @@ class Flight:
 # ------------------------------------------------------------------ driver --
 def model(scenario_path):
     sc = load(scenario_path)
-    case = next((c for c in sc["cases"] if c["id"] == CASE), None)
-    if case is None:  # not in the file yet: the ops of a1-nominal (6.7), end 35 s
-        case = next(c for c in sc["cases"] if c["id"] == "a1-nominal")
+    case = next(c for c in sc["cases"] if c["id"] == CASE)
     ops = [e for e in case["ops"] if e["kind"] != "fop1_directive"]
     end = case["end_us"]
     ul = Uplink(sc, ops, end).run()
@@ -466,7 +462,7 @@ def self_check(ul, down):
     assert kinds.count(7) == 219 and kinds.count(0) == 31 and kinds.count(1) == 30
     assert [down[i]["hex"][:6].hex().upper() for i in (0, 2, 4)] == \
         ["155F00001FFE", "155102001800", "155304001800"]
-    # Payload data (reference-application.md 4.3, 4.4.3): the first VC 1 frame
+    # Payload data (reference-application.md 4.3, 3.3.3): the first VC 1 frame
     # holds packet number n = 0 from its start: 6 octets of frame header, 6 of
     # packet header, 6 of CUC time, then data octets 0-3 = n and octet i =
     # (n + i) mod 256 from i = 4.
@@ -480,6 +476,9 @@ def self_check(ul, down):
     assert vc[0][-1] == 30 and vc[1][-1] == 29 and vc[7][-1] == 218
     expect = {97: (1, 12, 0), 99: (1, 13, 69), 100: (1, 14, 138), 101: (1, 15, 33),
               103: (1, 16, 0x7FF), 110: (1, 17, 23)}
+    # frames 98 and 102 are VC 0 (4.4.4); at 102 VC 0 goes before VC 1 (LNK-031)
+    for i in (98, 102):
+        assert (down[i]["hex"][0] << 8 | down[i]["hex"][1]) >> 1 & 7 == 0, i
     for i, (v, c, fhp) in expect.items():
         h = down[i]["hex"]
         assert (h[0] << 8 | h[1]) >> 1 & 7 == v and h[3] == c, i

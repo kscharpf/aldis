@@ -108,15 +108,15 @@ pub enum OpsEntry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Fop1Directive {
-    /// *Initiate AD Service (without CLCW Check)*, code 1 (E23).
+    /// *Initiate AD Service (without CLCW Check)*, code 1 (E23) (232.1 §4.1, Table 5-1).
     InitiateAdWithoutClcw,
-    /// *Initiate AD Service (with CLCW Check)*, code 2 (E24).
+    /// *Initiate AD Service (with CLCW Check)*, code 2 (E24) (232.1 §4.1, Table 5-1).
     InitiateAdWithClcw,
-    /// *Initiate AD Service (with Unlock)*, code 3 (E25).
+    /// *Initiate AD Service (with Unlock)*, code 3 (E25) (232.1 §4.1, Table 5-1).
     InitiateAdWithUnlock,
-    /// *Terminate AD Service*, code 5 (E29).
+    /// *Terminate AD Service*, code 5 (E29) (232.1 §4.1, Table 5-1).
     TerminateAd,
-    /// *Set V(S) to V\*(S)*, code 7, with the Qualifier V\*(S) (E35).
+    /// *Set V(S) to V\*(S)*, code 7, with the Qualifier V\*(S) (E35; 232.1 §4.1, Table 5-1).
     SetVs(u8),
 }
 
