@@ -103,13 +103,13 @@ def main():
 
     # What the ground system sees: the CLCWs not dropped.
     seen = [(i, t, clcw(w)) for i, t, w in clcws if i not in dropped_down]
-    vs = max((bytes.fromhex(r["hex"])[4] for r in up), default=-1) + 1  # V(S) after the last frame
     flags = [(i, c) for i, t, c in seen if c["lockout"]]
     print("--- criteria")
     print("APP-164 (a3-nominal) / APP-165 (lossy link)")
     verdict("no Lockout in any CLCW", not flags)
 
-    # N(R) between the previous N(R) and V(S), modulo 256.
+    # N(R) between the previous N(R) and V(S), modulo 256. V(S) is taken from the frames the flight node
+    # received, which is stricter than APP-164 (the sender's own V(S) may be ahead of them).
     prev = 0
     bad = []
     ns_by_time = sorted((r["t_us"], bytes.fromhex(r["hex"])[4]) for r in up if r["event"] == "received")
@@ -178,8 +178,12 @@ def main():
             fact("YAMCS log: " + line.strip())
         fact(f"YAMCS log: {len(expected)} warning(s) 'Incomplete packet dropped because of frame loss' (the dropped downlink frames)")
         verdict("no YAMCS warning or error in its log, except those of the dropped downlink frames", not warn and not err)
-    verdict("no SUSPENDED or UNINITIALIZED state after the start (no alert, no limit reached)",
-            not any(s in states for s in ("SUSPENDED",)) and states.get("UNINITIALIZED", 0) <= 1)
+    seq = [r["status"].get("state") for r in ops if r["kind"] == "cop1_status" and isinstance(r["status"], dict)]
+    first_active = seq.index("ACTIVE") if "ACTIVE" in seq else None
+    after = [] if first_active is None else [s for s in seq[first_active:] if s in ("UNINITIALIZED", "SUSPENDED")]
+    fact(f"first ACTIVE at poll {first_active}; UNINITIALIZED or SUSPENDED after it: {dict(collections.Counter(after))}")
+    verdict("no UNINITIALIZED or SUSPENDED state after the first ACTIVE (no alert, no limit reached)",
+            first_active is not None and not after)
 
     # Retransmissions on the wire.
     rep = collections.defaultdict(list)

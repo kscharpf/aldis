@@ -4,8 +4,8 @@ docs/reference-application.md section 2.4 and 11.9).
 It waits for the first TM frame to arrive (the driver sends its first frame at its instant 0), takes that
 moment as its instant 0, starts COP-1 (Initiate AD Service without CLCW check) and issues each command of the timeline at
 its release instant through the HTTP API (`POST /api/processors/aldis/realtime/commands/<name>`), the
-command names and arguments being those of etc/mdb/aldis.xml. The frames, the segmentation, and COP-1
-are YAMCS's. It writes one JSON line per event to the file given, with the instant in seconds since the
+command names and arguments being those of etc/mdb/aldis.xml. The frames and COP-1 are YAMCS's; YAMCS
+does not segment (section 11.9). It writes one JSON line per event to the file given, with the instant in seconds since the
 script started, polls the COP-1 status every 0.25 s, and at the end reads the command history back.
 
 Usage: python3 -I ops.py <log.jsonl> [--api http://127.0.0.1:8090] [--end 35] [--table 300|100]
@@ -65,7 +65,8 @@ def main():
     parser.add_argument("log")
     parser.add_argument("--api", default="http://127.0.0.1:8090")
     parser.add_argument("--end", type=float, default=35.0)
-    parser.add_argument("--timeout-type", default=None)
+    parser.add_argument("--timeout-type", default="UNINITIALIZE", choices=["SUSPEND", "UNINITIALIZE"],
+                        help="Timeout_Type of the profile is 0 (UNINITIALIZE)")
     parser.add_argument("--shift", action="append", default=[], metavar="NAME=SECONDS",
                         help="release the command NAME later by SECONDS (plan D7: the instants are not compared)")
     parser.add_argument("--table", choices=["300", "100"], default="300",
