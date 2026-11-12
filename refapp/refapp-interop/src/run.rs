@@ -78,8 +78,10 @@ fn wait(clock: &mut dyn Clock, port: &mut dyn Port, target: Micros) -> Result<Wa
 /// `unit` outputs go to the port as datagrams, the datagrams that arrive are `delivered`, and
 /// the next step is at the earliest of the node's deadline, the next downlink slot, and an
 /// arriving datagram (APP-157); a datagram that arrives after an instant has passed is delivered
-/// after the step of that instant. `tx_slot` is true at every slot of `slot` µs and in no other
-/// step (APP-158).
+/// after the step of that instant. A step of a scheduled instant is taken at that instant and
+/// logged with the clock's reading beside it (`wall_us`), so a late wake shows in the log and in
+/// a `slots_missed` record; the node never sees the reading. `tx_slot` is true at every slot of
+/// `slot` µs and in no other step (APP-158).
 ///
 /// # Errors
 /// If the node breaks the step contract, or the port, the clock's wait, or the sink fails.
@@ -109,10 +111,10 @@ pub fn run_flight(
                 while side.next_wake() <= now && side.next_wake() < end {
                     let at = side.next_wake().max(last);
                     last = at;
-                    let units = side.step(at, &[], sink)?;
-                    side.transmit(at, units, port, loss, sink)?;
+                    let units = side.step(at, clock.now(), &[], sink)?;
+                    side.transmit(at, clock.now(), units, port, loss, sink)?;
                 }
-                match side.receive(now, octets, loss, sink)? {
+                match side.receive(now, clock.now(), octets, loss, sink)? {
                     Some(octets) => (now, vec![octets]),
                     // No step follows, and `last` already holds the latest served instant.
                     None => continue,
@@ -123,8 +125,10 @@ pub fn run_flight(
         if now >= end {
             break;
         }
-        let units = side.step(now, &delivered, sink)?;
-        side.transmit(now, units, port, loss, sink)?;
+        // The readings are the lateness the log shows: the step's instant is the scheduled one.
+        // The send reading is taken right before the datagrams go out.
+        let units = side.step(now, clock.now(), &delivered, sink)?;
+        side.transmit(now, clock.now(), units, port, loss, sink)?;
     }
     Ok(())
 }

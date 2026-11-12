@@ -39,8 +39,13 @@ impl DatagramKind {
 /// One datagram, as the driver saw it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Datagram {
-    /// Monotonic instant, µs since the start of the run.
+    /// The instant the node was stepped at, µs since the start of the run: a scheduled instant
+    /// for a datagram that a timed step sent.
     pub t_us: Micros,
+    /// The clock's reading right before the driver sent the datagram or when it took it, µs
+    /// since the start of the run, never before `t_us`; the difference is the driver's lateness
+    /// (APP-162).
+    pub wall_us: Micros,
     /// Direction of the link.
     pub dir: Dir,
     /// Index among the units of that direction (§11.6).
@@ -58,13 +63,17 @@ pub enum Event {
     Datagram(Datagram),
     /// A node event of §7.3 and §7.4, or a `fault` of the loss script.
     Node(Record),
-    /// The driver ran more than one slot late: `count` slots, from the one after the last
-    /// served up to the one before `t_us`'s, got no `tx_slot` step (APP-158). Tells the
-    /// driver's lateness from a loss on the link.
+    /// A `tx_slot` step ran with the clock in a later slot than its own (APP-162): the frame
+    /// went out late, not skipped. `count` is the number of slot instants the clock had passed
+    /// beyond the slot the step served; one record is one late frame, and the records of one
+    /// late wake overlap, so their counts are not summed. Tells the driver's lateness from a
+    /// loss on the link.
     SlotsMissed {
-        /// Monotonic instant of the late step, µs since the start of the run.
+        /// The instant the node was stepped at, µs since the start of the run.
         t_us: Micros,
-        /// The number of slots that got no step.
+        /// The clock's reading when the step ran, µs since the start of the run.
+        wall_us: Micros,
+        /// The number of slot instants the clock had passed beyond the slot the step served.
         count: u64,
     },
 }
@@ -155,9 +164,10 @@ impl Datagram {
     #[must_use]
     pub fn to_line(&self) -> String {
         format!(
-            "{{\"t_us\":{},\"kind\":\"datagram\",\"dir\":\"{}\",\"index\":{},\
+            "{{\"t_us\":{},\"wall_us\":{},\"kind\":\"datagram\",\"dir\":\"{}\",\"index\":{},\
              \"event\":\"{}\",\"hex\":\"{}\"}}\n",
             self.t_us,
+            self.wall_us,
             self.dir.as_str(),
             self.index,
             self.kind.as_str(),
@@ -197,8 +207,15 @@ impl<W: Write> Sink for RunLog<W> {
         let line = match event {
             Event::Datagram(d) => d.to_line(),
             Event::Node(r) => r.to_line().map_err(Error::Contract)?,
-            Event::SlotsMissed { t_us, count } => {
-                format!("{{\"t_us\":{t_us},\"kind\":\"slots_missed\",\"count\":{count}}}\n")
+            Event::SlotsMissed {
+                t_us,
+                wall_us,
+                count,
+            } => {
+                format!(
+                    "{{\"t_us\":{t_us},\"wall_us\":{wall_us},\"kind\":\"slots_missed\",\
+                     \"count\":{count}}}\n"
+                )
             }
         };
         self.out.write_all(line.as_bytes())?;
@@ -233,6 +250,7 @@ mod tests {
         let mut log = RunLog::new(Vec::new(), &header).unwrap();
         log.record(Event::Datagram(Datagram {
             t_us: Micros::new(125_000),
+            wall_us: Micros::new(125_040),
             dir: Dir::Down,
             index: 1,
             kind: DatagramKind::Sent,
@@ -264,7 +282,7 @@ mod tests {
         );
         assert_eq!(
             lines[1],
-            "{\"t_us\":125000,\"kind\":\"datagram\",\"dir\":\"down\",\"index\":1,\
+            "{\"t_us\":125000,\"wall_us\":125040,\"kind\":\"datagram\",\"dir\":\"down\",\"index\":1,\
              \"event\":\"sent\",\"hex\":\"0AFF\"}"
         );
         assert_eq!(
