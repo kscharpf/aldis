@@ -193,6 +193,9 @@ impl FrameDownlink {
     /// deadline; §4.4.2) is released only by the next step with `tx_slot`, so it counts as the
     /// next slot instant after `now`; a later deadline of another generator before that slot
     /// is still the one reported.
+    ///
+    /// The slot grid starts at instant 0: the slots are the multiples of `FRAME_SLOT_US`, as in
+    /// the harness (§4.4.2).
     #[must_use]
     pub fn next_deadline(&self, now: Instant) -> Option<Instant> {
         const SLOT: u64 = link::FRAME_SLOT_US;
