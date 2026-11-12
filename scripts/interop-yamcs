@@ -17,7 +17,7 @@ version=5.14.0
 image="aldis-yamcs:$version"
 name=aldis-yamcs
 release="https://github.com/yamcs/yamcs/releases/download/yamcs-$version"
-# SHA-256 of the release archives, as downloaded on 2026-11-11 (the release page lists none).
+# SHA-256 of the release archives (D2 a), as downloaded on 2026-11-11 (the release page lists none).
 sha_aarch64=45164e10ba4d67b63af261f842a5f67a83807b88ab2bcf03d81d91de22c9c4a8
 sha_x86_64=35004954a65021a06182928bbc344adfb09b11599dd009863745010e98527356
 
