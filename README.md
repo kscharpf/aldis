@@ -27,7 +27,7 @@ Data moves down through three kinds of part, and back up the same way on the oth
               extraction, segmentation and reassembly
               aldis-cop1: on the TC link, FOP-1 (sender, ground) retransmits frames
               until FARM-1 (receiver, flight) reports them accepted in the CLCW
-        |  frame bytes (aldis-sync adds the sync marker for TM)
+        |  frame bytes (aldis-sync: ASM, CADU, randomizer of 131.0 §9-10)
         v
   your radio, modem, or socket
 ```
@@ -149,7 +149,7 @@ verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
 
 ## Using it
 
-The crates are not on crates.io. From Rust, depend on the facade crate `aldis` from git, and enable only the features you use (none is on by default, and with none it builds for a `no_std` target). The features are `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `sync`, `link`, `cop1`, and `full`. The tag is a release of a [milestone](docs/08-roadmap.md#5-releases):
+The crates are not on crates.io. From Rust, depend on the facade crate `aldis` from git, and enable only the features you use (none is on by default, and with none it builds for a `no_std` target). The features are `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `spp-time`, `sync`, `link`, `cop1`, and `full`. The tag is a release of a [milestone](docs/08-roadmap.md#5-releases):
 
 ```toml
 [dependencies]
