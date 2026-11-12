@@ -1174,7 +1174,8 @@ impl RxProtocol for Aos {
             AosPhysicalChannelConfig::new(c.frame_len, fhec, c.insert_zone_len, fecf, edition)
         };
         // The edition is read after the length checks, as before it was a managed parameter of
-        // the physical channel.
+        // the physical channel. On an invalid edition, `Issue5` is only a placeholder: it lets the
+        // length checks of `physical` run first, and the edition error is returned after them.
         match aos_edition(c) {
             Ok(edition) => Ok(AosChannel::new(physical(edition)?)),
             Err(e) => physical(AosEdition::Issue5).and(Err(e)),
