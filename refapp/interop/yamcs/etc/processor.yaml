@@ -1,0 +1,5 @@
+# Processor of the AINT run (written by this project): the command chain only. The commands leave
+# through the stream tc_realtime of etc/yamcs.aldis.yaml to the TC frame link.
+realtime:
+  services:
+    - class: org.yamcs.StreamTcCommandReleaser

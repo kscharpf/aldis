@@ -3,7 +3,8 @@
 //!
 //! The driver steps a node through the contract of §8.1 against a socket and a clock. It is the
 //! only I/O of the milestone: the nodes and the crates stay sans-I/O (APP-161). Tooling crate
-//! (`std` plus workspace crates, no third-party dependency of its own, tooling lint profile, APP-104).
+//! (`std` plus workspace crates, no third-party dependency of its own, tooling lint profile,
+//! APP-104).
 //!
 //! | Module | Contents | Requirements |
 //! |---|---|---|

@@ -49,6 +49,35 @@ impl LossScript {
         Ok(LossScript { entries })
     }
 
+    /// The script of a list of drops written `dir:index`, separated by commas, `dir` being `up` or
+    /// `down` (`up:2,up:10,down:32`): the loss script of a run that is not a case of the scenario
+    /// (§11.6).
+    ///
+    /// # Errors
+    /// If an entry is not `up:<n>` or `down:<n>`.
+    pub fn from_spec(spec: &str) -> Result<Self, Error> {
+        let mut entries = Vec::new();
+        for item in spec.split(',').filter(|i| !i.is_empty()) {
+            let (dir, index) = item.split_once(':').ok_or_else(|| {
+                Error::Script(format!("drop `{item}`: expected `up:<n>` or `down:<n>`"))
+            })?;
+            let dir = match dir {
+                "up" => Dir::Up,
+                "down" => Dir::Down,
+                other => {
+                    return Err(Error::Script(format!(
+                        "drop `{item}`: direction `{other}` is not `up` or `down`"
+                    )));
+                }
+            };
+            let index = index
+                .parse::<u64>()
+                .map_err(|e| Error::Script(format!("drop `{item}`: {e}")))?;
+            entries.push((dir, index));
+        }
+        Ok(LossScript { entries })
+    }
+
     /// Whether the unit `index` in direction `dir` is dropped.
     #[must_use]
     pub fn drops(&self, dir: Dir, index: u64) -> bool {
@@ -82,6 +111,20 @@ mod tests {
         assert!(!script.drops(Dir::Up, 33));
         let none = LossScript::from_case(s.case("a3-nominal").unwrap()).unwrap();
         assert_eq!(none.entries(), []);
+    }
+
+    #[test]
+    fn a_script_is_read_from_a_list_of_drops() {
+        // req: APP-163
+        let script = LossScript::from_spec("up:3,up:7,down:25").unwrap();
+        assert_eq!(
+            script.entries(),
+            [(Dir::Up, 3), (Dir::Up, 7), (Dir::Down, 25)]
+        );
+        assert_eq!(LossScript::from_spec("").unwrap().entries(), []);
+        for bad in ["up", "left:1", "up:x", "down:-1"] {
+            assert!(LossScript::from_spec(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

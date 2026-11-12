@@ -175,7 +175,8 @@ impl Node for Probe {
     }
 }
 
-/// A port whose wait for the instant `at` ends with the clock at `to`, with a datagram if `datagram`.
+/// A port whose wait for the instant `at` ends with the clock at `to`, with a datagram if
+/// `datagram`.
 struct Jump {
     clock: Rc<Cell<u64>>,
     at: u64,

@@ -36,7 +36,7 @@ cargo run -p refapp-harness -- gen-scenario --check
 # The flight node against a ground system's TM and TC ports (AINT, docs/reference-application.md §11);
 # writes a JSON Lines run log, which is not a golden trace and is not committed.
 cargo run -p refapp-interop -- run --case a3-nominal --tm 127.0.0.1:10015 \
-    --tc-listen 127.0.0.1:10025 --log target/runs/a3-nominal.interop.jsonl [--loss-script a3-uplink-loss]
+    --tc-listen 127.0.0.1:10025 --log target/runs/a3-nominal.interop.jsonl [--loss-script a3-uplink-loss | --drop up:5,down:25]
 ```
 The YAMCS image, its configuration, and the TM-only spike are in [interop/yamcs/](interop/yamcs/README.md) (`scripts/interop-yamcs`).
 

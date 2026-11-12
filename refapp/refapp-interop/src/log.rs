@@ -282,12 +282,13 @@ mod tests {
         );
         assert_eq!(
             lines[1],
-            "{\"t_us\":125000,\"wall_us\":125040,\"kind\":\"datagram\",\"dir\":\"down\",\"index\":1,\
-             \"event\":\"sent\",\"hex\":\"0AFF\"}"
+            "{\"t_us\":125000,\"wall_us\":125040,\"kind\":\"datagram\",\"dir\":\"down\",\
+             \"index\":1,\"event\":\"sent\",\"hex\":\"0AFF\"}"
         );
         assert_eq!(
             lines[2],
-            "{\"t_us\":7,\"kind\":\"fault\",\"dir\":\"up\",\"index\":2,\"fault\":\"drop\",\"args\":[]}"
+            "{\"t_us\":7,\"kind\":\"fault\",\"dir\":\"up\",\"index\":2,\
+             \"fault\":\"drop\",\"args\":[]}"
         );
         assert!(lines[3].contains("\"kind\":\"app_event\""), "{}", lines[3]);
         assert_eq!(lines.len(), 4);

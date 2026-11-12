@@ -26,6 +26,8 @@ options:
   --log <file>            the run log, JSON Lines (required; not a golden trace, not committed)
   --loss-script <id>      drop the units that the faults of this case's script drop (default:
                           none; a fault other than drop is refused)
+  --drop <list>           drop the units of a list `dir:index,...` (`up:2,down:32`), in place of a
+                          case's script (not with --loss-script; the indexes of §11.6)
   --ground-version <v>    recorded in the log header
   --image-digest <d>      recorded in the log header
   --node-commit <c>       recorded in the log header
@@ -38,6 +40,7 @@ struct Options {
     tc_listen: Option<String>,
     log: Option<String>,
     loss_script: Option<String>,
+    drop: Option<String>,
     ground_version: Option<String>,
     image_digest: Option<String>,
     node_commit: Option<String>,
@@ -57,6 +60,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--tc-listen" => &mut o.tc_listen,
             "--log" => &mut o.log,
             "--loss-script" => &mut o.loss_script,
+            "--drop" => &mut o.drop,
             "--ground-version" => &mut o.ground_version,
             "--image-digest" => &mut o.image_digest,
             "--node-commit" => &mut o.node_commit,
@@ -86,12 +90,14 @@ fn run(args: &[String]) -> Result<(), String> {
     let tc = address(required(o.tc_listen.as_ref(), "--tc-listen")?)?;
     let log_path = required(o.log.as_ref(), "--log")?;
     let (scenario, case) = load_case(case_id).map_err(|e| e.to_string())?;
-    let loss = match &o.loss_script {
-        Some(id) => {
+    let loss = match (&o.loss_script, &o.drop) {
+        (Some(_), Some(_)) => return Err("--loss-script and --drop exclude each other".to_string()),
+        (Some(id), None) => {
             let (_, lossy) = load_case(id).map_err(|e| e.to_string())?;
             LossScript::from_case(&lossy).map_err(|e| e.to_string())?
         }
-        None => LossScript::default(),
+        (None, Some(list)) => LossScript::from_spec(list).map_err(|e| e.to_string())?,
+        (None, None) => LossScript::default(),
     };
     let mut flight = flight_node(case.level).map_err(|e| e.to_string())?;
     let slot = downlink_slot(&scenario).map_err(|e| e.to_string())?;
