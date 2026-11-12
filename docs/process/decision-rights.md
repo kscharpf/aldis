@@ -90,7 +90,7 @@ Layers 0–2 take no third-party runtime dependency at all (GEN-001); that is a 
 
 | Maintainer only | Coordinator | Agent in a work package |
 |---|---|---|
-| Tags and releases; version numbers a consumer reads; publishing to crates.io or a registry, reserving names (OI-02); the visibility of the repository and its packages; repository settings, branch protection, and secrets; anything posted outside this repository | Preparing the release PR (`cargo xtask changelog release`, the version bump) and asking for the tag | None |
+| Tags and releases; version numbers a consumer reads; publishing to crates.io or a registry, reserving names (OI-02); the visibility of the repository and its packages; repository settings, branch protection, and secrets; anything posted outside this repository | Preparing the release PR (`cargo xtask changelog release`, the version bump: [milestone exit](../milestones/checklists.md#milestone-exit)) and asking for the tag | None |
 
 Instead of asking: prepare everything up to the external step, and ask for that step only.
 
