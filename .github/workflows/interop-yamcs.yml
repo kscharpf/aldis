@@ -64,7 +64,7 @@ jobs:
                 --tm 127.0.0.1:10015 --tc-listen 0.0.0.0:10025 --log "$out/$name.run.jsonl" \
                 --ground-version 5.14.0 --image-digest "$id" --node-commit "$commit" $drv_opts
             wait "$ops"
-            podman logs aldis-yamcs > "$out/$name.yamcs.log" 2>&1
+            "$CONTAINER_TOOL" logs aldis-yamcs > "$out/$name.yamcs.log" 2>&1
             scripts/interop-yamcs down
             python3 -I refapp/interop/yamcs/judge.py "$out/$name.run.jsonl" "$out/$name.ops.jsonl" \
                 refapp/golden/a3-nominal.jsonl "$out/$name.yamcs.log" > "$out/$name.judge.txt" || true

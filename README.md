@@ -132,7 +132,7 @@ verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
 | Reference application: flight and ground nodes with packets, TM and TC frames, and COP-1 over a lossy link, golden traces | Complete |
 | Reference application: AOS and USLP variants, C and C++ flight side, bare-metal target | Planned |
 | Simplifying the crate architecture | In progress |
-| Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete |
+| Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete (no release; no new vectors or hazards) |
 
 Each released row has its tests, test vectors, and hazard analysis. The [roadmap](docs/08-roadmap.md) has the milestone detail, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) lists the CCSDS documents and sections covered.
 
