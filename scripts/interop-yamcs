@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Build and run the YAMCS black box of the AINT milestone (docs/reference-application.md §11.1).
+#
+# Usage: scripts/interop-yamcs build <download-dir>
+#        scripts/interop-yamcs up <data-dir>
+#        scripts/interop-yamcs down
+#   build  fetch the pinned release archive from its public release page into <download-dir>
+#          (a new or empty directory outside the repository), verify its SHA-256, and build the
+#          image `aldis-yamcs:5.14.0` from refapp/interop/yamcs/Containerfile. Prints the image ID.
+#   up     run the container `aldis-yamcs` with refapp/interop/yamcs/etc mounted read-only and
+#          <data-dir> as its archive; HTTP API on 127.0.0.1:8090, TM frames on UDP 127.0.0.1:10015.
+#   down   stop and remove the container.
+# CONTAINER_TOOL names the engine (default: podman, else docker). Nothing is pushed.
+set -euo pipefail
+
+version=5.14.0
+image="aldis-yamcs:$version"
+name=aldis-yamcs
+release="https://github.com/yamcs/yamcs/releases/download/yamcs-$version"
+# SHA-256 of the release archives, as downloaded on 2026-11-11 (the release page lists none).
+sha_aarch64=45164e10ba4d67b63af261f842a5f67a83807b88ab2bcf03d81d91de22c9c4a8
+sha_x86_64=35004954a65021a06182928bbc344adfb09b11599dd009863745010e98527356
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+tool="${CONTAINER_TOOL:-$(command -v podman || command -v docker || true)}"
+[ -n "$tool" ] || { echo "no container engine (podman or docker) found" >&2; exit 2; }
+
+case "${1:-}" in
+build)
+    dir="${2:?usage: $0 build <download-dir>}"
+    case "$(uname -m)" in
+    arm64 | aarch64) arch=aarch64 sha=$sha_aarch64 ;;
+    x86_64) arch=x86_64 sha=$sha_x86_64 ;;
+    *) echo "unsupported architecture $(uname -m)" >&2; exit 2 ;;
+    esac
+    archive="yamcs-$version-linux-$arch.tar.gz"
+    mkdir -p "$dir"
+    [ -f "$dir/$archive" ] || curl -fL -o "$dir/$archive" "$release/$archive"
+    echo "$sha  $dir/$archive" | shasum -a 256 -c -
+    "$tool" build -f "$root/refapp/interop/yamcs/Containerfile" --build-arg "ARCHIVE=$archive" \
+        -t "$image" "$dir"
+    "$tool" image inspect --format '{{.Id}}' "$image"
+    ;;
+up)
+    data="${2:?usage: $0 up <data-dir>}"
+    mkdir -p "$data"
+    "$tool" run -d --name "$name" \
+        -v "$root/refapp/interop/yamcs/etc:/opt/yamcs/etc:ro" -v "$(cd "$data" && pwd -P):/data" \
+        -p 127.0.0.1:8090:8090/tcp -p 127.0.0.1:10015:10015/udp "$image"
+    ;;
+down)
+    "$tool" rm -f "$name"
+    ;;
+*)
+    echo "usage: $0 build <download-dir> | up <data-dir> | down" >&2
+    exit 2
+    ;;
+esac

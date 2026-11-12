@@ -1,0 +1,69 @@
+# Instance of the AINT interoperability run (written by this project; reference-application.md §11.3).
+# TM only (AINT WP-3): the TM frame link of §11.1. No mission database: the packets are
+# archived and indexed, not decoded into parameters.
+# Public documentation: https://docs.yamcs.org/yamcs-server-manual/links/ccsds-frame-processing/
+services:
+  - class: org.yamcs.archive.CcsdsTmIndex
+
+mdb:
+  - type: emptyNode
+    spec: aldis
+
+streamConfig:
+  tm:
+    - name: tm_vc0
+    - name: tm_vc1
+    - name: tm_vc7
+  event: [events_realtime]
+  cmdHist: [cmdhist_realtime]
+  param: [pp_realtime, sys_param]
+  sqlFile: etc/aldis-streams.sql
+
+dataLinks:
+  - name: aldis-tm
+    class: org.yamcs.tctm.ccsds.UdpTmFrameLink
+    port: 10015
+    frameType: TM
+    spacecraftId: 0x155
+    frameLength: 223
+    errorDetection: CRC16
+    clcwStream: clcw
+    goodFrameStream: good_frames
+    badFrameStream: bad_frames
+    virtualChannels:
+      # VC 0: housekeeping 0x010 (implicit P-field) and events 0x011 (explicit P-field), so the
+      # time stamp is not read from the packet (a preprocessor reads one offset per VC).
+      - vcId: 0
+        ocfPresent: true
+        service: PACKET
+        maxPacketLength: 512
+        stream: tm_vc0
+        packetPreprocessorClassName: org.yamcs.tctm.GenericPacketPreprocessor
+        packetPreprocessorArgs:
+          timestampOffset: -1
+          seqCountOffset: 0
+      # VC 1: payload 0x020 and dump 0x021, both with the implicit P-field: CUC 4+2 octets
+      # (reference-application.md §3.2, §5): epoch 1958-01-01 TAI, P-field 0x2E implied.
+      - vcId: 1
+        ocfPresent: true
+        service: PACKET
+        maxPacketLength: 512
+        stream: tm_vc1
+        packetPreprocessorClassName: org.yamcs.tctm.GenericPacketPreprocessor
+        packetPreprocessorArgs:
+          timestampOffset: 6
+          seqCountOffset: 0
+          timeEncoding:
+            type: CUC
+            implicitPField: 0x2E
+            epoch: TAI
+      # VC 7: OID frames only (§4.1); no packets expected.
+      - vcId: 7
+        ocfPresent: true
+        service: PACKET
+        maxPacketLength: 512
+        stream: tm_vc7
+        packetPreprocessorClassName: org.yamcs.tctm.GenericPacketPreprocessor
+        packetPreprocessorArgs:
+          timestampOffset: -1
+          seqCountOffset: 0
