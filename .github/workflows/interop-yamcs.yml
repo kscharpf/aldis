@@ -1,0 +1,89 @@
+# The interoperability run of the AINT milestone (docs/milestones/aint-interoperability.md D8,
+# docs/reference-application.md §11). Started only by hand, never by a push, a pull request, or a
+# schedule; it is not part of the merge gate (VER-056) and no check depends on it:
+#
+#   gh workflow run interop-yamcs.yml --ref <branch>
+#
+# It builds the image of YAMCS 5.14.0 from the pinned release archive (SHA-256 checked) on the
+# Java base image pinned by digest (`scripts/interop-yamcs build`, plan D2 a), runs the two cases
+# (`a3-nominal` and the lossy-link case, the YAMCS form of APP-164 and APP-165) one after the
+# other against a fresh YAMCS each, and uploads the run logs and `judge.py`'s output. It judges
+# nothing itself: a person reads the logs against the criteria of §11.5 (plan D9), so the job
+# does not fail on a criterion, only on a step that cannot run. The image is built on the runner
+# and never pushed; nothing is published. Nightly only after the maintainer has seen it stable.
+name: interop-yamcs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CONTAINER_TOOL: podman
+
+jobs:
+  interop:
+    name: YAMCS 5.14.0, a3-nominal and the lossy-link case (AINT D8)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache-key: interop
+          workspaces: refapp -> target
+      - name: Build the driver
+        working-directory: refapp
+        run: cargo build --release --locked -p refapp-interop
+      - name: Build the YAMCS image from the pinned release
+        run: |
+          mkdir -p "$RUNNER_TEMP/yamcs-dl"
+          scripts/interop-yamcs build "$RUNNER_TEMP/yamcs-dl" | tee "$RUNNER_TEMP/image-id.txt"
+      - name: Run both cases
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/runs"
+          mkdir -p "$out"
+          id="$(tail -n 1 "$RUNNER_TEMP/image-id.txt")"
+          commit="$(git rev-parse HEAD)"
+          printf 'image %s\nnode %s\n' "$id" "$commit" > "$out/versions.txt"
+          run_case() { # <name> <ops options> <driver options>
+            name="$1"; ops_opts="$2"; drv_opts="$3"
+            mkdir -p "$RUNNER_TEMP/data-$name"
+            scripts/interop-yamcs up "$RUNNER_TEMP/data-$name"
+            sleep 20
+            # shellcheck disable=SC2086
+            python3 -I refapp/interop/yamcs/ops.py "$out/$name.ops.jsonl" --table 100 \
+                --timeout-type UNINITIALIZE $ops_opts > "$out/$name.ops.out" 2>&1 &
+            ops=$!
+            sleep 3
+            # shellcheck disable=SC2086
+            refapp/target/release/refapp-interop run --case a3-nominal \
+                --tm 127.0.0.1:10015 --tc-listen 0.0.0.0:10025 --log "$out/$name.run.jsonl" \
+                --ground-version 5.14.0 --image-digest "$id" --node-commit "$commit" $drv_opts
+            wait "$ops"
+            podman logs aldis-yamcs > "$out/$name.yamcs.log" 2>&1
+            scripts/interop-yamcs down
+            python3 -I refapp/interop/yamcs/judge.py "$out/$name.run.jsonl" "$out/$name.ops.jsonl" \
+                refapp/golden/a3-nominal.jsonl "$out/$name.yamcs.log" > "$out/$name.judge.txt" || true
+          }
+          run_case nominal "" ""
+          run_case lossy "--shift DUMP_MEMORY=0.3" \
+            "--drop up:5,up:9,down:25,down:26,down:27,down:28,down:29,down:30,down:31,down:32,down:33,down:34,down:35"
+          {
+            echo '### AINT interoperability run (judge.py output; a person judges, plan D9)'
+            for name in nominal lossy; do
+              echo "#### $name"
+              echo '```'
+              grep -E '^(=>|  CLCW|  flight accepted)' "$out/$name.judge.txt" || true
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: interop-yamcs-runs
+          path: ${{ runner.temp }}/runs/
+          if-no-files-found: error
