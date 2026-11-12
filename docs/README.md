@@ -63,7 +63,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [A1 Packets](milestones/a1-packets.md) | Reference application: housekeeping Space Packets and the first golden trace (exited) |
 | [A2 Frames](milestones/a2-frames.md) | Reference application: TM and TC frames through the `aldis-link` engines (exited) |
 | [A3 COP-1](milestones/a3-cop1.md) | Reference application: FOP-1, FARM-1 and the CLCW over a lossy link (exited) |
-| [AINT Interoperability](milestones/aint-interoperability.md) | The Rust flight node against an independent ground system run as a black box (plan accepted; not started) |
+| [AINT Interoperability](milestones/aint-interoperability.md) | The Rust flight node against an independent ground system run as a black box (in progress) |
 | [ACFS cFS flight side](milestones/acfs-flight-side.md) | Reference application: a cFS flight side over the C ABI, reproducing the golden traces in three phases (plan approved; decisions D1–D19 accepted) |
 
 A4 (AOS and USLP variants), A5 (C and C++ flight side), and A6 (bare-metal target) have no plan yet; the roadmap ([§3](08-roadmap.md)) lists them. Track-A milestones cut no release; the tags `v0.N.0-mN` mark the track-R milestones.

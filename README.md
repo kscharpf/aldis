@@ -7,7 +7,7 @@ CCSDS (the Consultative Committee for Space Data Systems) publishes the standard
 Aldis has two aims. It is meant to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified, largely by coding agents under a reproducible merge gate.
 
 > [!NOTE]
-> **Pre-release, under active development.** It has not been qualified against any standard, its wire behaviour has not yet been exercised against an independent implementation, its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
+> **Pre-release, under active development.** It has not been qualified against any standard, exercising its wire behaviour against an independent implementation (YAMCS) is under way and not yet finished, its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
 
 ## How it fits together
 
@@ -191,7 +191,7 @@ Each released row has its tests, test vectors, and hazard analysis. The [roadmap
 
 - v1.0 is not released: it waits on the architecture simplification and the last reference-application milestone ([roadmap §5](docs/08-roadmap.md#5-releases)).
 - Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
-- Its wire behaviour has not yet been exercised against an independent implementation; the AINT milestone (interoperability) plans that: the reference application's flight node would exchange frames and COP-1 with an independent ground system such as YAMCS, run as a black box ([plan](docs/milestones/aint-interoperability.md)).
+- Exercising its wire behaviour against an independent implementation is under way, through the AINT milestone (interoperability): the reference application's Rust flight node exchanges frames and COP-1 with YAMCS, an independent ground system run as a black box. The COP-1 cases have run against YAMCS since [#565](https://github.com/kscharpf/aldis/pull/565), and some criteria are not met as written (YAMCS does not segment). The milestone has not reached its exit and has no evidence record yet ([plan](docs/milestones/aint-interoperability.md)).
 - Its API may change in any 0.x release (pre-1.0 versions promise no stability); the [changelog](CHANGELOG.md) lists the breaking changes.
 - Outside contributions are not being accepted yet. The repository is public as a showcase, which also lets it use free verification tools that require a public repository ([open issues](docs/09-open-issues.md)).
 
