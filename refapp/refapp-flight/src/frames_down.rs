@@ -4,7 +4,7 @@
 //! for VC 0 and one for VC 1, the `ChannelMux` with fixed priority and OID frames on VC 7, the OCF
 //! slot, and the FECF.
 //!
-//! Requirements: APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135.
+//! Requirements: APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135, APP-167.
 //!
 //! The packet side is the A1 code: [`crate::downlink::Downlink`] builds each packet and reports
 //! `packet_out` and then a link unit. At frame level the link unit goes to the generator of the
@@ -188,7 +188,7 @@ impl FrameDownlink {
         none(generator.step(GeneratorInput::SubmitPacket(packet), now, &mut [])?)
     }
 
-    /// The earliest release deadline of the generators (APP-135), after `now` (APP-090,
+    /// The earliest release deadline of the generators (APP-135), after `now` (APP-167, APP-090,
     /// API-053). A deadline that is not after `now` (a step off the frame slot grid, past the
     /// deadline; §4.4.2) is released only by the next step with `tx_slot`, so it counts as the
     /// next slot instant after `now`; a later deadline of another generator before that slot
@@ -427,8 +427,12 @@ mod slot_failure_tests {
         let frames = node.frames.as_mut().unwrap();
         // VC 0 starts at 100 000 (deadline 350 000, passed at `now`); VC 1 starts at 10 000
         // (deadline 1 010 000, between `now` and the next slot at 1 125 000).
-        frames.submit(0, &PACKET, Instant::from_micros(100_000)).unwrap();
-        frames.submit(1, &PACKET, Instant::from_micros(10_000)).unwrap();
+        frames
+            .submit(0, &PACKET, Instant::from_micros(100_000))
+            .unwrap();
+        frames
+            .submit(1, &PACKET, Instant::from_micros(10_000))
+            .unwrap();
         let next = frames.next_deadline(Instant::from_micros(1_000_000));
         assert_eq!(next, Some(Instant::from_micros(1_010_000)));
         // Both passed: the next slot.
