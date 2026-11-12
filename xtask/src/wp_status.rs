@@ -123,7 +123,7 @@ fn wp_token(text: &str) -> Option<String> {
                 .filter(|_| it.next().is_none_or(|c| !c.is_ascii_alphanumeric()));
             return Some(format!(
                 "WP-{digits}{}",
-                letter.map(String::from).unwrap_or_default()
+                letter.map_or_default(String::from)
             ));
         }
         from = start + 2;
@@ -146,7 +146,7 @@ fn row_id(cell: &str) -> Option<String> {
         .filter(|_| it.next().is_none_or(|c| !c.is_ascii_alphanumeric()));
     Some(format!(
         "WP-{digits}{}",
-        letter.map(String::from).unwrap_or_default()
+        letter.map_or_default(String::from)
     ))
 }
 
@@ -246,7 +246,7 @@ fn derive(plan: &str, id: &str, prs: &[Pr]) -> Result<Derived, String> {
             out.push((*row).to_owned());
             continue;
         };
-        let mut numbers = cells.get(2).map(|c| cell_numbers(c)).unwrap_or_default();
+        let mut numbers = cells.get(2).map_or_default(|c| cell_numbers(c));
         numbers.extend(
             mine.iter()
                 .filter(|(_, t)| target(t).as_deref() == Some(rid.as_str()))
@@ -275,7 +275,7 @@ fn derive(plan: &str, id: &str, prs: &[Pr]) -> Result<Derived, String> {
         } else {
             "merged"
         };
-        let notes = cells.get(3..).map(|c| c.join("|")).unwrap_or_default();
+        let notes = cells.get(3..).map_or_default(|c| c.join("|"));
         out.push(format!(
             "|{}| {state} | {} |{}",
             cells.first().copied().unwrap_or_default(),

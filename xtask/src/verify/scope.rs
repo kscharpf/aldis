@@ -594,15 +594,14 @@ pub fn sources(dir: &Path, commit: &str, base: &str, tip: &str, checks: &[Check]
             "--",
         ],
     )
-    .map(|out| {
+    .map_or_default(|out| {
         out.lines()
             .filter(|c| *c != commit)
             .take(BRANCH_DEPTH)
             .filter(|c| notes.passing(c).is_some())
             .map(str::to_owned)
             .collect()
-    })
-    .unwrap_or_default();
+    });
     if base_record.is_none() && branch.is_empty() {
         return none(format!(
             "no published passing record covers main at {base} or an earlier commit of the branch"

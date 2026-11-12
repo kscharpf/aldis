@@ -278,8 +278,7 @@ pub fn merges(raw: &Raw) -> Vec<Merge> {
             let parents: Vec<&str> = c
                 .get("parents")
                 .and_then(Value::as_array)
-                .map(|p| p.iter().map(|p| str_of(p, "sha")).collect())
-                .unwrap_or_default();
+                .map_or_default(|p| p.iter().map(|p| str_of(p, "sha")).collect());
             let (ours, rest) = parents.split_first()?;
             let theirs = rest.iter().find(|p| !shas.contains(*p))?;
             let commit = str_of(c, "sha").to_owned();
@@ -572,8 +571,7 @@ fn waits_of(stages: &Stages, commits: &[Commit], runs: &[Run]) -> Waits {
     };
     let rework = stages
         .first_decision
-        .map(|d| waits::work_in(commits, runs, d, approval.at))
-        .unwrap_or_default();
+        .map_or_default(|d| waits::work_in(commits, runs, d, approval.at));
     Waits {
         after_approval,
         rework,

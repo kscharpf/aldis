@@ -73,8 +73,7 @@ fn maps<P: SegmenterProtocol>(
     entry: impl Fn(&Value) -> MapEntry<P>,
 ) -> Vec<MapEntry<P>> {
     c.get("maps")
-        .map(|m| m.as_array().unwrap().iter().map(entry).collect())
-        .unwrap_or_default()
+        .map_or_default(|m| m.as_array().unwrap().iter().map(entry).collect())
 }
 
 impl Proto for Tc {

@@ -445,7 +445,7 @@ fn fields(t: &[Tok], named: bool, enum_payload: bool) -> Result<Vec<Field>, Stri
             visibility(part, &mut k)?
         };
         let name = if named {
-            let name = part.get(k).map(|t| t.text.clone()).unwrap_or_default();
+            let name = part.get(k).map_or_default(|t| t.text.clone());
             if !is(part, k + 1, ":") {
                 let line = part.get(k).map_or(0, |t| t.line);
                 return Err(format!(
@@ -472,7 +472,7 @@ fn fields(t: &[Tok], named: bool, enum_payload: bool) -> Result<Vec<Field>, Stri
 
 /// Parses a struct or union whose keyword is at `*i`; leaves `*i` after it.
 fn struct_def(t: &[Tok], i: &mut usize, vis: Vis) -> Result<TypeDef, String> {
-    let name = t.get(*i + 1).map(|t| t.text.clone()).unwrap_or_default();
+    let name = t.get(*i + 1).map_or_default(|t| t.text.clone());
     *i += 2;
     generics(t, i)?;
     where_clause(t, i)?;
@@ -506,7 +506,7 @@ fn struct_def(t: &[Tok], i: &mut usize, vis: Vis) -> Result<TypeDef, String> {
 
 /// Parses an enum whose keyword is at `*i`; leaves `*i` after it.
 fn enum_def(t: &[Tok], i: &mut usize, vis: Vis) -> Result<TypeDef, String> {
-    let name = t.get(*i + 1).map(|t| t.text.clone()).unwrap_or_default();
+    let name = t.get(*i + 1).map_or_default(|t| t.text.clone());
     *i += 2;
     generics(t, i)?;
     where_clause(t, i)?;
@@ -648,7 +648,7 @@ fn parse_items(t: &[Tok]) -> Result<Items, String> {
                 }
             }
             Some("mod") => {
-                let name = t.get(i + 1).map(|t| t.text.clone()).unwrap_or_default();
+                let name = t.get(i + 1).map_or_default(|t| t.text.clone());
                 let line = t[i].line;
                 let inline = if is(t, i + 2, "{") {
                     let end = group_end(t, i + 2)?;
@@ -681,7 +681,7 @@ fn parse_items(t: &[Tok]) -> Result<Items, String> {
                 i = end + 1;
             }
             Some("macro_rules") if is(t, i + 1, "!") => {
-                let name = t.get(i + 2).map(|t| t.text.clone()).unwrap_or_default();
+                let name = t.get(i + 2).map_or_default(|t| t.text.clone());
                 let end = group_end(t, i + 3)?;
                 let body = macro_arms(&t[i + 4..end])?;
                 if !gated {
