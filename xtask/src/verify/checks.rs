@@ -1251,7 +1251,7 @@ mod tests {
         for target in RUST_BARE_METAL {
             let name = format!("exerciser-{target}");
             let check = all().into_iter().find(|c| c.name == name);
-            let script = check.map(|c| c.script).unwrap_or_default();
+            let script = check.map_or_default(|c| c.script);
             assert!(script.contains("--features inject-panic"), "{name}");
             assert!(
                 script.contains(&format!(

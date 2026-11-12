@@ -1631,8 +1631,7 @@ fn aos_fields(p: &Value) -> aldis_aos_fields_t {
 fn aos_octets(p: &Value, name: &str) -> Vec<u8> {
     p.get(name)
         .filter(|v| !v.is_null())
-        .map(|v| hex::decode(v.as_str().unwrap()).unwrap())
-        .unwrap_or_default()
+        .map_or_default(|v| hex::decode(v.as_str().unwrap()).unwrap())
 }
 
 /// Encodes one frame with `aldis_aos_encode` (API-020).
@@ -2009,8 +2008,7 @@ fn tm_json(v: &aldis_tm_frame_t, bytes: &[u8]) -> R<Value> {
 fn tm_ocf(p: &Value) -> Vec<u8> {
     p.get("ocf_hex")
         .filter(|v| !v.is_null())
-        .map(|v| hex::decode(v.as_str().unwrap()).unwrap())
-        .unwrap_or_default()
+        .map_or_default(|v| hex::decode(v.as_str().unwrap()).unwrap())
 }
 
 /// Encodes one frame with `aldis_tm_encode` (API-020).
@@ -2330,8 +2328,7 @@ fn uslp_tfdf(p: &Value) -> aldis_uslp_tfdf_t {
 fn uslp_ocf(p: &Value) -> Vec<u8> {
     p.get("ocf_hex")
         .and_then(Value::as_str)
-        .map(|h| hex::decode(h).unwrap())
-        .unwrap_or_default()
+        .map_or_default(|h| hex::decode(h).unwrap())
 }
 
 /// The octets of `len` at `offset` in `bytes`, which the view guarantees lie inside it.

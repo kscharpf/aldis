@@ -406,8 +406,7 @@ fn changed_paths(root: &Path, sha: &str) -> Result<Vec<overhead::Changed>, Strin
             .output()
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default()
+            .map_or_default(|o| String::from_utf8_lossy(&o.stdout).into_owned())
     };
     Ok(String::from_utf8_lossy(&out.stdout)
         .split('\0')

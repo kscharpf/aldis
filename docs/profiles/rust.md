@@ -8,7 +8,7 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| RS-001 | Crates SHALL use Rust edition 2024. The toolchain SHALL be pinned in `rust-toolchain.toml` to stable **1.99.1**, and the workspace `rust-version` SHALL equal the pinned version ([open issues](../09-open-issues.md) OI-07). Changing the pinned version is a configuration-controlled change recorded in the changelog. | — | A |
+| RS-001 | Crates SHALL use Rust edition 2024. The toolchain SHALL be pinned in `rust-toolchain.toml` to stable **1.100.0**, and the workspace `rust-version` SHALL equal the pinned version ([open issues](../09-open-issues.md) OI-07). Changing the pinned version is a configuration-controlled change recorded in the changelog. | — | A |
 | RS-002 | Crates SHALL build on the pinned stable toolchain. Nightly SHALL be used only for tooling (fuzzing, Miri, `-Z build-std` for tier-3 targets, stack-size emission) and SHALL NOT be needed to build any crate. | — | A |
 
 ## 2. Crates and features

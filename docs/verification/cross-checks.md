@@ -14,7 +14,7 @@ Evaluated 2026-10-19 for SPP, CUC, and CDS, and 2026-10-20 for the P-field and A
 |---|---|
 | Independence | Developed at the University of Stuttgart's Institute of Space Systems; shares no code or authors with Aldis |
 | License | Apache-2.0 (with a `NOTICE` file, which matters only on redistribution; `crosscheck/` is never shipped). All 31 crates in its dependency tree carry licenses on the `file:deny.toml` allow list |
-| MSRV | 1.85, below the pinned 1.99.1 (RS-001) |
+| MSRV | 1.85, below the pinned 1.100.0 (RS-001) |
 | `cargo deny check` (cargo-deny 0.20.2, root policy) | licenses, bans, sources: ok (bans warns about two `syn` major versions, which the policy allows). Advisories: fails on RUSTSEC-2024-0436 |
 | Version | Pinned with `=0.18.0` so that a new release cannot change the results unnoticed. An upgrade re-runs this evaluation |
 | ASCII formatting | the ASCII time module of `spacepackets` supplies the strftime patterns of codes A and B (`%FT%T%.3f` and `%Y-%jT%T%.3f`, each also with a final `Z`), and `chrono` 0.4.45 (MIT OR Apache-2.0), which `spacepackets`' default `std` feature enables, renders them. `crosscheck/` names `chrono` as a direct dependency only to build the dates these functions take; it adds no crate to the tree |

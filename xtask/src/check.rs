@@ -662,8 +662,7 @@ fn full_steps(t: &Touched, tools: Tools, run: &mut Vec<Item>, skipped: &mut Vec<
             let script = all_checks()
                 .into_iter()
                 .find(|c| c.name == "big-endian")
-                .map(|c| c.script)
-                .unwrap_or_default();
+                .map_or_default(|c| c.script);
             let mut item = cmd(
                 "big-endian",
                 "cargo",

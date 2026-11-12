@@ -111,7 +111,7 @@ fn macro_ranges(t: &[Tok]) -> Result<Vec<(String, usize, usize)>, String> {
     let mut out = Vec::new();
     for i in 0..t.len() {
         if is(t, i, "macro_rules") && is(t, i + 1, "!") {
-            let name = t.get(i + 2).map(|t| t.text.clone()).unwrap_or_default();
+            let name = t.get(i + 2).map_or_default(|t| t.text.clone());
             let end = group_end(t, i + 3)?;
             out.push((name, i + 3, end));
         }
@@ -154,7 +154,7 @@ fn inherent_constructors(t: &[Tok], open: usize, close: usize, ty: &str) -> Vec<
             i += 1;
             continue;
         }
-        let name = t.get(k + 1).map(|t| t.text.clone()).unwrap_or_default();
+        let name = t.get(k + 1).map_or_default(|t| t.text.clone());
         let args = skip_angles(t, k + 2);
         let Ok(args_end) = group_end(t, args) else {
             i += 1;
@@ -241,8 +241,7 @@ fn scan_file(text: &str) -> Result<FileScan, String> {
                     .and_then(|p| p.checked_sub(1))
                     .is_some_and(|p| trait_toks[p].text == "TryFrom");
                 if try_from {
-                    scan.checked
-                        .push((self_ty.clone(), "TryFrom".to_owned(), in_macro.clone()));
+                    scan.checked.push((self_ty, "TryFrom".to_owned(), in_macro));
                 } else if at_for.is_none() {
                     for f in inherent_constructors(&t, open, close, &self_ty) {
                         scan.checked.push((self_ty.clone(), f, in_macro.clone()));

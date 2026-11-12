@@ -153,8 +153,8 @@ impl<'n> Side<'n> {
             return Ok(Vec::new());
         }
         if tx_slot {
-            let current = now.get() / self.slot.get();
-            let clock_slot = wall.max(now).get() / self.slot.get();
+            let current = now.get() / self.slot;
+            let clock_slot = wall.max(now).get() / self.slot;
             let missed = clock_slot.saturating_sub(self.next_slot);
             if missed > 0 && self.role == Role::Flight {
                 sink.record(Event::SlotsMissed {

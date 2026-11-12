@@ -256,7 +256,7 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
 
     let mut md = format!(
         "# Trace matrix{}\n\n| ID | Verif. | Status | Artefacts |\n|---|---|---|---|\n",
-        scope.map(|s| format!(" — scope {s}")).unwrap_or_default()
+        scope.map_or_default(|s| format!(" — scope {s}"))
     );
     let mut rows = Vec::new();
     let mut untraced = Vec::new();
@@ -286,7 +286,7 @@ pub fn run(scope: Option<&str>, strict: bool) -> Result<usize, String> {
     let traced = in_scope.len() - untraced.len();
     println!(
         "trace{}: {traced}/{} requirements traced; report: target/spec/{name}.md",
-        scope.map(|s| format!(" --scope {s}")).unwrap_or_default(),
+        scope.map_or_default(|s| format!(" --scope {s}")),
         in_scope.len()
     );
     if deferred > 0 {
