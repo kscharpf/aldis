@@ -9,7 +9,7 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`clock`] | The clock trait, the monotonic clock, the manual (virtual-time) clock | APP-160 |
-//! | [`error`] | The driver's error | APP-157 |
+//! | [`error`] | The driver's error | — |
 //! | [`log`] | The run log, JSON Lines | APP-162 |
 //! | [`loss`] | The loss script | APP-163 |
 //! | [`loopback`] | The self-test: both Rust nodes over loopback UDP in virtual time | APP-106 |
