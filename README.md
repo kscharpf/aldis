@@ -7,7 +7,7 @@ CCSDS (the Consultative Committee for Space Data Systems) publishes the standard
 Aldis has two aims. It is meant to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified, largely by coding agents under a reproducible merge gate.
 
 > [!NOTE]
-> **Pre-release, under active development.** It has not been qualified against any standard, exercising its wire behaviour against an independent implementation (YAMCS) is under way and not yet finished, its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
+> **Pre-release, under active development.** It has not been qualified against any standard, its wire behaviour has been exercised against one independent implementation (YAMCS 5.14.0) only in the cases of the [record](docs/verification/records/APP-155.md), its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
 
 ## How it fits together
 
