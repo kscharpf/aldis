@@ -224,7 +224,8 @@ impl<'n> Side<'n> {
     }
 
     /// Sends the units a step returned, one datagram each (APP-159), after the loss script
-    /// (APP-163). `wall` is the clock's reading at the send, logged next to `now`. Returns how many datagrams went on the wire.
+    /// (APP-163). `wall` is the clock's reading right before the send, logged next to `now`
+    /// (never before it). Returns how many datagrams went on the wire.
     ///
     /// # Errors
     /// If the port or the sink fails.
@@ -274,9 +275,9 @@ impl<'n> Side<'n> {
         Ok(on_wire)
     }
 
-    /// Takes a datagram from the wire at `now` (`wall` as for `transmit`): counts it, applies the loss script (the flight
-    /// side's uplink, APP-163), and logs it. Returns the octets to deliver to the node, or
-    /// `None` for a dropped datagram.
+    /// Takes a datagram from the wire at `now` (`wall` as for `transmit`): counts it, applies
+    /// the loss script (the flight side's uplink, APP-163), and logs it. Returns the octets to
+    /// deliver to the node, or `None` for a dropped datagram.
     ///
     /// # Errors
     /// If the sink fails.
