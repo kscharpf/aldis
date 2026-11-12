@@ -17,8 +17,9 @@
 //! defines the frame can write it (the orphan rule: a foreign trait for a foreign type with no
 //! local type in it is refused, E0117). No other crate can therefore make a [`Checked`] codec
 //! frame without the codec's check; `aldis-tm` has the compile-fail example of the attack. A
-//! check that fails returns a [`Rejection`], which holds the error of the failed check (GEN-041) and,
-//! for the standards that number their failures (TC reasons 1–11, USLP 1–18), the reason `R`.
+//! check that fails returns a [`Rejection`], which holds the error of the failed check (GEN-041)
+//! and, for the standards that number their failures (TC reasons 1–11, USLP 1–18), the reason
+//! `R`.
 
 use core::ops::Deref;
 
@@ -110,10 +111,8 @@ impl<F> Deref for Checked<F> {
 /// the crate that defines the frame can write it (the orphan rule: `Check` is foreign to every
 /// other crate, and so is the frame, and no local type appears in `impl Check for Frame`).
 /// A [`Checked`] frame is therefore a proof that the codec's check ran. An outside crate that
-/// implements the trait for a codec's frame with a lookup type of its own is refused:
-///
-/// The compile-fail example on `aldis_tm`'s implementation shows the attack: another crate
-/// implements `Check` for `TmFrame` with a lookup type of its own.
+/// tries it is refused (E0117); the compile-fail example on `aldis_tm`'s implementation shows
+/// the attack, with a lookup type of the outside crate's own.
 ///
 /// A codec implements [`verify`](Self::verify), the checks themselves; callers use
 /// [`check`](Self::check), the only way to a [`Checked`] frame from a decoded one.

@@ -274,8 +274,11 @@ pub fn decode(received: &[u8; 8]) -> Result<CorrectedHeader, Error> {
     let det = s7.mul(s7).add(s6.mul(s8));
     let (l1, l2, degree) = if det == Gf::ZERO {
         // A single error: S7 = X·S6, S8 = X·S7, S9 = X·S8, so Λ(x) = 1 + X·x.
+        if s6 == Gf::ZERO {
+            return Err(Error::new(ErrorKind::HeaderUncorrectable));
+        }
         let l1 = s7.mul(s6.inv());
-        if s6 == Gf::ZERO || s9 != l1.mul(s8) {
+        if s9 != l1.mul(s8) {
             return Err(Error::new(ErrorKind::HeaderUncorrectable));
         }
         (l1, Gf::ZERO, CorrectedSymbols::One)

@@ -1,5 +1,5 @@
 //! `ByteQueue` (of `aldis-testkit`) and `FixedVec` against `VecDeque`/`Vec` models under
-//! arbitrary operation sequences (GEN-010…GEN-012, API-061, GEN-042).
+//! arbitrary operation sequences (GEN-012, VER-022).
 #![no_main]
 
 // req: GEN-012, VER-022
