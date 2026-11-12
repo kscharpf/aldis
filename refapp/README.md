@@ -38,6 +38,7 @@ cargo run -p refapp-harness -- gen-scenario --check
 cargo run -p refapp-interop -- run --case a3-nominal --tm 127.0.0.1:10015 \
     --tc-listen 127.0.0.1:10025 --log target/runs/a3-nominal.interop.jsonl [--loss-script a3-uplink-loss]
 ```
+The YAMCS image, its configuration, and the TM-only spike are in [interop/yamcs/](interop/yamcs/README.md) (`scripts/interop-yamcs`).
 
 The self-test of the driver (both Rust nodes over loopback UDP in virtual time, reproducing the packet projections of `a3-nominal` and `a3-uplink-loss`) is part of `cargo test`.
 
