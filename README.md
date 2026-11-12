@@ -2,12 +2,37 @@
 
 [![CI](https://github.com/kscharpf/aldis/actions/workflows/ci.yml/badge.svg)](https://github.com/kscharpf/aldis/actions/workflows/ci.yml)
 
-Aldis is a CCSDS protocol stack for spacecraft flight software and ground systems, written in Rust (`no_std`, no heap, panic-free) with a C ABI for C and C++ applications. It implements Space Packets, Encapsulation Packets, time codes, TM, TC, AOS, and USLP Transfer Frames, frame synchronization, COP-1, and the sans-I/O engines that link them: you hand the library bytes and time, and it hands back bytes and events.
+CCSDS (the Consultative Committee for Space Data Systems) publishes the standard protocols that spacecraft and ground stations use to exchange commands and telemetry. Aldis is a CCSDS protocol stack for spacecraft flight software and ground systems, written in Rust (`no_std`, no heap, panic-free) with a C ABI for C and C++ applications. It implements Space Packets, Encapsulation Packets, time codes, TM, TC, AOS, and USLP Transfer Frames, frame synchronization, COP-1, and the sans-I/O engines that link them: you hand the library bytes and time, and it hands back bytes and events.
 
 Aldis has two aims. It is meant to be a usable CCSDS stack that comes with the correctness evidence expected of safety- and mission-critical software. It is also a showcase of how embedded high-assurance Rust can be built and verified, largely by coding agents under a reproducible merge gate.
 
 > [!NOTE]
-> **Pre-release, under active development.** It has not been qualified against any standard, its wire behaviour has not yet been exercised against an independent implementation, its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
+> **Pre-release, under active development.** It has not been qualified against any standard, its wire behaviour has been exercised against one independent implementation (YAMCS 5.14.0) only in the cases of the [record](docs/verification/records/APP-155.md), its API may change in any 0.x release, and the crates are not published to crates.io. Details: [status](#status) and [limits](#limits).
+
+## How it fits together
+
+Data moves down through three kinds of part, and back up the same way on the other end of the link:
+
+```text
+  your application: telemetry, commands, files
+        |  data units in, data units out
+        v
+  PACKETS     Space Packet (SPP), Encapsulation Packet (EPP)     aldis-spp, aldis-epp
+        |  carried in the data field of
+        v
+  FRAMES      TM, TC, AOS, USLP Transfer Frames                  aldis-tm, -tc, -aos, -uslp
+        ^  built and taken apart by
+        |
+  ENGINES     aldis-link: packets to frames, channel multiplexing, reception,
+              extraction, segmentation and reassembly
+              aldis-cop1: on the TC link, FOP-1 (sender, ground) retransmits frames
+              until FARM-1 (receiver, flight) reports them accepted in the CLCW
+        |  frame bytes (aldis-sync: ASM, CADU, randomizer of 131.0 §9-10)
+        v
+  your radio, modem, or socket
+```
+
+The codecs are stateless functions from bytes to fields and back. The engines hold state, but do no I/O and keep no clock of their own, so every run is deterministic. The [architecture](docs/01-architecture.md) has the full layer diagram.
 
 ## Example
 
@@ -50,7 +75,9 @@ Run the reference application's lossy-link case with one command; it needs only 
 cargo run --manifest-path refapp/Cargo.toml -p refapp-harness -- demo
 ```
 
-The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram and the text output are generated from the golden trace, decoded with the strict codecs, and `cargo xtask fix` keeps both current.
+The reference application sends commands over a link that loses frames. The ground node uses a COP-1 sequence-controlled service (Type-AD frames); the flight node reports in the CLCW of its telemetry frames. The notation, from CCSDS 232.0-B and 232.1-B (the [glossary](docs/glossary.md) has each term): Type-AD is the sequence-controlled kind of TC frame, which the ground node numbers and retransmits until it is acknowledged (232.0 §4.1.2.3, Table 4-1; 232.1 Annex A). N(S) is the frame sequence number the ground node gives each Type-AD frame (232.0 §4.1.2.8). The CLCW (Communications Link Control Word, 232.0 §4.2) is the status report that the flight node sends back in its telemetry frames, and N(R) is the sequence number in it that the flight node expects next (232.0 §4.2.1.11).
+
+The uplink frame N(S)=2 is lost, the CLCW reports N(R)=2 with the Retransmit flag, and the ground node retransmits. A later run of lost downlink frames and a second lost uplink frame show the timer-driven retransmissions. The diagram and the text output are generated from the golden trace, decoded with the strict codecs, and `cargo xtask fix` keeps both current.
 
 The same run, drawn as a sequence diagram:
 
@@ -120,6 +147,30 @@ verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
 
 </details>
 
+## Using it
+
+The crates are not on crates.io. From Rust, depend on the facade crate `aldis` from git, and enable only the features you use (none is on by default, and with none it builds for a `no_std` target). The features are `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `spp-time`, `sync`, `link`, `cop1`, and `full`. The tag is a release of a [milestone](docs/08-roadmap.md#5-releases):
+
+```toml
+[dependencies]
+aldis = { git = "https://github.com/kscharpf/aldis", tag = "v0.6.0-m5", default-features = false, features = ["core", "spp"] }
+```
+
+From C or C++, build the static library `libaldis_ffi.a` from a clone of the repository; Cargo writes it to `target/release/`. The header `include/aldis/aldis.h` is generated and committed, and `include/aldis/aldis.hpp` is the header-only C++ wrapper of the engine handles. Add `include/` to the include path and link the library:
+
+```sh
+cargo build -p aldis-ffi --release
+```
+
+The [aldis-ffi README](crates/aldis-ffi/README.md) has the conventions, the bare-metal build, and the build-time capacities.
+
+## Where to start
+
+1. [docs/README.md](docs/README.md): reading order and document map (contributors and coding agents: also read [AGENTS.md](AGENTS.md))
+   - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
+2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
+3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed
+
 ## Status
 
 | Capability | State |
@@ -157,12 +208,11 @@ Every claim of correctness is backed by a check that the merge gate runs or by a
 
 ## How it is built
 
-Aldis is built by coding agents under rules a person sets. Implementation agents work in their own worktrees, a fresh independent reviewer agent reads every pull request, and the maintainer decides scope, API and ABI, dependencies, releases, and every merge.
+Aldis is built by coding agents under rules a person sets. Implementation agents work in their own worktrees, a fresh independent reviewer agent reviews each pull request before it merges, pull requests merge in trains that are verified as a whole, and the maintainer decides scope, API and ABI, dependencies, releases, and every merge.
 
 - [AGENTS.md](AGENTS.md): the rules for coding agents.
 - [Decision rights](docs/process/decision-rights.md): who decides what.
 - [Independent review](docs/process/review.md) and the [coordinator](docs/process/coordinator.md): the review protocol and the merge trains.
-- In the 30 days from 2026-10-12 to 2026-11-11, 391 pull requests were merged, half within about an hour of being opened. 46 were merge trains, which carry reviewed pull requests and get no review of their own. Of the other 345, 250 have a recorded review; from 2026-10-31 on, 186 of 189 do. Counted with `gh pr list --json` and `cargo xtask metrics`.
 
 ## Layout
 
@@ -218,13 +268,6 @@ cargo xtask verify                                     # every check in the pinn
 (cd exerciser && cargo run --release --target thumbv7em-none-eabihf)   # vectors under QEMU (stable)
 (cd fuzz && cargo +$(cat ../tooling-nightly) fuzz run crc_variants)    # needs cargo-fuzz
 ```
-
-## Where to start
-
-1. [docs/README.md](docs/README.md): reading order and document map (contributors and coding agents: also read [AGENTS.md](AGENTS.md))
-   - [docs/glossary.md](docs/glossary.md): what OCF, CLCW, FHP, and the other acronyms mean, and the project's own terms
-2. [docs/01-architecture.md](docs/01-architecture.md): layers and crates
-3. [docs/09-open-issues.md](docs/09-open-issues.md): decisions still needed
 
 ## License
 
