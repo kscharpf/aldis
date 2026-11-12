@@ -38,7 +38,7 @@ A spike on branch `m2/kani-spike`, 2026-10-22: how far the bounded model checker
 | | |
 |---|---|
 | Kani | Kani 0.68.0 (`kani-verifier`, crates.io, released 2026-09-16), installed with `cargo install --locked kani-verifier@0.68.0` and `cargo kani setup` |
-| Its compiler toolchain | `nightly-2026-08-21` (rustc 1.100.0-nightly 8925ea358), installed by `cargo kani setup`; Kani builds the crates with it, not with the pinned 1.99.1 (RS-001) or the tooling nightly (RS-002) |
+| Its compiler toolchain | `nightly-2026-08-21` (rustc 1.100.0-nightly 8925ea358), installed by `cargo kani setup`; Kani builds the crates with it, not with the pinned 1.100.0 (RS-001) or the tooling nightly (RS-002) |
 | Model checker | CBMC 6.11.0, bundled; SAT solver CaDiCaL (Kani's default); Kissat is bundled too |
 | Footprint | 352 MB in `~/.kani/kani-0.68.0` (release bundle, 109 MB download for `aarch64-apple-darwin`) and 1.3 GB for the nightly in `~/.rustup/toolchains`; the Linux bundles are 139 MB (`aarch64`) and 140 MB (`x86_64`) |
 | Host of the measurements | Apple silicon, 8 cores, 8 GB, macOS; other sessions shared the machine, so the times are indicative (±50 %) |
@@ -94,7 +94,7 @@ A loop is unrolled to the bound of its unwind attribute, and Kani adds an *unwin
 A proof holds only as far as these are right:
 
 1. **Kani and CBMC:** the translation of MIR to CBMC's goto programs, and CBMC with CaDiCaL. A soundness bug in either could make a false property pass. The canaries (§5.1) show that the harnesses can fail, not that the tool is sound.
-2. **The compiler that Kani uses:** `nightly-2026-08-21`, not the pinned 1.99.1. The proof is about the MIR of that compiler; the shipped code is built by another.
+2. **The compiler that Kani uses:** `nightly-2026-08-21`, not the pinned 1.100.0. The proof is about the MIR of that compiler; the shipped code is built by another.
 3. **The model of `core`:** Kani verifies the standard library's own code where it can and replaces some functions (memory intrinsics, `memcmp`) with models. Kani reported two unsupported constructs in `aldis-core`, `caller_location` (panic locations) and one foreign function; a harness that reaches an unsupported construct fails, so none is on a proven path.
 4. **The harness itself:** its expected results and its assumptions. An `assume` that is stronger than the precondition hides inputs, and a wrong reference proves the wrong thing. They are written from the requirement text (§3) and must be reviewed like tests. The canaries show the properties are not vacuous.
 5. **Target width:** Kani models the host, a 64-bit target. `usize` properties (the offsets of `bit_fields`) are proven for 64-bit `usize`, not for the 32-bit targets of the matrix.
@@ -131,7 +131,7 @@ The image (`xtask/verify/Containerfile`, last layer, `KANI_HOME=/opt/kani`):
 
 - **Driver.** `kani-verifier` 0.68.0 from crates.io with `--locked`. `file:xtask/src/kani.rs` pins the same version and refuses another; a test checks that the two agree.
 - **Bundle.** The release bundle (kani-compiler and CBMC, 139–140 MB per Linux architecture) is downloaded and checked against the SHA-256 that GitHub records for the release asset, then installed with `cargo kani setup --use-local-bundle`. The project publishes no checksum file; GitHub's asset digests and the two downloads of 2026-10-23 agreed (`aarch64` `0042d268…`, `x86_64` `32e2b484…`).
-- **Toolchain.** `cargo kani setup` installs the nightly the bundle is built against (`nightly-2026-08-21`) through rustup, which checks it; about 1.3 GB, a third toolchain beside 1.99.1 and the tooling nightly.
+- **Toolchain.** `cargo kani setup` installs the nightly the bundle is built against (`nightly-2026-08-21`) through rustup, which checks it; about 1.3 GB, a third toolchain beside 1.100.0 and the tooling nightly.
 
 Still open in OI-42: making the check gating, and a verification method for the requirements a harness proves (the letter **F** is taken).
 
