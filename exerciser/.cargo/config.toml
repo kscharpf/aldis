@@ -28,8 +28,10 @@ runner = "qemu-system-riscv64 -machine virt -bios none -nographic -semihosting-c
 
 # LEON3 (SPARC V8) on the leon3_generic board, non-gating (OI-08). The target is tier 3: build
 # with the tooling nightly and `-Z build-std=core` (verify check `rust-sparc-leon3`). The
-# rustflags select the LEON3 CPU; a RUSTFLAGS variable replaces them, so the check sets the flag in
-# CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS. rust-lld links no 32-bit SPARC: GNU ld does (Ubuntu's binutils-sparc64-linux-gnu,
+# rustflags select the LEON3 CPU. The check unsets RUSTFLAGS, which would also reach the host
+# rustc, and passes its flags with the CPU flag in CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS
+# (the flag then appears twice in `exerciser/`, harmlessly). rust-lld links no 32-bit SPARC: GNU
+# ld does (Ubuntu's binutils-sparc64-linux-gnu,
 # with the elf32-sparc output format from link-leon3.x). QEMU has no SPARC semihosting: the
 # exerciser writes to the APBUART and ends in error mode, `ta 0` on success (QEMU exits with 0)
 # and `ta 1` on failure (QEMU aborts).

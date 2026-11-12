@@ -656,11 +656,15 @@ const RUST_LEON3: &str = r#"
 t=sparc-unknown-none-elf
 nightly="$(cat tooling-nightly)"
 std=(-Z build-std=core)
-# The flag of exerciser/.cargo/config.toml, which the variable replaces. It is the flags of
-# this target alone, not RUSTFLAGS: RUSTFLAGS also reaches the host rustc that `cargo metadata`
-# (clippy's `multiple_crate_versions`) queries, and on an aarch64 host `-C target-cpu=leon3`
-# makes that rustc fail with "target feature `neon` must be enabled" (nightly of 2026-11-11).
-# xtask, a host build, keeps the flags it had.
+# The CPU flag of exerciser/.cargo/config.toml, set again in
+# CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS together with $host_flags (such as CI's
+# `-D warnings`). It is the flags of this target alone, not RUSTFLAGS: RUSTFLAGS also reaches the
+# host rustc that `cargo metadata` (clippy's `multiple_crate_versions`) queries, and on an
+# aarch64 host `-C target-cpu=leon3` makes that rustc fail with "target feature `neon` must be
+# enabled" (nightly of 2026-11-11). Deliberate loss: build scripts and proc macros, host units
+# under `--target`, no longer get $host_flags; the host flags can reach them only through
+# RUSTFLAGS, and that is the leak. A non-gating check accepts it. xtask, a host build, keeps
+# the flags it had.
 host_flags="${RUSTFLAGS:-}"
 unset RUSTFLAGS
 export CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS="$host_flags -C target-cpu=leon3"
