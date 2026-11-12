@@ -218,7 +218,9 @@ pub(crate) const CI: &[Step] = &[
     // A3 is closed: every in-scope requirement must keep an artefact (a3 plan D1).
     ("trace --scope a3 --strict", || trace::run(Some("a3"), true)),
     // AINT is closed: every in-scope requirement must keep an artefact (aint plan D3).
-    ("trace --scope aint --strict", || trace::run(Some("aint"), true)),
+    ("trace --scope aint --strict", || {
+        trace::run(Some("aint"), true)
+    }),
 ];
 
 /// Runs `steps`; returns the number of problems. A step that cannot run (a missing tool, an
