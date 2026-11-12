@@ -111,11 +111,10 @@ pub fn run_flight(
                 while side.next_wake() <= now && side.next_wake() < end {
                     let at = side.next_wake().max(last);
                     last = at;
-                    let wall = clock.now().max(at);
-                    let units = side.step(at, wall, &[], sink)?;
-                    side.transmit(at, wall, units, port, loss, sink)?;
+                    let units = side.step(at, clock.now(), &[], sink)?;
+                    side.transmit(at, clock.now(), units, port, loss, sink)?;
                 }
-                match side.receive(now, now, octets, loss, sink)? {
+                match side.receive(now, clock.now(), octets, loss, sink)? {
                     Some(octets) => (now, vec![octets]),
                     // No step follows, and `last` already holds the latest served instant.
                     None => continue,
@@ -126,10 +125,10 @@ pub fn run_flight(
         if now >= end {
             break;
         }
-        // The reading is the lateness the log shows: the step's instant is the scheduled one.
-        let wall = clock.now().max(now);
-        let units = side.step(now, wall, &delivered, sink)?;
-        side.transmit(now, wall, units, port, loss, sink)?;
+        // The readings are the lateness the log shows: the step's instant is the scheduled one.
+        // The send reading is taken right before the datagrams go out.
+        let units = side.step(now, clock.now(), &delivered, sink)?;
+        side.transmit(now, clock.now(), units, port, loss, sink)?;
     }
     Ok(())
 }

@@ -42,8 +42,9 @@ pub struct Datagram {
     /// The instant the node was stepped at, µs since the start of the run: a scheduled instant
     /// for a datagram that a timed step sent.
     pub t_us: Micros,
-    /// The clock's reading when the driver sent or took the datagram, µs since the start of the
-    /// run, never before `t_us`; the difference is the driver's lateness (APP-162).
+    /// The clock's reading right before the driver sent the datagram or when it took it, µs
+    /// since the start of the run, never before `t_us`; the difference is the driver's lateness
+    /// (APP-162).
     pub wall_us: Micros,
     /// Direction of the link.
     pub dir: Dir,
@@ -62,9 +63,11 @@ pub enum Event {
     Datagram(Datagram),
     /// A node event of §7.3 and §7.4, or a `fault` of the loss script.
     Node(Record),
-    /// A `tx_slot` step ran with the clock `count` slots past the slot it served (APP-162):
-    /// the frame went out late, not skipped. Tells the driver's lateness from a loss on the
-    /// link.
+    /// A `tx_slot` step ran with the clock in a later slot than its own (APP-162): the frame
+    /// went out late, not skipped. `count` is the number of slot instants the clock had passed
+    /// beyond the slot the step served; one record is one late frame, and the records of one
+    /// late wake overlap, so their counts are not summed. Tells the driver's lateness from a
+    /// loss on the link.
     SlotsMissed {
         /// The instant the node was stepped at, µs since the start of the run.
         t_us: Micros,
