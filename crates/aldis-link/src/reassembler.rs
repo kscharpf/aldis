@@ -444,16 +444,18 @@ impl Cx<'_> {
 /// longest SDU it can assemble (LNK-073, GEN-011); a configuration with a longer maximum SDU
 /// length is refused with `CapacityExceeded`.
 ///
-/// The engine is its [`MapReassemblerHead`] followed by its [`MapReassemblerBuffers`]
-/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct MapReassembler<P: ReassemblerProtocol, const M: usize, const S: usize> {
     head: MapReassemblerHead<P, M>,
     bufs: MapReassemblerBuffers<M, S>,
 }
 
-/// Everything of a [`MapReassembler`] but its assembly buffers (see [`crate::inplace`]).
+/// Everything of a [`MapReassembler`] but its assembly buffers.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
 /// LNK-003; docs/04-engines.md §3.3.
@@ -465,12 +467,11 @@ pub struct MapReassemblerHead<P: ReassemblerProtocol, const M: usize> {
 }
 
 /// The assembly buffers of a [`MapReassembler`]: `S` octets for each of `M` MAPs, valid when all
-/// zero, which is the empty state (see [`crate::inplace`]).
+/// zero, which is the empty state.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
 /// LNK-003; docs/04-engines.md §3.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct MapReassemblerBuffers<const M: usize, const S: usize> {
     maps: [[u8; S]; M],
 }
@@ -495,19 +496,17 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
-    /// LNK-003; docs/04-engines.md §3.3.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
-    /// LNK-003; docs/04-engines.md §3.3.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a reassembler with no SDU in progress: the part of [`Self::new`] that is
-    /// built from the configuration (see [`crate::inplace`]).
+    /// built from the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].

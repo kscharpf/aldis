@@ -517,7 +517,6 @@ fn an_engine_refuses_a_frame_longer_than_its_capacity() {
         named(ErrorKind::CapacityExceeded, field::FRAME_LEN)
     );
     assert!(TmMux::new_head(tm_config(MuxPolicy::FixedPriority)).is_ok());
-    const { assert!(TmMux::HEAD_OFFSET < TmMux::BUFFERS_OFFSET) };
     let mut mux = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
     let mut out = [0; F];
     assert_eq!(
@@ -1174,6 +1173,43 @@ fn a_reconfiguration_puts_the_slots_back_to_the_configured_values() {
     .unwrap();
     mux.step(MuxInput::Opportunity, &mut out).unwrap();
     assert_eq!(&out[18..22], [0xC3; 4]);
+}
+
+#[test]
+fn place_slots_restores_the_slots_that_new_makes() {
+    // req: LNK-033, LNK-034, CABI-040
+    let mut out = [0; F];
+    // The OCF slot of the master channel.
+    let config = || {
+        let mut channel = tm_channel();
+        channel.mc_ocf = Some([0xA1; 4]);
+        ChannelMuxConfig::<Tm, V>::new(channel, MuxPolicy::FixedPriority, &tm_vcs()).unwrap()
+    };
+    let mut tm = TmMux::new(config()).unwrap();
+    tm.step(
+        MuxInput::SetOcf {
+            scope: Scope::Mc,
+            ocf: [0xB2; 4],
+        },
+        &mut out,
+    )
+    .unwrap();
+    tm.place_slots();
+    tm.step(MuxInput::Opportunity, &mut out).unwrap();
+    assert_eq!(&out[18..22], [0xA1; 4]);
+    // The Insert Zone slot: a fresh IN_SDU is forgotten and the idle pattern repeats.
+    let config = || aos_config_iz(3).with_insert_zone_fill(0xEE).unwrap();
+    let mut fresh = AosMux::new(config()).unwrap();
+    let mut aos = AosMux::new(config()).unwrap();
+    aos.step(MuxInput::SetInsert(&[1, 2, 3]), &mut out).unwrap();
+    aos.place_slots();
+    let mut expected = [0; F];
+    let a = fresh.step(MuxInput::Opportunity, &mut expected).unwrap();
+    let want = a.iter().copied().collect::<Vec<_>>();
+    let a = aos.step(MuxInput::Opportunity, &mut out).unwrap();
+    assert_eq!(a.iter().copied().collect::<Vec<_>>(), want);
+    assert_eq!(want.get(1), Some(&MuxOutput::InsertSduRepeated));
+    assert_eq!(out, expected);
 }
 
 #[test]

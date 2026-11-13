@@ -401,12 +401,6 @@ fn the_extractor_capacities_are_checked() {
     let over = PacketExtractorConfig::<Tm>::new(TmParams, ValidPvns::SPACE, 41).unwrap();
     assert!(PacketExtractor::<Tm, 40, 24>::new(over).is_err());
     assert!(PacketExtractor::<Tm, 40, 24>::new_head(over).is_err());
-    const {
-        assert!(
-            PacketExtractor::<Tm, 40, 24>::HEAD_OFFSET
-                < PacketExtractor::<Tm, 40, 24>::BUFFERS_OFFSET
-        );
-    };
     assert_eq!(EXTRACTOR_MAX_ACTIONS, 4);
     assert_eq!(c.min_packet_len(), 3);
     assert_eq!(
