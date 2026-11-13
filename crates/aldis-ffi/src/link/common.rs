@@ -1,6 +1,7 @@
-//! Helpers and constants shared by the link engines of the C ABI: the C form of an output range
-//! (API-061), the receiver constants the extractor, the receiver, and the mux share, and the MAP
-//! constants the segmenter and the reassembler share.
+//! Helpers and constants shared by the link engines of the C ABI.
+//!
+//! The C form of an output range (API-061), the receiver constants the extractor, the receiver,
+//! and the mux share, and the MAP constants the segmenter and the reassembler share.
 
 use aldis::core::engine::OutRange;
 use aldis::core::{Error, ErrorKind, Result, field};
