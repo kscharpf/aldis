@@ -231,16 +231,18 @@ enum Unit {
 /// `U` is the capacity of the unit in octets (GEN-011); a configuration whose Maximum Length of
 /// Data Unit exceeds it is refused with `CapacityExceeded`.
 ///
-/// The engine is its [`CltuPackerHead`] followed by its [`CltuPackerBuffers`] (`repr(C)`), so
-/// that a caller can build it in place (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct CltuPacker<P: CltuProtocol, const U: usize> {
     head: CltuPackerHead<P>,
     bufs: CltuPackerBuffers<U>,
 }
 
-/// Everything of a [`CltuPacker`] but its unit buffer (see [`crate::inplace`]).
+/// Everything of a [`CltuPacker`] but its unit buffer.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,11 +254,10 @@ pub struct CltuPackerHead<P: CltuProtocol> {
 }
 
 /// The unit buffer of a [`CltuPacker`]: `U` octets, valid when all zero, which is the empty
-/// state (see [`crate::inplace`]).
+/// state.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct CltuPackerBuffers<const U: usize> {
     unit: [u8; U],
 }
@@ -282,17 +283,17 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a packer with no frame held: the part of [`Self::new`] that is built from the
-    /// configuration (see [`crate::inplace`]).
+    /// configuration.
     ///
     /// # Errors
     /// As [`Self::new`].

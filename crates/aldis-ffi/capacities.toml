@@ -12,7 +12,7 @@ max_frame_octets = 1024    # TC maximum (232.0 §4.1.2.7)
 # BitstreamGenerator hold `packet_queue_octets`. The MapSegmenter's queue is `packet_queue_octets`
 # too, the MapReassembler holds `max_map_channels` assembly buffers of `max_frame_octets`, and the
 # CltuPacker's unit holds `max_frame_octets` (M4 WP-6).
-# The engines are built in place in the caller's storage (`aldis::link::inplace`, #240), so these
+# The engines are built in place in the caller's storage (`aldis-ffi`: `handle::place`, #240), so these
 # sizes do not pass through the stack: 8192 octets of queue and 2048 of data field (a 1115-octet
 # TM or AOS frame fits).
 max_virtual_channels = 8

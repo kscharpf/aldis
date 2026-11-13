@@ -279,19 +279,19 @@ pub struct GeneratorStatus {
 /// octets (LNK-015, GEN-011); a configuration that needs more is refused with
 /// `CapacityExceeded`.
 ///
-/// The engine is its [`PacketGeneratorHead`] (everything but the octets) followed by its
-/// [`PacketGeneratorBuffers`] (the field zone and the queue), in that order (`repr(C)`), so that a
-/// caller can build it in place with [`Self::HEAD_OFFSET`] and [`Self::BUFFERS_OFFSET`] without a
-/// by-value engine on the stack (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct PacketGenerator<P: PacketProtocol, const D: usize, const Q: usize> {
     head: PacketGeneratorHead<P>,
     bufs: PacketGeneratorBuffers<D, Q>,
 }
 
 /// Everything of a [`PacketGenerator`] but its octet buffers: the part that is built from the
-/// configuration (LNK-010…LNK-015; see [`crate::inplace`]).
+/// configuration (LNK-010…LNK-015).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PacketGeneratorHead<P: PacketProtocol> {
     config: PacketGeneratorConfig<P>,
@@ -306,11 +306,9 @@ pub struct PacketGeneratorHead<P: PacketProtocol> {
 
 /// The octet buffers of a [`PacketGenerator`]: the data field zone (`D` octets) and the packet
 /// queue (`Q` octets). Plain arrays of octets, valid when all zero, which is the empty state
-/// (see [`crate::inplace`]).
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct PacketGeneratorBuffers<const D: usize, const Q: usize> {
     zone: [u8; D],
     queue: [u8; Q],
@@ -340,17 +338,17 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a generator with an empty field and queue: the part of [`Self::new`] that is
-    /// built from the configuration (see [`crate::inplace`]).
+    /// built from the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].

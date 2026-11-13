@@ -48,12 +48,12 @@ use aldis::uslp::{
 
 use crate::abi::{self, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol, qos,
     unsupported_protocol,
 };
-use crate::link_common::{engine_in_place, range, variant_payload};
+use crate::link_common::{range, variant_payload};
 use crate::link_rx::{aldis_link_content, aldis_link_scope};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -937,64 +937,49 @@ fn mx_head(c: &aldis_channel_mux_config_t) -> Result<MxHead> {
     }
 }
 
-/// Writes the idle pattern `idle` into the Insert Zone slot of the buffers at `buffers`, which
-/// the in-place build has just zeroed (LNK-034; `ChannelMuxBuffers::with_idle` is the by-value
-/// form).
-///
-/// # Safety
-/// `buffers` is valid for writes of one `ChannelMuxBuffers<V, F>`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-const unsafe fn fill_insert(buffers: *mut u8, idle: u8) {
-    const {
-        assert!(
-            ChannelMuxBuffers::<V, F>::INSERT_OFFSET.saturating_add(F)
-                <= size_of::<ChannelMuxBuffers<V, F>>()
-        );
-    };
-    // SAFETY: by the contract and the assertion above, the `F` octets at the Insert Zone slot
-    // lie within the buffers; they are plain octets.
-    unsafe {
-        buffers
-            .byte_add(ChannelMuxBuffers::<V, F>::INSERT_OFFSET)
-            .write_bytes(idle, F);
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octets and integers, valid when zeroed.
+unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for ChannelMux<P, NV, NF> {
+    type Head = ChannelMuxHead<P, NV>;
+    type Buffers = ChannelMuxBuffers<NV, NF>;
+    const HEAD_OFFSET: usize = <ChannelMux<P, NV, NF>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <ChannelMux<P, NV, NF>>::BUFFERS_OFFSET;
+
+    /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
+    fn finish_place(&mut self) {
+        self.place_slots();
     }
 }
 
-/// Builds the engine of `head` at `state`, in place (#240), with the Insert Zone slot at the idle
-/// pattern `idle`.
+/// Builds the engine of `head` at `state`, in place (#240); the Insert Zone slot starts at the
+/// idle pattern of the head's configuration (`InPlace::finish_place`).
 ///
 /// # Safety
 /// `state` is valid for writes of one `ChannelMuxState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead, idle: u8) {
-    type B = ChannelMuxBuffers<V, F>;
+unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead) {
     match head {
         MxHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
-            engine_in_place!(Mx<Tm>, ChannelMuxHead<Tm, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
-            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
-            unsafe { fill_insert(p.byte_add(Mx::<Tm>::BUFFERS_OFFSET).cast::<u8>(), idle) };
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         MxHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
-            engine_in_place!(Mx<Aos>, ChannelMuxHead<Aos, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
-            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
-            unsafe { fill_insert(p.byte_add(Mx::<Aos>::BUFFERS_OFFSET).cast::<u8>(), idle) };
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         MxHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
-            engine_in_place!(Mx<Uslp>, ChannelMuxHead<Uslp, V>, B, p, h);
-            // SAFETY: `engine_in_place!` has just built the engine at `p`; its const assertion
-            // (link_common.rs) puts the buffers within the engine, so `p` is valid for writes of one
-            // `ChannelMuxBuffers`, and the Insert Zone slot lies within them (`fill_insert`).
-            unsafe { fill_insert(p.byte_add(Mx::<Uslp>::BUFFERS_OFFSET).cast::<u8>(), idle) };
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }
@@ -1221,9 +1206,7 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
             let cfg = abi::read(cfg)?;
             let head = mx_head(&cfg)?;
             // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| {
-                mx_place(state, head, cfg.insert_idle_pattern);
-            })
+            handle::init_with(storage, |state| mx_place(state, head))
         })
     }
 }
