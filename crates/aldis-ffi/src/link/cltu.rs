@@ -2,7 +2,7 @@
 //! D4, WP-7d).
 //!
 //! The engine is one opaque handle (`aldis_cltu_packer_t`) in the pattern of the engines of
-//! [`crate::link_gen`], [`crate::link_rx`], and [`crate::link_map`]: the caller declares the
+//! [`crate::link`]: the caller declares the
 //! typed storage, `_init` places the engine of the protocol named in the configuration in it,
 //! and every input is one `_step` call that returns the actions of the input in a fixed-capacity
 //! actions struct. The frames of a data unit go to the caller's `out` area, one after the other,
@@ -16,7 +16,7 @@
 //! (LNK-003).
 //!
 //! **Capacity.** The unit in progress is at most `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030);
-//! the engine is built in place (`aldis::link::inplace`, #240).
+//! the engine is built in place (`crate::handle::place`, OI-91).
 
 use aldis::core::Result;
 use aldis::link::cltu::{
@@ -25,6 +25,7 @@ use aldis::link::cltu::{
 };
 use aldis::link::protocol::{Tc, Uslp};
 
+use super::common::range;
 use crate::abi::{self, Out, flag, invalid_argument};
 use crate::capacities::ALDIS_LINK_MAX_FRAME_OCTETS;
 use crate::handle::{self, InPlace, Storage};
@@ -32,7 +33,6 @@ use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, protocol_tag, qos,
     unsupported_protocol,
 };
-use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 

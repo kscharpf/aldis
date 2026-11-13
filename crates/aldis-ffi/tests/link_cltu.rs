@@ -20,8 +20,8 @@ use aldis_ffi::field::{
     ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_FRAMES_PER_UNIT,
     ALDIS_FIELD_MAX_UNIT_LEN, ALDIS_FIELD_TRUNCATED_FRAME_LEN,
 };
+use aldis_ffi::link::cltu::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_cltu::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {

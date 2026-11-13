@@ -82,28 +82,30 @@ mod tests {
         aldis_fop1_action, aldis_fop1_alert, aldis_fop1_directive, aldis_fop1_frame,
         aldis_fop1_input, aldis_fop1_notice, aldis_fop1_timeout,
     };
-    use crate::link::{
-        aldis_link_idle_packet, aldis_link_idle_policy, aldis_link_protocol, aldis_link_qos,
-    };
-    use crate::link_cltu::{aldis_cltu_packer_action, aldis_cltu_packer_input};
-    use crate::link_gen::{
-        aldis_access_generator_action, aldis_access_generator_input,
+    use crate::link::access::{aldis_access_generator_action, aldis_access_generator_input};
+    use crate::link::bitstream::{
         aldis_bitstream_generator_action, aldis_bitstream_generator_input,
-        aldis_packet_generator_action, aldis_packet_generator_input,
     };
-    use crate::link_map::{
-        aldis_map_framing, aldis_map_reassembler_action, aldis_map_reassembler_input,
-        aldis_map_reassembly_event, aldis_map_segmenter_action, aldis_map_segmenter_input,
-        aldis_map_service,
+    use crate::link::cltu::{aldis_cltu_packer_action, aldis_cltu_packer_input};
+    use crate::link::common::{
+        aldis_link_content, aldis_link_discard, aldis_link_scope, aldis_link_service,
+        aldis_map_framing, aldis_map_service,
     };
-    use crate::link_mux::{
+    use crate::link::extractor::{
+        aldis_packet_extractor_action, aldis_packet_extractor_error, aldis_packet_extractor_input,
+    };
+    use crate::link::generator::{aldis_packet_generator_action, aldis_packet_generator_input};
+    use crate::link::mux::{
         aldis_channel_mux_action, aldis_channel_mux_input, aldis_link_frame_class,
         aldis_link_mux_policy,
     };
-    use crate::link_rx::{
-        aldis_frame_receiver_action, aldis_frame_receiver_input, aldis_link_content,
-        aldis_link_discard, aldis_link_scope, aldis_link_service, aldis_packet_extractor_action,
-        aldis_packet_extractor_error, aldis_packet_extractor_input,
+    use crate::link::reassembler::{
+        aldis_map_reassembler_action, aldis_map_reassembler_input, aldis_map_reassembly_event,
+    };
+    use crate::link::receiver::{aldis_frame_receiver_action, aldis_frame_receiver_input};
+    use crate::link::segmenter::{aldis_map_segmenter_action, aldis_map_segmenter_input};
+    use crate::link::{
+        aldis_link_idle_packet, aldis_link_idle_policy, aldis_link_protocol, aldis_link_qos,
     };
     use crate::ocf::aldis_ocf_report;
     use crate::oid::aldis_oid_form;

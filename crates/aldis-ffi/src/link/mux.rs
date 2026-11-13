@@ -2,7 +2,7 @@
 //! M4 plan D4, WP-7c).
 //!
 //! The engine is one opaque handle (`aldis_channel_mux_t`) in the pattern of the generation and
-//! receiving engines of [`crate::link_gen`] and [`crate::link_rx`]: the caller declares the typed
+//! receiving engines of [`crate::link`]: the caller declares the typed
 //! storage, `_init` places the engine of the protocol named in the configuration in it, and every
 //! input is one `_step` call that returns the actions of the input in a fixed-capacity actions
 //! struct. The octets of a frame go to the caller's `out` area and the action holds the
@@ -18,8 +18,8 @@
 //! any value (CABI-040; OI-92). Only the first `vc_count` entries of `vcs` are read.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
-//! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
-//! #240), so its field slots are not on the stack.
+//! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`crate::handle::place`,
+//! OI-91), so its field slots are not on the stack.
 
 use core::fmt::Debug;
 
@@ -45,6 +45,8 @@ use aldis::uslp::{
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
+use super::common::range;
+use super::common::{aldis_link_content, aldis_link_scope};
 use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
 use crate::handle::{self, InPlace, Storage};
@@ -52,8 +54,6 @@ use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
     protocol_tag, qos, unsupported_protocol,
 };
-use crate::link_common::range;
-use crate::link_rx::{aldis_link_content, aldis_link_scope};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -1283,14 +1283,20 @@ mod tests {
     fn the_role_of_an_aos_vc_gives_the_content_of_its_codec_configuration() {
         // req: LNK-078, CABI-040, RS-020
         let cases = [
-            (crate::link_rx::ALDIS_LINK_CONTENT_PACKETS, AosContent::Mpdu),
-            (crate::link_rx::ALDIS_LINK_CONTENT_VCA, AosContent::VcaSdu),
             (
-                crate::link_rx::ALDIS_LINK_CONTENT_BITSTREAM,
+                crate::link::common::ALDIS_LINK_CONTENT_PACKETS,
+                AosContent::Mpdu,
+            ),
+            (
+                crate::link::common::ALDIS_LINK_CONTENT_VCA,
+                AosContent::VcaSdu,
+            ),
+            (
+                crate::link::common::ALDIS_LINK_CONTENT_BITSTREAM,
                 AosContent::Bpdu,
             ),
             (
-                crate::link_rx::ALDIS_LINK_CONTENT_UNSERVED,
+                crate::link::common::ALDIS_LINK_CONTENT_UNSERVED,
                 AosContent::IdleData,
             ),
         ];

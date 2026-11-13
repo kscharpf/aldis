@@ -18,6 +18,17 @@ use crate::abi::flag;
 use crate::aos::aldis_aos_edition;
 use crate::mirror::{mirror, parse};
 
+pub mod access;
+pub mod bitstream;
+pub mod cltu;
+pub mod common;
+pub mod extractor;
+pub mod generator;
+pub mod mux;
+pub mod reassembler;
+pub mod receiver;
+pub mod segmenter;
+
 /// The frame protocol of a link engine (LNK-001).
 ///
 /// A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
