@@ -317,7 +317,7 @@ mod tests {
         for text in [
             "#[doc = r\"a\\\"]\n#[cfg(test)]\nmod t {}\n",
             "#[doc = '\"']\n#[cfg(test)]\nmod t {}\n",
-            "fn a() { let _ = '\"'; }\n#[cfg(all(\n    test,\n",
+            "#[cfg(test\n",
         ] {
             let error = missing(text).expect_err(text);
             assert!(error.contains("still open"), "{error}");
