@@ -16,7 +16,7 @@
 //! (LNK-003).
 //!
 //! **Capacity.** The unit in progress is at most `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030);
-//! the engine is built in place (`aldis::link::inplace`, #240).
+//! the engine is built in place (`crate::handle::place`, OI-91).
 
 use aldis::core::Result;
 use aldis::link::cltu::{

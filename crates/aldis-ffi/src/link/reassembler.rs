@@ -17,7 +17,7 @@
 //!
 //! The reassembler holds `ALDIS_LINK_MAX_MAP_CHANNELS` assembly buffers of
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets, the longest SDU of a MAP (LNK-073; CABI-030). It is
-//! built in place (`aldis::link::inplace`, #240), so the buffers are not on the stack.
+//! built in place (`crate::handle::place`, OI-91), so the buffers are not on the stack.
 
 use aldis::core::ids::MapId;
 use aldis::core::{Error, ErrorKind, Result, field};

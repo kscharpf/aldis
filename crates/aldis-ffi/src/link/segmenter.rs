@@ -19,7 +19,7 @@
 //!
 //! The queue is `ALDIS_LINK_PACKET_QUEUE_OCTETS` octets, four of them for each queued entry
 //! (LNK-015), and the segmenter serves `ALDIS_LINK_MAX_MAP_CHANNELS` MAPs (CABI-030). It is built
-//! in place (`aldis::link::inplace`, #240), so the queue is not on the stack.
+//! in place (`crate::handle::place`, OI-91), so the queue is not on the stack.
 
 use aldis::core::time::{Duration, Instant};
 use aldis::core::{Error, ErrorKind, Result, field};

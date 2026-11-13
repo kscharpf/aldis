@@ -18,8 +18,8 @@
 //! any value (CABI-040; OI-92). Only the first `vc_count` entries of `vcs` are read.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
-//! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
-//! #240), so its field slots are not on the stack.
+//! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`crate::handle::place`,
+//! OI-91), so its field slots are not on the stack.
 
 use core::fmt::Debug;
 
