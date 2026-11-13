@@ -568,8 +568,8 @@ unsafe impl<P: SegmenterProtocol, const NM: usize, const NQ: usize> InPlace
 {
     type Head = MapSegmenterHead<P, NM>;
     type Buffers = MapSegmenterBuffers<NQ>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).
@@ -1254,8 +1254,8 @@ unsafe impl<P: ReassemblerProtocol, const NM: usize, const NS: usize> InPlace
 {
     type Head = MapReassemblerHead<P, NM>;
     type Buffers = MapReassemblerBuffers<NM, NS>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <MapReassembler<P, NM, NS>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <MapReassembler<P, NM, NS>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).

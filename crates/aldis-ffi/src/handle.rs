@@ -200,7 +200,7 @@ pub(crate) unsafe fn init_with<S: Storage>(
 }
 
 /// An engine that [`place`] builds in caller storage: a plain Rust struct of a **head** and
-/// **buffers**, the only two fields, whose offsets the `unsafe impl` takes from `offset_of!`
+/// **buffers** (plus, at most, fields valid when zero), whose offsets the `unsafe impl` takes from `offset_of!`
 /// (CABI-040, GEN-012; OI-91 (b); M6 plan WP-3a).
 ///
 /// The head is everything small, built by value from the configuration. The buffers are the
@@ -212,7 +212,8 @@ pub(crate) unsafe fn init_with<S: Storage>(
 /// An impl guarantees all of:
 /// - `HEAD_OFFSET` and `BUFFERS_OFFSET` are the offsets of the fields of type `Head` and
 ///   `Buffers` in `Self`, taken with `core::mem::offset_of!`, never written by hand;
-/// - `Head` and `Buffers` are the only fields of `Self`;
+/// - every field of `Self` other than the head is valid when all of its bytes are zero (the
+///   buffers, and any other field, are not written);
 /// - `Buffers` is valid when all of its bytes are zero.
 ///
 /// Then the slot of `Self` with every byte zero and a valid `Head` written at `HEAD_OFFSET` is a
@@ -259,7 +260,7 @@ pub(crate) unsafe fn place<E: InPlace>(engine: *mut E, head: E::Head) {
     // assertion above keeps the head in the engine, and `HEAD_OFFSET` is its offset (the
     // trait's contract), so the write is in bounds and aligned. After the zeroing and the head
     // every octet is initialized; `Buffers` is valid when zero and `Head` and `Buffers` are the
-    // only fields (the trait's contract), so the engine is valid and the reference is sound.
+    // other fields valid when zero (the trait's contract), so the engine is valid and the reference is sound.
     // Zeroing and writing go through raw pointers, so no reference to uninitialized memory is
     // made before the engine is valid.
     unsafe {
@@ -564,8 +565,8 @@ mod tests {
         counts: [u16; 3],
     }
 
-    // SAFETY: `head` and `bufs` are the fields of `Toy` besides `marked`, which is valid when
-    // zero (`false`); the offsets are `offset_of!`; `Bufs` is valid when zeroed.
+    // SAFETY: `marked` is the only field besides `head` and `bufs`, and is valid when zero
+    // (`false`); the offsets are `offset_of!`; `Bufs` is valid when zeroed.
     unsafe impl InPlace for Toy {
         type Head = ToyHead;
         type Buffers = Bufs;

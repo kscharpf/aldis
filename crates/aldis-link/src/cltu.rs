@@ -231,14 +231,15 @@ enum Unit {
 /// `U` is the capacity of the unit in octets (GEN-011); a configuration whose Maximum Length of
 /// Data Unit exceeds it is refused with `CapacityExceeded`.
 ///
-/// The two fields are public so that a caller can build the engine in place in its own storage,
-/// without an engine on the stack: all-zero buffers are the empty state (CABI-040, GEN-012).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CltuPacker<P: CltuProtocol, const U: usize> {
-    /// Everything but the octet buffers.
-    pub head: CltuPackerHead<P>,
-    /// The octet buffers, valid when all zero.
-    pub bufs: CltuPackerBuffers<U>,
+    head: CltuPackerHead<P>,
+    bufs: CltuPackerBuffers<U>,
 }
 
 /// Everything of a [`CltuPacker`] but its unit buffer.
@@ -281,6 +282,15 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
             bufs: CltuPackerBuffers::ZERO,
         })
     }
+
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a packer with no frame held: the part of [`Self::new`] that is built from the
     /// configuration.

@@ -254,8 +254,8 @@ fn cp_head(c: &aldis_cltu_packer_config_t) -> Result<CpHead> {
 unsafe impl<P: CltuProtocol, const NU: usize> InPlace for CltuPacker<P, NU> {
     type Head = CltuPackerHead<P>;
     type Buffers = CltuPackerBuffers<NU>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <CltuPacker<P, NU>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <CltuPacker<P, NU>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).

@@ -946,8 +946,8 @@ fn mx_head(c: &aldis_channel_mux_config_t) -> Result<MxHead> {
 unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for ChannelMux<P, NV, NF> {
     type Head = ChannelMuxHead<P, NV>;
     type Buffers = ChannelMuxBuffers<NV, NF>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <ChannelMux<P, NV, NF>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <ChannelMux<P, NV, NF>>::BUFFERS_OFFSET;
 
     /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
     fn finish_place(&mut self) {

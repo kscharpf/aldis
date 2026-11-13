@@ -477,8 +477,8 @@ unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
 {
     type Head = PacketExtractorHead<P>;
     type Buffers = PacketExtractorBuffers<NM>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <PacketExtractor<P, NM, ND>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <PacketExtractor<P, NM, ND>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).

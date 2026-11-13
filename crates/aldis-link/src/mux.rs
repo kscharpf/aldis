@@ -799,14 +799,15 @@ struct Held<T> {
 /// configuration that needs more is refused with `CapacityExceeded`. The field slots hold
 /// `V × F` octets.
 ///
-/// The two fields are public so that a caller can build the engine in place in its own storage,
-/// without an engine on the stack: all-zero buffers are the empty state (CABI-040, GEN-012).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
-    /// Everything but the octet buffers.
-    pub head: ChannelMuxHead<P, V>,
-    /// The octet buffers, valid when all zero.
-    pub bufs: ChannelMuxBuffers<V, F>,
+    head: ChannelMuxHead<P, V>,
+    bufs: ChannelMuxBuffers<V, F>,
 }
 
 /// Everything of a [`ChannelMux`] but its octet buffers.
@@ -891,6 +892,15 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         })
     }
 
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
     /// The head of a mux with no field offered: the part of [`Self::new`] that is built from
     /// the configuration.
     ///
@@ -918,8 +928,11 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// Puts every slot at its configured value (LNK-033, LNK-034): the head's OCF and Secondary
-    /// Header slots, and the Insert Zone slot at the idle pattern. An in-place build calls it on the
-    /// engine it has zeroed and given its head (CABI-040).
+    /// Header slots, and the Insert Zone slot at the idle pattern.
+    ///
+    /// Public because the in-place build of `aldis-ffi` calls it on the engine it has zeroed (the
+    /// buffers are private); it only restores the state `new` makes, so it cannot break an
+    /// invariant (CABI-040).
     ///
     /// Requirements: LNK-033, LNK-034, CABI-040; docs/04-engines.md §2.4.
     pub fn init_slots(&mut self) {

@@ -327,8 +327,8 @@ unsafe impl<P: PacketProtocol, const ND: usize, const NQ: usize> InPlace
 {
     type Head = PacketGeneratorHead<P>;
     type Buffers = PacketGeneratorBuffers<ND, NQ>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).
@@ -876,8 +876,8 @@ fn ag_head(c: &aldis_access_generator_config_t) -> Result<AgHead> {
 unsafe impl<P: AccessProtocol, const NQ: usize> InPlace for AccessGenerator<P, NQ> {
     type Head = AccessGeneratorHead<P>;
     type Buffers = AccessGeneratorBuffers<NQ>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <AccessGenerator<P, NQ>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <AccessGenerator<P, NQ>>::BUFFERS_OFFSET;
 }
 
 /// Builds the engine of `head` at `state`, in place (#240).
@@ -1372,8 +1372,8 @@ fn bg_status(engine: &BitstreamGeneratorState) -> aldis_bitstream_generator_stat
 unsafe impl<P: BitstreamProtocol, const NQ: usize> InPlace for BitstreamGenerator<P, NQ> {
     type Head = BitstreamGeneratorHead<P>;
     type Buffers = BitstreamGeneratorBuffers<NQ>;
-    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    const HEAD_OFFSET: usize = <BitstreamGenerator<P, NQ>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <BitstreamGenerator<P, NQ>>::BUFFERS_OFFSET;
 }
 
 /// Places a `BitstreamGenerator` with an empty queue in `storage` (LNK-021; CABI-031,

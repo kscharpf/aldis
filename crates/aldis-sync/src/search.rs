@@ -247,10 +247,8 @@ impl Phase {
 /// storage of a `FRAME` of 65536 octets would otherwise pass through the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AsmSearch<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize> {
-    /// Everything but the partial-unit storage.
-    pub head: AsmSearchHead,
-    /// The partial-unit storage, valid when all zero.
-    pub bufs: AsmSearchBuffers<FRAME>,
+    head: AsmSearchHead,
+    bufs: AsmSearchBuffers<FRAME>,
 }
 
 /// Everything of an [`AsmSearch`] but its partial-unit storage: the configuration, the phase,
@@ -316,6 +314,15 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
             bufs: AsmSearchBuffers::ZERO,
         })
     }
+
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
+    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
+    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of an engine in `Searching` with an empty window: the part of [`Self::new`]
     /// that is built from the configuration, for an in-place build.
