@@ -1027,7 +1027,7 @@ fn every_protocol_takes_a_release_deadline_and_refuses_a_bad_configuration() {
 }
 
 #[test]
-fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol() {
+fn the_packet_generator_reads_a_member_of_the_channel_only_under_its_protocol() {
     // req: CABI-040, CABI-022, LNK-001
     type Set = fn(&mut aldis_link_channel_t);
     let mut store = pg_storage();
@@ -1051,7 +1051,13 @@ fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol()
                 // SAFETY: every pointer is to a live local.
                 unsafe { aldis_packet_generator_init(h, c, e) }
             };
-            assert_eq!(status, want);
+            // The USLP members are read under USLP only.
+            let expected = if protocol == ALDIS_LINK_PROTOCOL_USLP {
+                want
+            } else {
+                0
+            };
+            assert_eq!(status, expected);
         }
     }
 }

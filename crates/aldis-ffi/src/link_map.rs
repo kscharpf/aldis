@@ -13,15 +13,12 @@
 //! **Protocol.** The first member of a configuration is an `aldis_link_channel_t` whose
 //! `protocol` names the protocol: TC or USLP for both engines (TM and AOS are
 //! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`). The other members of the channel are not
-//! used, but an `aos_edition`, `uslp_qos`, `uslp_upid`, or `uslp_map` that is none or out of
-//! range fails in any protocol. The segmenter reads the `vc_id` of the channel (the VC it
+//! read (`protocol` is the tag of the configuration, CABI-040, OI-92). The segmenter reads the `vc_id` of the channel (the VC it
 //! serves); the reassembler reads a VC for each MAP. A reconfiguration cannot change the
 //! protocol (LNK-003).
 //!
-//! **Members.** The members of the other protocol are not used, but a flag that is not 0 or 1 or
-//! a constant that is none is `InvalidField`, and a USLP count length or UPID out of range is
-//! `InvalidConfig` or `OutOfRange`, in any protocol (`sg_check_members`, as for the
-//! `ChannelMux`). The MAP table is `map_count` entries of `maps`; the segmenter of a TC VC
+//! **Members.** The members of the other protocol are not read, as for the `ChannelMux`. The MAP
+//! table is `map_count` entries of `maps`; the segmenter of a TC VC
 //! without a Segment Header takes none (it has the implicit MAP 0, LNK-040).
 //!
 //! **Capacities.** The segmenter's queue is `ALDIS_LINK_PACKET_QUEUE_OCTETS` octets, four of
@@ -30,7 +27,7 @@
 //! and the segmenter serves `ALDIS_LINK_MAX_MAP_CHANNELS` MAPs (CABI-030). Both are built in
 //! place (`aldis::link::inplace`, #240), so the queue and the buffers are not on the stack.
 
-use aldis::core::ids::{MapId, VcId};
+use aldis::core::ids::MapId;
 use aldis::core::time::{Duration, Instant};
 use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::link::protocol::{Tc, Uslp};
@@ -312,7 +309,7 @@ pub struct aldis_map_segmenter_map_t {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_segmenter_config_t {
     /// The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-    /// channel are not used but must be valid.
+    /// channel are not read.
     pub channel: aldis_link_channel_t,
     /// The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
     /// USLP: at most 65 535).
@@ -491,28 +488,8 @@ impl SgProtocol for Uslp {
     }
 }
 
-/// Reads every member of `c` and of its `map_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1 or a constant that is none is `InvalidField`, and a USLP count length
-/// out of range is `InvalidConfig` and a UPID out of range `OutOfRange`, in any protocol. The protocol's own conversions follow
-/// in `sg_config`.
-fn sg_check_members(c: &aldis_map_segmenter_config_t) -> Result<()> {
-    flag(c.tc_segment_header)?;
-    flag(c.tc_fecf)?;
-    flag(c.tc_blocking)?;
-    VcfCountLen::new(c.uslp_vcf_len_sc)?;
-    VcfCountLen::new(c.uslp_vcf_len_exp)?;
-    for m in c.maps.iter().take(c.map_count) {
-        parse::<aldis_map_service>(m.service)?;
-        flag(m.segmentation)?;
-        flag(m.blocking)?;
-        upid(m.uslp_upid)?;
-    }
-    Ok(())
-}
-
 /// The segmenter configuration of `c` for the protocol `P`.
 fn sg_config<P: SgProtocol>(c: &aldis_map_segmenter_config_t) -> Result<MapSegmenterConfig<P, M>> {
-    sg_check_members(c)?;
     let channel = P::channel(c)?;
     let vc = P::Vc::try_from(c.channel.vc_id)?;
     let mut table = [None; M];
@@ -1122,8 +1099,9 @@ impl RaProtocol for Tc {
     }
 
     fn meta(input: &aldis_map_reassembler_input_t) -> Result<()> {
-        // The gap flag is a member of USLP; it is read whatever the protocol (CABI-040).
-        flag(input.gap).map(drop)
+        // The gap flag is a member of USLP only: TC does not read it (CABI-040; OI-92).
+        let _ = input;
+        Ok(())
     }
 }
 
@@ -1156,23 +1134,10 @@ fn ra_map<P: ReassemblerProtocol>(m: &aldis_map_reassembler_map_t) -> Result<Rea
     }
 }
 
-/// Reads every member of `c` and of its `map_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1 or a constant that is none is `InvalidField`, and a VCID out of range
-/// is `OutOfRange`. The protocol's own conversions follow in `ra_config`.
-fn ra_check_members(c: &aldis_map_reassembler_config_t) -> Result<()> {
-    flag(c.tc_segment_header)?;
-    for m in c.maps.iter().take(c.map_count) {
-        parse::<aldis_map_service>(m.service)?;
-        VcId::<6>::try_from(m.vc_id)?;
-    }
-    Ok(())
-}
-
 /// The reassembler configuration of `c` for the protocol `P`.
 fn ra_config<P: RaProtocol>(
     c: &aldis_map_reassembler_config_t,
 ) -> Result<MapReassemblerConfig<P, M>> {
-    ra_check_members(c)?;
     let channel = P::channel(c)?;
     let mut table = [None; M];
     let count = listed(&c.maps, c.map_count, ra_map::<P>, &mut table)?;

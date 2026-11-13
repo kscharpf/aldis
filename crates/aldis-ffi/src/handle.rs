@@ -864,6 +864,64 @@ mod tests {
         }
     }
 
+    /// A second engine, whose head is a plain integer.
+    struct Toy2 {
+        bufs: [u8; 5],
+        head: u32,
+    }
+
+    // SAFETY: `head` and `bufs` are the only fields; the offsets are `offset_of!`; `[u8; 5]` is
+    // valid when zeroed.
+    unsafe impl InPlace for Toy2 {
+        type Head = u32;
+        type Buffers = [u8; 5];
+        const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+        const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+    }
+
+    engine_enum! {
+        #[expect(dead_code, reason = "the variants are written in place, never constructed")]
+        enum Sum {
+            One(Toy) = 7,
+            Two(Toy2) = 9,
+        }
+    }
+
+    /// The typed storage of a `Sum`: words enough for the slot and the larger engine.
+    #[repr(C)]
+    struct SumStorage {
+        words: [u64; 12],
+    }
+
+    impl super::Storage for SumStorage {
+        type State = Sum;
+        const MAGIC: u32 = MAGIC;
+    }
+
+    #[test]
+    fn a_variant_is_placed_under_its_tag() {
+        // req: CABI-040
+        assert_eq!(<Sum as Variant<Toy>>::TAG, 7);
+        assert_eq!(<Sum as Variant<Toy2>>::TAG, 9);
+        let mut storage = SumStorage { words: [!0; 12] };
+        // SAFETY: `storage` is valid for writes of one `SumStorage`.
+        unsafe {
+            init_variant::<SumStorage, Toy2>(&raw mut storage, 41).unwrap();
+            let h = get(&raw mut storage).unwrap();
+            h.read(|sum| match sum {
+                Sum::Two(e) => assert_eq!((e.head, e.bufs), (41, [0; 5])),
+                Sum::One(_) => panic!("the tag of `Two` was not written"),
+            });
+            init_variant::<SumStorage, Toy>(&raw mut storage, ToyHead { count: 5, flag: 1 })
+                .unwrap();
+            let h = get(&raw mut storage).unwrap();
+            h.read(|sum| match sum {
+                Sum::One(e) => assert_eq!((e.head.count, e.head.flag, e.marked), (5, 1, true)),
+                Sum::Two(_) => panic!("the tag of `One` was not written"),
+            });
+        }
+    }
+
     #[test]
     fn the_layout_check_rejects_overlap_and_overrun() {
         // req: CABI-040

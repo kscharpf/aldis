@@ -12,8 +12,8 @@
 //!
 //! **Protocol.** The first member of the configuration is an `aldis_link_channel_t` whose
 //! `protocol` names the protocol: TC or USLP (TM and AOS are `ALDIS_ERR_INVALID_CONFIG` on
-//! `link_protocol`); the packer uses no other member of the channel, but each must be valid. A reconfiguration cannot
-//! change the protocol (LNK-003).
+//! `link_protocol`); the packer reads no other member of the channel. A reconfiguration cannot change the protocol
+//! (LNK-003).
 //!
 //! **Capacity.** The unit in progress is at most `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030);
 //! the engine is built in place (`aldis::link::inplace`, #240).
@@ -139,7 +139,7 @@ impl Storage for aldis_cltu_packer_t {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_cltu_packer_config_t {
-    /// The protocol (TC or USLP); the other members of the channel are not used but must be valid.
+    /// The protocol (TC or USLP) and the VC; the other members of the channel are not read.
     pub channel: aldis_link_channel_t,
     /// The Maximum Number of Transfer Frames Given to the Coding Sublayer as a Single Data
     /// Unit, at least 1.

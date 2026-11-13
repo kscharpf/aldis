@@ -13,10 +13,9 @@
 //!
 //! **Protocol.** The first member of the configuration names the protocol (`protocol`, an
 //! `ALDIS_LINK_PROTOCOL_*` constant): TM, AOS, or USLP with fixed-length frames. TC is
-//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. Every member is read whatever the protocol
-//! (`check_members`): a flag or constant that is invalid in a member the protocol does not use
-//! is `ALDIS_ERR_INVALID_FIELD` all the same, and a range-limited member of another protocol is
-//! range-checked. Only the first `vc_count` entries of `vcs` are read.
+//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. `protocol` is the tag of the configuration: a
+//! member is read only by the protocols its doc names, and a member of another protocol may hold
+//! any value (CABI-040; OI-92). Only the first `vc_count` entries of `vcs` are read.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
@@ -686,7 +685,7 @@ impl MxProtocol for Aos {
     }
 
     fn members(vc: &aldis_channel_mux_vc_t) -> Result<AosMembers> {
-        // The role was range-checked by `check_members`; the mux takes any of them for AOS.
+        // The mux takes any role for AOS.
         let content = match parse::<aldis_link_content>(vc.role)? {
             aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => AosContent::Mpdu,
             aldis_link_content::ALDIS_LINK_CONTENT_VCA => AosContent::VcaSdu,
@@ -830,34 +829,6 @@ fn mx_vc<P: MxProtocol>(
         .with_weight(raw.weight))
 }
 
-/// Reads every member of `c` and of its `vc_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1, or a constant that is none, is `InvalidField` in any member, and a
-/// member of another protocol that has a range (a VCID, a MAP ID, a count length, a Secondary
-/// Header length) is range-checked too. The protocol's own conversions follow in `mx_config`.
-fn check_members(c: &aldis_channel_mux_config_t) -> Result<()> {
-    flag(c.fecf)?;
-    policy(c.policy)?;
-    flag(c.mc_ocf)?;
-    flag(c.aos_fhec)?;
-    flag(c.aos_cycle_in_use)?;
-    flag(c.uslp_destination)?;
-    aos_edition(c)?;
-    VcId::<3>::try_from(c.tm_oid_vc)?;
-    VcfCountLen::new(c.uslp_oid_vcf_len)?;
-    initial_fsh(c.mc_fsh_len, &c.mc_fsh_init)?;
-    for vc in c.vcs.iter().take(c.vc_count) {
-        flag(vc.ocf)?;
-        flag(vc.uslp_cop)?;
-        parse::<aldis_link_content>(vc.role)?;
-        qos(vc.uslp_qos)?;
-        MapId::<4>::try_from(vc.uslp_map)?;
-        VcfCountLen::new(vc.uslp_vcf_len_sc)?;
-        VcfCountLen::new(vc.uslp_vcf_len_exp)?;
-        initial_fsh(vc.fsh_len, &vc.fsh_init)?;
-    }
-    Ok(())
-}
-
 /// `InvalidConfig` (`vc_id`) when VCID 63, the OID VC, is listed on an AOS or USLP channel: the
 /// error those protocols gave before the frame's length, which now comes from the physical
 /// channel's constructor (D6 of the M6 plan).
@@ -871,7 +842,6 @@ fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
 
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
-    check_members(c)?;
     // Only the first `vc_count` entries are read. They are read once for their members, before
     // the channel, and again for the codec's configuration of each, which needs the channel
     // (D6 of the M6 plan keeps the order of the refusals). The second `mx_read` cannot fail; `mx_vc`

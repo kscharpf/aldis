@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 12
+#define ALDIS_ABI_VERSION_MINOR 13
 
 /**
  * ABI patch version (CABI-060).
@@ -5734,8 +5734,9 @@ typedef struct {
  * The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
  * first member of every link engine configuration.
  *
- * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
- * only; the others do not use them, but each must be valid (`protocol`).
+ * `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
+ * `uslp_map`, and `uslp_qos` for USLP only. A member of another protocol is not read, so it may
+ * hold any value (CABI-040; OI-92).
  */
 typedef struct {
   /**
@@ -5770,7 +5771,7 @@ typedef struct {
  */
 typedef struct {
   /**
-   * The protocol (TC or USLP); the other members of the channel are not used but must be valid.
+   * The protocol (TC or USLP) and the VC; the other members of the channel are not read.
    */
   aldis_link_channel_t channel;
   /**
@@ -6426,7 +6427,7 @@ typedef struct {
 typedef struct {
   /**
    * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-   * channel are not used but must be valid.
+   * channel are not read.
    */
   aldis_link_channel_t channel;
   /**

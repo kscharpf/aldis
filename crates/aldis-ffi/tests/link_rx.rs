@@ -782,7 +782,7 @@ fn every_protocol_refuses_a_bad_extractor_configuration_and_serves_loss_and_disc
 }
 
 #[test]
-fn the_extractor_reads_the_members_of_the_channel_whatever_the_protocol() {
+fn the_extractor_reads_a_member_of_the_channel_only_under_its_protocol() {
     // req: CABI-040, CABI-022, LNK-001
     type Set = fn(&mut aldis_link_channel_t);
     let mut s = pe_storage();
@@ -800,10 +800,16 @@ fn the_extractor_reads_the_members_of_the_channel_whatever_the_protocol() {
         ] {
             let mut cfg = pe_config(protocol);
             set(&mut cfg.channel);
+            // The USLP members are read under USLP only.
+            let expected = if protocol == ALDIS_LINK_PROTOCOL_USLP {
+                want
+            } else {
+                0
+            };
             // SAFETY: every pointer is to a live local.
             assert_eq!(
                 unsafe { aldis_packet_extractor_init(&mut *s, &cfg, &mut d) },
-                want
+                expected
             );
         }
     }
