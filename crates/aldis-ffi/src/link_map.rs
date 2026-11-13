@@ -305,6 +305,9 @@ pub struct aldis_map_segmenter_map_t {
 
 /// The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
 /// LNK-042, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_segmenter_config_t {
@@ -984,6 +987,9 @@ pub struct aldis_map_reassembler_map_t {
 }
 
 /// The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_reassembler_config_t {

@@ -134,7 +134,7 @@ mirror!(pub aldis_link_idle_packet: u32 {
 /// The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
 /// first member of every link engine configuration.
 ///
-/// `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
+/// Zero-initialize the struct before setting members. `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
 /// `uslp_map`, and `uslp_qos` for USLP only. A member of another protocol is not read, so it may
 /// hold any value (CABI-040; OI-92).
 #[repr(C)]

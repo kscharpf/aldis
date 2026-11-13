@@ -169,6 +169,9 @@ impl Storage for aldis_packet_generator_t {
 
 /// The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
 /// 732.1 §5.6 Table 5-5; LNK-010, LNK-012…LNK-014, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_generator_config_t {
@@ -713,6 +716,9 @@ impl Storage for aldis_access_generator_t {
 }
 
 /// The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_access_generator_config_t {
@@ -1152,6 +1158,9 @@ impl Storage for aldis_bitstream_generator_t {
 }
 
 /// The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_bitstream_generator_config_t {

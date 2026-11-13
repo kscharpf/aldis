@@ -136,6 +136,9 @@ impl Storage for aldis_cltu_packer_t {
 
 /// The managed parameters of a `CltuPacker` (232.0 §5.1 Table 5-1; 732.1 §5.1 Table 5-1;
 /// LNK-044, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_cltu_packer_config_t {

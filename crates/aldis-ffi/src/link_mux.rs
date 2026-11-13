@@ -293,6 +293,9 @@ impl Default for aldis_channel_mux_vc_t {
 
 /// The managed parameters of a `ChannelMux` (132.0 §5.2; 732.0 §5.2; 732.1 §5.2, §5.3;
 /// LNK-030…LNK-035, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_channel_mux_config_t {
@@ -534,7 +537,6 @@ trait MxProtocol: MuxProtocol {
     /// # Errors
     /// What the codec's constructors refuse of the VC: for AOS, VCID 63, the OID VC.
     fn vc_params(
-        c: &aldis_channel_mux_config_t,
         channel: &Self::Channel,
         id: Self::Vc,
         security: SecurityLayout,
@@ -610,7 +612,6 @@ impl MxProtocol for Tm {
     }
 
     fn vc_params(
-        _: &aldis_channel_mux_config_t,
         _: &TmChannel,
         id: VcId<3>,
         security: SecurityLayout,
@@ -700,7 +701,6 @@ impl MxProtocol for Aos {
     }
 
     fn vc_params(
-        _: &aldis_channel_mux_config_t,
         channel: &AosChannel,
         id: VcId<6>,
         security: SecurityLayout,
@@ -766,7 +766,6 @@ impl MxProtocol for Uslp {
     }
 
     fn vc_params(
-        c: &aldis_channel_mux_config_t,
         channel: &UslpChannel,
         id: VcId<6>,
         security: SecurityLayout,
@@ -778,7 +777,7 @@ impl MxProtocol for Uslp {
         params.security = SecurityScope::Vc(security);
         // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
         // §4.1.5.3).
-        if flag(c.mc_ocf)? {
+        if <Uslp as MuxProtocol>::mc_ocf(channel).is_some() {
             params.ocf = OcfUse::Required;
         }
         let config = UslpVcConfig::new(channel.scid, id, params)?;
@@ -818,12 +817,8 @@ fn mx_read<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<RawVc<P>> {
 }
 
 /// The VC `raw` of the channel `channel` in the protocol `P`.
-fn mx_vc<P: MxProtocol>(
-    c: &aldis_channel_mux_config_t,
-    channel: &P::Channel,
-    raw: &RawVc<P>,
-) -> Result<VcConfig<P>> {
-    let params = P::vc_params(c, channel, raw.id, raw.security, raw.members)?;
+fn mx_vc<P: MxProtocol>(channel: &P::Channel, raw: &RawVc<P>) -> Result<VcConfig<P>> {
+    let params = P::vc_params(channel, raw.id, raw.security, raw.members)?;
     Ok(VcConfig::<P>::new(params)
         .with_priority(raw.priority)
         .with_weight(raw.weight))
@@ -842,12 +837,12 @@ fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
 
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
-    // Only the first `vc_count` entries are read. They are read once for their members, before
-    // the channel, and again for the codec's configuration of each, which needs the channel
-    // (D6 of the M6 plan keeps the order of the refusals). The second `mx_read` cannot fail; `mx_vc`
-    // can, with what the codec's constructors refuse of a VC that passed the first read.
-    for vc in c.vcs.iter().take(c.vc_count) {
-        mx_read::<P>(vc)?;
+    // Only the first `vc_count` entries are read, each once, before the channel: the codec's
+    // configuration of a VC needs the channel, so the parsed entries are kept and built from
+    // after it (D6 of the M6 plan keeps the order of the refusals).
+    let mut raws: [Option<RawVc<P>>; V] = [None; V];
+    for (slot, vc) in raws.iter_mut().zip(&c.vcs).take(c.vc_count) {
+        *slot = Some(mx_read::<P>(vc)?);
     }
     let channel = P::channel(c)?;
     let policy = policy(c.policy)?;
@@ -855,16 +850,17 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
         return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY));
     }
     // The first entry fills the array; without an entry there is nothing to list.
-    let first = c
-        .vcs
+    let first = raws
         .first()
+        .copied()
+        .flatten()
         .filter(|_| c.vc_count > 0)
-        .map(|vc| mx_read::<P>(vc).and_then(|raw| mx_vc::<P>(c, &channel, &raw)))
+        .map(|raw| mx_vc::<P>(&channel, &raw))
         .transpose()?;
     let mut entries = first.map(|filler| [filler; V]);
     if let Some(array) = entries.as_mut() {
-        for (dst, src) in array.iter_mut().zip(&c.vcs).take(c.vc_count) {
-            *dst = mx_read::<P>(src).and_then(|raw| mx_vc::<P>(c, &channel, &raw))?;
+        for (dst, raw) in array.iter_mut().zip(raws.iter().flatten()) {
+            *dst = mx_vc::<P>(&channel, raw)?;
         }
     }
     let listed = match &entries {
@@ -1271,7 +1267,6 @@ mod tests {
     #[test]
     fn the_role_of_an_aos_vc_gives_the_content_of_its_codec_configuration() {
         // req: LNK-078, CABI-040, RS-020
-        let channel = aldis_channel_mux_config_t::default();
         let cases = [
             (crate::link_rx::ALDIS_LINK_CONTENT_PACKETS, AosContent::Mpdu),
             (crate::link_rx::ALDIS_LINK_CONTENT_VCA, AosContent::VcaSdu),
@@ -1296,7 +1291,6 @@ mod tests {
             };
             let members = <Aos as MxProtocol>::members(&vc).unwrap();
             let params = <Aos as MxProtocol>::vc_params(
-                &channel,
                 &aos_channel,
                 VcId::<6>::try_from(1).unwrap(),
                 SecurityLayout::NONE,

@@ -330,6 +330,9 @@ impl Storage for aldis_packet_extractor_t {
 
 /// The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
 /// 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_extractor_config_t {
@@ -882,6 +885,9 @@ pub struct aldis_frame_receiver_vc_t {
 /// The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
 ///
 /// A member that the protocol does not use is ignored.
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_frame_receiver_config_t {
