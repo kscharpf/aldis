@@ -359,19 +359,19 @@ impl Cx<'_> {
 /// assemble (at least [`MIN_ASSEMBLY`]); and `D` the longest data field it is given,
 /// header included (GEN-011).
 ///
-/// The engine is its [`PacketExtractorHead`] (everything but the octets) followed by its
-/// [`PacketExtractorBuffers`] (the assembly buffer), in that order (`repr(C)`), so that a caller
-/// can build it in place with [`Self::HEAD_OFFSET`] and [`Self::BUFFERS_OFFSET`] without a
-/// by-value engine on the stack (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct PacketExtractor<P: PacketProtocol, const M: usize, const D: usize> {
     head: PacketExtractorHead<P>,
     bufs: PacketExtractorBuffers<M>,
 }
 
 /// Everything of a [`PacketExtractor`] but its octet buffer: the part that is built from the
-/// configuration (LNK-060…LNK-064; see [`crate::inplace`]).
+/// configuration (LNK-060…LNK-064).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PacketExtractorHead<P: PacketProtocol> {
     config: PacketExtractorConfig<P>,
@@ -382,11 +382,10 @@ pub struct PacketExtractorHead<P: PacketProtocol> {
 }
 
 /// The octet buffer of a [`PacketExtractor`]: the assembly buffer (`M` octets). A plain array of
-/// octets, valid when all zero, which is the empty state (see [`crate::inplace`]).
+/// octets, valid when all zero, which is the empty state.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct PacketExtractorBuffers<const M: usize> {
     buf: [u8; M],
 }
@@ -412,17 +411,17 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of an extractor that has not yet synchronised: the part of [`Self::new`] that is
-    /// built from the configuration (see [`crate::inplace`]).
+    /// built from the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].

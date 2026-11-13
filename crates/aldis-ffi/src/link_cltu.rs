@@ -27,12 +27,12 @@ use aldis::link::protocol::{Tc, Uslp};
 
 use crate::abi::{self, flag, invalid_argument};
 use crate::capacities::ALDIS_LINK_MAX_FRAME_OCTETS;
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, qos,
     unsupported_protocol,
 };
-use crate::link_common::{engine_in_place, range, variant_payload};
+use crate::link_common::{range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -245,23 +245,37 @@ fn cp_head(c: &aldis_cltu_packer_config_t) -> Result<CpHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: CltuProtocol, const NU: usize> InPlace for CltuPacker<P, NU> {
+    type Head = CltuPackerHead<P>;
+    type Buffers = CltuPackerBuffers<NU>;
+    const HEAD_OFFSET: usize = <CltuPacker<P, NU>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <CltuPacker<P, NU>>::BUFFERS_OFFSET;
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `CltuPackerState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn cp_place(state: *mut CltuPackerState, head: CpHead) {
-    type B = CltuPackerBuffers<U>;
     match head {
         CpHead::Tc(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Cp<Tc>>(state, 0) };
-            engine_in_place!(Cp<Tc>, CltuPackerHead<Tc>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         CpHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Cp<Uslp>>(state, 1) };
-            engine_in_place!(Cp<Uslp>, CltuPackerHead<Uslp>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }

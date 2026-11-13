@@ -197,16 +197,18 @@ fn set_bit(octets: &mut [u8], i: usize, value: bool) {
 ///
 /// `Q` is the capacity of the bit queue in octets (GEN-011).
 ///
-/// The engine is its [`BitstreamGeneratorHead`] followed by its [`BitstreamGeneratorBuffers`]
-/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct BitstreamGenerator<P: BitstreamProtocol, const Q: usize> {
     head: BitstreamGeneratorHead<P>,
     bufs: BitstreamGeneratorBuffers<Q>,
 }
 
-/// Everything of a [`BitstreamGenerator`] but its queue (see [`crate::inplace`]).
+/// Everything of a [`BitstreamGenerator`] but its queue.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,11 +219,10 @@ pub struct BitstreamGeneratorHead<P: BitstreamProtocol> {
 }
 
 /// The bit queue of a [`BitstreamGenerator`]: `Q` octets, valid when all zero, which is the empty
-/// state (see [`crate::inplace`]).
+/// state.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct BitstreamGeneratorBuffers<const Q: usize> {
     queue: [u8; Q],
 }
@@ -245,17 +246,17 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
         }
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
-    /// the configuration (see [`crate::inplace`]).
+    /// the configuration.
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]

@@ -799,16 +799,18 @@ struct Held<T> {
 /// configuration that needs more is refused with `CapacityExceeded`. The field slots hold
 /// `V × F` octets.
 ///
-/// The engine is its [`ChannelMuxHead`] followed by its [`ChannelMuxBuffers`] (`repr(C)`), so
-/// that a caller can build it in place (see [`crate::inplace`]).
+/// A caller builds the engine in place in its own storage, without an engine on the stack, from
+/// [`new_head`](Self::new_head) and all-zero buffers, the empty state (CABI-040, GEN-012).
+/// [`HEAD_OFFSET`](Self::HEAD_OFFSET) and [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET) are the offsets
+/// of the two fields.
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
     head: ChannelMuxHead<P, V>,
     bufs: ChannelMuxBuffers<V, F>,
 }
 
-/// Everything of a [`ChannelMux`] but its octet buffers (see [`crate::inplace`]).
+/// Everything of a [`ChannelMux`] but its octet buffers.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -830,10 +832,8 @@ pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
 ///
 /// All zero is the empty state of the slots and the counts. The Insert Zone slot starts at the
 /// configured idle pattern (LNK-034): [`with_idle`](Self::with_idle) builds the buffers that
-/// way, and an in-place build writes that pattern at [`INSERT_OFFSET`](Self::INSERT_OFFSET)
-/// (see [`crate::inplace`]).
+/// way. An in-place build zeroes the buffers and then calls [`ChannelMux::place_slots`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
     slots: [[u8; F]; V],
     insert: [u8; F],
@@ -843,12 +843,6 @@ pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
 }
 
 impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
-    /// The offset of the Insert Zone slot in the buffers, for an in-place build (see
-    /// [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
-    pub const INSERT_OFFSET: usize = core::mem::offset_of!(Self, insert);
-
     /// Empty slots, and the Insert Zone slot filled with the idle pattern `idle` (LNK-034).
     #[must_use]
     pub const fn with_idle(idle: u8) -> Self {
@@ -898,17 +892,17 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+    /// The offset of the head field, for the in-place build of the C ABI (CABI-040). Not part of
+    /// the API.
+    #[doc(hidden)]
     pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
+    /// The offset of the buffers field, for the in-place build of the C ABI (CABI-040). Not part
+    /// of the API.
+    #[doc(hidden)]
     pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of a mux with no field offered: the part of [`Self::new`] that is built from
-    /// the configuration (see [`crate::inplace`]).
+    /// the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].
@@ -938,6 +932,17 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     fn init_slots(&mut self) {
         self.head.init_slots();
         self.bufs.insert.fill(self.head.config.idle_pattern);
+    }
+
+    /// [`init_slots`](Self::init_slots) for in-place construction only (CABI-040): `aldis-ffi`
+    /// calls it on the engine it has zeroed and given its head, whose buffers are private.
+    /// Calling it on a running mux resets the caller's OCF slots and the Insert Zone to their
+    /// configured values.
+    ///
+    /// Requirements: LNK-033, LNK-034, CABI-040; docs/04-engines.md §2.4.
+    #[doc(hidden)]
+    pub fn place_slots(&mut self) {
+        self.init_slots();
     }
 
     fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {

@@ -58,12 +58,12 @@ use crate::abi::{self, flag};
 use crate::capacities::{
     ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS, ALDIS_LINK_PACKET_QUEUE_OCTETS,
 };
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
     unsupported_protocol, uslp_params, valid_pvns,
 };
-use crate::link_common::{engine_in_place, range, variant_payload};
+use crate::link_common::{range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -466,28 +466,45 @@ fn pe_head(c: &aldis_packet_extractor_config_t) -> Result<PeHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
+    for PacketExtractor<P, NM, ND>
+{
+    type Head = PacketExtractorHead<P>;
+    type Buffers = PacketExtractorBuffers<NM>;
+    const HEAD_OFFSET: usize = <PacketExtractor<P, NM, ND>>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <PacketExtractor<P, NM, ND>>::BUFFERS_OFFSET;
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `PacketExtractorState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn pe_place(state: *mut PacketExtractorState, head: PeHead) {
-    type B = PacketExtractorBuffers<M>;
     match head {
         PeHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pe<Tm>>(state, 0) };
-            engine_in_place!(Pe<Tm>, PacketExtractorHead<Tm>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         PeHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pe<Aos>>(state, 1) };
-            engine_in_place!(Pe<Aos>, PacketExtractorHead<Aos>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         PeHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pe<Uslp>>(state, 2) };
-            engine_in_place!(Pe<Uslp>, PacketExtractorHead<Uslp>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }
