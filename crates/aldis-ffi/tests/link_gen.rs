@@ -17,8 +17,10 @@ use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_VC_ID};
+use aldis_ffi::link::access::*;
+use aldis_ffi::link::bitstream::*;
+use aldis_ffi::link::generator::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_gen::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
@@ -1027,7 +1029,7 @@ fn every_protocol_takes_a_release_deadline_and_refuses_a_bad_configuration() {
 }
 
 #[test]
-fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol() {
+fn the_packet_generator_reads_a_member_of_the_channel_only_under_its_protocol() {
     // req: CABI-040, CABI-022, LNK-001
     type Set = fn(&mut aldis_link_channel_t);
     let mut store = pg_storage();
@@ -1051,7 +1053,13 @@ fn the_packet_generator_reads_the_members_of_the_channel_whatever_the_protocol()
                 // SAFETY: every pointer is to a live local.
                 unsafe { aldis_packet_generator_init(h, c, e) }
             };
-            assert_eq!(status, want);
+            // The USLP members are read under USLP only.
+            let expected = if protocol == ALDIS_LINK_PROTOCOL_USLP {
+                want
+            } else {
+                0
+            };
+            assert_eq!(status, expected);
         }
     }
 }

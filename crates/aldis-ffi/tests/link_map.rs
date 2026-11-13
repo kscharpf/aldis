@@ -23,8 +23,10 @@ use aldis_ffi::field::{
     ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_MAX_FDU_LEN,
     ALDIS_FIELD_MAX_SDU_LEN, ALDIS_FIELD_SEGMENTATION, ALDIS_FIELD_UPID, ALDIS_FIELD_VCF_COUNT_LEN,
 };
+use aldis_ffi::link::common::*;
+use aldis_ffi::link::reassembler::*;
+use aldis_ffi::link::segmenter::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_map::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
@@ -256,6 +258,7 @@ fn the_segmenter_storage_is_checked_and_tagged() {
 #[test]
 fn the_segmenter_protocol_is_chosen_in_the_configuration() {
     // req: LNK-001, CABI-040, LNK-040, LNK-078, API-040
+    type SgSet = fn(&mut aldis_map_segmenter_config_t);
     let mut s = sg_storage();
     let mut d = detail();
     assert_eq!(sg_init(&mut s, &tc_sg(), &mut d), 0);
@@ -269,33 +272,47 @@ fn the_segmenter_protocol_is_chosen_in_the_configuration() {
     let mut cfg = tc_sg();
     cfg.channel.protocol = 9;
     assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
-    // The flags and constants are read whatever the protocol.
-    let sets: [fn(&mut aldis_map_segmenter_config_t); 6] = [
-        |c| c.tc_segment_header = 2,
-        |c| c.tc_fecf = 2,
-        |c| c.tc_blocking = 2,
-        |c| c.maps[0].segmentation = 2,
-        |c| c.maps[0].blocking = 2,
-        |c| c.maps[0].service = 9,
+    // The flags and constants: a member of TC is read under TC only, the others by both.
+    let sets: [(SgSet, bool); 5] = [
+        (|c| c.tc_segment_header = 2, true),
+        (|c| c.tc_fecf = 2, true),
+        (|c| c.maps[0].segmentation = 2, false),
+        (|c| c.maps[0].blocking = 2, false),
+        (|c| c.maps[0].service = 9, false),
     ];
-    for set in sets {
-        for mut cfg in [tc_sg(), uslp_sg()] {
-            set(&mut cfg);
-            assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
-        }
+    for (set, tc_only) in sets {
+        let mut cfg = tc_sg();
+        set(&mut cfg);
+        assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
+        let mut cfg = uslp_sg();
+        set(&mut cfg);
+        let want = if tc_only { 0 } else { ALDIS_ERR_INVALID_FIELD };
+        assert_eq!(sg_init(&mut s, &cfg, &mut d), want);
     }
-    // Ranges of members of the other protocol.
+    // `tc_blocking` is read by a TC VC without a Segment Header, which takes no MAP.
     let mut cfg = tc_sg();
+    cfg.tc_blocking = 2;
+    assert_eq!(sg_init(&mut s, &cfg, &mut d), 0);
+    cfg.tc_segment_header = 0;
+    cfg.map_count = 0;
+    assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
+    // Ranges of the members of USLP: read under USLP, not under TC.
+    let mut cfg = uslp_sg();
     cfg.uslp_vcf_len_sc = 8;
     assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_CONFIG);
     assert_eq!(d.field, ALDIS_FIELD_VCF_COUNT_LEN);
-    cfg = tc_sg();
+    cfg = uslp_sg();
     cfg.uslp_vcf_len_exp = 8;
     assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_CONFIG);
-    cfg = tc_sg();
+    cfg = uslp_sg();
     cfg.maps[0].uslp_upid = 32;
     assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_OUT_OF_RANGE);
     assert_eq!(d.field, ALDIS_FIELD_UPID);
+    cfg = tc_sg();
+    cfg.uslp_vcf_len_sc = 8;
+    cfg.uslp_vcf_len_exp = 8;
+    cfg.maps[0].uslp_upid = 32;
+    assert_eq!(sg_init(&mut s, &cfg, &mut d), 0);
     // The protocol's own conversions.
     cfg = tc_sg();
     cfg.channel.vc_id = 64;
@@ -792,10 +809,13 @@ fn the_reassembler_configuration_is_checked() {
     let mut cfg = tc_ra();
     cfg.channel.protocol = 9;
     assert_eq!(ra_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
-    for mut cfg in [tc_ra(), uslp_ra()] {
-        cfg.tc_segment_header = 2;
-        assert_eq!(ra_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
-    }
+    // `tc_segment_header` is a member of TC: USLP does not read it.
+    let mut cfg = tc_ra();
+    cfg.tc_segment_header = 2;
+    assert_eq!(ra_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
+    cfg = uslp_ra();
+    cfg.tc_segment_header = 2;
+    assert_eq!(ra_init(&mut s, &cfg, &mut d), 0);
     cfg = tc_ra();
     cfg.maps[0].service = 9;
     assert_eq!(ra_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
@@ -967,16 +987,7 @@ fn the_reassembler_steps_and_reconfigures_on_tc() {
         ALDIS_ERR_INVALID_FIELD
     );
     assert_eq!(d.field, ALDIS_FIELD_FRAME_DATA_FIELD);
-    assert_eq!(
-        ra_step(
-            &raw mut *s,
-            &fdu(&first, 0, 2),
-            &mut out,
-            &mut actions,
-            &mut d
-        ),
-        ALDIS_ERR_INVALID_FIELD
-    );
+    // The gap flag is a member of USLP: TC does not read it.
     let mut bad = fdu(&first, 0, 0);
     bad.vc_id = 64;
     assert_eq!(
@@ -1115,35 +1126,37 @@ fn the_reassembler_serves_uslp_streams_and_gaps() {
 }
 
 #[test]
-fn the_members_of_the_channel_are_read_whatever_the_protocol() {
+fn the_engines_read_no_member_of_the_channel_but_the_protocol_and_the_vc() {
     // req: CABI-040, CABI-022, LNK-001
     type Set = fn(&mut aldis_link_channel_t);
     let mut s = sg_storage();
     let mut r = ra_storage();
     let mut d = detail();
-    let sets: [(Set, u32); 4] = [
-        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
-        (|c| c.aos_edition = 9, ALDIS_ERR_INVALID_FIELD),
-        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
-        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    // The members of other protocols: neither engine reads them under TC or USLP.
+    let sets: [Set; 4] = [
+        |c| c.uslp_qos = 99,
+        |c| c.aos_edition = 9,
+        |c| c.uslp_upid = 32,
+        |c| c.uslp_map = 16,
     ];
-    for (set, want) in sets {
+    for set in sets {
         for mut cfg in [tc_sg(), uslp_sg()] {
             set(&mut cfg.channel);
-            assert_eq!(sg_init(&mut s, &cfg, &mut d), want);
+            assert_eq!(sg_init(&mut s, &cfg, &mut d), 0);
         }
         for mut cfg in [tc_ra(), uslp_ra()] {
             set(&mut cfg.channel);
-            assert_eq!(ra_init(&mut r, &cfg, &mut d), want);
+            assert_eq!(ra_init(&mut r, &cfg, &mut d), 0);
         }
-        // A reconfiguration reads them too.
+        // A reconfiguration reads the same members.
         assert_eq!(sg_init(&mut s, &tc_sg(), &mut d), 0);
         let mut reconf = sg_input(ALDIS_MAP_SEGMENTER_INPUT_RECONFIGURE);
+        reconf.config = tc_sg();
         set(&mut reconf.config.channel);
         let mut actions = aldis_map_segmenter_actions_t::default();
         assert_eq!(
             sg_step(&raw mut *s, &reconf, 0, &mut [], &mut actions, &mut d),
-            want
+            0
         );
     }
 }

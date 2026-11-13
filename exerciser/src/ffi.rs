@@ -42,65 +42,75 @@ use aldis_ffi::fop1::{
     aldis_fop1_init, aldis_fop1_input_t, aldis_fop1_next_deadline, aldis_fop1_status,
     aldis_fop1_status_t, aldis_fop1_step, aldis_fop1_t,
 };
-use aldis_ffi::link::{
-    ALDIS_LINK_IDLE_PACKET_ENCAPSULATION, ALDIS_LINK_IDLE_POLICY_OID, ALDIS_LINK_PROTOCOL_AOS,
-    ALDIS_LINK_PROTOCOL_TC, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
-    aldis_link_channel_t,
+use aldis_ffi::link::access::{
+    ALDIS_ACCESS_GENERATOR_INPUT_RELEASE, ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU,
+    ALDIS_ACCESS_GENERATOR_WORDS, aldis_access_generator_actions_t,
+    aldis_access_generator_config_t, aldis_access_generator_deinit, aldis_access_generator_init,
+    aldis_access_generator_input_t, aldis_access_generator_status, aldis_access_generator_status_t,
+    aldis_access_generator_step, aldis_access_generator_t,
 };
-use aldis_ffi::link_cltu::{
+use aldis_ffi::link::bitstream::{
+    ALDIS_BITSTREAM_GENERATOR_INPUT_RELEASE, ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS,
+    ALDIS_BITSTREAM_GENERATOR_WORDS, aldis_bitstream_generator_actions_t,
+    aldis_bitstream_generator_config_t, aldis_bitstream_generator_deinit,
+    aldis_bitstream_generator_init, aldis_bitstream_generator_input_t,
+    aldis_bitstream_generator_status, aldis_bitstream_generator_status_t,
+    aldis_bitstream_generator_step, aldis_bitstream_generator_t,
+};
+use aldis_ffi::link::cltu::{
     ALDIS_CLTU_PACKER_INPUT_ADD_FRAME, ALDIS_CLTU_PACKER_INPUT_FLUSH, ALDIS_CLTU_PACKER_WORDS,
     aldis_cltu_packer_actions_t, aldis_cltu_packer_config_t, aldis_cltu_packer_deinit,
     aldis_cltu_packer_init, aldis_cltu_packer_input_t, aldis_cltu_packer_status,
     aldis_cltu_packer_status_t, aldis_cltu_packer_step, aldis_cltu_packer_t,
 };
-use aldis_ffi::link_gen::{
-    ALDIS_ACCESS_GENERATOR_INPUT_RELEASE, ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU,
-    ALDIS_ACCESS_GENERATOR_WORDS, ALDIS_BITSTREAM_GENERATOR_INPUT_RELEASE,
-    ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS, ALDIS_BITSTREAM_GENERATOR_WORDS,
+use aldis_ffi::link::common::ALDIS_LINK_CONTENT_PACKETS;
+use aldis_ffi::link::common::{ALDIS_MAP_SERVICE_ANY, ALDIS_MAP_SERVICE_SDU};
+use aldis_ffi::link::extractor::{
+    ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD, ALDIS_PACKET_EXTRACTOR_WORDS,
+    aldis_packet_extractor_actions_t, aldis_packet_extractor_config_t,
+    aldis_packet_extractor_deinit, aldis_packet_extractor_init, aldis_packet_extractor_input_t,
+    aldis_packet_extractor_status, aldis_packet_extractor_status_t, aldis_packet_extractor_step,
+    aldis_packet_extractor_t,
+};
+use aldis_ffi::link::generator::{
     ALDIS_PACKET_GENERATOR_INPUT_RELEASE, ALDIS_PACKET_GENERATOR_INPUT_SUBMIT_PACKET,
-    ALDIS_PACKET_GENERATOR_WORDS, aldis_access_generator_actions_t,
-    aldis_access_generator_config_t, aldis_access_generator_deinit, aldis_access_generator_init,
-    aldis_access_generator_input_t, aldis_access_generator_status, aldis_access_generator_status_t,
-    aldis_access_generator_step, aldis_access_generator_t, aldis_bitstream_generator_actions_t,
-    aldis_bitstream_generator_config_t, aldis_bitstream_generator_deinit,
-    aldis_bitstream_generator_init, aldis_bitstream_generator_input_t,
-    aldis_bitstream_generator_status, aldis_bitstream_generator_status_t,
-    aldis_bitstream_generator_step, aldis_bitstream_generator_t, aldis_packet_generator_actions_t,
+    ALDIS_PACKET_GENERATOR_WORDS, aldis_packet_generator_actions_t,
     aldis_packet_generator_config_t, aldis_packet_generator_deinit, aldis_packet_generator_init,
     aldis_packet_generator_input_t, aldis_packet_generator_next_deadline,
     aldis_packet_generator_status, aldis_packet_generator_status_t, aldis_packet_generator_step,
     aldis_packet_generator_t,
 };
-use aldis_ffi::link_map::{
-    ALDIS_MAP_REASSEMBLER_INPUT_FDU, ALDIS_MAP_REASSEMBLER_WORDS,
-    ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
-    ALDIS_MAP_SEGMENTER_WORDS, ALDIS_MAP_SERVICE_ANY, ALDIS_MAP_SERVICE_SDU,
-    aldis_map_reassembler_actions_t, aldis_map_reassembler_config_t, aldis_map_reassembler_deinit,
-    aldis_map_reassembler_init, aldis_map_reassembler_input_t, aldis_map_reassembler_map_t,
-    aldis_map_reassembler_status, aldis_map_reassembler_status_t, aldis_map_reassembler_step,
-    aldis_map_reassembler_t, aldis_map_segmenter_actions_t, aldis_map_segmenter_config_t,
-    aldis_map_segmenter_deinit, aldis_map_segmenter_init, aldis_map_segmenter_input_t,
-    aldis_map_segmenter_map_t, aldis_map_segmenter_next_deadline, aldis_map_segmenter_status,
-    aldis_map_segmenter_status_t, aldis_map_segmenter_step, aldis_map_segmenter_t,
-};
-use aldis_ffi::link_mux::{
+use aldis_ffi::link::mux::{
     ALDIS_CHANNEL_MUX_INPUT_OFFER, ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY, ALDIS_CHANNEL_MUX_WORDS,
     aldis_channel_mux_actions_t, aldis_channel_mux_config_t, aldis_channel_mux_deinit,
     aldis_channel_mux_init, aldis_channel_mux_input_t, aldis_channel_mux_status,
     aldis_channel_mux_status_t, aldis_channel_mux_step, aldis_channel_mux_t,
     aldis_channel_mux_vc_t,
 };
-use aldis_ffi::link_rx::{
+use aldis_ffi::link::reassembler::{
+    ALDIS_MAP_REASSEMBLER_INPUT_FDU, ALDIS_MAP_REASSEMBLER_WORDS, aldis_map_reassembler_actions_t,
+    aldis_map_reassembler_config_t, aldis_map_reassembler_deinit, aldis_map_reassembler_init,
+    aldis_map_reassembler_input_t, aldis_map_reassembler_map_t, aldis_map_reassembler_status,
+    aldis_map_reassembler_status_t, aldis_map_reassembler_step, aldis_map_reassembler_t,
+};
+use aldis_ffi::link::receiver::{
     ALDIS_FRAME_RECEIVER_INPUT_FRAME, ALDIS_FRAME_RECEIVER_INPUT_FRAME_LOSS,
-    ALDIS_FRAME_RECEIVER_WORDS, ALDIS_LINK_CONTENT_PACKETS,
-    ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD, ALDIS_PACKET_EXTRACTOR_WORDS,
-    aldis_frame_receiver_actions_t, aldis_frame_receiver_config_t, aldis_frame_receiver_deinit,
-    aldis_frame_receiver_init, aldis_frame_receiver_input_t, aldis_frame_receiver_status,
-    aldis_frame_receiver_status_t, aldis_frame_receiver_step, aldis_frame_receiver_t,
-    aldis_frame_receiver_vc_t, aldis_packet_extractor_actions_t, aldis_packet_extractor_config_t,
-    aldis_packet_extractor_deinit, aldis_packet_extractor_init, aldis_packet_extractor_input_t,
-    aldis_packet_extractor_status, aldis_packet_extractor_status_t, aldis_packet_extractor_step,
-    aldis_packet_extractor_t,
+    ALDIS_FRAME_RECEIVER_WORDS, aldis_frame_receiver_actions_t, aldis_frame_receiver_config_t,
+    aldis_frame_receiver_deinit, aldis_frame_receiver_init, aldis_frame_receiver_input_t,
+    aldis_frame_receiver_status, aldis_frame_receiver_status_t, aldis_frame_receiver_step,
+    aldis_frame_receiver_t, aldis_frame_receiver_vc_t,
+};
+use aldis_ffi::link::segmenter::{
+    ALDIS_MAP_SEGMENTER_INPUT_NEXT_FDU, ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_SDU,
+    ALDIS_MAP_SEGMENTER_WORDS, aldis_map_segmenter_actions_t, aldis_map_segmenter_config_t,
+    aldis_map_segmenter_deinit, aldis_map_segmenter_init, aldis_map_segmenter_input_t,
+    aldis_map_segmenter_map_t, aldis_map_segmenter_next_deadline, aldis_map_segmenter_status,
+    aldis_map_segmenter_status_t, aldis_map_segmenter_step, aldis_map_segmenter_t,
+};
+use aldis_ffi::link::{
+    ALDIS_LINK_IDLE_PACKET_ENCAPSULATION, ALDIS_LINK_IDLE_POLICY_OID, ALDIS_LINK_PROTOCOL_AOS,
+    ALDIS_LINK_PROTOCOL_TC, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
+    aldis_link_channel_t,
 };
 use aldis_ffi::ocf::{ALDIS_OCF_CLCW, ALDIS_OCF_SDLS_FSR, aldis_ocf_check, aldis_ocf_classify};
 use aldis_ffi::oid::{

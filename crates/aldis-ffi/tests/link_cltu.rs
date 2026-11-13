@@ -20,8 +20,8 @@ use aldis_ffi::field::{
     ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_FRAMES_PER_UNIT,
     ALDIS_FIELD_MAX_UNIT_LEN, ALDIS_FIELD_TRUNCATED_FRAME_LEN,
 };
+use aldis_ffi::link::cltu::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_cltu::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {
@@ -388,30 +388,33 @@ fn a_uslp_packer_keeps_truncated_frames_apart() {
 }
 
 #[test]
-fn the_members_of_the_channel_are_read_whatever_the_protocol() {
+fn the_packer_reads_no_member_of_the_channel_but_the_protocol() {
     // req: CABI-040, CABI-022, LNK-001
     type Set = fn(&mut aldis_link_channel_t);
     let mut s = storage();
     let mut d = detail();
-    let sets: [(Set, u32); 4] = [
-        (|c| c.uslp_qos = 99, ALDIS_ERR_INVALID_FIELD),
-        (|c| c.aos_edition = 9, ALDIS_ERR_INVALID_FIELD),
-        (|c| c.uslp_upid = 32, ALDIS_ERR_OUT_OF_RANGE),
-        (|c| c.uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    // The members of other protocols: no protocol the packer serves reads them.
+    let sets: [Set; 4] = [
+        |c| c.uslp_qos = 99,
+        |c| c.aos_edition = 9,
+        |c| c.uslp_upid = 32,
+        |c| c.uslp_map = 16,
     ];
-    for (set, want) in sets {
+    for set in sets {
         for protocol in [ALDIS_LINK_PROTOCOL_TC, ALDIS_LINK_PROTOCOL_USLP] {
             let mut cfg = config(protocol);
             set(&mut cfg.channel);
-            assert_eq!(init(&mut s, &cfg, &mut d), want);
+            assert_eq!(init(&mut s, &cfg, &mut d), 0);
         }
         assert_eq!(init(&mut s, &config(ALDIS_LINK_PROTOCOL_TC), &mut d), 0);
         let mut reconf = input(ALDIS_CLTU_PACKER_INPUT_RECONFIGURE);
+        reconf.config = config(ALDIS_LINK_PROTOCOL_TC);
         set(&mut reconf.config.channel);
         let mut actions = aldis_cltu_packer_actions_t::default();
-        assert_eq!(
-            step(&raw mut *s, &reconf, &mut [], &mut actions, &mut d),
-            want
-        );
+        assert_eq!(step(&raw mut *s, &reconf, &mut [], &mut actions, &mut d), 0);
     }
+    // The protocol itself is checked.
+    let mut cfg = config(ALDIS_LINK_PROTOCOL_TC);
+    cfg.channel.protocol = 9;
+    assert_eq!(init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
 }

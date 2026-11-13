@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 12
+#define ALDIS_ABI_VERSION_MINOR 13
 
 /**
  * ABI patch version (CABI-060).
@@ -1325,6 +1325,26 @@
 #define ALDIS_FOP1_WORDS 2283
 
 /**
+ * The most actions one `aldis_access_generator_step` returns (LNK-074).
+ */
+#define ALDIS_ACCESS_GENERATOR_MAX_ACTIONS 1
+
+/**
+ * 64-bit words of one `aldis_access_generator_t` (CABI-031).
+ */
+#define ALDIS_ACCESS_GENERATOR_WORDS 1040
+
+/**
+ * The most actions one `aldis_bitstream_generator_step` returns (LNK-074).
+ */
+#define ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS 1
+
+/**
+ * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
+ */
+#define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
+
+/**
  * The most actions one `aldis_cltu_packer_step` returns (LNK-074): the unit the frame did not
  * fit and the new unit if the frame fills it.
  */
@@ -1337,59 +1357,28 @@
 #define ALDIS_CLTU_PACKER_WORDS 270
 
 /**
+ * The most actions one `aldis_packet_extractor_step` returns (LNK-074): a run of packets, an
+ * incomplete packet, a discard, and an error.
+ */
+#define ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS 4
+
+/**
+ * 64-bit words of one `aldis_packet_extractor_t` (CABI-031): the tag and the largest of the
+ * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_PACKET_EXTRACTOR_WORDS 1043
+
+/**
  * The most actions one `aldis_packet_generator_step` returns (LNK-074): a data field or the
  * octets a reconfiguration discarded.
  */
 #define ALDIS_PACKET_GENERATOR_MAX_ACTIONS 1
 
 /**
- * The most actions one `aldis_access_generator_step` returns (LNK-074).
- */
-#define ALDIS_ACCESS_GENERATOR_MAX_ACTIONS 1
-
-/**
- * The most actions one `aldis_bitstream_generator_step` returns (LNK-074).
- */
-#define ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS 1
-
-/**
  * 64-bit words of one `aldis_packet_generator_t` (CABI-031): the tag and the largest of the
  * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
  */
 #define ALDIS_PACKET_GENERATOR_WORDS 1308
-
-/**
- * 64-bit words of one `aldis_access_generator_t` (CABI-031).
- */
-#define ALDIS_ACCESS_GENERATOR_WORDS 1040
-
-/**
- * 64-bit words of one `aldis_bitstream_generator_t` (CABI-031).
- */
-#define ALDIS_BITSTREAM_GENERATOR_WORDS 1037
-
-/**
- * The most actions one `aldis_map_segmenter_step` returns (LNK-074): an FDU or the octets a
- * reconfiguration discarded.
- */
-#define ALDIS_MAP_SEGMENTER_MAX_ACTIONS 1
-
-/**
- * The most actions one `aldis_map_reassembler_step` returns (LNK-074): two events, or an event
- * and a delivery.
- */
-#define ALDIS_MAP_REASSEMBLER_MAX_ACTIONS 2
-
-/**
- * 64-bit words of one `aldis_map_segmenter_t` (CABI-031): the tag and the larger of the engines
- * of TC and USLP at the build capacities; the build fails when it outgrows it.
- */
-#define ALDIS_MAP_SEGMENTER_WORDS 1172
-
-/**
- * 64-bit words of one `aldis_map_reassembler_t` (CABI-031).
- */
-#define ALDIS_MAP_REASSEMBLER_WORDS 4174
 
 /**
  * The most actions one `aldis_channel_mux_step` returns (LNK-074): a frame and the notice that
@@ -1409,10 +1398,15 @@
 #define ALDIS_CHANNEL_MUX_MAX_FSH_DATA 63
 
 /**
- * The most actions one `aldis_packet_extractor_step` returns (LNK-074): a run of packets, an
- * incomplete packet, a discard, and an error.
+ * The most actions one `aldis_map_reassembler_step` returns (LNK-074): two events, or an event
+ * and a delivery.
  */
-#define ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS 4
+#define ALDIS_MAP_REASSEMBLER_MAX_ACTIONS 2
+
+/**
+ * 64-bit words of one `aldis_map_reassembler_t` (CABI-031).
+ */
+#define ALDIS_MAP_REASSEMBLER_WORDS 4174
 
 /**
  * The most actions one `aldis_frame_receiver_step` returns (LNK-074).
@@ -1420,16 +1414,22 @@
 #define ALDIS_FRAME_RECEIVER_MAX_ACTIONS 5
 
 /**
- * 64-bit words of one `aldis_packet_extractor_t` (CABI-031): the tag and the largest of the
- * engines of TM, AOS, and USLP at the build capacities; the build fails when it outgrows it.
- */
-#define ALDIS_PACKET_EXTRACTOR_WORDS 1043
-
-/**
  * 64-bit words of one `aldis_frame_receiver_t` (CABI-031): the tag and the largest of the
  * engines of TM, TC, AOS, and USLP at the build capacities.
  */
 #define ALDIS_FRAME_RECEIVER_WORDS 82
+
+/**
+ * The most actions one `aldis_map_segmenter_step` returns (LNK-074): an FDU or the octets a
+ * reconfiguration discarded.
+ */
+#define ALDIS_MAP_SEGMENTER_MAX_ACTIONS 1
+
+/**
+ * 64-bit words of one `aldis_map_segmenter_t` (CABI-031): the tag and the larger of the engines
+ * of TC and USLP at the build capacities; the build fails when it outgrows it.
+ */
+#define ALDIS_MAP_SEGMENTER_WORDS 1172
 
 /**
  * Length of the Operational Control Field in octets (132.0 §4.1.5.1, 732.0 §4.1.5.1,
@@ -5720,22 +5720,23 @@ typedef struct {
 } aldis_fop1_status_t;
 
 /**
- * A `CltuPacker` in caller storage: the caller declares an object of this type, and the pointer
- * to it is the handle (LNK-044, CABI-031, CABI-032). The words are the library's.
+ * An `AccessGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-020, CABI-031, CABI-032). The words are the library's.
  */
 typedef struct {
   /**
    * The slot of [`handle`]: the tag, then the state.
    */
-  uint64_t words[ALDIS_CLTU_PACKER_WORDS];
-} aldis_cltu_packer_t;
+  uint64_t words[ALDIS_ACCESS_GENERATOR_WORDS];
+} aldis_access_generator_t;
 
 /**
  * The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
  * first member of every link engine configuration.
  *
- * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
- * only; the others do not use them, but each must be valid (`protocol`).
+ * Zero-initialize the struct before setting members. `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
+ * `uslp_map`, and `uslp_qos` for USLP only. A member of another protocol is not read, so it may
+ * hold any value (CABI-040; OI-92).
  */
 typedef struct {
   /**
@@ -5765,12 +5766,319 @@ typedef struct {
 } aldis_link_channel_t;
 
 /**
- * The managed parameters of a `CltuPacker` (232.0 §5.1 Table 5-1; 732.1 §5.1 Table 5-1;
- * LNK-044, LNK-078).
+ * The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
-   * The protocol (TC or USLP); the other members of the channel are not used but must be valid.
+   * The protocol and the channel (TM, AOS, or USLP).
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The octets of the data field, header included (TM data field, AOS `VCA_SDU`, USLP
+   * TFDF), whose zone holds 1 to 65 535 octets, and which fits `ALDIS_LINK_PACKET_QUEUE_OCTETS`
+   * with the length of an SDU.
+   */
+  size_t field_len;
+  /**
+   * The longest SDU: 0 for the zone of the field; TM and AOS take exactly the zone (LNK-020).
+   */
+  size_t max_sdu_len;
+  /**
+   * The octet that fills the zone after the end of an SDU.
+   */
+  uint8_t idle_pattern;
+} aldis_access_generator_config_t;
+
+/**
+ * One input of an `AccessGenerator` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_ACCESS_GENERATOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_SDU`: the SDU, read once and copied (API-060). `data` is checked on every kind and must not overlap
+   * the storage or `out`: `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_access_generator_config_t config;
+} aldis_access_generator_input_t;
+
+/**
+ * One action of an `AccessGenerator` (API-057, API-061). A field that the kind does not use is
+ * 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_ACCESS_GENERATOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For `DATA_FIELD`: where the field is in `out`.
+   */
+  aldis_range_t field;
+  /**
+   * For `DATA_FIELD`: 1 when the field has a Last Valid Octet Pointer (USLP), else 0.
+   */
+  uint8_t pointer_present;
+  /**
+   * For `DATA_FIELD` with a pointer: the raw Last Valid Octet Pointer.
+   */
+  uint16_t pointer;
+  /**
+   * For `DATA_FIELD`: 1 when the field has a MAP and `QoS` (USLP), else 0.
+   */
+  uint8_t route_present;
+  /**
+   * For `DATA_FIELD` with a route: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `DATA_FIELD` with a route: `ALDIS_LINK_QOS_*`.
+   */
+  uint32_t qos;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_access_generator_action_t;
+
+/**
+ * The actions of one input of an `AccessGenerator`.
+ *
+ * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_ACCESS_GENERATOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_access_generator_action_t items[ALDIS_ACCESS_GENERATOR_MAX_ACTIONS];
+} aldis_access_generator_actions_t;
+
+/**
+ * A queue or buffer in octets: the current fill and the highest it has been (API-056,
+ * API-060).
+ */
+typedef struct {
+  /**
+   * The octets held now.
+   */
+  size_t current;
+  /**
+   * The most octets held since the engine was initialized.
+   */
+  size_t high_water;
+} aldis_link_occupancy_t;
+
+/**
+ * A read-only snapshot of an `AccessGenerator` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * SDUs taken.
+   */
+  uint64_t sdus_in;
+  /**
+   * Data fields given out.
+   */
+  uint64_t fields_out;
+  /**
+   * SDUs refused as invalid (LNK-020).
+   */
+  uint64_t refused;
+  /**
+   * SDUs refused with `ALDIS_ERR_WOULD_BLOCK`.
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The SDU queue.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_access_generator_status_t;
+
+/**
+ * A `BitstreamGenerator` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-021, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_BITSTREAM_GENERATOR_WORDS];
+} aldis_bitstream_generator_t;
+
+/**
+ * The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
+ */
+typedef struct {
+  /**
+   * The protocol (AOS) and the channel.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The octets of the `B_PDU`, header included; its zone holds 1 to 2 047 octets.
+   */
+  size_t field_len;
+  /**
+   * The octet whose bits complete a zone that is not full.
+   */
+  uint8_t idle_pattern;
+} aldis_bitstream_generator_config_t;
+
+/**
+ * One input of a `BitstreamGenerator` (API-057, CABI-040). A field that the kind does not use
+ * is ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_BITSTREAM_GENERATOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_BITS`: the bits, most significant first and left-aligned, read once and
+   * copied (API-060). `data` is checked on every kind and must not overlap the storage or
+   * `out`: `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `SUBMIT_BITS`: how many bits of `data` to take, at least 1.
+   */
+  size_t bit_len;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_bitstream_generator_config_t config;
+} aldis_bitstream_generator_input_t;
+
+/**
+ * One action of a `BitstreamGenerator` (API-057, API-061). A field that the kind does not use
+ * is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_BITSTREAM_GENERATOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For `DATA_FIELD`: where the `B_PDU` is in `out`.
+   */
+  aldis_range_t field;
+  /**
+   * For `DATA_FIELD`: the raw Bitstream Data Pointer.
+   */
+  uint16_t pointer;
+  /**
+   * For `DISCARDED`: the octets discarded.
+   */
+  size_t octets;
+} aldis_bitstream_generator_action_t;
+
+/**
+ * The actions of one input of a `BitstreamGenerator`.
+ *
+ * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_bitstream_generator_action_t items[ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS];
+} aldis_bitstream_generator_actions_t;
+
+/**
+ * A read-only snapshot of a `BitstreamGenerator` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Submissions taken.
+   */
+  uint64_t submissions;
+  /**
+   * `B_PDUs` given out, idle ones included.
+   */
+  uint64_t fields_out;
+  /**
+   * Idle `B_PDUs` given out: no bit was queued.
+   */
+  uint64_t idle_fields;
+  /**
+   * Submissions refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Submissions refused with `ALDIS_ERR_WOULD_BLOCK`.
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by a reconfiguration (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The bit queue, in octets.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_bitstream_generator_status_t;
+
+/**
+ * A `CltuPacker` in caller storage: the caller declares an object of this type, and the pointer
+ * to it is the handle (LNK-044, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_CLTU_PACKER_WORDS];
+} aldis_cltu_packer_t;
+
+/**
+ * The managed parameters of a `CltuPacker` (232.0 §5.1 Table 5-1; 732.1 §5.1 Table 5-1;
+ * LNK-044, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP) and the VC; the other members of the channel are not read.
    */
   aldis_link_channel_t channel;
   /**
@@ -5871,21 +6179,6 @@ typedef struct {
 } aldis_cltu_packer_actions_t;
 
 /**
- * A queue or buffer in octets: the current fill and the highest it has been (API-056,
- * API-060).
- */
-typedef struct {
-  /**
-   * The octets held now.
-   */
-  size_t current;
-  /**
-   * The most octets held since the engine was initialized.
-   */
-  size_t high_water;
-} aldis_link_occupancy_t;
-
-/**
  * A read-only snapshot of a `CltuPacker` (API-056, LNK-002).
  */
 typedef struct {
@@ -5912,6 +6205,183 @@ typedef struct {
 } aldis_cltu_packer_status_t;
 
 /**
+ * A `PacketExtractor` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-060, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_PACKET_EXTRACTOR_WORDS];
+} aldis_packet_extractor_t;
+
+/**
+ * The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
+ * 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
+ */
+typedef struct {
+  /**
+   * The protocol (TM, AOS, or USLP) and its parameters; `vc_id` is not read.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * 1 when Space Packets (PVN 0) are valid, else 0.
+   */
+  uint8_t space_packets;
+  /**
+   * 1 when Encapsulation Packets (PVN 7) are valid, else 0. At least one of the two is 1.
+   */
+  uint8_t encapsulation_packets;
+  /**
+   * The longest packet in octets, at least 1 and at most `ALDIS_LINK_PACKET_QUEUE_OCTETS`.
+   */
+  size_t max_packet_len;
+  /**
+   * 1 to deliver partial packets flagged incomplete (LNK-061), else 0.
+   */
+  uint8_t deliver_incomplete;
+  /**
+   * 1 to deliver idle packets (LNK-063), else 0.
+   */
+  uint8_t deliver_idle;
+} aldis_packet_extractor_config_t;
+
+/**
+ * One input of a `PacketExtractor` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_EXTRACTOR_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `DATA_FIELD`: the data field as the `FrameReceiver` delivers it, read once and copied
+   * (API-060). `data` is checked on every kind and must not overlap the storage or `out`:
+   * `NULL` only with `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `DATA_FIELD`: 1 when `header_pointer` is the First Header Pointer of the TM frame
+   * header (TM only; AOS and USLP carry it in `data`), else 0.
+   */
+  uint8_t header_pointer_present;
+  /**
+   * For `DATA_FIELD`: the First Header Pointer of the TM frame header.
+   */
+  uint16_t header_pointer;
+  /**
+   * For `DATA_FIELD`: 1 when a frame gap was flagged on this field (LNK-051, LNK-061).
+   */
+  uint8_t gap;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_packet_extractor_config_t config;
+} aldis_packet_extractor_input_t;
+
+/**
+ * One action of a `PacketExtractor` (API-057, API-061). A field that the kind does not use is
+ * 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_PACKET_EXTRACTOR_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `PACKETS`: where the run of complete packets is in `out`, each as long as its own
+   * length field says; for `INCOMPLETE_PACKET`: where the packet is.
+   */
+  aldis_range_t packets;
+  /**
+   * For `PACKETS`: how many packets the run holds.
+   */
+  size_t count;
+  /**
+   * For `INCOMPLETE_PACKET`: the Packet Version Number in the header.
+   */
+  uint8_t pvn;
+  /**
+   * For `DISCARDED`: the octets of the partial packet.
+   */
+  size_t octets;
+  /**
+   * For `ERROR`: `ALDIS_PACKET_EXTRACTOR_ERROR_*`.
+   */
+  uint32_t error;
+} aldis_packet_extractor_action_t;
+
+/**
+ * The actions of one input of a `PacketExtractor`.
+ *
+ * Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_packet_extractor_action_t items[ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS];
+} aldis_packet_extractor_actions_t;
+
+/**
+ * A read-only snapshot of a `PacketExtractor` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Data fields taken.
+   */
+  uint64_t fields_in;
+  /**
+   * Packets returned, incomplete ones included.
+   */
+  uint64_t packets_out;
+  /**
+   * Packets returned flagged incomplete.
+   */
+  uint64_t incomplete_out;
+  /**
+   * Idle packets seen, whether delivered or dropped (LNK-063).
+   */
+  uint64_t idle_packets;
+  /**
+   * Octets of partial packets discarded (LNK-061).
+   */
+  uint64_t discarded_octets;
+  /**
+   * Fields flagged with a frame gap (LNK-051).
+   */
+  uint64_t gaps;
+  /**
+   * Extraction errors `PacketTooLong` (LNK-062).
+   */
+  uint64_t packet_too_long;
+  /**
+   * Extraction errors `InvalidPvn` (LNK-062).
+   */
+  uint64_t invalid_pvn;
+  /**
+   * Extraction errors `LengthInconsistent` (LNK-061).
+   */
+  uint64_t length_inconsistent;
+  /**
+   * The assembly buffer: the octets of the packet in progress.
+   */
+  aldis_link_occupancy_t assembly;
+} aldis_packet_extractor_status_t;
+
+/**
  * A `PacketGenerator` in caller storage: the caller declares an object of this type, and the
  * pointer to it is the handle (LNK-010, CABI-031, CABI-032). The words are the library's.
  */
@@ -5925,6 +6395,9 @@ typedef struct {
 /**
  * The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
  * 732.1 §5.6 Table 5-5; LNK-010, LNK-012…LNK-014, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -6089,703 +6562,6 @@ typedef struct {
 } aldis_packet_generator_status_t;
 
 /**
- * An `AccessGenerator` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-020, CABI-031, CABI-032). The words are the library's.
- */
-typedef struct {
-  /**
-   * The slot of [`handle`]: the tag, then the state.
-   */
-  uint64_t words[ALDIS_ACCESS_GENERATOR_WORDS];
-} aldis_access_generator_t;
-
-/**
- * The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
- */
-typedef struct {
-  /**
-   * The protocol and the channel (TM, AOS, or USLP).
-   */
-  aldis_link_channel_t channel;
-  /**
-   * The octets of the data field, header included (TM data field, AOS `VCA_SDU`, USLP
-   * TFDF), whose zone holds 1 to 65 535 octets, and which fits `ALDIS_LINK_PACKET_QUEUE_OCTETS`
-   * with the length of an SDU.
-   */
-  size_t field_len;
-  /**
-   * The longest SDU: 0 for the zone of the field; TM and AOS take exactly the zone (LNK-020).
-   */
-  size_t max_sdu_len;
-  /**
-   * The octet that fills the zone after the end of an SDU.
-   */
-  uint8_t idle_pattern;
-} aldis_access_generator_config_t;
-
-/**
- * One input of an `AccessGenerator` (API-057, CABI-040). A field that the kind does not use is
- * ignored.
- */
-typedef struct {
-  /**
-   * `ALDIS_ACCESS_GENERATOR_INPUT_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `SUBMIT_SDU`: the SDU, read once and copied (API-060). `data` is checked on every kind and must not overlap
-   * the storage or `out`: `NULL` only with `data_len` 0.
-   */
-  const uint8_t *data;
-  /**
-   * The octets at `data`.
-   */
-  size_t data_len;
-  /**
-   * For `RECONFIGURE`: the new configuration.
-   */
-  aldis_access_generator_config_t config;
-} aldis_access_generator_input_t;
-
-/**
- * One action of an `AccessGenerator` (API-057, API-061). A field that the kind does not use is
- * 0.
- */
-typedef struct {
-  /**
-   * `ALDIS_ACCESS_GENERATOR_ACTION_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `DATA_FIELD`: the VCID.
-   */
-  uint8_t vc_id;
-  /**
-   * For `DATA_FIELD`: where the field is in `out`.
-   */
-  aldis_range_t field;
-  /**
-   * For `DATA_FIELD`: 1 when the field has a Last Valid Octet Pointer (USLP), else 0.
-   */
-  uint8_t pointer_present;
-  /**
-   * For `DATA_FIELD` with a pointer: the raw Last Valid Octet Pointer.
-   */
-  uint16_t pointer;
-  /**
-   * For `DATA_FIELD`: 1 when the field has a MAP and `QoS` (USLP), else 0.
-   */
-  uint8_t route_present;
-  /**
-   * For `DATA_FIELD` with a route: the MAP ID.
-   */
-  uint8_t map_id;
-  /**
-   * For `DATA_FIELD` with a route: `ALDIS_LINK_QOS_*`.
-   */
-  uint32_t qos;
-  /**
-   * For `DISCARDED`: the octets discarded.
-   */
-  size_t octets;
-} aldis_access_generator_action_t;
-
-/**
- * The actions of one input of an `AccessGenerator`.
- *
- * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
- */
-typedef struct {
-  /**
-   * The number of actions in `items`, at most `ALDIS_ACCESS_GENERATOR_MAX_ACTIONS`.
-   */
-  size_t count;
-  /**
-   * The actions; those from `count` on are zero.
-   */
-  aldis_access_generator_action_t items[ALDIS_ACCESS_GENERATOR_MAX_ACTIONS];
-} aldis_access_generator_actions_t;
-
-/**
- * A read-only snapshot of an `AccessGenerator` (API-056, LNK-002).
- */
-typedef struct {
-  /**
-   * SDUs taken.
-   */
-  uint64_t sdus_in;
-  /**
-   * Data fields given out.
-   */
-  uint64_t fields_out;
-  /**
-   * SDUs refused as invalid (LNK-020).
-   */
-  uint64_t refused;
-  /**
-   * SDUs refused with `ALDIS_ERR_WOULD_BLOCK`.
-   */
-  uint64_t would_block;
-  /**
-   * Octets discarded by a reconfiguration (LNK-003).
-   */
-  uint64_t discarded_octets;
-  /**
-   * The SDU queue.
-   */
-  aldis_link_occupancy_t queue;
-} aldis_access_generator_status_t;
-
-/**
- * A `BitstreamGenerator` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-021, CABI-031, CABI-032). The words are the library's.
- */
-typedef struct {
-  /**
-   * The slot of [`handle`]: the tag, then the state.
-   */
-  uint64_t words[ALDIS_BITSTREAM_GENERATOR_WORDS];
-} aldis_bitstream_generator_t;
-
-/**
- * The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
- */
-typedef struct {
-  /**
-   * The protocol (AOS) and the channel.
-   */
-  aldis_link_channel_t channel;
-  /**
-   * The octets of the `B_PDU`, header included; its zone holds 1 to 2 047 octets.
-   */
-  size_t field_len;
-  /**
-   * The octet whose bits complete a zone that is not full.
-   */
-  uint8_t idle_pattern;
-} aldis_bitstream_generator_config_t;
-
-/**
- * One input of a `BitstreamGenerator` (API-057, CABI-040). A field that the kind does not use
- * is ignored.
- */
-typedef struct {
-  /**
-   * `ALDIS_BITSTREAM_GENERATOR_INPUT_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `SUBMIT_BITS`: the bits, most significant first and left-aligned, read once and
-   * copied (API-060). `data` is checked on every kind and must not overlap the storage or
-   * `out`: `NULL` only with `data_len` 0.
-   */
-  const uint8_t *data;
-  /**
-   * The octets at `data`.
-   */
-  size_t data_len;
-  /**
-   * For `SUBMIT_BITS`: how many bits of `data` to take, at least 1.
-   */
-  size_t bit_len;
-  /**
-   * For `RECONFIGURE`: the new configuration.
-   */
-  aldis_bitstream_generator_config_t config;
-} aldis_bitstream_generator_input_t;
-
-/**
- * One action of a `BitstreamGenerator` (API-057, API-061). A field that the kind does not use
- * is 0.
- */
-typedef struct {
-  /**
-   * `ALDIS_BITSTREAM_GENERATOR_ACTION_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `DATA_FIELD`: the VCID.
-   */
-  uint8_t vc_id;
-  /**
-   * For `DATA_FIELD`: where the `B_PDU` is in `out`.
-   */
-  aldis_range_t field;
-  /**
-   * For `DATA_FIELD`: the raw Bitstream Data Pointer.
-   */
-  uint16_t pointer;
-  /**
-   * For `DISCARDED`: the octets discarded.
-   */
-  size_t octets;
-} aldis_bitstream_generator_action_t;
-
-/**
- * The actions of one input of a `BitstreamGenerator`.
- *
- * Requirements: LNK-010, LNK-020, LNK-021, LNK-074, CABI-040; docs/04-engines.md §4.
- */
-typedef struct {
-  /**
-   * The number of actions in `items`, at most `ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS`.
-   */
-  size_t count;
-  /**
-   * The actions; those from `count` on are zero.
-   */
-  aldis_bitstream_generator_action_t items[ALDIS_BITSTREAM_GENERATOR_MAX_ACTIONS];
-} aldis_bitstream_generator_actions_t;
-
-/**
- * A read-only snapshot of a `BitstreamGenerator` (API-056, LNK-002).
- */
-typedef struct {
-  /**
-   * Submissions taken.
-   */
-  uint64_t submissions;
-  /**
-   * `B_PDUs` given out, idle ones included.
-   */
-  uint64_t fields_out;
-  /**
-   * Idle `B_PDUs` given out: no bit was queued.
-   */
-  uint64_t idle_fields;
-  /**
-   * Submissions refused as invalid.
-   */
-  uint64_t refused;
-  /**
-   * Submissions refused with `ALDIS_ERR_WOULD_BLOCK`.
-   */
-  uint64_t would_block;
-  /**
-   * Octets discarded by a reconfiguration (LNK-003).
-   */
-  uint64_t discarded_octets;
-  /**
-   * The bit queue, in octets.
-   */
-  aldis_link_occupancy_t queue;
-} aldis_bitstream_generator_status_t;
-
-/**
- * A `MapSegmenter` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-040, CABI-031, CABI-032). The words are the library's.
- */
-typedef struct {
-  /**
-   * The slot of [`handle`]: the tag, then the state.
-   */
-  uint64_t words[ALDIS_MAP_SEGMENTER_WORDS];
-} aldis_map_segmenter_t;
-
-/**
- * One MAP of a `MapSegmenter` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-040, LNK-042).
- */
-typedef struct {
-  /**
-   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
-   */
-  uint8_t map_id;
-  /**
-   * `ALDIS_MAP_SERVICE_*`: `ANY` on TC; `PACKETS`, `SDU`, or `OCTET_STREAM` on USLP.
-   */
-  uint32_t service;
-  /**
-   * 1 when SDUs longer than one FDU are segmented, else 0 (not for a stream).
-   */
-  uint8_t segmentation;
-  /**
-   * The maximum `MAP_SDU` length when `segmentation` is 1, from 1 to 65 535 and at most the
-   * queue less four octets; ignored otherwise.
-   */
-  size_t max_sdu_len;
-  /**
-   * 1 when packets of the MAP may share an FDU (blocking), else 0 (not for a stream).
-   */
-  uint8_t blocking;
-  /**
-   * USLP: the UPID of the TFDFs of the MAP, 0 to 31 but not "Only Idle Data" (732.1
-   * §4.1.4.2.3).
-   */
-  uint8_t uslp_upid;
-  /**
-   * USLP, `OCTET_STREAM`: the release deadline of a started TFDZ in microseconds (732.1 §5.4
-   * Table 5-3 note 4; LNK-012).
-   */
-  uint64_t release_deadline_us;
-} aldis_map_segmenter_map_t;
-
-/**
- * The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
- * LNK-042, LNK-078).
- */
-typedef struct {
-  /**
-   * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-   * channel are not used but must be valid.
-   */
-  aldis_link_channel_t channel;
-  /**
-   * The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
-   * USLP: at most 65 535).
-   */
-  size_t max_fdu_len;
-  /**
-   * TC: 1 when every FDU has a Segment Header, else 0.
-   */
-  uint8_t tc_segment_header;
-  /**
-   * TC: 1 when the Physical Channel has a FECF, else 0.
-   */
-  uint8_t tc_fecf;
-  /**
-   * TC without a Segment Header: 1 when the packets of the implicit MAP 0 may be blocked.
-   */
-  uint8_t tc_blocking;
-  /**
-   * USLP: the VCF Count Length of sequence-controlled frames, 0 to 7 octets (732.1
-   * §4.1.2.11).
-   */
-  uint8_t uslp_vcf_len_sc;
-  /**
-   * USLP: the VCF Count Length of expedited frames, 0 to 7 octets.
-   */
-  uint8_t uslp_vcf_len_exp;
-  /**
-   * The entries of `maps` in use: none for a TC VC without a Segment Header, else 1 to
-   * `ALDIS_LINK_MAX_MAP_CHANNELS`.
-   */
-  size_t map_count;
-  /**
-   * The MAPs; the first `map_count` are read.
-   */
-  aldis_map_segmenter_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
-} aldis_map_segmenter_config_t;
-
-/**
- * One input of a `MapSegmenter` (API-057, CABI-040). A field that the kind does not use is
- * ignored.
- */
-typedef struct {
-  /**
-   * `ALDIS_MAP_SEGMENTER_INPUT_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `SUBMIT_*`: the packet, SDU, or octets, read once and copied (API-060). `data` is
-   * checked on every kind and must not overlap the storage or `out`: `NULL` only with
-   * `data_len` 0.
-   */
-  const uint8_t *data;
-  /**
-   * The octets at `data`.
-   */
-  size_t data_len;
-  /**
-   * For `SUBMIT_*`: the MAP ID (on a TC VC without a Segment Header, 0).
-   */
-  uint8_t map_id;
-  /**
-   * For `NEXT_FDU`: the handle of the request, echoed in the FDU (API-054).
-   */
-  uint32_t handle;
-  /**
-   * For `NEXT_FDU`: `ALDIS_LINK_QOS_*`; sequence-controlled for FOP-1 `RequestAd`, expedited
-   * for `RequestBd`.
-   */
-  uint32_t qos;
-  /**
-   * For `RECONFIGURE`: the new configuration.
-   */
-  aldis_map_segmenter_config_t config;
-} aldis_map_segmenter_input_t;
-
-/**
- * One action of a `MapSegmenter` (API-057, API-061). A field that the kind does not use is 0.
- */
-typedef struct {
-  /**
-   * `ALDIS_MAP_SEGMENTER_ACTION_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `FDU`: the handle of the request.
-   */
-  uint32_t handle;
-  /**
-   * For `FDU`: the VCID of the segmenter.
-   */
-  uint8_t vc_id;
-  /**
-   * For `FDU`: 1 when the FDU has a MAP ID, 0 on a TC VC without a Segment Header.
-   */
-  uint8_t map_present;
-  /**
-   * For `FDU`: the MAP ID.
-   */
-  uint8_t map_id;
-  /**
-   * For `FDU`: `ALDIS_LINK_QOS_*` of the request.
-   */
-  uint32_t qos;
-  /**
-   * For `FDU`: `ALDIS_MAP_FRAMING_*`.
-   */
-  uint32_t framing;
-  /**
-   * For `FDU`: where the FDU or TFDF is in `out`, its header included.
-   */
-  aldis_range_t fdu;
-  /**
-   * For `DISCARDED`: the octets of the unsent queue.
-   */
-  size_t octets;
-} aldis_map_segmenter_action_t;
-
-/**
- * The actions of one input of a `MapSegmenter`.
- *
- * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
- */
-typedef struct {
-  /**
-   * The number of actions in `items`, at most `ALDIS_MAP_SEGMENTER_MAX_ACTIONS`.
-   */
-  size_t count;
-  /**
-   * The actions; those from `count` on are zero.
-   */
-  aldis_map_segmenter_action_t items[ALDIS_MAP_SEGMENTER_MAX_ACTIONS];
-} aldis_map_segmenter_actions_t;
-
-/**
- * A read-only snapshot of a `MapSegmenter` (API-056, LNK-002).
- */
-typedef struct {
-  /**
-   * Packets, SDUs, and runs of stream octets taken.
-   */
-  uint64_t submitted;
-  /**
-   * FDUs and TFDFs handed out.
-   */
-  uint64_t fdus_out;
-  /**
-   * Inputs refused as invalid.
-   */
-  uint64_t refused;
-  /**
-   * Inputs refused with `WouldBlock` (LNK-015).
-   */
-  uint64_t would_block;
-  /**
-   * Octets discarded by `RECONFIGURE` (LNK-003).
-   */
-  uint64_t discarded_octets;
-  /**
-   * The queue: the unsent user octets.
-   */
-  aldis_link_occupancy_t queue;
-} aldis_map_segmenter_status_t;
-
-/**
- * A `MapReassembler` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-070, CABI-031, CABI-032). The words are the library's.
- */
-typedef struct {
-  /**
-   * The slot of [`handle`]: the tag, then the state.
-   */
-  uint64_t words[ALDIS_MAP_REASSEMBLER_WORDS];
-} aldis_map_reassembler_t;
-
-/**
- * One MAP of a `MapReassembler` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-070,
- * LNK-073).
- */
-typedef struct {
-  /**
-   * The VCID of the MAP, 0 to 63.
-   */
-  uint8_t vc_id;
-  /**
-   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
-   */
-  uint8_t map_id;
-  /**
-   * `ALDIS_MAP_SERVICE_PACKETS`, `SDU`, or `OCTET_STREAM`.
-   */
-  uint32_t service;
-  /**
-   * The longest SDU or packet of the MAP in octets (LNK-073), from 1 to
-   * `ALDIS_LINK_MAX_FRAME_OCTETS`; ignored for an octet stream.
-   */
-  size_t max_sdu_len;
-} aldis_map_reassembler_map_t;
-
-/**
- * The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
- */
-typedef struct {
-  /**
-   * The protocol (TC or USLP); the other members of the channel are not used but must be
-   * valid (each MAP names its VC).
-   */
-  aldis_link_channel_t channel;
-  /**
-   * TC: 1 when the FDUs have a Segment Header, else 0 (every FDU is then whole user data of
-   * MAP 0).
-   */
-  uint8_t tc_segment_header;
-  /**
-   * The entries of `maps` in use, 1 to `ALDIS_LINK_MAX_MAP_CHANNELS`.
-   */
-  size_t map_count;
-  /**
-   * The MAPs; the first `map_count` are read.
-   */
-  aldis_map_reassembler_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
-} aldis_map_reassembler_config_t;
-
-/**
- * One input of a `MapReassembler` (API-057, CABI-040). A field that the kind does not use is
- * ignored.
- */
-typedef struct {
-  /**
-   * `ALDIS_MAP_REASSEMBLER_INPUT_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `FDU`: the Frame Data Field with its Segment Header (TC) or the TFDF (USLP), read
-   * once and copied (API-060). `data` is checked on every kind and must not overlap the
-   * storage or `out`: `NULL` only with `data_len` 0.
-   */
-  const uint8_t *data;
-  /**
-   * The octets at `data`.
-   */
-  size_t data_len;
-  /**
-   * For `FDU`: the VCID of the frame.
-   */
-  uint8_t vc_id;
-  /**
-   * For `FDU`, USLP: the MAP ID of the frame.
-   */
-  uint8_t map_id;
-  /**
-   * For `FDU`, USLP: 1 when a frame gap was flagged on the field (LNK-051), else 0.
-   */
-  uint8_t gap;
-  /**
-   * For `RECONFIGURE`: the new configuration.
-   */
-  aldis_map_reassembler_config_t config;
-} aldis_map_reassembler_input_t;
-
-/**
- * One action of a `MapReassembler` (API-057, API-061). A field that the kind does not use is 0.
- */
-typedef struct {
-  /**
-   * `ALDIS_MAP_REASSEMBLER_ACTION_*`.
-   */
-  uint32_t kind;
-  /**
-   * For `EVENT`: `ALDIS_MAP_REASSEMBLY_EVENT_*`.
-   */
-  uint32_t event;
-  /**
-   * For every kind but `DISCARDED`: the VCID.
-   */
-  uint8_t vc_id;
-  /**
-   * For every kind but `DISCARDED`: the MAP ID.
-   */
-  uint8_t map_id;
-  /**
-   * For `SDU`, `PACKETS`, `STREAM_DATA`: where the delivery is in `out`; for `PACKETS`, each
-   * packet is as long as its own length field says.
-   */
-  aldis_range_t data;
-  /**
-   * For `PACKETS`: how many packets the run holds.
-   */
-  size_t count;
-  /**
-   * For `STREAM_DATA`: 1 when a gap was flagged on the field that carried the octets.
-   */
-  uint8_t after_gap;
-  /**
-   * For `DISCARDED`: the octets of the partial SDUs.
-   */
-  size_t octets;
-} aldis_map_reassembler_action_t;
-
-/**
- * The actions of one input of a `MapReassembler`.
- *
- * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
- */
-typedef struct {
-  /**
-   * The number of actions in `items`, at most `ALDIS_MAP_REASSEMBLER_MAX_ACTIONS`.
-   */
-  size_t count;
-  /**
-   * The actions; those from `count` on are zero.
-   */
-  aldis_map_reassembler_action_t items[ALDIS_MAP_REASSEMBLER_MAX_ACTIONS];
-} aldis_map_reassembler_actions_t;
-
-/**
- * A read-only snapshot of a `MapReassembler` (API-056, LNK-002).
- */
-typedef struct {
-  /**
-   * FDUs taken.
-   */
-  uint64_t fdus_in;
-  /**
-   * SDUs and packets delivered (a run counts each packet).
-   */
-  uint64_t delivered;
-  /**
-   * FDUs refused as unreadable.
-   */
-  uint64_t refused;
-  /**
-   * Events `GAP_DISCARD`.
-   */
-  uint64_t gap_discards;
-  /**
-   * Events `SEQUENCE_VIOLATION`.
-   */
-  uint64_t sequence_violations;
-  /**
-   * Events `UNKNOWN_MAP`.
-   */
-  uint64_t unknown_maps;
-  /**
-   * Events `SDU_TOO_LONG`.
-   */
-  uint64_t sdus_too_long;
-  /**
-   * Octets of partial SDUs discarded by an event or `RECONFIGURE` (LNK-003).
-   */
-  uint64_t discarded_octets;
-  /**
-   * The assembly buffers: the octets of the SDUs in progress.
-   */
-  aldis_link_occupancy_t assembly;
-} aldis_map_reassembler_status_t;
-
-/**
  * A `ChannelMux` in caller storage: the caller declares an object of this type, and the pointer
  * to it is the handle (LNK-030, CABI-031, CABI-032). The words are the library's.
  */
@@ -6870,6 +6646,9 @@ typedef struct {
 /**
  * The managed parameters of a `ChannelMux` (132.0 §5.2; 732.0 §5.2; 732.1 §5.2, §5.3;
  * LNK-030…LNK-035, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -7126,60 +6905,80 @@ typedef struct {
 } aldis_channel_mux_status_t;
 
 /**
- * A `PacketExtractor` in caller storage: the caller declares an object of this type, and the
- * pointer to it is the handle (LNK-060, CABI-031, CABI-032). The words are the library's.
+ * A `MapReassembler` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-070, CABI-031, CABI-032). The words are the library's.
  */
 typedef struct {
   /**
    * The slot of [`handle`]: the tag, then the state.
    */
-  uint64_t words[ALDIS_PACKET_EXTRACTOR_WORDS];
-} aldis_packet_extractor_t;
+  uint64_t words[ALDIS_MAP_REASSEMBLER_WORDS];
+} aldis_map_reassembler_t;
 
 /**
- * The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
- * 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+ * One MAP of a `MapReassembler` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-070,
+ * LNK-073).
  */
 typedef struct {
   /**
-   * The protocol (TM, AOS, or USLP) and its parameters; `vc_id` is not read.
+   * The VCID of the MAP, 0 to 63.
+   */
+  uint8_t vc_id;
+  /**
+   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
+   */
+  uint8_t map_id;
+  /**
+   * `ALDIS_MAP_SERVICE_PACKETS`, `SDU`, or `OCTET_STREAM`.
+   */
+  uint32_t service;
+  /**
+   * The longest SDU or packet of the MAP in octets (LNK-073), from 1 to
+   * `ALDIS_LINK_MAX_FRAME_OCTETS`; ignored for an octet stream.
+   */
+  size_t max_sdu_len;
+} aldis_map_reassembler_map_t;
+
+/**
+ * The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP); the other members of the channel are not used but must be
+   * valid (each MAP names its VC).
    */
   aldis_link_channel_t channel;
   /**
-   * 1 when Space Packets (PVN 0) are valid, else 0.
+   * TC: 1 when the FDUs have a Segment Header, else 0 (every FDU is then whole user data of
+   * MAP 0).
    */
-  uint8_t space_packets;
+  uint8_t tc_segment_header;
   /**
-   * 1 when Encapsulation Packets (PVN 7) are valid, else 0. At least one of the two is 1.
+   * The entries of `maps` in use, 1 to `ALDIS_LINK_MAX_MAP_CHANNELS`.
    */
-  uint8_t encapsulation_packets;
+  size_t map_count;
   /**
-   * The longest packet in octets, at least 1 and at most `ALDIS_LINK_PACKET_QUEUE_OCTETS`.
+   * The MAPs; the first `map_count` are read.
    */
-  size_t max_packet_len;
-  /**
-   * 1 to deliver partial packets flagged incomplete (LNK-061), else 0.
-   */
-  uint8_t deliver_incomplete;
-  /**
-   * 1 to deliver idle packets (LNK-063), else 0.
-   */
-  uint8_t deliver_idle;
-} aldis_packet_extractor_config_t;
+  aldis_map_reassembler_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
+} aldis_map_reassembler_config_t;
 
 /**
- * One input of a `PacketExtractor` (API-057, CABI-040). A field that the kind does not use is
+ * One input of a `MapReassembler` (API-057, CABI-040). A field that the kind does not use is
  * ignored.
  */
 typedef struct {
   /**
-   * `ALDIS_PACKET_EXTRACTOR_INPUT_*`.
+   * `ALDIS_MAP_REASSEMBLER_INPUT_*`.
    */
   uint32_t kind;
   /**
-   * For `DATA_FIELD`: the data field as the `FrameReceiver` delivers it, read once and copied
-   * (API-060). `data` is checked on every kind and must not overlap the storage or `out`:
-   * `NULL` only with `data_len` 0.
+   * For `FDU`: the Frame Data Field with its Segment Header (TC) or the TFDF (USLP), read
+   * once and copied (API-060). `data` is checked on every kind and must not overlap the
+   * storage or `out`: `NULL` only with `data_len` 0.
    */
   const uint8_t *data;
   /**
@@ -7187,117 +6986,119 @@ typedef struct {
    */
   size_t data_len;
   /**
-   * For `DATA_FIELD`: 1 when `header_pointer` is the First Header Pointer of the TM frame
-   * header (TM only; AOS and USLP carry it in `data`), else 0.
+   * For `FDU`: the VCID of the frame.
    */
-  uint8_t header_pointer_present;
+  uint8_t vc_id;
   /**
-   * For `DATA_FIELD`: the First Header Pointer of the TM frame header.
+   * For `FDU`, USLP: the MAP ID of the frame.
    */
-  uint16_t header_pointer;
+  uint8_t map_id;
   /**
-   * For `DATA_FIELD`: 1 when a frame gap was flagged on this field (LNK-051, LNK-061).
+   * For `FDU`, USLP: 1 when a frame gap was flagged on the field (LNK-051), else 0.
    */
   uint8_t gap;
   /**
    * For `RECONFIGURE`: the new configuration.
    */
-  aldis_packet_extractor_config_t config;
-} aldis_packet_extractor_input_t;
+  aldis_map_reassembler_config_t config;
+} aldis_map_reassembler_input_t;
 
 /**
- * One action of a `PacketExtractor` (API-057, API-061). A field that the kind does not use is
- * 0.
+ * One action of a `MapReassembler` (API-057, API-061). A field that the kind does not use is 0.
  */
 typedef struct {
   /**
-   * `ALDIS_PACKET_EXTRACTOR_ACTION_*`.
+   * `ALDIS_MAP_REASSEMBLER_ACTION_*`.
    */
   uint32_t kind;
   /**
-   * For `PACKETS`: where the run of complete packets is in `out`, each as long as its own
-   * length field says; for `INCOMPLETE_PACKET`: where the packet is.
+   * For `EVENT`: `ALDIS_MAP_REASSEMBLY_EVENT_*`.
    */
-  aldis_range_t packets;
+  uint32_t event;
+  /**
+   * For every kind but `DISCARDED`: the VCID.
+   */
+  uint8_t vc_id;
+  /**
+   * For every kind but `DISCARDED`: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `SDU`, `PACKETS`, `STREAM_DATA`: where the delivery is in `out`; for `PACKETS`, each
+   * packet is as long as its own length field says.
+   */
+  aldis_range_t data;
   /**
    * For `PACKETS`: how many packets the run holds.
    */
   size_t count;
   /**
-   * For `INCOMPLETE_PACKET`: the Packet Version Number in the header.
+   * For `STREAM_DATA`: 1 when a gap was flagged on the field that carried the octets.
    */
-  uint8_t pvn;
+  uint8_t after_gap;
   /**
-   * For `DISCARDED`: the octets of the partial packet.
+   * For `DISCARDED`: the octets of the partial SDUs.
    */
   size_t octets;
-  /**
-   * For `ERROR`: `ALDIS_PACKET_EXTRACTOR_ERROR_*`.
-   */
-  uint32_t error;
-} aldis_packet_extractor_action_t;
+} aldis_map_reassembler_action_t;
 
 /**
- * The actions of one input of a `PacketExtractor`.
+ * The actions of one input of a `MapReassembler`.
  *
- * Requirements: LNK-050, LNK-060, LNK-074, CABI-040; docs/04-engines.md §4.
+ * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
  */
 typedef struct {
   /**
-   * The number of actions in `items`, at most `ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS`.
+   * The number of actions in `items`, at most `ALDIS_MAP_REASSEMBLER_MAX_ACTIONS`.
    */
   size_t count;
   /**
    * The actions; those from `count` on are zero.
    */
-  aldis_packet_extractor_action_t items[ALDIS_PACKET_EXTRACTOR_MAX_ACTIONS];
-} aldis_packet_extractor_actions_t;
+  aldis_map_reassembler_action_t items[ALDIS_MAP_REASSEMBLER_MAX_ACTIONS];
+} aldis_map_reassembler_actions_t;
 
 /**
- * A read-only snapshot of a `PacketExtractor` (API-056, LNK-002).
+ * A read-only snapshot of a `MapReassembler` (API-056, LNK-002).
  */
 typedef struct {
   /**
-   * Data fields taken.
+   * FDUs taken.
    */
-  uint64_t fields_in;
+  uint64_t fdus_in;
   /**
-   * Packets returned, incomplete ones included.
+   * SDUs and packets delivered (a run counts each packet).
    */
-  uint64_t packets_out;
+  uint64_t delivered;
   /**
-   * Packets returned flagged incomplete.
+   * FDUs refused as unreadable.
    */
-  uint64_t incomplete_out;
+  uint64_t refused;
   /**
-   * Idle packets seen, whether delivered or dropped (LNK-063).
+   * Events `GAP_DISCARD`.
    */
-  uint64_t idle_packets;
+  uint64_t gap_discards;
   /**
-   * Octets of partial packets discarded (LNK-061).
+   * Events `SEQUENCE_VIOLATION`.
+   */
+  uint64_t sequence_violations;
+  /**
+   * Events `UNKNOWN_MAP`.
+   */
+  uint64_t unknown_maps;
+  /**
+   * Events `SDU_TOO_LONG`.
+   */
+  uint64_t sdus_too_long;
+  /**
+   * Octets of partial SDUs discarded by an event or `RECONFIGURE` (LNK-003).
    */
   uint64_t discarded_octets;
   /**
-   * Fields flagged with a frame gap (LNK-051).
-   */
-  uint64_t gaps;
-  /**
-   * Extraction errors `PacketTooLong` (LNK-062).
-   */
-  uint64_t packet_too_long;
-  /**
-   * Extraction errors `InvalidPvn` (LNK-062).
-   */
-  uint64_t invalid_pvn;
-  /**
-   * Extraction errors `LengthInconsistent` (LNK-061).
-   */
-  uint64_t length_inconsistent;
-  /**
-   * The assembly buffer: the octets of the packet in progress.
+   * The assembly buffers: the octets of the SDUs in progress.
    */
   aldis_link_occupancy_t assembly;
-} aldis_packet_extractor_status_t;
+} aldis_map_reassembler_status_t;
 
 /**
  * A `FrameReceiver` in caller storage: the caller declares an object of this type, and the
@@ -7345,7 +7146,8 @@ typedef struct {
 /**
  * The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
  *
- * A member that the protocol does not use is ignored.
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -7572,6 +7374,230 @@ typedef struct {
    */
   uint64_t count_discontinuities;
 } aldis_frame_receiver_status_t;
+
+/**
+ * A `MapSegmenter` in caller storage: the caller declares an object of this type, and the
+ * pointer to it is the handle (LNK-040, CABI-031, CABI-032). The words are the library's.
+ */
+typedef struct {
+  /**
+   * The slot of [`handle`]: the tag, then the state.
+   */
+  uint64_t words[ALDIS_MAP_SEGMENTER_WORDS];
+} aldis_map_segmenter_t;
+
+/**
+ * One MAP of a `MapSegmenter` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-040, LNK-042).
+ */
+typedef struct {
+  /**
+   * The MAP ID: 0 to 63 on TC, 0 to 15 on USLP.
+   */
+  uint8_t map_id;
+  /**
+   * `ALDIS_MAP_SERVICE_*`: `ANY` on TC; `PACKETS`, `SDU`, or `OCTET_STREAM` on USLP.
+   */
+  uint32_t service;
+  /**
+   * 1 when SDUs longer than one FDU are segmented, else 0 (not for a stream).
+   */
+  uint8_t segmentation;
+  /**
+   * The maximum `MAP_SDU` length when `segmentation` is 1, from 1 to 65 535 and at most the
+   * queue less four octets; ignored otherwise.
+   */
+  size_t max_sdu_len;
+  /**
+   * 1 when packets of the MAP may share an FDU (blocking), else 0 (not for a stream).
+   */
+  uint8_t blocking;
+  /**
+   * USLP: the UPID of the TFDFs of the MAP, 0 to 31 but not "Only Idle Data" (732.1
+   * §4.1.4.2.3).
+   */
+  uint8_t uslp_upid;
+  /**
+   * USLP, `OCTET_STREAM`: the release deadline of a started TFDZ in microseconds (732.1 §5.4
+   * Table 5-3 note 4; LNK-012).
+   */
+  uint64_t release_deadline_us;
+} aldis_map_segmenter_map_t;
+
+/**
+ * The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
+ * LNK-042, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
+ */
+typedef struct {
+  /**
+   * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
+   * channel are not read.
+   */
+  aldis_link_channel_t channel;
+  /**
+   * The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
+   * USLP: at most 65 535).
+   */
+  size_t max_fdu_len;
+  /**
+   * TC: 1 when every FDU has a Segment Header, else 0.
+   */
+  uint8_t tc_segment_header;
+  /**
+   * TC: 1 when the Physical Channel has a FECF, else 0.
+   */
+  uint8_t tc_fecf;
+  /**
+   * TC without a Segment Header: 1 when the packets of the implicit MAP 0 may be blocked.
+   */
+  uint8_t tc_blocking;
+  /**
+   * USLP: the VCF Count Length of sequence-controlled frames, 0 to 7 octets (732.1
+   * §4.1.2.11).
+   */
+  uint8_t uslp_vcf_len_sc;
+  /**
+   * USLP: the VCF Count Length of expedited frames, 0 to 7 octets.
+   */
+  uint8_t uslp_vcf_len_exp;
+  /**
+   * The entries of `maps` in use: none for a TC VC without a Segment Header, else 1 to
+   * `ALDIS_LINK_MAX_MAP_CHANNELS`.
+   */
+  size_t map_count;
+  /**
+   * The MAPs; the first `map_count` are read.
+   */
+  aldis_map_segmenter_map_t maps[ALDIS_LINK_MAX_MAP_CHANNELS];
+} aldis_map_segmenter_config_t;
+
+/**
+ * One input of a `MapSegmenter` (API-057, CABI-040). A field that the kind does not use is
+ * ignored.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_SEGMENTER_INPUT_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `SUBMIT_*`: the packet, SDU, or octets, read once and copied (API-060). `data` is
+   * checked on every kind and must not overlap the storage or `out`: `NULL` only with
+   * `data_len` 0.
+   */
+  const uint8_t *data;
+  /**
+   * The octets at `data`.
+   */
+  size_t data_len;
+  /**
+   * For `SUBMIT_*`: the MAP ID (on a TC VC without a Segment Header, 0).
+   */
+  uint8_t map_id;
+  /**
+   * For `NEXT_FDU`: the handle of the request, echoed in the FDU (API-054).
+   */
+  uint32_t handle;
+  /**
+   * For `NEXT_FDU`: `ALDIS_LINK_QOS_*`; sequence-controlled for FOP-1 `RequestAd`, expedited
+   * for `RequestBd`.
+   */
+  uint32_t qos;
+  /**
+   * For `RECONFIGURE`: the new configuration.
+   */
+  aldis_map_segmenter_config_t config;
+} aldis_map_segmenter_input_t;
+
+/**
+ * One action of a `MapSegmenter` (API-057, API-061). A field that the kind does not use is 0.
+ */
+typedef struct {
+  /**
+   * `ALDIS_MAP_SEGMENTER_ACTION_*`.
+   */
+  uint32_t kind;
+  /**
+   * For `FDU`: the handle of the request.
+   */
+  uint32_t handle;
+  /**
+   * For `FDU`: the VCID of the segmenter.
+   */
+  uint8_t vc_id;
+  /**
+   * For `FDU`: 1 when the FDU has a MAP ID, 0 on a TC VC without a Segment Header.
+   */
+  uint8_t map_present;
+  /**
+   * For `FDU`: the MAP ID.
+   */
+  uint8_t map_id;
+  /**
+   * For `FDU`: `ALDIS_LINK_QOS_*` of the request.
+   */
+  uint32_t qos;
+  /**
+   * For `FDU`: `ALDIS_MAP_FRAMING_*`.
+   */
+  uint32_t framing;
+  /**
+   * For `FDU`: where the FDU or TFDF is in `out`, its header included.
+   */
+  aldis_range_t fdu;
+  /**
+   * For `DISCARDED`: the octets of the unsent queue.
+   */
+  size_t octets;
+} aldis_map_segmenter_action_t;
+
+/**
+ * The actions of one input of a `MapSegmenter`.
+ *
+ * Requirements: LNK-040, LNK-070, LNK-074, CABI-040; docs/04-engines.md §4.
+ */
+typedef struct {
+  /**
+   * The number of actions in `items`, at most `ALDIS_MAP_SEGMENTER_MAX_ACTIONS`.
+   */
+  size_t count;
+  /**
+   * The actions; those from `count` on are zero.
+   */
+  aldis_map_segmenter_action_t items[ALDIS_MAP_SEGMENTER_MAX_ACTIONS];
+} aldis_map_segmenter_actions_t;
+
+/**
+ * A read-only snapshot of a `MapSegmenter` (API-056, LNK-002).
+ */
+typedef struct {
+  /**
+   * Packets, SDUs, and runs of stream octets taken.
+   */
+  uint64_t submitted;
+  /**
+   * FDUs and TFDFs handed out.
+   */
+  uint64_t fdus_out;
+  /**
+   * Inputs refused as invalid.
+   */
+  uint64_t refused;
+  /**
+   * Inputs refused with `WouldBlock` (LNK-015).
+   */
+  uint64_t would_block;
+  /**
+   * Octets discarded by `RECONFIGURE` (LNK-003).
+   */
+  uint64_t discarded_octets;
+  /**
+   * The queue: the unsent user octets.
+   */
+  aldis_link_occupancy_t queue;
+} aldis_map_segmenter_status_t;
 
 /**
  * The sender-chosen Primary Header fields of a packet (133.0 §4.1.3; SPP-001…003).
@@ -10006,164 +10032,6 @@ uint32_t aldis_fop1_status(aldis_fop1_t *h, aldis_fop1_status_t *status, aldis_e
 void aldis_fop1_deinit(aldis_fop1_t *h);
 
 /**
- * Places a `CltuPacker` with no frame held in `storage` (LNK-044; CABI-031, CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg` or a constant that is
- * none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and AOS, (`max_frames_per_unit`) for
- * 0 frames, (`max_unit_len`) for 0 octets; `ALDIS_ERR_CAPACITY_EXCEEDED` (`max_unit_len`) above
- * `ALDIS_LINK_MAX_FRAME_OCTETS`.
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_cltu_packer_t` and outlives its use; `cfg` is
- * valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_cltu_packer_init(aldis_cltu_packer_t *storage,
-                                const aldis_cltu_packer_config_t *cfg,
-                                aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `CltuPacker` (API-057, CABI-040).
- *
- * The frames of a unit go to `out`, which must hold at least twice `max_unit_len` octets for
- * `ADD_FRAME` and `max_unit_len` for `FLUSH` (LNK-075).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
- * is not 0 or 1, a constant that is none, or 0 `repetitions`; for `ADD_FRAME`:
- * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_unit_len`),
- * `ALDIS_ERR_INVALID_FIELD` (`truncated_frame_len`), `ALDIS_ERR_BUFFER_TOO_SMALL`; for
- * `FLUSH`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_cltu_packer_init`, and
- * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
- * and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_cltu_packer_init` whose storage is still valid, or detectably
- * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
- * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
- * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
- * storage (CABI-050).
- */
-uint32_t aldis_cltu_packer_step(aldis_cltu_packer_t *h,
-                                const aldis_cltu_packer_input_t *input,
-                                uint8_t *out,
-                                size_t out_cap,
-                                aldis_cltu_packer_actions_t *actions,
-                                aldis_error_detail_t *err);
-
-/**
- * Reads the counters and the occupancy of the `CltuPacker` (API-056, LNK-002). It changes
- * nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_cltu_packer_step`]; `status` is valid for one write.
- */
-uint32_t aldis_cltu_packer_status(aldis_cltu_packer_t *h,
-                                  aldis_cltu_packer_status_t *status,
-                                  aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_cltu_packer_step`].
- */
-void aldis_cltu_packer_deinit(aldis_cltu_packer_t *h);
-
-/**
- * Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
- * CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
- * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
- * (`valid_pvns`, `max_packet_len`, `field_len`, `idle_packet_kind`) for a value the
- * configuration relations of LNK-078 refuse; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `upid`,
- * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` for a field or packet length above the build
- * capacities (LNK-015).
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_packet_generator_t` and outlives its use; `cfg`
- * is valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_packet_generator_init(aldis_packet_generator_t *storage,
-                                     const aldis_packet_generator_config_t *cfg,
-                                     aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `PacketGenerator` (API-057, CABI-040).
- *
- * `now_us` is the time in microseconds (API-003). The octets of a data field go to `out`.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a
- * constant that is none; for `SUBMIT_PACKET`: `ALDIS_ERR_INVALID_FIELD` (`packet_version`),
- * `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_packet_len`),
- * `ALDIS_ERR_WOULD_BLOCK`; for `RELEASE`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as
- * `aldis_packet_generator_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
- * protocol. The engine is unchanged and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_packet_generator_init` whose storage is still valid, or
- * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
- * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
- * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
- * uses the storage (CABI-050).
- */
-uint32_t aldis_packet_generator_step(aldis_packet_generator_t *h,
-                                     const aldis_packet_generator_input_t *input,
-                                     uint64_t now_us,
-                                     uint8_t *out,
-                                     size_t out_cap,
-                                     aldis_packet_generator_actions_t *actions,
-                                     aldis_error_detail_t *err);
-
-/**
- * Reads the release deadline of the started field (LNK-012, API-053, CABI-040).
- *
- * While a deadline is pending, `armed` is 1 and `deadline_us` the instant in microseconds at
- * which the caller is to feed the `TIMEOUT` input; otherwise both are 0. It changes nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_packet_generator_step`]; `armed` and `deadline_us` are valid for one write
- * each.
- */
-uint32_t aldis_packet_generator_next_deadline(aldis_packet_generator_t *h,
-                                              uint8_t *armed,
-                                              uint64_t *deadline_us,
-                                              aldis_error_detail_t *err);
-
-/**
- * Reads the counters and the occupancy of the `PacketGenerator` (API-056, LNK-002). It changes
- * nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_packet_generator_step`]; `status` is valid for one write.
- */
-uint32_t aldis_packet_generator_status(aldis_packet_generator_t *h,
-                                       aldis_packet_generator_status_t *status,
-                                       aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_packet_generator_step`].
- */
-void aldis_packet_generator_deinit(aldis_packet_generator_t *h);
-
-/**
  * Places an `AccessGenerator` with an empty queue in `storage` (LNK-020; CABI-031, CABI-032).
  *
  * # Errors
@@ -10295,6 +10163,464 @@ uint32_t aldis_bitstream_generator_status(aldis_bitstream_generator_t *h,
 void aldis_bitstream_generator_deinit(aldis_bitstream_generator_t *h);
 
 /**
+ * Places a `CltuPacker` with no frame held in `storage` (LNK-044; CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg` or a constant that is
+ * none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and AOS, (`max_frames_per_unit`) for
+ * 0 frames, (`max_unit_len`) for 0 octets; `ALDIS_ERR_CAPACITY_EXCEEDED` (`max_unit_len`) above
+ * `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_cltu_packer_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_cltu_packer_init(aldis_cltu_packer_t *storage,
+                                const aldis_cltu_packer_config_t *cfg,
+                                aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `CltuPacker` (API-057, CABI-040).
+ *
+ * The frames of a unit go to `out`, which must hold at least twice `max_unit_len` octets for
+ * `ADD_FRAME` and `max_unit_len` for `FLUSH` (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, a constant that is none, or 0 `repetitions`; for `ADD_FRAME`:
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`frame_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_unit_len`),
+ * `ALDIS_ERR_INVALID_FIELD` (`truncated_frame_len`), `ALDIS_ERR_BUFFER_TOO_SMALL`; for
+ * `FLUSH`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_cltu_packer_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_cltu_packer_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_cltu_packer_step(aldis_cltu_packer_t *h,
+                                const aldis_cltu_packer_input_t *input,
+                                uint8_t *out,
+                                size_t out_cap,
+                                aldis_cltu_packer_actions_t *actions,
+                                aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `CltuPacker` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_cltu_packer_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_cltu_packer_status(aldis_cltu_packer_t *h,
+                                  aldis_cltu_packer_status_t *status,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_cltu_packer_step`].
+ */
+void aldis_cltu_packer_deinit(aldis_cltu_packer_t *h);
+
+/**
+ * Places a `PacketExtractor` that has not yet synchronised in `storage` (LNK-060, LNK-061;
+ * CABI-031, CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`valid_pvns`, `max_packet_len`) for a value the configuration relations refuse;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`upid`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`max_packet_len`) above the assembly buffer or below the longest packet header.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_packet_extractor_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_packet_extractor_init(aldis_packet_extractor_t *storage,
+                                     const aldis_packet_extractor_config_t *cfg,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `PacketExtractor` (API-057, CABI-040).
+ *
+ * The octets of the packets go to `out`, which must hold at least `max_packet_len − 1` plus
+ * the octets of the packet zone of the data field (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, a constant that is none, a TM field without a pointer
+ * (`first_header_pointer`); `ALDIS_ERR_MALFORMED` (`first_header_pointer`,
+ * `fhp_lvo_pointer`) for a pointer outside the zone; `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`field_len`) for a data field above `ALDIS_LINK_MAX_FRAME_OCTETS`;
+ * `ALDIS_ERR_BUFFER_TOO_SMALL` for a short `out`; for `RECONFIGURE`: as
+ * `aldis_packet_extractor_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
+ * protocol. The engine is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_packet_extractor_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_packet_extractor_step(aldis_packet_extractor_t *h,
+                                     const aldis_packet_extractor_input_t *input,
+                                     uint8_t *out,
+                                     size_t out_cap,
+                                     aldis_packet_extractor_actions_t *actions,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `PacketExtractor` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_extractor_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_packet_extractor_status(aldis_packet_extractor_t *h,
+                                       aldis_packet_extractor_status_t *status,
+                                       aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_packet_extractor_step`].
+ */
+void aldis_packet_extractor_deinit(aldis_packet_extractor_t *h);
+
+/**
+ * Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`valid_pvns`, `max_packet_len`, `field_len`, `idle_packet_kind`) for a value the
+ * configuration relations of LNK-078 refuse; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `upid`,
+ * `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` for a field or packet length above the build
+ * capacities (LNK-015).
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_packet_generator_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_packet_generator_init(aldis_packet_generator_t *storage,
+                                     const aldis_packet_generator_config_t *cfg,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `PacketGenerator` (API-057, CABI-040).
+ *
+ * `now_us` is the time in microseconds (API-003). The octets of a data field go to `out`.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a
+ * constant that is none; for `SUBMIT_PACKET`: `ALDIS_ERR_INVALID_FIELD` (`packet_version`),
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`), `ALDIS_ERR_OUT_OF_RANGE` (`max_packet_len`),
+ * `ALDIS_ERR_WOULD_BLOCK`; for `RELEASE`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as
+ * `aldis_packet_generator_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
+ * protocol. The engine is unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_packet_generator_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_packet_generator_step(aldis_packet_generator_t *h,
+                                     const aldis_packet_generator_input_t *input,
+                                     uint64_t now_us,
+                                     uint8_t *out,
+                                     size_t out_cap,
+                                     aldis_packet_generator_actions_t *actions,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Reads the release deadline of the started field (LNK-012, API-053, CABI-040).
+ *
+ * While a deadline is pending, `armed` is 1 and `deadline_us` the instant in microseconds at
+ * which the caller is to feed the `TIMEOUT` input; otherwise both are 0. It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`]; `armed` and `deadline_us` are valid for one write
+ * each.
+ */
+uint32_t aldis_packet_generator_next_deadline(aldis_packet_generator_t *h,
+                                              uint8_t *armed,
+                                              uint64_t *deadline_us,
+                                              aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `PacketGenerator` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_packet_generator_status(aldis_packet_generator_t *h,
+                                       aldis_packet_generator_status_t *status,
+                                       aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_packet_generator_step`].
+ */
+void aldis_packet_generator_deinit(aldis_packet_generator_t *h);
+
+/**
+ * Places a `ChannelMux` with no field offered in `storage` (LNK-030, LNK-036; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
+ * (`vc_id`) for a VC listed twice or the OID VC where it is not dedicated, (`vc_priority`) for
+ * equal priorities under fixed priority, (`vc_weight`) for a weight of 0, (`frame_len`) for a
+ * frame that leaves a VC no data field or a TM frame above 4 095 octets, (`ocf_flag`,
+ * `fsh_len`) for an MC and a VC that both have an OCF or a Secondary Header or a Secondary
+ * Header outside 1 to 63 octets, (`insert_zone_len`), (`vcf_count_len`), (`spacecraft_id`)
+ * for an AOS Issue 4 SCID above 255, (`data_field_content`) for a TM role other than
+ * `PACKETS` and `VCA`, (`security_header_len`, `security_trailer_len`) above the limits;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
+ * (`capacity`) for more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs, (`frame_len`) for a frame
+ * above `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_channel_mux_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_channel_mux_init(aldis_channel_mux_t *storage,
+                                const aldis_channel_mux_config_t *cfg,
+                                aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `ChannelMux` (API-057, CABI-040).
+ *
+ * The octets of the frame of `OPPORTUNITY` go to `out`, which must hold at least the frame
+ * length of the configuration (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a flag or
+ * constant that is none; for `OFFER`: `ALDIS_ERR_UNKNOWN_CHANNEL` (also `map_id`),
+ * `ALDIS_ERR_INVALID_FIELD` (`first_header_pointer`, `map_id`, `cop_in_effect`, `qos`,
+ * `protocol_control_command_flag`), `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`),
+ * `ALDIS_ERR_LENGTH_MISMATCH` (`field_len`), `ALDIS_ERR_WOULD_BLOCK` (LNK-076); for `SET_OCF`
+ * and `SET_FSH`: `ALDIS_ERR_UNKNOWN_CHANNEL`, `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`,
+ * `fsh_flag`), `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`); for `SET_INSERT`:
+ * `ALDIS_ERR_INVALID_FIELD`, `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`); for
+ * `OPPORTUNITY`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_channel_mux_init`,
+ * and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is
+ * unchanged and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_channel_mux_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_channel_mux_step(aldis_channel_mux_t *h,
+                                const aldis_channel_mux_input_t *input,
+                                uint8_t *out,
+                                size_t out_cap,
+                                aldis_channel_mux_actions_t *actions,
+                                aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `ChannelMux` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_channel_mux_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_channel_mux_status(aldis_channel_mux_t *h,
+                                  aldis_channel_mux_status_t *status,
+                                  aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_channel_mux_step`].
+ */
+void aldis_channel_mux_deinit(aldis_channel_mux_t *h);
+
+/**
+ * Places a `MapReassembler` with no SDU in progress in `storage` (LNK-070, LNK-073; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and
+ * AOS, (`map_id`) for no MAP or two MAPs of one VC with one MAP ID, (`data_field_content`) for
+ * the service `ANY`, (`max_sdu_len`) for 0; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`);
+ * `ALDIS_ERR_CAPACITY_EXCEEDED` (`map_id`) for more MAPs than `ALDIS_LINK_MAX_MAP_CHANNELS`,
+ * (`max_sdu_len`) above `ALDIS_LINK_MAX_FRAME_OCTETS`.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_map_reassembler_t` and outlives its use; `cfg`
+ * is valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_map_reassembler_init(aldis_map_reassembler_t *storage,
+                                    const aldis_map_reassembler_config_t *cfg,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `MapReassembler` (API-057, CABI-040). The engine has no timer
+ * (API-053), so the call takes no time.
+ *
+ * The octets of the delivery go to `out`, which must hold at least `max_sdu_len − 1` plus the
+ * user data of the FDU (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
+ * is not 0 or 1, or a constant that is none; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); for
+ * `FDU`: the errors of the protocol's reading (`ALDIS_ERR_INVALID_FIELD`
+ * (`frame_data_field`, `tfdz_construction_rule`, `packet_version`), `ALDIS_ERR_MALFORMED`
+ * (`fhp_lvo_pointer`), `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`)), and
+ * `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_map_reassembler_init`, and
+ * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
+ * and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_map_reassembler_init` whose storage is still valid, or
+ * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
+ * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
+ * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
+ * uses the storage (CABI-050).
+ */
+uint32_t aldis_map_reassembler_step(aldis_map_reassembler_t *h,
+                                    const aldis_map_reassembler_input_t *input,
+                                    uint8_t *out,
+                                    size_t out_cap,
+                                    aldis_map_reassembler_actions_t *actions,
+                                    aldis_error_detail_t *err);
+
+/**
+ * Reads the counters and the occupancy of the `MapReassembler` (API-056, LNK-002). It changes
+ * nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_map_reassembler_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_map_reassembler_status(aldis_map_reassembler_t *h,
+                                      aldis_map_reassembler_status_t *status,
+                                      aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_map_reassembler_step`].
+ */
+void aldis_map_reassembler_deinit(aldis_map_reassembler_t *h);
+
+/**
+ * Places a `FrameReceiver` that has seen no frame in `storage` (LNK-050, LNK-051; CABI-031,
+ * CABI-032).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
+ * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame length
+ * that leaves no data field octet, (`vc_id`) for a VC listed twice, (`fsh_len`) outside 2 to 64,
+ * (`data_field_content`) for `BITSTREAM` on TM, (`raw_frames`) without an Insert Zone;
+ * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for
+ * more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs.
+ *
+ * # Safety
+ * `storage` is valid for writes of one `aldis_frame_receiver_t` and outlives its use; `cfg` is
+ * valid for a read; `err` is `NULL` or valid for one write.
+ */
+uint32_t aldis_frame_receiver_init(aldis_frame_receiver_t *storage,
+                                   const aldis_frame_receiver_config_t *cfg,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Runs one input of the `FrameReceiver` (API-057, CABI-040).
+ *
+ * The octets of the delivered parts go to `out`, which must hold at least the frame length of
+ * the configuration (LNK-075).
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
+ * that is none; for `FRAME`: the error of the codec for a frame it refuses (`LengthMismatch`
+ * (`frame_len`), `Malformed`, `ReservedValue`, a failed FECF), then `LengthMismatch`
+ * (`frame_len`), `BufferTooSmall`, `Malformed`, `InvalidField`, `ReservedValue` of the engine
+ * (API-058); for `RAW_FRAME`: `ALDIS_ERR_INVALID_CONFIG` (`raw_frames`) while the option is
+ * off; for `RECONFIGURE`: as `aldis_frame_receiver_init`, and `ALDIS_ERR_INVALID_CONFIG`
+ * (`link_protocol`) for another protocol. The engine is unchanged (an engine error counts as
+ * `refused`) and `actions` is not written.
+ *
+ * # Safety
+ * `h` is a handle from `aldis_frame_receiver_init` whose storage is still valid, or detectably
+ * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
+ * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
+ * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
+ * storage (CABI-050).
+ */
+uint32_t aldis_frame_receiver_step(aldis_frame_receiver_t *h,
+                                   const aldis_frame_receiver_input_t *input,
+                                   uint8_t *out,
+                                   size_t out_cap,
+                                   aldis_frame_receiver_actions_t *actions,
+                                   aldis_error_detail_t *err);
+
+/**
+ * Reads the counters of the `FrameReceiver` (API-056, LNK-002). It changes nothing.
+ *
+ * # Errors
+ * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
+ *
+ * # Safety
+ * As for [`aldis_frame_receiver_step`]; `status` is valid for one write.
+ */
+uint32_t aldis_frame_receiver_status(aldis_frame_receiver_t *h,
+                                     aldis_frame_receiver_status_t *status,
+                                     aldis_error_detail_t *err);
+
+/**
+ * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
+ * invalid handle is ignored.
+ *
+ * # Safety
+ * As for [`aldis_frame_receiver_step`].
+ */
+void aldis_frame_receiver_deinit(aldis_frame_receiver_t *h);
+
+/**
  * Places a `MapSegmenter` with an empty queue in `storage` (LNK-040, LNK-042; CABI-031,
  * CABI-032).
  *
@@ -10387,306 +10713,6 @@ uint32_t aldis_map_segmenter_status(aldis_map_segmenter_t *h,
  * As for [`aldis_map_segmenter_step`].
  */
 void aldis_map_segmenter_deinit(aldis_map_segmenter_t *h);
-
-/**
- * Places a `MapReassembler` with no SDU in progress in `storage` (LNK-070, LNK-073; CABI-031,
- * CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
- * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TM and
- * AOS, (`map_id`) for no MAP or two MAPs of one VC with one MAP ID, (`data_field_content`) for
- * the service `ANY`, (`max_sdu_len`) for 0; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`);
- * `ALDIS_ERR_CAPACITY_EXCEEDED` (`map_id`) for more MAPs than `ALDIS_LINK_MAX_MAP_CHANNELS`,
- * (`max_sdu_len`) above `ALDIS_LINK_MAX_FRAME_OCTETS`.
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_map_reassembler_t` and outlives its use; `cfg`
- * is valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_map_reassembler_init(aldis_map_reassembler_t *storage,
-                                    const aldis_map_reassembler_config_t *cfg,
-                                    aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `MapReassembler` (API-057, CABI-040). The engine has no timer
- * (API-053), so the call takes no time.
- *
- * The octets of the delivery go to `out`, which must hold at least `max_sdu_len − 1` plus the
- * user data of the FDU (LNK-075).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
- * is not 0 or 1, or a constant that is none; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); for
- * `FDU`: the errors of the protocol's reading (`ALDIS_ERR_INVALID_FIELD`
- * (`frame_data_field`, `tfdz_construction_rule`, `packet_version`), `ALDIS_ERR_MALFORMED`
- * (`fhp_lvo_pointer`), `ALDIS_ERR_LENGTH_MISMATCH` (`packet_len`)), and
- * `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_map_reassembler_init`, and
- * `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is unchanged
- * and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_map_reassembler_init` whose storage is still valid, or
- * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
- * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
- * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
- * uses the storage (CABI-050).
- */
-uint32_t aldis_map_reassembler_step(aldis_map_reassembler_t *h,
-                                    const aldis_map_reassembler_input_t *input,
-                                    uint8_t *out,
-                                    size_t out_cap,
-                                    aldis_map_reassembler_actions_t *actions,
-                                    aldis_error_detail_t *err);
-
-/**
- * Reads the counters and the occupancy of the `MapReassembler` (API-056, LNK-002). It changes
- * nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_map_reassembler_step`]; `status` is valid for one write.
- */
-uint32_t aldis_map_reassembler_status(aldis_map_reassembler_t *h,
-                                      aldis_map_reassembler_status_t *status,
-                                      aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_map_reassembler_step`].
- */
-void aldis_map_reassembler_deinit(aldis_map_reassembler_t *h);
-
-/**
- * Places a `ChannelMux` with no field offered in `storage` (LNK-030, LNK-036; CABI-031,
- * CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
- * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
- * (`vc_id`) for a VC listed twice or the OID VC where it is not dedicated, (`vc_priority`) for
- * equal priorities under fixed priority, (`vc_weight`) for a weight of 0, (`frame_len`) for a
- * frame that leaves a VC no data field or a TM frame above 4 095 octets, (`ocf_flag`,
- * `fsh_len`) for an MC and a VC that both have an OCF or a Secondary Header or a Secondary
- * Header outside 1 to 63 octets, (`insert_zone_len`), (`vcf_count_len`), (`spacecraft_id`)
- * for an AOS Issue 4 SCID above 255, (`data_field_content`) for a TM role other than
- * `PACKETS` and `VCA`, (`security_header_len`, `security_trailer_len`) above the limits;
- * `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
- * (`capacity`) for more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs, (`frame_len`) for a frame
- * above `ALDIS_LINK_MAX_FRAME_OCTETS`.
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_channel_mux_t` and outlives its use; `cfg` is
- * valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_channel_mux_init(aldis_channel_mux_t *storage,
-                                const aldis_channel_mux_config_t *cfg,
-                                aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `ChannelMux` (API-057, CABI-040).
- *
- * The octets of the frame of `OPPORTUNITY` go to `out`, which must hold at least the frame
- * length of the configuration (LNK-075).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a flag or
- * constant that is none; for `OFFER`: `ALDIS_ERR_UNKNOWN_CHANNEL` (also `map_id`),
- * `ALDIS_ERR_INVALID_FIELD` (`first_header_pointer`, `map_id`, `cop_in_effect`, `qos`,
- * `protocol_control_command_flag`), `ALDIS_ERR_OUT_OF_RANGE` (`vcf_count`),
- * `ALDIS_ERR_LENGTH_MISMATCH` (`field_len`), `ALDIS_ERR_WOULD_BLOCK` (LNK-076); for `SET_OCF`
- * and `SET_FSH`: `ALDIS_ERR_UNKNOWN_CHANNEL`, `ALDIS_ERR_INVALID_FIELD` (`ocf_flag`,
- * `fsh_flag`), `ALDIS_ERR_LENGTH_MISMATCH` (`fsh_len`); for `SET_INSERT`:
- * `ALDIS_ERR_INVALID_FIELD`, `ALDIS_ERR_LENGTH_MISMATCH` (`insert_zone_len`); for
- * `OPPORTUNITY`: `ALDIS_ERR_BUFFER_TOO_SMALL`; for `RECONFIGURE`: as `aldis_channel_mux_init`,
- * and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another protocol. The engine is
- * unchanged and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_channel_mux_init` whose storage is still valid, or detectably
- * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
- * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
- * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
- * storage (CABI-050).
- */
-uint32_t aldis_channel_mux_step(aldis_channel_mux_t *h,
-                                const aldis_channel_mux_input_t *input,
-                                uint8_t *out,
-                                size_t out_cap,
-                                aldis_channel_mux_actions_t *actions,
-                                aldis_error_detail_t *err);
-
-/**
- * Reads the counters and the occupancy of the `ChannelMux` (API-056, LNK-002). It changes
- * nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_channel_mux_step`]; `status` is valid for one write.
- */
-uint32_t aldis_channel_mux_status(aldis_channel_mux_t *h,
-                                  aldis_channel_mux_status_t *status,
-                                  aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_channel_mux_step`].
- */
-void aldis_channel_mux_deinit(aldis_channel_mux_t *h);
-
-/**
- * Places a `PacketExtractor` that has not yet synchronised in `storage` (LNK-060, LNK-061;
- * CABI-031, CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
- * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for TC,
- * (`valid_pvns`, `max_packet_len`) for a value the configuration relations refuse;
- * `ALDIS_ERR_OUT_OF_RANGE` (`upid`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED`
- * (`max_packet_len`) above the assembly buffer or below the longest packet header.
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_packet_extractor_t` and outlives its use; `cfg`
- * is valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_packet_extractor_init(aldis_packet_extractor_t *storage,
-                                     const aldis_packet_extractor_config_t *cfg,
-                                     aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `PacketExtractor` (API-057, CABI-040).
- *
- * The octets of the packets go to `out`, which must hold at least `max_packet_len − 1` plus
- * the octets of the packet zone of the data field (LNK-075).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation, a flag that
- * is not 0 or 1, a constant that is none, a TM field without a pointer
- * (`first_header_pointer`); `ALDIS_ERR_MALFORMED` (`first_header_pointer`,
- * `fhp_lvo_pointer`) for a pointer outside the zone; `ALDIS_ERR_CAPACITY_EXCEEDED`
- * (`field_len`) for a data field above `ALDIS_LINK_MAX_FRAME_OCTETS`;
- * `ALDIS_ERR_BUFFER_TOO_SMALL` for a short `out`; for `RECONFIGURE`: as
- * `aldis_packet_extractor_init`, and `ALDIS_ERR_INVALID_CONFIG` (`link_protocol`) for another
- * protocol. The engine is unchanged and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_packet_extractor_init` whose storage is still valid, or
- * detectably invalid storage; `input` is valid for a read, and its `data` for `data_len`
- * octets; `out` is valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0);
- * `actions` is valid for one write; `err` is `NULL` or valid for one write. No other thread
- * uses the storage (CABI-050).
- */
-uint32_t aldis_packet_extractor_step(aldis_packet_extractor_t *h,
-                                     const aldis_packet_extractor_input_t *input,
-                                     uint8_t *out,
-                                     size_t out_cap,
-                                     aldis_packet_extractor_actions_t *actions,
-                                     aldis_error_detail_t *err);
-
-/**
- * Reads the counters and the occupancy of the `PacketExtractor` (API-056, LNK-002). It changes
- * nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_packet_extractor_step`]; `status` is valid for one write.
- */
-uint32_t aldis_packet_extractor_status(aldis_packet_extractor_t *h,
-                                       aldis_packet_extractor_status_t *status,
-                                       aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_packet_extractor_step`].
- */
-void aldis_packet_extractor_deinit(aldis_packet_extractor_t *h);
-
-/**
- * Places a `FrameReceiver` that has seen no frame in `storage` (LNK-050, LNK-051; CABI-031,
- * CABI-032).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0
- * or 1, or a constant that is none; `ALDIS_ERR_INVALID_CONFIG` (`frame_len`) for a frame length
- * that leaves no data field octet, (`vc_id`) for a VC listed twice, (`fsh_len`) outside 2 to 64,
- * (`data_field_content`) for `BITSTREAM` on TM, (`raw_frames`) without an Insert Zone;
- * `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `map_id`); `ALDIS_ERR_CAPACITY_EXCEEDED` (`vc_id`) for
- * more than `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs.
- *
- * # Safety
- * `storage` is valid for writes of one `aldis_frame_receiver_t` and outlives its use; `cfg` is
- * valid for a read; `err` is `NULL` or valid for one write.
- */
-uint32_t aldis_frame_receiver_init(aldis_frame_receiver_t *storage,
-                                   const aldis_frame_receiver_config_t *cfg,
-                                   aldis_error_detail_t *err);
-
-/**
- * Runs one input of the `FrameReceiver` (API-057, CABI-040).
- *
- * The octets of the delivered parts go to `out`, which must hold at least the frame length of
- * the configuration (LNK-075).
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation or a constant
- * that is none; for `FRAME`: the error of the codec for a frame it refuses (`LengthMismatch`
- * (`frame_len`), `Malformed`, `ReservedValue`, a failed FECF), then `LengthMismatch`
- * (`frame_len`), `BufferTooSmall`, `Malformed`, `InvalidField`, `ReservedValue` of the engine
- * (API-058); for `RAW_FRAME`: `ALDIS_ERR_INVALID_CONFIG` (`raw_frames`) while the option is
- * off; for `RECONFIGURE`: as `aldis_frame_receiver_init`, and `ALDIS_ERR_INVALID_CONFIG`
- * (`link_protocol`) for another protocol. The engine is unchanged (an engine error counts as
- * `refused`) and `actions` is not written.
- *
- * # Safety
- * `h` is a handle from `aldis_frame_receiver_init` whose storage is still valid, or detectably
- * invalid storage; `input` is valid for a read, and its `data` for `data_len` octets; `out` is
- * valid for `out_cap` octets of writes (it may be `NULL` when `out_cap` is 0); `actions` is
- * valid for one write; `err` is `NULL` or valid for one write. No other thread uses the
- * storage (CABI-050).
- */
-uint32_t aldis_frame_receiver_step(aldis_frame_receiver_t *h,
-                                   const aldis_frame_receiver_input_t *input,
-                                   uint8_t *out,
-                                   size_t out_cap,
-                                   aldis_frame_receiver_actions_t *actions,
-                                   aldis_error_detail_t *err);
-
-/**
- * Reads the counters of the `FrameReceiver` (API-056, LNK-002). It changes nothing.
- *
- * # Errors
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for a CABI-022 violation.
- *
- * # Safety
- * As for [`aldis_frame_receiver_step`]; `status` is valid for one write.
- */
-uint32_t aldis_frame_receiver_status(aldis_frame_receiver_t *h,
-                                     aldis_frame_receiver_status_t *status,
-                                     aldis_error_detail_t *err);
-
-/**
- * Releases the storage: later calls on it fail with `ALDIS_ERR_INVALID_HANDLE` (CABI-032). An
- * invalid handle is ignored.
- *
- * # Safety
- * As for [`aldis_frame_receiver_step`].
- */
-void aldis_frame_receiver_deinit(aldis_frame_receiver_t *h);
 
 /**
  * Classifies the four OCF octets at `ocf` by bits 0–1 (CMN-010).

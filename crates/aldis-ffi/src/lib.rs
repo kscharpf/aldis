@@ -44,12 +44,6 @@ pub mod field;
 pub mod fop1;
 pub mod handle;
 pub mod link;
-pub mod link_cltu;
-mod link_common;
-pub mod link_gen;
-pub mod link_map;
-pub mod link_mux;
-pub mod link_rx;
 mod mirror;
 pub mod ocf;
 pub mod oid;
@@ -71,7 +65,7 @@ pub use error::{ALDIS_OK, aldis_error_detail_t};
 /// ABI major version; changes on any ABI-breaking change (CABI-060).
 pub const ALDIS_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version (CABI-060).
-pub const ALDIS_ABI_VERSION_MINOR: u32 = 12;
+pub const ALDIS_ABI_VERSION_MINOR: u32 = 13;
 /// ABI patch version (CABI-060).
 pub const ALDIS_ABI_VERSION_PATCH: u32 = 0;
 /// The ABI version in one word (CABI-060).

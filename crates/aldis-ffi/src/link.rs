@@ -18,6 +18,17 @@ use crate::abi::flag;
 use crate::aos::aldis_aos_edition;
 use crate::mirror::{mirror, parse};
 
+pub mod access;
+pub mod bitstream;
+pub mod cltu;
+pub mod common;
+pub mod extractor;
+pub mod generator;
+pub mod mux;
+pub mod reassembler;
+pub mod receiver;
+pub mod segmenter;
+
 /// The frame protocol of a link engine (LNK-001).
 ///
 /// A `uint32_t` field is one of the enumerators below; the type itself is not a field type of
@@ -47,6 +58,17 @@ mirror!(pub aldis_link_protocol: u32 {
     ALDIS_LINK_PROTOCOL_AOS,
     ALDIS_LINK_PROTOCOL_USLP
 });
+
+/// The discriminant of the engine variant of a protocol: the protocol's own constant, so that the
+/// tag of an engine enum is named for the protocol it serves, never numbered by hand (CABI-040).
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "the constants of `aldis_link_protocol` are 0 to 3"
+)]
+pub(crate) const fn protocol_tag(p: aldis_link_protocol) -> u8 {
+    p as u32 as u8
+}
 
 /// The quality of service of a USLP MAP (732.1 §4.1.2.8; LNK-043).
 ///
@@ -123,8 +145,9 @@ mirror!(pub aldis_link_idle_packet: u32 {
 /// The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
 /// first member of every link engine configuration.
 ///
-/// `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
-/// only; the others do not use them, but each must be valid (`protocol`).
+/// Zero-initialize the struct before setting members. `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
+/// `uslp_map`, and `uslp_qos` for USLP only. A member of another protocol is not read, so it may
+/// hold any value (CABI-040; OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_link_channel_t {
@@ -183,25 +206,12 @@ impl From<Option<Route>> for RouteFields {
     }
 }
 
-/// The protocol of `channel` (LNK-001), after every member of the channel has been read.
-///
-/// The members of the other protocols are read whatever the protocol (CABI-040), as the members
-/// of a configuration are: `aos_edition`, `uslp_upid`, `uslp_map`, and `uslp_qos` each must be
-/// valid, so a caller cannot hide an invalid value behind the protocol that ignores it.
+/// The protocol of `channel` (LNK-001): the tag that says which members of the configuration are
+/// read. A member of another protocol is not read (CABI-040; OI-92).
 ///
 /// # Errors
-/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_PROTOCOL_*` constant, an
-/// `aos_edition` or `uslp_qos` that is no constant; `OutOfRange` (`upid`, `map_id`) for a
-/// `uslp_upid` above 31 or a `uslp_map` above 15.
+/// `InvalidField` (no field) for a value that is no `ALDIS_LINK_PROTOCOL_*` constant.
 pub(crate) fn protocol(channel: &aldis_link_channel_t) -> Result<aldis_link_protocol> {
-    parse::<aldis_aos_edition>(channel.aos_edition)?;
-    Upid::from_bits(channel.uslp_upid).ok_or(Error::out_of_range(
-        field::UPID,
-        31,
-        u64::from(channel.uslp_upid),
-    ))?;
-    MapId::<4>::try_from(channel.uslp_map)?;
-    qos(channel.uslp_qos)?;
     parse::<aldis_link_protocol>(channel.protocol)
 }
 
