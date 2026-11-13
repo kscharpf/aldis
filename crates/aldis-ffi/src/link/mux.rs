@@ -837,31 +837,37 @@ fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
 
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
-    // Only the first `vc_count` entries are read, each once, before the channel: the codec's
-    // configuration of a VC needs the channel, so the parsed entries are kept and built from
-    // after it (D6 of the M6 plan keeps the order of the refusals).
-    let mut raws: [Option<RawVc<P>>; V] = [None; V];
-    for (slot, vc) in raws.iter_mut().zip(&c.vcs).take(c.vc_count) {
-        *slot = Some(mx_read::<P>(vc)?);
+    // Only the first `vc_count` entries are read, each once, and the codec's configuration of an
+    // entry is built into its slot as soon as it is read, so that no array of parsed entries is
+    // held. The refusals keep their order (D6 of the M6 plan): those of every entry's members
+    // first, then the channel's, the policy's, the capacity's, and last those of building the
+    // entries, which the first of the entries gives (`deferred`).
+    let channel = P::channel(c);
+    let mut entries: Option<[VcConfig<P>; V]> = None;
+    let mut deferred: Option<Error> = None;
+    for (index, vc) in c.vcs.iter().enumerate().take(c.vc_count) {
+        let raw = mx_read::<P>(vc)?;
+        let Ok(channel) = &channel else { continue };
+        if deferred.is_some() {
+            continue;
+        }
+        match (mx_vc::<P>(channel, &raw), entries.as_mut()) {
+            (Err(e), _) => deferred = Some(e),
+            (Ok(built), None) => entries = Some([built; V]),
+            (Ok(built), Some(array)) => {
+                if let Some(slot) = array.get_mut(index) {
+                    *slot = built;
+                }
+            }
+        }
     }
-    let channel = P::channel(c)?;
+    let channel = channel?;
     let policy = policy(c.policy)?;
     if c.vc_count > V {
         return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY));
     }
-    // The first entry fills the array; without an entry there is nothing to list.
-    let first = raws
-        .first()
-        .copied()
-        .flatten()
-        .filter(|_| c.vc_count > 0)
-        .map(|raw| mx_vc::<P>(&channel, &raw))
-        .transpose()?;
-    let mut entries = first.map(|filler| [filler; V]);
-    if let Some(array) = entries.as_mut() {
-        for (dst, raw) in array.iter_mut().zip(raws.iter().flatten()) {
-            *dst = mx_vc::<P>(&channel, raw)?;
-        }
+    if let Some(e) = deferred {
+        return Err(e);
     }
     let listed = match &entries {
         None => &[],
@@ -1080,6 +1086,26 @@ impl ChannelMuxState {
     }
 }
 
+/// Builds the engine of the protocol `P` from `cfg` in `storage`. Not inlined: each protocol's head
+/// is a temporary of its own call, so the stack of `aldis_channel_mux_init` holds the largest one,
+/// not the sum of the three (VER-011).
+///
+/// # Safety
+/// As for `handle::init_with`.
+#[expect(unsafe_code, reason = "initializes caller storage in place (GEN-071)")]
+#[inline(never)]
+unsafe fn mx_init<P: MxProtocol>(
+    storage: *mut aldis_channel_mux_t,
+    cfg: &aldis_channel_mux_config_t,
+) -> Result<()>
+where
+    ChannelMuxState: handle::Variant<Mx<P>>,
+{
+    let head = Mx::<P>::new_head(mx_config::<P>(cfg)?)?;
+    // SAFETY: forwarded from the caller.
+    unsafe { handle::init_variant::<_, Mx<P>>(storage, head) }
+}
+
 /// Places a `ChannelMux` with no field offered in `storage` (LNK-030, LNK-036; CABI-031,
 /// CABI-032).
 ///
@@ -1115,20 +1141,9 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match parse::<aldis_link_protocol>(cfg.protocol)? {
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Mx<Tm>>(
-                    storage,
-                    Mx::new_head(mx_config::<Tm>(&cfg)?)?,
-                ),
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Mx<Aos>>(
-                    storage,
-                    Mx::new_head(mx_config::<Aos>(&cfg)?)?,
-                ),
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-                    handle::init_variant::<_, Mx<Uslp>>(
-                        storage,
-                        Mx::new_head(mx_config::<Uslp>(&cfg)?)?,
-                    )
-                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => mx_init::<Tm>(storage, &cfg),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => mx_init::<Aos>(storage, &cfg),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => mx_init::<Uslp>(storage, &cfg),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
             }
         })
