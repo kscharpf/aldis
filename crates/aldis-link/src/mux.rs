@@ -832,7 +832,7 @@ pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
 ///
 /// All zero is the empty state of the slots and the counts. The Insert Zone slot starts at the
 /// configured idle pattern (LNK-034): [`with_idle`](Self::with_idle) builds the buffers that
-/// way. An in-place build zeroes the buffers and then calls [`ChannelMux::init_slots`].
+/// way. An in-place build zeroes the buffers and then calls [`ChannelMux::place_slots`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
     slots: [[u8; F]; V],
@@ -929,15 +929,20 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
 
     /// Puts every slot at its configured value (LNK-033, LNK-034): the head's OCF and Secondary
     /// Header slots, and the Insert Zone slot at the idle pattern.
-    ///
-    /// Public because the in-place build of `aldis-ffi` calls it on the engine it has zeroed (the
-    /// buffers are private); it only restores the state `new` makes, so it cannot break an
-    /// invariant (CABI-040).
-    ///
-    /// Requirements: LNK-033, LNK-034, CABI-040; docs/04-engines.md §2.4.
-    pub fn init_slots(&mut self) {
+    fn init_slots(&mut self) {
         self.head.init_slots();
         self.bufs.insert.fill(self.head.config.idle_pattern);
+    }
+
+    /// [`init_slots`](Self::init_slots) for in-place construction only (CABI-040): `aldis-ffi`
+    /// calls it on the engine it has zeroed and given its head, whose buffers are private.
+    /// Calling it on a running mux resets the caller's OCF slots and the Insert Zone to their
+    /// configured values.
+    ///
+    /// Requirements: LNK-033, LNK-034, CABI-040; docs/04-engines.md §2.4.
+    #[doc(hidden)]
+    pub fn place_slots(&mut self) {
+        self.init_slots();
     }
 
     fn check_capacity(config: &ChannelMuxConfig<P, V>) -> Result<()> {

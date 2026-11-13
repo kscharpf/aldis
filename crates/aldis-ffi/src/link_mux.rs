@@ -951,7 +951,7 @@ unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for Channe
 
     /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
     fn finish_place(&mut self) {
-        self.init_slots();
+        self.place_slots();
     }
 }
 
