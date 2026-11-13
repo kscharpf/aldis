@@ -884,8 +884,6 @@ pub struct aldis_frame_receiver_vc_t {
 
 /// The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
 ///
-/// A member that the protocol does not use is ignored.
-///
 /// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
 /// read is ignored (OI-92).
 #[repr(C)]
