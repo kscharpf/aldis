@@ -26,9 +26,9 @@ use aldis::core::time::{Duration, Instant};
 use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::tc::{Clcw, PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_FOP1_MAX_FRAME_OCTETS, ALDIS_FOP1_SENT_QUEUE_FRAMES};
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -814,7 +814,7 @@ pub unsafe extern "C" fn aldis_fop1_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             let engine = Engine::new(config(&cfg)?)?;
-            handle::init_with(storage, |state: *mut Fop1State| place(state, engine))
+            handle::init_engine(storage, engine)
         })
     }
 }
@@ -827,6 +827,48 @@ pub unsafe extern "C" fn aldis_fop1_init(
 unsafe fn engine(h: *mut aldis_fop1_t) -> Result<handle::Handle<Fop1State>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(aldis_fop1_t, aldis_fop1_input_t, aldis_fop1_actions_t);
+
+impl handle::TimedStep for aldis_fop1_t {
+    #[expect(
+        unsafe_code,
+        reason = "writes the actions in place, a struct too large for the stack twice (CABI-040, GEN-071)"
+    )]
+    fn step(
+        state: &mut Fop1State,
+        input: &aldis_fop1_input_t,
+        now: Instant,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_fop1_actions_t>,
+    ) -> Result<()> {
+        let input = engine_input(input, data)?;
+        // Decide, then commit, in place: an error of `decide` leaves the state as it was, and
+        // `commit` cannot fail (API-058, CABI-040).
+        let decision = state.engine.decide(&state.store, input, now, area)?;
+        let list = state.engine.commit(&mut state.store, decision);
+        // Written in place: the struct is 1.7 KB, too much for the stack budget twice
+        // (CABI-040). Items from `count` on are zero.
+        let dest = actions.as_ptr();
+        // SAFETY: `abi::out_disjoint` checked that `dest` is non-null, aligned, and not
+        // overlapping any buffer of the call; the caller made it valid for a write of one
+        // `aldis_fop1_actions_t`. Only raw field pointers are used, and each item is written
+        // once, within the array, so no reference to uninitialized memory is made.
+        unsafe {
+            (&raw mut (*dest).count).write(list.len());
+            let items = (&raw mut (*dest).items).cast::<aldis_fop1_action_t>();
+            // `list` holds at most `ALDIS_FOP1_MAX_ACTIONS` actions, the length of `items`.
+            for i in 0..ALDIS_FOP1_MAX_ACTIONS {
+                items.add(i).write(
+                    list.get(i)
+                        .map_or_else(aldis_fop1_action_t::default, action),
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Applies one input to FOP-1 and returns the actions of its cell (232.1 §5.3, Table 5-1;
@@ -866,54 +908,8 @@ pub unsafe extern "C" fn aldis_fop1_step(
     actions: *mut aldis_fop1_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = engine(h)?;
-            // The input struct is copied; the buffers of the call are checked against each other
-            // and against the storage that `update` lends as `&mut` (CABI-022, c-abi.md §12.2).
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let input = engine_input(&value, data)?;
-            // Decide, then commit, in place: an error of `decide` leaves the state as it was, and
-            // `commit` cannot fail (API-058, CABI-040).
-            let list = h.update(|state| {
-                let decision =
-                    state
-                        .engine
-                        .decide(&state.store, input, Instant::from_micros(now_us), area)?;
-                Ok::<_, Error>(state.engine.commit(&mut state.store, decision))
-            })?;
-            // Written in place: the struct is 1.7 KB, too much for the stack budget twice
-            // (CABI-040). Items from `count` on are zero.
-            let dest = actions.as_ptr();
-            // SAFETY: `abi::out_disjoint` checked that `dest` is non-null, aligned, and not
-            // overlapping any buffer of the call; the caller made it valid for a write of one
-            // `aldis_fop1_actions_t`. Only raw field pointers are used, and each item is written
-            // once, within the array, so no reference to uninitialized memory is made.
-            {
-                (&raw mut (*dest).count).write(list.len());
-                let items = (&raw mut (*dest).items).cast::<aldis_fop1_action_t>();
-                // `list` holds at most `ALDIS_FOP1_MAX_ACTIONS` actions, the length of `items`.
-                for i in 0..ALDIS_FOP1_MAX_ACTIONS {
-                    items.add(i).write(
-                        list.get(i)
-                            .map_or_else(aldis_fop1_action_t::default, action),
-                    );
-                }
-            }
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step_timed::<aldis_fop1_t>(h, input, now_us, out, out_cap, actions, err) }
 }
 
 /// Reads the deadline of timer T1 (232.1 §5.1.9; COP-013, API-053, CABI-040).

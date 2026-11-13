@@ -48,6 +48,17 @@ mirror!(pub aldis_link_protocol: u32 {
     ALDIS_LINK_PROTOCOL_USLP
 });
 
+/// The discriminant of the engine variant of a protocol: the protocol's own constant, so that the
+/// tag of an engine enum is named for the protocol it serves, never numbered by hand (CABI-040).
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "the constants of `aldis_link_protocol` are 0 to 3"
+)]
+pub(crate) const fn protocol_tag(p: aldis_link_protocol) -> u8 {
+    p as u32 as u8
+}
+
 /// The quality of service of a USLP MAP (732.1 §4.1.2.8; LNK-043).
 ///
 /// A `uint32_t` field is one of the enumerators below; the type itself is not a field type of

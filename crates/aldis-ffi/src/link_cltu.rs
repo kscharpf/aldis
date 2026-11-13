@@ -25,14 +25,14 @@ use aldis::link::cltu::{
 };
 use aldis::link::protocol::{Tc, Uslp};
 
-use crate::abi::{self, flag, invalid_argument};
+use crate::abi::{self, Out, flag, invalid_argument};
 use crate::capacities::ALDIS_LINK_MAX_FRAME_OCTETS;
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, qos,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, protocol_tag, qos,
     unsupported_protocol,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -54,19 +54,18 @@ const _: () =
 
 type Cp<P> = CltuPacker<P, U>;
 
-/// The `CltuPacker` of the protocol chosen at `aldis_cltu_packer_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_cltu_packer_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum CltuPackerState {
-    /// TC.
-    Tc(Cp<Tc>) = 0,
-    /// USLP.
-    Uslp(Cp<Uslp>) = 1,
+handle::engine_enum! {
+    /// The `CltuPacker` of the protocol chosen at `aldis_cltu_packer_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum CltuPackerState {
+        /// TC.
+        Tc(Cp<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
+        /// USLP.
+        Uslp(Cp<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_cltu_packer_input_t` (LNK-044, LNK-003; API-057).
@@ -226,25 +225,6 @@ const fn cp_config<P: CltuProtocol>(c: &aldis_cltu_packer_config_t) -> Result<Cl
     CltuPackerConfig::<P>::new(c.max_frames, c.max_unit_len)
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum CpHead {
-    Tc(CltuPackerHead<Tc>),
-    Uslp(CltuPackerHead<Uslp>),
-}
-
-fn cp_head(c: &aldis_cltu_packer_config_t) -> Result<CpHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => {
-            Ok(CpHead::Tc(Cp::new_head(cp_config::<Tc>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            Ok(CpHead::Uslp(Cp::new_head(cp_config::<Uslp>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
-        | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -256,28 +236,6 @@ unsafe impl<P: CltuProtocol, const NU: usize> InPlace for CltuPacker<P, NU> {
     type Buffers = CltuPackerBuffers<NU>;
     const HEAD_OFFSET: usize = <CltuPacker<P, NU>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <CltuPacker<P, NU>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `CltuPackerState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn cp_place(state: *mut CltuPackerState, head: CpHead) {
-    match head {
-        CpHead::Tc(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Cp<Tc>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        CpHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Cp<Uslp>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -384,9 +342,20 @@ pub unsafe extern "C" fn aldis_cltu_packer_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = cp_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| cp_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Cp<Tc>>(
+                    storage,
+                    Cp::new_head(cp_config::<Tc>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Cp<Uslp>>(
+                        storage,
+                        Cp::new_head(cp_config::<Uslp>(&cfg)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -399,6 +368,32 @@ pub unsafe extern "C" fn aldis_cltu_packer_init(
 unsafe fn cp_engine(h: *mut aldis_cltu_packer_t) -> Result<handle::Handle<CltuPackerState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_cltu_packer_t,
+    aldis_cltu_packer_input_t,
+    aldis_cltu_packer_actions_t
+);
+
+impl handle::Step for aldis_cltu_packer_t {
+    fn step(
+        state: &mut CltuPackerState,
+        input: &aldis_cltu_packer_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_cltu_packer_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, area)?;
+        let mut result = aldis_cltu_packer_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = cp_action(output);
+        }
+        // `list` holds at most `CLTU_PACKER_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `CltuPacker` (API-057, CABI-040).
@@ -434,32 +429,8 @@ pub unsafe extern "C" fn aldis_cltu_packer_step(
     actions: *mut aldis_cltu_packer_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = cp_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|state| state.step(&value, data, area))?;
-            let mut result = aldis_cltu_packer_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = cp_action(output);
-            }
-            // `list` holds at most `CLTU_PACKER_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_cltu_packer_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `CltuPacker` (API-056, LNK-002). It changes

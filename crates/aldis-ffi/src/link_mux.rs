@@ -46,14 +46,14 @@ use aldis::uslp::{
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol, qos,
-    unsupported_protocol,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
+    protocol_tag, qos, unsupported_protocol,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::link_rx::{aldis_link_content, aldis_link_scope};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -78,22 +78,21 @@ const _: () =
 
 type Mx<P> = ChannelMux<P, V, F>;
 
-/// The `ChannelMux` of the protocol chosen at `aldis_channel_mux_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_channel_mux_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    clippy::large_enum_variant,
-    reason = "the variants are written in place by the init function, not constructed; the storage holds the largest"
-)]
-pub(crate) enum ChannelMuxState {
-    /// TM.
-    Tm(Mx<Tm>) = 0,
-    /// AOS.
-    Aos(Mx<Aos>) = 1,
-    /// USLP.
-    Uslp(Mx<Uslp>) = 2,
+handle::engine_enum! {
+    /// The `ChannelMux` of the protocol chosen at `aldis_channel_mux_init` (LNK-001).
+    #[expect(
+        dead_code,
+        clippy::large_enum_variant,
+        reason = "the variants are written in place by the init function, not constructed; the storage holds the largest"
+    )]
+    pub(crate) enum ChannelMuxState {
+        /// TM.
+        Tm(Mx<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
+        /// AOS.
+        Aos(Mx<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
+        /// USLP.
+        Uslp(Mx<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The multiplexing policy of a `ChannelMux` (LNK-031).
@@ -911,32 +910,6 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
     Ok(config)
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-#[expect(
-    clippy::large_enum_variant,
-    reason = "a temporary of one call; the largest head is 2.8 KB, within the C ABI stack budget"
-)]
-enum MxHead {
-    Tm(ChannelMuxHead<Tm, V>),
-    Aos(ChannelMuxHead<Aos, V>),
-    Uslp(ChannelMuxHead<Uslp, V>),
-}
-
-fn mx_head(c: &aldis_channel_mux_config_t) -> Result<MxHead> {
-    match parse::<aldis_link_protocol>(c.protocol)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(MxHead::Tm(Mx::new_head(mx_config::<Tm>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            Ok(MxHead::Aos(Mx::new_head(mx_config::<Aos>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            Ok(MxHead::Uslp(Mx::new_head(mx_config::<Uslp>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -952,35 +925,6 @@ unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for Channe
     /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
     fn finish_place(&mut self) {
         self.place_slots();
-    }
-}
-
-/// Builds the engine of `head` at `state`, in place (#240); the Insert Zone slot starts at the
-/// idle pattern of the head's configuration (`InPlace::finish_place`).
-///
-/// # Safety
-/// `state` is valid for writes of one `ChannelMuxState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead) {
-    match head {
-        MxHead::Tm(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        MxHead::Aos(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        MxHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
     }
 }
 
@@ -1204,9 +1148,23 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = mx_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| mx_place(state, head))
+            match parse::<aldis_link_protocol>(cfg.protocol)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Mx<Tm>>(
+                    storage,
+                    Mx::new_head(mx_config::<Tm>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Mx<Aos>>(
+                    storage,
+                    Mx::new_head(mx_config::<Aos>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Mx<Uslp>>(
+                        storage,
+                        Mx::new_head(mx_config::<Uslp>(&cfg)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -1219,6 +1177,25 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
 unsafe fn mx_engine(h: *mut aldis_channel_mux_t) -> Result<handle::Handle<ChannelMuxState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_channel_mux_t,
+    aldis_channel_mux_input_t,
+    aldis_channel_mux_actions_t
+);
+
+impl handle::Step for aldis_channel_mux_t {
+    fn step(
+        state: &mut ChannelMuxState,
+        input: &aldis_channel_mux_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_channel_mux_actions_t>,
+    ) -> Result<()> {
+        actions.write(state.step(input, data, area)?);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `ChannelMux` (API-057, CABI-040).
@@ -1258,26 +1235,8 @@ pub unsafe extern "C" fn aldis_channel_mux_step(
     actions: *mut aldis_channel_mux_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = mx_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let result = h.update(|state| state.step(&value, data, area))?;
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_channel_mux_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `ChannelMux` (API-056, LNK-002). It changes

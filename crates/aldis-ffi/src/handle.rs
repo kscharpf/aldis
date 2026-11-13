@@ -25,9 +25,11 @@
 
 use core::ptr::NonNull;
 
+use aldis::core::time::Instant;
 use aldis::core::{Error, ErrorKind, Result};
 
-use crate::abi::invalid_argument;
+use crate::abi::{self, Out, invalid_argument};
+use crate::error::aldis_error_detail_t;
 
 /// The slot layout version, part of every tag: storage that another layout initialized is
 /// foreign (CABI-032).
@@ -270,6 +272,269 @@ pub(crate) unsafe fn place<E: InPlace>(engine: *mut E, head: E::Head) {
             .cast::<E::Head>()
             .write(head);
         (*engine).finish_place();
+    }
+}
+
+/// Builds the engine of the single-engine helper `S` in `storage` from its head, in place
+/// (CABI-031, CABI-040): [`init_with`] and [`place`].
+///
+/// # Errors
+/// As for [`init_with`].
+///
+/// # Safety
+/// As for [`init_with`].
+#[expect(unsafe_code, reason = "initializes caller storage in place (GEN-071)")]
+pub(crate) unsafe fn init_engine<S: Storage>(
+    storage: *mut S,
+    head: <S::State as InPlace>::Head,
+) -> Result<()>
+where
+    S::State: InPlace,
+{
+    // SAFETY: `init_with` passes a pointer to the state in the slot, valid for writes of one
+    // engine and aligned for it; the contract of `init_with` is the caller's.
+    unsafe { init_with(storage, |state| place(state, head)) }
+}
+
+/// The `repr(u8)` layout of an enum variant with one field (RFC 2195): the tag, then the field.
+#[repr(C)]
+struct Tagged<T> {
+    tag: u8,
+    payload: T,
+}
+
+/// A sum of engines: a `repr(u8)` enum whose variant tagged [`TAG`](Variant::TAG) has the one
+/// field `E` (the engine of one frame protocol). [`engine_enum!`] declares the enum and the impls
+/// from one list, so that the tag of the variant and the discriminant it is written for are one
+/// expression.
+///
+/// # Safety
+/// `Self` is a `repr(u8)` enum with a variant whose discriminant is `TAG` and whose only field
+/// is an `E`.
+#[expect(
+    unsafe_code,
+    reason = "an impl asserts the layout of an enum (GEN-071)"
+)]
+pub(crate) unsafe trait Variant<E>: Sized {
+    /// The discriminant of the variant that holds an `E`.
+    const TAG: u8;
+}
+
+/// Declares a `repr(u8)` sum of engines and its [`Variant`] impls. The discriminant of each variant
+/// is its `tag` expression (a `u8` constant), written once.
+macro_rules! engine_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $($(#[$vmeta:meta])* $variant:ident($engine:ty) = $tag:expr),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[repr(u8)]
+        $vis enum $name {
+            $($(#[$vmeta])* $variant($engine) = $tag),+
+        }
+        $(
+            #[expect(unsafe_code, reason = "asserts the layout of the enum (GEN-071)")]
+            // SAFETY: `$name` is the `repr(u8)` enum just declared, and the discriminant of the
+            // variant holding the `$engine` is `$tag`, the same expression.
+            unsafe impl $crate::handle::Variant<$engine> for $name {
+                const TAG: u8 = $tag;
+            }
+        )+
+    };
+}
+pub(crate) use engine_enum;
+
+/// Builds the engine `E` as the variant of `S` that holds it, in place: writes the tag, then
+/// [`place`]s the engine in the field (CABI-040).
+///
+/// # Safety
+/// `state` is non-null, aligned for `S`, and valid for writes of one `S`.
+#[expect(unsafe_code, reason = "initializes an enum variant in place (GEN-071)")]
+unsafe fn place_variant<S: Variant<E>, E: InPlace>(state: *mut S, head: E::Head) {
+    const { assert!(size_of::<Tagged<E>>() <= size_of::<S>()) };
+    let tagged = state.cast::<Tagged<E>>();
+    // SAFETY: by the contract of `Variant`, `S` has the layout of a union of `repr(C)` structs of
+    // tag and field (RFC 2195), so `Tagged<E>` is the layout of this variant and in bounds
+    // (the assertion above). The tag is written through a raw field pointer, so no reference to
+    // the not yet initialized engine exists; `place` then initializes the engine in the field,
+    // which is aligned and valid for writes of one `E`.
+    unsafe {
+        (&raw mut (*tagged).tag).write(S::TAG);
+        place(&raw mut (*tagged).payload, head);
+    }
+}
+
+/// Builds the engine `E` as the variant of the sum helper `S` that holds it, in `storage`
+/// (CABI-031, CABI-040): [`init_with`] and [`place_variant`].
+///
+/// # Errors
+/// As for [`init_with`].
+///
+/// # Safety
+/// As for [`init_with`].
+#[expect(unsafe_code, reason = "initializes caller storage in place (GEN-071)")]
+pub(crate) unsafe fn init_variant<S: Storage, E: InPlace>(
+    storage: *mut S,
+    head: E::Head,
+) -> Result<()>
+where
+    S::State: Variant<E>,
+{
+    // SAFETY: `init_with` passes a pointer to the state in the slot, valid for writes of one
+    // `S::State` and aligned for it.
+    unsafe { init_with(storage, |state| place_variant::<S::State, E>(state, head)) }
+}
+
+/// The C types of an engine's `_step` call and how a call's octets and result are read and
+/// written (API-057, CABI-040). The engine's state is that of its [`Storage`].
+pub(crate) trait StepIo: Storage {
+    /// The C input struct.
+    type Input: Copy;
+    /// The C actions struct.
+    type Actions;
+    /// The octets the input carries: the pointer and the length of its `data` (API-060).
+    fn data(input: &Self::Input) -> (*const u8, usize);
+}
+
+/// Declares the [`StepIo`] of the C handle `$storage`: its input and actions structs, whose `data`
+/// and `data_len` members name the octets the input carries (API-060).
+macro_rules! step_io {
+    ($storage:ty, $input:ty, $actions:ty) => {
+        impl $crate::handle::StepIo for $storage {
+            type Input = $input;
+            type Actions = $actions;
+
+            fn data(input: &$input) -> (*const u8, usize) {
+                (input.data, input.data_len)
+            }
+        }
+    };
+}
+pub(crate) use step_io;
+
+/// An engine without a clock: one input of `_step`, with the octets of `out` (API-057).
+pub(crate) trait Step: StepIo {
+    /// Applies `input` to `state`, with `data` its octets and `area` the octets of `out`, and
+    /// writes the actions to `actions` only on success: an error leaves `state` unchanged and
+    /// `actions` unwritten (API-058).
+    ///
+    /// # Errors
+    /// The engine's.
+    fn step(
+        state: &mut Self::State,
+        input: &Self::Input,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, Self::Actions>,
+    ) -> Result<()>;
+}
+
+/// An engine with a clock: as [`Step`], at the instant `now`.
+pub(crate) trait TimedStep: StepIo {
+    /// As [`Step::step`], at `now`.
+    ///
+    /// # Errors
+    /// The engine's.
+    fn step(
+        state: &mut Self::State,
+        input: &Self::Input,
+        now: Instant,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, Self::Actions>,
+    ) -> Result<()>;
+}
+
+/// The checks every `_step` makes, then `run` on the state in place (CABI-022, CABI-040;
+/// c-abi.md §12.2): the handle, the input struct (copied), `data` disjoint from the storage, `out`
+/// disjoint from `data` and the storage, and `actions` disjoint from all of them.
+///
+/// # Safety
+/// As for [`get`]; `input`, `out`, `out_cap`, and `actions` as in the `# Safety` of the C
+/// entry point.
+#[expect(
+    unsafe_code,
+    reason = "checks the buffers of a C call (CABI-022, GEN-071)"
+)]
+unsafe fn dispatch<S: StepIo>(
+    h: *mut S,
+    input: *const S::Input,
+    out: *mut u8,
+    out_cap: usize,
+    actions: *mut S::Actions,
+    run: impl FnOnce(&mut S::State, &S::Input, &[u8], &mut [u8], Out<'_, S::Actions>) -> Result<()>,
+) -> Result<()> {
+    // SAFETY: forwarded from the caller; each check below is of a caller pointer, valid as the
+    // `# Safety` of the entry point states.
+    unsafe {
+        let mut h = get(h)?;
+        let value = abi::read(input)?;
+        let (data_ptr, data_len) = S::data(&value);
+        let data = abi::bytes_disjoint(data_ptr, data_len, &[h.range()])?;
+        let area = abi::bytes_mut(out, out_cap, &[(data_ptr, data_len), h.range()])?;
+        let actions = abi::out_disjoint(
+            actions,
+            &[h.range(), (data_ptr, data_len), (out.cast_const(), out_cap)],
+        )?;
+        h.update(|state| run(state, &value, data, area, actions))
+    }
+}
+
+/// `_step` of an engine without a clock (API-057, CABI-040): the checks of [`dispatch`], then
+/// [`Step::step`]. Returns the status code of the call (CABI-020).
+///
+/// # Safety
+/// As for the C entry point: `h` a handle of `S` or detectably invalid storage; `input` valid
+/// for a read and its `data` for its length; `out` valid for `out_cap` octets of writes (`NULL`
+/// when `out_cap` is 0); `actions` valid for one write; `err` `NULL` or valid for one write; no
+/// other thread uses the storage (CABI-050).
+#[expect(unsafe_code, reason = "dispatches a C entry point (GEN-071)")]
+pub(crate) unsafe fn step<S: Step>(
+    h: *mut S,
+    input: *const S::Input,
+    out: *mut u8,
+    out_cap: usize,
+    actions: *mut S::Actions,
+    err: *mut aldis_error_detail_t,
+) -> u32 {
+    // SAFETY: forwarded from the caller; `abi::call` and `dispatch` check them.
+    unsafe {
+        abi::call(err, || {
+            dispatch::<S>(h, input, out, out_cap, actions, S::step)
+        })
+    }
+}
+
+/// `_step` of an engine with a clock (API-053, API-057, CABI-040): as [`step`], at the instant
+/// `now_us` microseconds.
+///
+/// # Safety
+/// As for [`step`].
+#[expect(unsafe_code, reason = "dispatches a C entry point (GEN-071)")]
+pub(crate) unsafe fn step_timed<S: TimedStep>(
+    h: *mut S,
+    input: *const S::Input,
+    now_us: u64,
+    out: *mut u8,
+    out_cap: usize,
+    actions: *mut S::Actions,
+    err: *mut aldis_error_detail_t,
+) -> u32 {
+    let now = Instant::from_micros(now_us);
+    // SAFETY: forwarded from the caller; `abi::call` and `dispatch` check them.
+    unsafe {
+        abi::call(err, || {
+            dispatch::<S>(
+                h,
+                input,
+                out,
+                out_cap,
+                actions,
+                |state, value, data, area, actions| S::step(state, value, now, data, area, actions),
+            )
+        })
     }
 }
 

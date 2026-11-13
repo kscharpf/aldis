@@ -13,12 +13,12 @@ use aldis::cop1::{
     FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Event, Farm1Frame, Farm1Input, Farm1Notify,
     Farm1Output, Farm1State, Farm1Window, FduKind,
 };
+use aldis::core::Result;
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::Instant;
-use aldis::core::{Error, Result};
 use aldis::tc::{ClcwStatus, ControlCommand, TcVcId};
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::handle::{self, Storage};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -418,6 +418,30 @@ unsafe fn engine(h: *mut aldis_farm1_t) -> Result<handle::Handle<Farm1>> {
     unsafe { handle::get(h) }
 }
 
+handle::step_io!(aldis_farm1_t, aldis_farm1_input_t, aldis_farm1_actions_t);
+
+impl handle::TimedStep for aldis_farm1_t {
+    fn step(
+        farm: &mut Farm1,
+        input: &aldis_farm1_input_t,
+        now: Instant,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_farm1_actions_t>,
+    ) -> Result<()> {
+        let (next, list) = farm.step(engine_input(input, data)?, now, area)?;
+        *farm = next;
+        let mut result = aldis_farm1_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = action(output);
+        }
+        // `list` holds at most `FARM1_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
+}
+
 /// Applies one input to FARM-1 and returns the actions of its cell (232.1 §6.3, Table 6-1; COP-002,
 /// COP-006, COP-033, COP-035, CABI-040).
 ///
@@ -455,39 +479,8 @@ pub unsafe extern "C" fn aldis_farm1_step(
     actions: *mut aldis_farm1_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = engine(h)?;
-            // The input struct is copied; the buffers of the call are checked against each other
-            // and against the storage that `update` lends as `&mut` (CABI-022, c-abi.md §12.2).
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let input = engine_input(&value, data)?;
-            let list = h.update(|engine| {
-                let (next, list) = engine.step(input, Instant::from_micros(now_us), area)?;
-                *engine = next;
-                Ok::<_, Error>(list)
-            })?;
-            let mut result = aldis_farm1_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = action(output);
-            }
-            // `list` holds at most `FARM1_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step_timed::<aldis_farm1_t>(h, input, now_us, out, out_cap, actions, err) }
 }
 
 /// Reads the state of FARM-1 and its CLCW (232.1 §6.1, §6.3.2.4, E11; API-056, COP-035,

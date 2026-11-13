@@ -31,9 +31,9 @@ use aldis::sync::{
     SearchInput, SearchState, SyncConfig, SyncProtocol, attach_asm, max_actions, randomize,
 };
 
-use crate::abi;
+use crate::abi::{self, Out};
 use crate::capacities::{ALDIS_SYNC_MAX_CHUNK_OCTETS, ALDIS_SYNC_MAX_FRAME_OCTETS};
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{ALDIS_LINK_PROTOCOL_AOS, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP};
 use crate::link_common::range;
 use crate::mirror::{mirror, parse};
@@ -398,8 +398,7 @@ pub unsafe extern "C" fn aldis_sync_search_init(
     unsafe {
         abi::call(err, || {
             let head = Engine::new_head(config(&abi::read(cfg)?)?)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| place(state, head))
+            handle::init_engine(storage, head)
         })
     }
 }
@@ -412,6 +411,35 @@ pub unsafe extern "C" fn aldis_sync_search_init(
 unsafe fn engine(h: *mut aldis_sync_search_t) -> Result<handle::Handle<Engine>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_sync_search_t,
+    aldis_sync_search_input_t,
+    aldis_sync_search_actions_t
+);
+
+impl handle::Step for aldis_sync_search_t {
+    fn step(
+        state: &mut Engine,
+        input: &aldis_sync_search_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_sync_search_actions_t>,
+    ) -> Result<()> {
+        let list = run(state, input, data, area)?;
+        let mut result = aldis_sync_search_actions_t {
+            count: 0,
+            items: [aldis_sync_search_action_t::default(); ALDIS_SYNC_SEARCH_MAX_ACTIONS],
+        };
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = action(output);
+        }
+        // `list` holds at most `ALDIS_SYNC_SEARCH_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the search engine (API-057, CABI-040).
@@ -446,35 +474,8 @@ pub unsafe extern "C" fn aldis_sync_search_step(
     actions: *mut aldis_sync_search_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|state| run(state, &value, data, area))?;
-            let mut result = aldis_sync_search_actions_t {
-                count: 0,
-                items: [aldis_sync_search_action_t::default(); ALDIS_SYNC_SEARCH_MAX_ACTIONS],
-            };
-            for (slot, unit) in result.items.iter_mut().zip(list.iter()) {
-                *slot = action(unit);
-            }
-            // `list` holds at most `ALDIS_SYNC_SEARCH_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_sync_search_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the state of the search engine (SYNC-015, API-056). It changes
