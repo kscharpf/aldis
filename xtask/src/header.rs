@@ -409,7 +409,7 @@ fn constants(root: &Path, write: bool) -> Result<Vec<String>, String> {
     }
     let mut problems = Vec::new();
     for row in misfits(&rows) {
-        if write {
+        if write && row.exact {
             let done = repo::files("crates/aldis-ffi/src", &["rs"])
                 .into_iter()
                 .any(|path| {
@@ -424,17 +424,17 @@ fn constants(root: &Path, write: bool) -> Result<Vec<String>, String> {
                 continue;
             }
         }
-        problems.push(format!(
-            "{} is {} in crates/aldis-ffi/src, {} {}; run `cargo xtask header --write`",
-            row.name,
-            row.literal,
-            if row.exact {
-                "but the type or codec gives"
-            } else {
-                "below what the state needs:"
-            },
-            row.value
-        ));
+        problems.push(if row.exact {
+            format!(
+                "{} is {} in crates/aldis-ffi/src, but the type or codec gives {}; run `cargo xtask header --write`",
+                row.name, row.literal, row.value
+            )
+        } else {
+            format!(
+                "{} is {} in crates/aldis-ffi/src, below the {} words the state needs; raise it by hand",
+                row.name, row.literal, row.value
+            )
+        });
     }
     Ok(problems)
 }

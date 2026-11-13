@@ -53,7 +53,8 @@ pub enum Fit {
     Exact,
     /// The literal is at least the value. The words of an engine whose state does not depend on
     /// a capacity: a literal above the need is room for the state to grow without a change of
-    /// the C struct (CABI-031 asks only that the state fits).
+    /// the C struct (CABI-031 asks only that the state fits). The spare words are deliberate
+    /// (maintainer, 2026-11-13).
     AtLeast,
 }
 
