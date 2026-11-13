@@ -13,10 +13,9 @@
 //!
 //! **Protocol.** The first member of the configuration names the protocol (`protocol`, an
 //! `ALDIS_LINK_PROTOCOL_*` constant): TM, AOS, or USLP with fixed-length frames. TC is
-//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. Every member is read whatever the protocol
-//! (`check_members`): a flag or constant that is invalid in a member the protocol does not use
-//! is `ALDIS_ERR_INVALID_FIELD` all the same, and a range-limited member of another protocol is
-//! range-checked. Only the first `vc_count` entries of `vcs` are read.
+//! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`. `protocol` is the tag of the configuration: a
+//! member is read only by the protocols its doc names, and a member of another protocol may hold
+//! any value (CABI-040; OI-92). Only the first `vc_count` entries of `vcs` are read.
 //!
 //! **Capacities.** The engine serves `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VCs of frames of at most
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets (CABI-030); it is built in place (`aldis::link::inplace`,
@@ -46,14 +45,14 @@ use aldis::uslp::{
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol, qos,
-    unsupported_protocol,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
+    protocol_tag, qos, unsupported_protocol,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::link_rx::{aldis_link_content, aldis_link_scope};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -78,22 +77,21 @@ const _: () =
 
 type Mx<P> = ChannelMux<P, V, F>;
 
-/// The `ChannelMux` of the protocol chosen at `aldis_channel_mux_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_channel_mux_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    clippy::large_enum_variant,
-    reason = "the variants are written in place by the init function, not constructed; the storage holds the largest"
-)]
-pub(crate) enum ChannelMuxState {
-    /// TM.
-    Tm(Mx<Tm>) = 0,
-    /// AOS.
-    Aos(Mx<Aos>) = 1,
-    /// USLP.
-    Uslp(Mx<Uslp>) = 2,
+handle::engine_enum! {
+    /// The `ChannelMux` of the protocol chosen at `aldis_channel_mux_init` (LNK-001).
+    #[expect(
+        dead_code,
+        clippy::large_enum_variant,
+        reason = "the variants are written in place by the init function, not constructed; the storage holds the largest"
+    )]
+    pub(crate) enum ChannelMuxState {
+        /// TM.
+        Tm(Mx<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
+        /// AOS.
+        Aos(Mx<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
+        /// USLP.
+        Uslp(Mx<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The multiplexing policy of a `ChannelMux` (LNK-031).
@@ -295,6 +293,9 @@ impl Default for aldis_channel_mux_vc_t {
 
 /// The managed parameters of a `ChannelMux` (132.0 §5.2; 732.0 §5.2; 732.1 §5.2, §5.3;
 /// LNK-030…LNK-035, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct aldis_channel_mux_config_t {
@@ -536,7 +537,6 @@ trait MxProtocol: MuxProtocol {
     /// # Errors
     /// What the codec's constructors refuse of the VC: for AOS, VCID 63, the OID VC.
     fn vc_params(
-        c: &aldis_channel_mux_config_t,
         channel: &Self::Channel,
         id: Self::Vc,
         security: SecurityLayout,
@@ -612,7 +612,6 @@ impl MxProtocol for Tm {
     }
 
     fn vc_params(
-        _: &aldis_channel_mux_config_t,
         _: &TmChannel,
         id: VcId<3>,
         security: SecurityLayout,
@@ -687,7 +686,7 @@ impl MxProtocol for Aos {
     }
 
     fn members(vc: &aldis_channel_mux_vc_t) -> Result<AosMembers> {
-        // The role was range-checked by `check_members`; the mux takes any of them for AOS.
+        // The mux takes any role for AOS.
         let content = match parse::<aldis_link_content>(vc.role)? {
             aldis_link_content::ALDIS_LINK_CONTENT_PACKETS => AosContent::Mpdu,
             aldis_link_content::ALDIS_LINK_CONTENT_VCA => AosContent::VcaSdu,
@@ -702,7 +701,6 @@ impl MxProtocol for Aos {
     }
 
     fn vc_params(
-        _: &aldis_channel_mux_config_t,
         channel: &AosChannel,
         id: VcId<6>,
         security: SecurityLayout,
@@ -768,7 +766,6 @@ impl MxProtocol for Uslp {
     }
 
     fn vc_params(
-        c: &aldis_channel_mux_config_t,
         channel: &UslpChannel,
         id: VcId<6>,
         security: SecurityLayout,
@@ -780,7 +777,7 @@ impl MxProtocol for Uslp {
         params.security = SecurityScope::Vc(security);
         // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
         // §4.1.5.3).
-        if flag(c.mc_ocf)? {
+        if <Uslp as MuxProtocol>::mc_ocf(channel).is_some() {
             params.ocf = OcfUse::Required;
         }
         let config = UslpVcConfig::new(channel.scid, id, params)?;
@@ -820,43 +817,11 @@ fn mx_read<P: MxProtocol>(vc: &aldis_channel_mux_vc_t) -> Result<RawVc<P>> {
 }
 
 /// The VC `raw` of the channel `channel` in the protocol `P`.
-fn mx_vc<P: MxProtocol>(
-    c: &aldis_channel_mux_config_t,
-    channel: &P::Channel,
-    raw: &RawVc<P>,
-) -> Result<VcConfig<P>> {
-    let params = P::vc_params(c, channel, raw.id, raw.security, raw.members)?;
+fn mx_vc<P: MxProtocol>(channel: &P::Channel, raw: &RawVc<P>) -> Result<VcConfig<P>> {
+    let params = P::vc_params(channel, raw.id, raw.security, raw.members)?;
     Ok(VcConfig::<P>::new(params)
         .with_priority(raw.priority)
         .with_weight(raw.weight))
-}
-
-/// Reads every member of `c` and of its `vc_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1, or a constant that is none, is `InvalidField` in any member, and a
-/// member of another protocol that has a range (a VCID, a MAP ID, a count length, a Secondary
-/// Header length) is range-checked too. The protocol's own conversions follow in `mx_config`.
-fn check_members(c: &aldis_channel_mux_config_t) -> Result<()> {
-    flag(c.fecf)?;
-    policy(c.policy)?;
-    flag(c.mc_ocf)?;
-    flag(c.aos_fhec)?;
-    flag(c.aos_cycle_in_use)?;
-    flag(c.uslp_destination)?;
-    aos_edition(c)?;
-    VcId::<3>::try_from(c.tm_oid_vc)?;
-    VcfCountLen::new(c.uslp_oid_vcf_len)?;
-    initial_fsh(c.mc_fsh_len, &c.mc_fsh_init)?;
-    for vc in c.vcs.iter().take(c.vc_count) {
-        flag(vc.ocf)?;
-        flag(vc.uslp_cop)?;
-        parse::<aldis_link_content>(vc.role)?;
-        qos(vc.uslp_qos)?;
-        MapId::<4>::try_from(vc.uslp_map)?;
-        VcfCountLen::new(vc.uslp_vcf_len_sc)?;
-        VcfCountLen::new(vc.uslp_vcf_len_exp)?;
-        initial_fsh(vc.fsh_len, &vc.fsh_init)?;
-    }
-    Ok(())
 }
 
 /// `InvalidConfig` (`vc_id`) when VCID 63, the OID VC, is listed on an AOS or USLP channel: the
@@ -872,13 +837,12 @@ fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
 
 /// The mux configuration of `c` for the protocol `P`.
 fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMuxConfig<P, V>> {
-    check_members(c)?;
-    // Only the first `vc_count` entries are read. They are read once for their members, before
-    // the channel, and again for the codec's configuration of each, which needs the channel
-    // (D6 of the M6 plan keeps the order of the refusals). The second `mx_read` cannot fail; `mx_vc`
-    // can, with what the codec's constructors refuse of a VC that passed the first read.
-    for vc in c.vcs.iter().take(c.vc_count) {
-        mx_read::<P>(vc)?;
+    // Only the first `vc_count` entries are read, each once, before the channel: the codec's
+    // configuration of a VC needs the channel, so the parsed entries are kept and built from
+    // after it (D6 of the M6 plan keeps the order of the refusals).
+    let mut raws: [Option<RawVc<P>>; V] = [None; V];
+    for (slot, vc) in raws.iter_mut().zip(&c.vcs).take(c.vc_count) {
+        *slot = Some(mx_read::<P>(vc)?);
     }
     let channel = P::channel(c)?;
     let policy = policy(c.policy)?;
@@ -886,16 +850,17 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
         return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY));
     }
     // The first entry fills the array; without an entry there is nothing to list.
-    let first = c
-        .vcs
+    let first = raws
         .first()
+        .copied()
+        .flatten()
         .filter(|_| c.vc_count > 0)
-        .map(|vc| mx_read::<P>(vc).and_then(|raw| mx_vc::<P>(c, &channel, &raw)))
+        .map(|raw| mx_vc::<P>(&channel, &raw))
         .transpose()?;
     let mut entries = first.map(|filler| [filler; V]);
     if let Some(array) = entries.as_mut() {
-        for (dst, src) in array.iter_mut().zip(&c.vcs).take(c.vc_count) {
-            *dst = mx_read::<P>(src).and_then(|raw| mx_vc::<P>(c, &channel, &raw))?;
+        for (dst, raw) in array.iter_mut().zip(raws.iter().flatten()) {
+            *dst = mx_vc::<P>(&channel, raw)?;
         }
     }
     let listed = match &entries {
@@ -909,32 +874,6 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
         config = config.with_insert_zone_fill(c.insert_idle_pattern)?;
     }
     Ok(config)
-}
-
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-#[expect(
-    clippy::large_enum_variant,
-    reason = "a temporary of one call; the largest head is 2.8 KB, within the C ABI stack budget"
-)]
-enum MxHead {
-    Tm(ChannelMuxHead<Tm, V>),
-    Aos(ChannelMuxHead<Aos, V>),
-    Uslp(ChannelMuxHead<Uslp, V>),
-}
-
-fn mx_head(c: &aldis_channel_mux_config_t) -> Result<MxHead> {
-    match parse::<aldis_link_protocol>(c.protocol)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(MxHead::Tm(Mx::new_head(mx_config::<Tm>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            Ok(MxHead::Aos(Mx::new_head(mx_config::<Aos>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            Ok(MxHead::Uslp(Mx::new_head(mx_config::<Uslp>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
-    }
 }
 
 #[expect(
@@ -952,35 +891,6 @@ unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for Channe
     /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
     fn finish_place(&mut self) {
         self.place_slots();
-    }
-}
-
-/// Builds the engine of `head` at `state`, in place (#240); the Insert Zone slot starts at the
-/// idle pattern of the head's configuration (`InPlace::finish_place`).
-///
-/// # Safety
-/// `state` is valid for writes of one `ChannelMuxState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn mx_place(state: *mut ChannelMuxState, head: MxHead) {
-    match head {
-        MxHead::Tm(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Tm>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        MxHead::Aos(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Aos>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        MxHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Mx<Uslp>>(state, 2) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
     }
 }
 
@@ -1204,9 +1114,23 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = mx_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| mx_place(state, head))
+            match parse::<aldis_link_protocol>(cfg.protocol)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Mx<Tm>>(
+                    storage,
+                    Mx::new_head(mx_config::<Tm>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Mx<Aos>>(
+                    storage,
+                    Mx::new_head(mx_config::<Aos>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Mx<Uslp>>(
+                        storage,
+                        Mx::new_head(mx_config::<Uslp>(&cfg)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -1219,6 +1143,25 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
 unsafe fn mx_engine(h: *mut aldis_channel_mux_t) -> Result<handle::Handle<ChannelMuxState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_channel_mux_t,
+    aldis_channel_mux_input_t,
+    aldis_channel_mux_actions_t
+);
+
+impl handle::Step for aldis_channel_mux_t {
+    fn step(
+        state: &mut ChannelMuxState,
+        input: &aldis_channel_mux_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_channel_mux_actions_t>,
+    ) -> Result<()> {
+        actions.write(state.step(input, data, area)?);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `ChannelMux` (API-057, CABI-040).
@@ -1258,26 +1201,8 @@ pub unsafe extern "C" fn aldis_channel_mux_step(
     actions: *mut aldis_channel_mux_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = mx_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let result = h.update(|state| state.step(&value, data, area))?;
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_channel_mux_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `ChannelMux` (API-056, LNK-002). It changes
@@ -1342,7 +1267,6 @@ mod tests {
     #[test]
     fn the_role_of_an_aos_vc_gives_the_content_of_its_codec_configuration() {
         // req: LNK-078, CABI-040, RS-020
-        let channel = aldis_channel_mux_config_t::default();
         let cases = [
             (crate::link_rx::ALDIS_LINK_CONTENT_PACKETS, AosContent::Mpdu),
             (crate::link_rx::ALDIS_LINK_CONTENT_VCA, AosContent::VcaSdu),
@@ -1367,7 +1291,6 @@ mod tests {
             };
             let members = <Aos as MxProtocol>::members(&vc).unwrap();
             let params = <Aos as MxProtocol>::vc_params(
-                &channel,
                 &aos_channel,
                 VcId::<6>::try_from(1).unwrap(),
                 SecurityLayout::NONE,
