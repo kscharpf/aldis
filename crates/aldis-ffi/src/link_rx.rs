@@ -54,16 +54,16 @@ use aldis::uslp::{
     UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig as UslpVcConfig,
 };
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::capacities::{
     ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS, ALDIS_LINK_PACKET_QUEUE_OCTETS,
 };
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
-    unsupported_protocol, uslp_params, valid_pvns,
+    protocol_tag, unsupported_protocol, uslp_params, valid_pvns,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -217,21 +217,20 @@ mirror!(pub aldis_link_scope: u32 {
 
 type Pe<P> = PacketExtractor<P, M, D>;
 
-/// The `PacketExtractor` of the protocol chosen at `aldis_packet_extractor_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_packet_extractor_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum PacketExtractorState {
-    /// TM.
-    Tm(Pe<Tm>) = 0,
-    /// AOS.
-    Aos(Pe<Aos>) = 1,
-    /// USLP.
-    Uslp(Pe<Uslp>) = 2,
+handle::engine_enum! {
+    /// The `PacketExtractor` of the protocol chosen at `aldis_packet_extractor_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum PacketExtractorState {
+        /// TM.
+        Tm(Pe<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
+        /// AOS.
+        Aos(Pe<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
+        /// USLP.
+        Uslp(Pe<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_packet_extractor_input_t` (LNK-060…LNK-064, LNK-003; API-057).
@@ -331,6 +330,9 @@ impl Storage for aldis_packet_extractor_t {
 
 /// The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
 /// 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_extractor_config_t {
@@ -443,29 +445,6 @@ fn pe_config<P: PacketProtocol>(
     .with_delivery(flag(c.deliver_incomplete)?, flag(c.deliver_idle)?))
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum PeHead {
-    Tm(PacketExtractorHead<Tm>),
-    Aos(PacketExtractorHead<Aos>),
-    Uslp(PacketExtractorHead<Uslp>),
-}
-
-fn pe_head(c: &aldis_packet_extractor_config_t) -> Result<PeHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(PeHead::Tm(Pe::new_head(pe_config(c, TmParams)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Ok(PeHead::Aos(Pe::new_head(pe_config(
-            c,
-            aos_params(&c.channel)?,
-        )?)?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(PeHead::Uslp(Pe::new_head(
-            pe_config(c, uslp_params(&c.channel)?)?,
-        )?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -479,34 +458,6 @@ unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
     type Buffers = PacketExtractorBuffers<NM>;
     const HEAD_OFFSET: usize = <PacketExtractor<P, NM, ND>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <PacketExtractor<P, NM, ND>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `PacketExtractorState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn pe_place(state: *mut PacketExtractorState, head: PeHead) {
-    match head {
-        PeHead::Tm(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pe<Tm>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        PeHead::Aos(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pe<Aos>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        PeHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pe<Uslp>>(state, 2) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -640,9 +591,23 @@ pub unsafe extern "C" fn aldis_packet_extractor_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = pe_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| pe_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Pe<Tm>>(
+                    storage,
+                    Pe::new_head(pe_config(&cfg, TmParams)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Pe<Aos>>(
+                    storage,
+                    Pe::new_head(pe_config(&cfg, aos_params(&cfg.channel)?)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Pe<Uslp>>(
+                        storage,
+                        Pe::new_head(pe_config(&cfg, uslp_params(&cfg.channel)?)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -657,6 +622,32 @@ unsafe fn pe_engine(
 ) -> Result<handle::Handle<PacketExtractorState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_packet_extractor_t,
+    aldis_packet_extractor_input_t,
+    aldis_packet_extractor_actions_t
+);
+
+impl handle::Step for aldis_packet_extractor_t {
+    fn step(
+        state: &mut PacketExtractorState,
+        input: &aldis_packet_extractor_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_packet_extractor_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, area)?;
+        let mut result = aldis_packet_extractor_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = pe_action(output);
+        }
+        // `list` holds at most `EXTRACTOR_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `PacketExtractor` (API-057, CABI-040).
@@ -693,32 +684,8 @@ pub unsafe extern "C" fn aldis_packet_extractor_step(
     actions: *mut aldis_packet_extractor_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = pe_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|state| state.step(&value, data, area))?;
-            let mut result = aldis_packet_extractor_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = pe_action(output);
-            }
-            // `list` holds at most `EXTRACTOR_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_packet_extractor_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `PacketExtractor` (API-056, LNK-002). It changes
@@ -917,7 +884,8 @@ pub struct aldis_frame_receiver_vc_t {
 
 /// The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
 ///
-/// A member that the protocol does not use is ignored.
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_frame_receiver_config_t {
@@ -1664,6 +1632,25 @@ unsafe fn rx_engine(h: *mut aldis_frame_receiver_t) -> Result<handle::Handle<Fra
     unsafe { handle::get(h) }
 }
 
+handle::step_io!(
+    aldis_frame_receiver_t,
+    aldis_frame_receiver_input_t,
+    aldis_frame_receiver_actions_t
+);
+
+impl handle::Step for aldis_frame_receiver_t {
+    fn step(
+        state: &mut FrameReceiverState,
+        input: &aldis_frame_receiver_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_frame_receiver_actions_t>,
+    ) -> Result<()> {
+        actions.write(state.step(input, data, area)?);
+        Ok(())
+    }
+}
+
 /// Runs one input of the `FrameReceiver` (API-057, CABI-040).
 ///
 /// The octets of the delivered parts go to `out`, which must hold at least the frame length of
@@ -1698,26 +1685,8 @@ pub unsafe extern "C" fn aldis_frame_receiver_step(
     actions: *mut aldis_frame_receiver_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = rx_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let result = h.update(|state| state.step(&value, data, area))?;
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_frame_receiver_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters of the `FrameReceiver` (API-056, LNK-002). It changes nothing.

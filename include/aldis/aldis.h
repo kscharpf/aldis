@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 12
+#define ALDIS_ABI_VERSION_MINOR 13
 
 /**
  * ABI patch version (CABI-060).
@@ -5734,8 +5734,9 @@ typedef struct {
  * The channel a link engine serves, and the protocol it is built for (LNK-001). It is the
  * first member of every link engine configuration.
  *
- * `aos_edition` is read for AOS only, and `uslp_upid`, `uslp_map`, and `uslp_qos` for USLP
- * only; the others do not use them, but each must be valid (`protocol`).
+ * Zero-initialize the struct before setting members. `protocol` is the tag of the configuration: `aos_edition` is read for AOS only, and `uslp_upid`,
+ * `uslp_map`, and `uslp_qos` for USLP only. A member of another protocol is not read, so it may
+ * hold any value (CABI-040; OI-92).
  */
 typedef struct {
   /**
@@ -5767,10 +5768,13 @@ typedef struct {
 /**
  * The managed parameters of a `CltuPacker` (232.0 §5.1 Table 5-1; 732.1 §5.1 Table 5-1;
  * LNK-044, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
-   * The protocol (TC or USLP); the other members of the channel are not used but must be valid.
+   * The protocol (TC or USLP) and the VC; the other members of the channel are not read.
    */
   aldis_link_channel_t channel;
   /**
@@ -5925,6 +5929,9 @@ typedef struct {
 /**
  * The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
  * 732.1 §5.6 Table 5-5; LNK-010, LNK-012…LNK-014, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -6101,6 +6108,9 @@ typedef struct {
 
 /**
  * The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -6249,6 +6259,9 @@ typedef struct {
 
 /**
  * The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -6422,11 +6435,14 @@ typedef struct {
 /**
  * The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
  * LNK-042, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
    * The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-   * channel are not used but must be valid.
+   * channel are not read.
    */
   aldis_link_channel_t channel;
   /**
@@ -6629,6 +6645,9 @@ typedef struct {
 
 /**
  * The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -6870,6 +6889,9 @@ typedef struct {
 /**
  * The managed parameters of a `ChannelMux` (132.0 §5.2; 732.0 §5.2; 732.1 §5.2, §5.3;
  * LNK-030…LNK-035, LNK-078).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -7139,6 +7161,9 @@ typedef struct {
 /**
  * The managed parameters of a `PacketExtractor` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
  * 732.1 §5.6 Table 5-5; LNK-060…LNK-063).
+ *
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**
@@ -7345,7 +7370,8 @@ typedef struct {
 /**
  * The configuration of a `FrameReceiver` (LNK-050, LNK-079; docs/04-engines.md §3.1).
  *
- * A member that the protocol does not use is ignored.
+ * Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+ * read is ignored (OI-92).
  */
 typedef struct {
   /**

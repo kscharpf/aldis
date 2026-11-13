@@ -13,15 +13,12 @@
 //! **Protocol.** The first member of a configuration is an `aldis_link_channel_t` whose
 //! `protocol` names the protocol: TC or USLP for both engines (TM and AOS are
 //! `ALDIS_ERR_INVALID_CONFIG` on `link_protocol`). The other members of the channel are not
-//! used, but an `aos_edition`, `uslp_qos`, `uslp_upid`, or `uslp_map` that is none or out of
-//! range fails in any protocol. The segmenter reads the `vc_id` of the channel (the VC it
+//! read (`protocol` is the tag of the configuration, CABI-040, OI-92). The segmenter reads the `vc_id` of the channel (the VC it
 //! serves); the reassembler reads a VC for each MAP. A reconfiguration cannot change the
 //! protocol (LNK-003).
 //!
-//! **Members.** The members of the other protocol are not used, but a flag that is not 0 or 1 or
-//! a constant that is none is `InvalidField`, and a USLP count length or UPID out of range is
-//! `InvalidConfig` or `OutOfRange`, in any protocol (`sg_check_members`, as for the
-//! `ChannelMux`). The MAP table is `map_count` entries of `maps`; the segmenter of a TC VC
+//! **Members.** The members of the other protocol are not read, as for the `ChannelMux`. The MAP
+//! table is `map_count` entries of `maps`; the segmenter of a TC VC
 //! without a Segment Header takes none (it has the implicit MAP 0, LNK-040).
 //!
 //! **Capacities.** The segmenter's queue is `ALDIS_LINK_PACKET_QUEUE_OCTETS` octets, four of
@@ -30,7 +27,7 @@
 //! and the segmenter serves `ALDIS_LINK_MAX_MAP_CHANNELS` MAPs (CABI-030). Both are built in
 //! place (`aldis::link::inplace`, #240), so the queue and the buffers are not on the stack.
 
-use aldis::core::ids::{MapId, VcId};
+use aldis::core::ids::MapId;
 use aldis::core::time::{Duration, Instant};
 use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::link::protocol::{Tc, Uslp};
@@ -48,16 +45,16 @@ use aldis::link::segmenter::{
 use aldis::tc::{MAX_FRAME_LEN as TC_MAX_FRAME_LEN, PhysicalChannelConfig as TcPhysical};
 use aldis::uslp::{TransferFrameType, Upid, VcParams, VcfCountLen};
 
-use crate::abi::{self, flag};
+use crate::abi::{self, Out, flag};
 use crate::capacities::{
     ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_MAP_CHANNELS, ALDIS_LINK_PACKET_QUEUE_OCTETS,
 };
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, qos, qos_code,
-    unsupported_protocol,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, protocol_tag, qos,
+    qos_code, unsupported_protocol,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -194,19 +191,18 @@ fn listed<T: Copy, C: Copy, const N: usize>(
 
 type Sg<P> = MapSegmenter<P, M, Q>;
 
-/// The `MapSegmenter` of the protocol chosen at `aldis_map_segmenter_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_map_segmenter_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum MapSegmenterState {
-    /// TC.
-    Tc(Sg<Tc>) = 0,
-    /// USLP.
-    Uslp(Sg<Uslp>) = 1,
+handle::engine_enum! {
+    /// The `MapSegmenter` of the protocol chosen at `aldis_map_segmenter_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum MapSegmenterState {
+        /// TC.
+        Tc(Sg<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
+        /// USLP.
+        Uslp(Sg<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_map_segmenter_input_t` (LNK-040…LNK-043, LNK-012, LNK-003; API-057).
@@ -309,11 +305,14 @@ pub struct aldis_map_segmenter_map_t {
 
 /// The managed parameters of a `MapSegmenter` (232.0 §5.3, §5.4; 732.1 §5.3, §5.4; LNK-040…
 /// LNK-042, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_segmenter_config_t {
     /// The protocol (TC or USLP) and the VC it serves (`vc_id`); the other members of the
-    /// channel are not used but must be valid.
+    /// channel are not read.
     pub channel: aldis_link_channel_t,
     /// The longest FDU or TFDF in octets, header included (TC: at most 1 019, 1 017 with a FECF;
     /// USLP: at most 65 535).
@@ -492,28 +491,8 @@ impl SgProtocol for Uslp {
     }
 }
 
-/// Reads every member of `c` and of its `map_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1 or a constant that is none is `InvalidField`, and a USLP count length
-/// out of range is `InvalidConfig` and a UPID out of range `OutOfRange`, in any protocol. The protocol's own conversions follow
-/// in `sg_config`.
-fn sg_check_members(c: &aldis_map_segmenter_config_t) -> Result<()> {
-    flag(c.tc_segment_header)?;
-    flag(c.tc_fecf)?;
-    flag(c.tc_blocking)?;
-    VcfCountLen::new(c.uslp_vcf_len_sc)?;
-    VcfCountLen::new(c.uslp_vcf_len_exp)?;
-    for m in c.maps.iter().take(c.map_count) {
-        parse::<aldis_map_service>(m.service)?;
-        flag(m.segmentation)?;
-        flag(m.blocking)?;
-        upid(m.uslp_upid)?;
-    }
-    Ok(())
-}
-
 /// The segmenter configuration of `c` for the protocol `P`.
 fn sg_config<P: SgProtocol>(c: &aldis_map_segmenter_config_t) -> Result<MapSegmenterConfig<P, M>> {
-    sg_check_members(c)?;
     let channel = P::channel(c)?;
     let vc = P::Vc::try_from(c.channel.vc_id)?;
     let mut table = [None; M];
@@ -538,25 +517,6 @@ fn sg_config<P: SgProtocol>(c: &aldis_map_segmenter_config_t) -> Result<MapSegme
     MapSegmenterConfig::new(vc, channel, c.max_fdu_len, given)
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum SgHead {
-    Tc(MapSegmenterHead<Tc, M>),
-    Uslp(MapSegmenterHead<Uslp, M>),
-}
-
-fn sg_head(c: &aldis_map_segmenter_config_t) -> Result<SgHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => {
-            Ok(SgHead::Tc(Sg::new_head(sg_config::<Tc>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            Ok(SgHead::Uslp(Sg::new_head(sg_config::<Uslp>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
-        | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -570,28 +530,6 @@ unsafe impl<P: SegmenterProtocol, const NM: usize, const NQ: usize> InPlace
     type Buffers = MapSegmenterBuffers<NQ>;
     const HEAD_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `MapSegmenterState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn sg_place(state: *mut MapSegmenterState, head: SgHead) {
-    match head {
-        SgHead::Tc(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Sg<Tc>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        SgHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Sg<Uslp>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -729,9 +667,20 @@ pub unsafe extern "C" fn aldis_map_segmenter_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = sg_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| sg_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Sg<Tc>>(
+                    storage,
+                    Sg::new_head(sg_config::<Tc>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Sg<Uslp>>(
+                        storage,
+                        Sg::new_head(sg_config::<Uslp>(&cfg)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
+                | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -744,6 +693,33 @@ pub unsafe extern "C" fn aldis_map_segmenter_init(
 unsafe fn sg_engine(h: *mut aldis_map_segmenter_t) -> Result<handle::Handle<MapSegmenterState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_map_segmenter_t,
+    aldis_map_segmenter_input_t,
+    aldis_map_segmenter_actions_t
+);
+
+impl handle::TimedStep for aldis_map_segmenter_t {
+    fn step(
+        state: &mut MapSegmenterState,
+        input: &aldis_map_segmenter_input_t,
+        now: Instant,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_map_segmenter_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, now, area)?;
+        let mut result = aldis_map_segmenter_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = sg_action(output);
+        }
+        // `list` holds at most `MAP_SEGMENTER_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `MapSegmenter` (API-057, CABI-040).
@@ -782,32 +758,9 @@ pub unsafe extern "C" fn aldis_map_segmenter_step(
     actions: *mut aldis_map_segmenter_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
     unsafe {
-        abi::call(err, || {
-            let mut h = sg_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list =
-                h.update(|state| state.step(&value, data, Instant::from_micros(now_us), area))?;
-            let mut result = aldis_map_segmenter_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = sg_action(output);
-            }
-            // `list` holds at most `MAP_SEGMENTER_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
+        handle::step_timed::<aldis_map_segmenter_t>(h, input, now_us, out, out_cap, actions, err)
     }
 }
 
@@ -902,19 +855,18 @@ pub unsafe extern "C" fn aldis_map_segmenter_deinit(h: *mut aldis_map_segmenter_
 
 type Ra<P> = MapReassembler<P, M, S>;
 
-/// The `MapReassembler` of the protocol chosen at `aldis_map_reassembler_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_map_reassembler_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum MapReassemblerState {
-    /// TC.
-    Tc(Ra<Tc>) = 0,
-    /// USLP.
-    Uslp(Ra<Uslp>) = 1,
+handle::engine_enum! {
+    /// The `MapReassembler` of the protocol chosen at `aldis_map_reassembler_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum MapReassemblerState {
+        /// TC.
+        Tc(Ra<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
+        /// USLP.
+        Uslp(Ra<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_map_reassembler_input_t` (LNK-070, LNK-003; API-057).
@@ -1035,6 +987,9 @@ pub struct aldis_map_reassembler_map_t {
 }
 
 /// The managed parameters of a `MapReassembler` (232.0 §5.4; 732.1 §5.5; LNK-070, LNK-073).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_map_reassembler_config_t {
@@ -1150,8 +1105,9 @@ impl RaProtocol for Tc {
     }
 
     fn meta(input: &aldis_map_reassembler_input_t) -> Result<()> {
-        // The gap flag is a member of USLP; it is read whatever the protocol (CABI-040).
-        flag(input.gap).map(drop)
+        // The gap flag is a member of USLP only: TC does not read it (CABI-040; OI-92).
+        let _ = input;
+        Ok(())
     }
 }
 
@@ -1184,23 +1140,10 @@ fn ra_map<P: ReassemblerProtocol>(m: &aldis_map_reassembler_map_t) -> Result<Rea
     }
 }
 
-/// Reads every member of `c` and of its `map_count` entries whatever the protocol (CABI-040): a
-/// flag that is not 0 or 1 or a constant that is none is `InvalidField`, and a VCID out of range
-/// is `OutOfRange`. The protocol's own conversions follow in `ra_config`.
-fn ra_check_members(c: &aldis_map_reassembler_config_t) -> Result<()> {
-    flag(c.tc_segment_header)?;
-    for m in c.maps.iter().take(c.map_count) {
-        parse::<aldis_map_service>(m.service)?;
-        VcId::<6>::try_from(m.vc_id)?;
-    }
-    Ok(())
-}
-
 /// The reassembler configuration of `c` for the protocol `P`.
 fn ra_config<P: RaProtocol>(
     c: &aldis_map_reassembler_config_t,
 ) -> Result<MapReassemblerConfig<P, M>> {
-    ra_check_members(c)?;
     let channel = P::channel(c)?;
     let mut table = [None; M];
     let count = listed(&c.maps, c.map_count, ra_map::<P>, &mut table)?;
@@ -1224,25 +1167,6 @@ fn ra_config<P: RaProtocol>(
     MapReassemblerConfig::new(channel, given)
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum RaHead {
-    Tc(MapReassemblerHead<Tc, M>),
-    Uslp(MapReassemblerHead<Uslp, M>),
-}
-
-fn ra_head(c: &aldis_map_reassembler_config_t) -> Result<RaHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => {
-            Ok(RaHead::Tc(Ra::new_head(ra_config::<Tc>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            Ok(RaHead::Uslp(Ra::new_head(ra_config::<Uslp>(c)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
-        | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -1256,28 +1180,6 @@ unsafe impl<P: ReassemblerProtocol, const NM: usize, const NS: usize> InPlace
     type Buffers = MapReassemblerBuffers<NM, NS>;
     const HEAD_OFFSET: usize = <MapReassembler<P, NM, NS>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <MapReassembler<P, NM, NS>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `MapReassemblerState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn ra_place(state: *mut MapReassemblerState, head: RaHead) {
-    match head {
-        RaHead::Tc(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Ra<Tc>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        RaHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Ra<Uslp>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -1427,9 +1329,20 @@ pub unsafe extern "C" fn aldis_map_reassembler_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = ra_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| ra_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Ra<Tc>>(
+                    storage,
+                    Ra::new_head(ra_config::<Tc>(&cfg)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Ra<Uslp>>(
+                        storage,
+                        Ra::new_head(ra_config::<Uslp>(&cfg)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
+                | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -1444,6 +1357,32 @@ unsafe fn ra_engine(
 ) -> Result<handle::Handle<MapReassemblerState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_map_reassembler_t,
+    aldis_map_reassembler_input_t,
+    aldis_map_reassembler_actions_t
+);
+
+impl handle::Step for aldis_map_reassembler_t {
+    fn step(
+        state: &mut MapReassemblerState,
+        input: &aldis_map_reassembler_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_map_reassembler_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, area)?;
+        let mut result = aldis_map_reassembler_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = ra_action(output);
+        }
+        // `list` holds at most `MAP_REASSEMBLER_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `MapReassembler` (API-057, CABI-040). The engine has no timer
@@ -1481,32 +1420,8 @@ pub unsafe extern "C" fn aldis_map_reassembler_step(
     actions: *mut aldis_map_reassembler_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = ra_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|state| state.step(&value, data, area))?;
-            let mut result = aldis_map_reassembler_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = ra_action(output);
-            }
-            // `list` holds at most `MAP_REASSEMBLER_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_map_reassembler_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `MapReassembler` (API-056, LNK-002). It changes

@@ -30,14 +30,15 @@ use aldis::link::generator::{
 };
 use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
 
-use crate::abi;
+use crate::abi::{self, Out};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
-use crate::handle::{self, InPlace, Storage, place};
+use crate::handle::{self, InPlace, Storage};
 use crate::link::{
     RouteFields, aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params,
-    idle_packet, idle_policy, protocol, unsupported_protocol, uslp_params, valid_pvns, vc,
+    idle_packet, idle_policy, protocol, protocol_tag, unsupported_protocol, uslp_params,
+    valid_pvns, vc,
 };
-use crate::link_common::{range, variant_payload};
+use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -81,21 +82,20 @@ const _: () = assert!(
 
 type Pg<P> = PacketGenerator<P, D, Q>;
 
-/// The `PacketGenerator` of the protocol chosen at `aldis_packet_generator_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_packet_generator_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum PacketGeneratorState {
-    /// TM.
-    Tm(Pg<Tm>) = 0,
-    /// AOS.
-    Aos(Pg<Aos>) = 1,
-    /// USLP.
-    Uslp(Pg<Uslp>) = 2,
+handle::engine_enum! {
+    /// The `PacketGenerator` of the protocol chosen at `aldis_packet_generator_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum PacketGeneratorState {
+        /// TM.
+        Tm(Pg<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
+        /// AOS.
+        Aos(Pg<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
+        /// USLP.
+        Uslp(Pg<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_packet_generator_input_t` (LNK-010…LNK-015, LNK-003; API-057).
@@ -169,6 +169,9 @@ impl Storage for aldis_packet_generator_t {
 
 /// The managed parameters of a `PacketGenerator` (132.0 §5.4 Table 5-4; 732.0 §5.5 Table 5-4;
 /// 732.1 §5.6 Table 5-5; LNK-010, LNK-012…LNK-014, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_packet_generator_config_t {
@@ -293,29 +296,6 @@ fn pg_config<P: PacketProtocol>(
     Ok(config)
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum PgHead {
-    Tm(PacketGeneratorHead<Tm>),
-    Aos(PacketGeneratorHead<Aos>),
-    Uslp(PacketGeneratorHead<Uslp>),
-}
-
-fn pg_head(c: &aldis_packet_generator_config_t) -> Result<PgHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(PgHead::Tm(Pg::new_head(pg_config(c, TmParams)?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Ok(PgHead::Aos(Pg::new_head(pg_config(
-            c,
-            aos_params(&c.channel)?,
-        )?)?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(PgHead::Uslp(Pg::new_head(
-            pg_config(c, uslp_params(&c.channel)?)?,
-        )?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -329,34 +309,6 @@ unsafe impl<P: PacketProtocol, const ND: usize, const NQ: usize> InPlace
     type Buffers = PacketGeneratorBuffers<ND, NQ>;
     const HEAD_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `PacketGeneratorState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn pg_place(state: *mut PacketGeneratorState, head: PgHead) {
-    match head {
-        PgHead::Tm(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pg<Tm>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        PgHead::Aos(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pg<Aos>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        PgHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Pg<Uslp>>(state, 2) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -489,9 +441,23 @@ pub unsafe extern "C" fn aldis_packet_generator_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = pg_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| pg_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Pg<Tm>>(
+                    storage,
+                    Pg::new_head(pg_config(&cfg, TmParams)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Pg<Aos>>(
+                    storage,
+                    Pg::new_head(pg_config(&cfg, aos_params(&cfg.channel)?)?)?,
+                ),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Pg<Uslp>>(
+                        storage,
+                        Pg::new_head(pg_config(&cfg, uslp_params(&cfg.channel)?)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -506,6 +472,33 @@ unsafe fn pg_engine(
 ) -> Result<handle::Handle<PacketGeneratorState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_packet_generator_t,
+    aldis_packet_generator_input_t,
+    aldis_packet_generator_actions_t
+);
+
+impl handle::TimedStep for aldis_packet_generator_t {
+    fn step(
+        state: &mut PacketGeneratorState,
+        input: &aldis_packet_generator_input_t,
+        now: Instant,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_packet_generator_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, now, area)?;
+        let mut result = aldis_packet_generator_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = pg_action(output);
+        }
+        // `list` holds at most `PACKET_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `PacketGenerator` (API-057, CABI-040).
@@ -540,32 +533,9 @@ pub unsafe extern "C" fn aldis_packet_generator_step(
     actions: *mut aldis_packet_generator_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
     unsafe {
-        abi::call(err, || {
-            let mut h = pg_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list =
-                h.update(|state| state.step(&value, data, Instant::from_micros(now_us), area))?;
-            let mut result = aldis_packet_generator_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = pg_action(output);
-            }
-            // `list` holds at most `PACKET_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
+        handle::step_timed::<aldis_packet_generator_t>(h, input, now_us, out, out_cap, actions, err)
     }
 }
 
@@ -664,21 +634,20 @@ pub unsafe extern "C" fn aldis_packet_generator_deinit(h: *mut aldis_packet_gene
 
 type Ag<P> = AccessGenerator<P, Q>;
 
-/// The `AccessGenerator` of the protocol chosen at `aldis_access_generator_init` (LNK-001).
-///
-/// `repr(u8)`: `aldis_access_generator_init` writes a variant in place (`variant_payload`).
-#[repr(u8)]
-#[expect(
-    dead_code,
-    reason = "the variants are written in place by the init function, not constructed"
-)]
-pub(crate) enum AccessGeneratorState {
-    /// TM.
-    Tm(Ag<Tm>) = 0,
-    /// AOS.
-    Aos(Ag<Aos>) = 1,
-    /// USLP.
-    Uslp(Ag<Uslp>) = 2,
+handle::engine_enum! {
+    /// The `AccessGenerator` of the protocol chosen at `aldis_access_generator_init` (LNK-001).
+    #[expect(
+        dead_code,
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    pub(crate) enum AccessGeneratorState {
+        /// TM.
+        Tm(Ag<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
+        /// AOS.
+        Aos(Ag<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
+        /// USLP.
+        Uslp(Ag<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
+    }
 }
 
 /// The kind of an `aldis_access_generator_input_t` (LNK-020, LNK-003; API-057).
@@ -747,6 +716,9 @@ impl Storage for aldis_access_generator_t {
 }
 
 /// The managed parameters of an `AccessGenerator` (LNK-020, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_access_generator_config_t {
@@ -845,28 +817,6 @@ fn ag_config<P: AccessProtocol>(
     Ok(config.with_idle_pattern(c.idle_pattern))
 }
 
-/// The head of the engine of `c`; the protocol of the engine is fixed here (LNK-001).
-enum AgHead {
-    Tm(AccessGeneratorHead<Tm>),
-    Aos(AccessGeneratorHead<Aos>),
-    Uslp(AccessGeneratorHead<Uslp>),
-}
-
-fn ag_head(c: &aldis_access_generator_config_t) -> Result<AgHead> {
-    match protocol(&c.channel)? {
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            Ok(AgHead::Tm(Ag::new_head(ag_config(c, ())?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            Ok(AgHead::Aos(Ag::new_head(ag_config(c, ())?)?))
-        }
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Ok(AgHead::Uslp(Ag::new_head(
-            ag_config(c, uslp_params(&c.channel)?)?,
-        )?)),
-        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
-    }
-}
-
 #[expect(
     unsafe_code,
     reason = "the layout of an engine built in place (GEN-071)"
@@ -878,34 +828,6 @@ unsafe impl<P: AccessProtocol, const NQ: usize> InPlace for AccessGenerator<P, N
     type Buffers = AccessGeneratorBuffers<NQ>;
     const HEAD_OFFSET: usize = <AccessGenerator<P, NQ>>::HEAD_OFFSET;
     const BUFFERS_OFFSET: usize = <AccessGenerator<P, NQ>>::BUFFERS_OFFSET;
-}
-
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `AccessGeneratorState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-unsafe fn ag_place(state: *mut AccessGeneratorState, head: AgHead) {
-    match head {
-        AgHead::Tm(h) => {
-            // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Ag<Tm>>(state, 0) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        AgHead::Aos(h) => {
-            // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Ag<Aos>>(state, 1) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-        AgHead::Uslp(h) => {
-            // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
-            let p = unsafe { variant_payload::<_, Ag<Uslp>>(state, 2) };
-            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
-            unsafe { place(p, h) };
-        }
-    }
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -1030,9 +952,21 @@ pub unsafe extern "C" fn aldis_access_generator_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let head = ag_head(&cfg)?;
-            // `init_with` passes a pointer to the state in the slot, valid for writes.
-            handle::init_with(storage, |state| ag_place(state, head))
+            match protocol(&cfg.channel)? {
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
+                    handle::init_variant::<_, Ag<Tm>>(storage, Ag::new_head(ag_config(&cfg, ())?)?)
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
+                    handle::init_variant::<_, Ag<Aos>>(storage, Ag::new_head(ag_config(&cfg, ())?)?)
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
+                    handle::init_variant::<_, Ag<Uslp>>(
+                        storage,
+                        Ag::new_head(ag_config(&cfg, uslp_params(&cfg.channel)?)?)?,
+                    )
+                }
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+            }
         })
     }
 }
@@ -1047,6 +981,32 @@ unsafe fn ag_engine(
 ) -> Result<handle::Handle<AccessGeneratorState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_access_generator_t,
+    aldis_access_generator_input_t,
+    aldis_access_generator_actions_t
+);
+
+impl handle::Step for aldis_access_generator_t {
+    fn step(
+        state: &mut AccessGeneratorState,
+        input: &aldis_access_generator_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_access_generator_actions_t>,
+    ) -> Result<()> {
+        let list = state.step(input, data, area)?;
+        let mut result = aldis_access_generator_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = ag_action(output);
+        }
+        // `list` holds at most `ACCESS_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `AccessGenerator` (API-057, CABI-040). The octets of a data field go
@@ -1079,32 +1039,8 @@ pub unsafe extern "C" fn aldis_access_generator_step(
     actions: *mut aldis_access_generator_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = ag_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|state| state.step(&value, data, area))?;
-            let mut result = aldis_access_generator_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = ag_action(output);
-            }
-            // `list` holds at most `ACCESS_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_access_generator_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `AccessGenerator` (API-056, LNK-002). It changes
@@ -1222,6 +1158,9 @@ impl Storage for aldis_bitstream_generator_t {
 }
 
 /// The managed parameters of a `BitstreamGenerator` (732.0 §4.1.4.3, §5.5; LNK-021, LNK-078).
+///
+/// Zero-initialize the struct before setting members: a member that the chosen `protocol` does not
+/// read is ignored (OI-92).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_bitstream_generator_config_t {
@@ -1402,7 +1341,7 @@ pub unsafe extern "C" fn aldis_bitstream_generator_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             let head = BitstreamGenerator::<Aos, Q>::new_head(bg_config(&cfg)?);
-            handle::init_with(storage, |state| place(state, head))
+            handle::init_engine(storage, head)
         })
     }
 }
@@ -1417,6 +1356,33 @@ unsafe fn bg_engine(
 ) -> Result<handle::Handle<BitstreamGeneratorState>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
+}
+
+handle::step_io!(
+    aldis_bitstream_generator_t,
+    aldis_bitstream_generator_input_t,
+    aldis_bitstream_generator_actions_t
+);
+
+impl handle::Step for aldis_bitstream_generator_t {
+    fn step(
+        engine: &mut BitstreamGeneratorState,
+        input: &aldis_bitstream_generator_input_t,
+        data: &[u8],
+        area: &mut [u8],
+        actions: Out<'_, aldis_bitstream_generator_actions_t>,
+    ) -> Result<()> {
+        let list = bg_run(engine, input, data, area)?;
+        let mut result = aldis_bitstream_generator_actions_t::default();
+        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+            *slot = bg_action(output);
+        }
+        // `list` holds at most `BITSTREAM_GENERATOR_MAX_ACTIONS` actions, the length of
+        // `items`.
+        result.count = list.len();
+        actions.write(result);
+        Ok(())
+    }
 }
 
 /// Runs one input of the `BitstreamGenerator` (API-057, CABI-040). The octets of a `B_PDU` go
@@ -1447,33 +1413,8 @@ pub unsafe extern "C" fn aldis_bitstream_generator_step(
     actions: *mut aldis_bitstream_generator_actions_t,
     err: *mut crate::aldis_error_detail_t,
 ) -> u32 {
-    // SAFETY: every pointer is valid as `# Safety` states; `abi` and `handle` check them.
-    unsafe {
-        abi::call(err, || {
-            let mut h = bg_engine(h)?;
-            let value = abi::read(input)?;
-            let data = abi::bytes_disjoint(value.data, value.data_len, &[h.range()])?;
-            let area = abi::bytes_mut(out, out_cap, &[(value.data, value.data_len), h.range()])?;
-            let actions = abi::out_disjoint(
-                actions,
-                &[
-                    h.range(),
-                    (value.data, value.data_len),
-                    (out.cast_const(), out_cap),
-                ],
-            )?;
-            let list = h.update(|engine| bg_run(engine, &value, data, area))?;
-            let mut result = aldis_bitstream_generator_actions_t::default();
-            for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-                *slot = bg_action(output);
-            }
-            // `list` holds at most `BITSTREAM_GENERATOR_MAX_ACTIONS` actions, the length of
-            // `items`.
-            result.count = list.len();
-            actions.write(result);
-            Ok(())
-        })
-    }
+    // SAFETY: every pointer is valid as `# Safety` states; `handle` checks them.
+    unsafe { handle::step::<aldis_bitstream_generator_t>(h, input, out, out_cap, actions, err) }
 }
 
 /// Reads the counters and the occupancy of the `BitstreamGenerator` (API-056, LNK-002). It

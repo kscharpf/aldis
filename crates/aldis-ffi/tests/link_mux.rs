@@ -879,107 +879,144 @@ fn the_step_checks_its_pointers() {
 }
 
 #[test]
-fn a_member_of_another_protocol_is_read_and_refused_when_invalid() {
+fn a_member_is_read_only_by_the_protocols_that_use_it() {
     // req: CABI-040, CABI-022
     type Edit = fn(&mut aldis_channel_mux_config_t);
-    // Flags and constants: InvalidField from any base configuration.
-    let invalid_field: [Edit; 12] = [
-        |c| c.fecf = 7,
-        |c| c.policy = 7,
-        |c| c.mc_ocf = 7,
-        |c| c.aos_edition = 7,
-        |c| c.aos_fhec = 7,
-        |c| c.aos_cycle_in_use = 7,
-        |c| c.uslp_destination = 7,
-        |c| c.vcs[0].ocf = 7,
-        |c| c.vcs[0].role = 7,
-        |c| c.vcs[0].uslp_qos = 7,
-        |c| c.vcs[0].uslp_cop = 7,
-        |c| c.vcs[1].uslp_cop = 7,
+    const ALL: &[u32] = &[
+        ALDIS_LINK_PROTOCOL_TM,
+        ALDIS_LINK_PROTOCOL_AOS,
+        ALDIS_LINK_PROTOCOL_USLP,
     ];
-    // Ranges of the members of another protocol: refused with their own kind.
-    let ranges: [(Edit, u32, u16); 8] = [
+    const TM: &[u32] = &[ALDIS_LINK_PROTOCOL_TM];
+    const AOS: &[u32] = &[ALDIS_LINK_PROTOCOL_AOS];
+    const USLP: &[u32] = &[ALDIS_LINK_PROTOCOL_USLP];
+    const TM_AOS: &[u32] = &[ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_AOS];
+    const TM_USLP: &[u32] = &[ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP];
+    // The member, the protocols that read it, and the refusal of an invalid value (the field is
+    // checked where the refusal names one).
+    let cases: [(Edit, &[u32], u32, Option<u16>); 18] = [
+        (|c| c.fecf = 7, ALL, ALDIS_ERR_INVALID_FIELD, None),
+        (|c| c.policy = 7, ALL, ALDIS_ERR_INVALID_FIELD, None),
+        (|c| c.mc_ocf = 7, TM_USLP, ALDIS_ERR_INVALID_FIELD, None),
+        (|c| c.aos_edition = 7, AOS, ALDIS_ERR_INVALID_FIELD, None),
+        (|c| c.aos_fhec = 7, AOS, ALDIS_ERR_INVALID_FIELD, None),
+        (
+            |c| c.aos_cycle_in_use = 7,
+            AOS,
+            ALDIS_ERR_INVALID_FIELD,
+            None,
+        ),
+        (
+            |c| c.uslp_destination = 7,
+            USLP,
+            ALDIS_ERR_INVALID_FIELD,
+            None,
+        ),
+        (|c| c.vcs[0].ocf = 7, TM_AOS, ALDIS_ERR_INVALID_FIELD, None),
+        (|c| c.vcs[0].role = 7, TM_AOS, ALDIS_ERR_INVALID_FIELD, None),
+        (
+            |c| c.vcs[0].uslp_qos = 7,
+            USLP,
+            ALDIS_ERR_INVALID_FIELD,
+            None,
+        ),
+        (
+            |c| c.vcs[0].uslp_cop = 7,
+            USLP,
+            ALDIS_ERR_INVALID_FIELD,
+            None,
+        ),
         (
             |c| c.tm_oid_vc = 8,
+            TM,
             ALDIS_ERR_OUT_OF_RANGE,
-            ALDIS_FIELD_VC_ID,
+            Some(ALDIS_FIELD_VC_ID),
         ),
         (
             |c| c.uslp_oid_vcf_len = 8,
+            USLP,
             ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_FIELD_VCF_COUNT_LEN,
+            Some(ALDIS_FIELD_VCF_COUNT_LEN),
         ),
         (
             |c| c.mc_fsh_len = 64,
+            TM,
             ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_FIELD_FSH_LEN,
+            Some(ALDIS_FIELD_FSH_LEN),
         ),
         (
             |c| c.vcs[0].fsh_len = 64,
+            TM,
             ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_FIELD_FSH_LEN,
+            Some(ALDIS_FIELD_FSH_LEN),
         ),
         (
             |c| c.vcs[0].uslp_vcf_len_sc = 8,
+            USLP,
             ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_FIELD_VCF_COUNT_LEN,
+            Some(ALDIS_FIELD_VCF_COUNT_LEN),
         ),
         (
             |c| c.vcs[0].uslp_vcf_len_exp = 8,
+            USLP,
             ALDIS_ERR_INVALID_CONFIG,
-            ALDIS_FIELD_VCF_COUNT_LEN,
-        ),
-        (
-            |c| {
-                c.vc_count = 2;
-                c.vcs[1] = vc(2, 2);
-                c.vcs[1].uslp_map = 16;
-            },
-            ALDIS_ERR_OUT_OF_RANGE,
-            ALDIS_FIELD_MAP_ID,
+            Some(ALDIS_FIELD_VCF_COUNT_LEN),
         ),
         (
             |c| c.vcs[0].uslp_map = 16,
+            USLP,
             ALDIS_ERR_OUT_OF_RANGE,
-            ALDIS_FIELD_MAP_ID,
+            Some(ALDIS_FIELD_MAP_ID),
         ),
     ];
     for base in [tm_config(), aos_config(), uslp_config()] {
-        let mut s = storage();
         let mut d = detail();
-        assert_eq!(init(&mut s, &base, &mut d), 0);
-        for (i, edit) in invalid_field.iter().enumerate() {
+        for (i, (edit, readers, code, field)) in cases.iter().enumerate() {
             let mut c = base;
-            c.vc_count = 2;
-            c.vcs[1] = vc(2, 2);
             edit(&mut c);
-            assert_eq!(
-                refused(&c).0,
-                ALDIS_ERR_INVALID_FIELD,
-                "protocol {} edit {i}",
-                base.protocol
-            );
-            // The same through a reconfiguration, which changes nothing.
+            let reads = readers.contains(&base.protocol);
+            if reads {
+                let mut fresh = storage();
+                let got = init(&mut fresh, &c, &mut d);
+                let got_field = d.field;
+                assert_eq!(got, *code, "protocol {} case {i}", base.protocol);
+                if let Some(field) = field {
+                    assert_eq!(got_field, *field, "protocol {} case {i}", base.protocol);
+                }
+            }
+            // The same through a reconfiguration: refused, with the engine unchanged, by a
+            // protocol that reads the member, and accepted by one that does not.
             let mut s = storage();
             assert_eq!(init(&mut s, &base, &mut d), 0);
             let mut re = input(ALDIS_CHANNEL_MUX_INPUT_RECONFIGURE);
             re.config = c;
             let mut actions = aldis_channel_mux_actions_t::default();
-            assert_eq!(
-                step(&mut s, &re, &mut [0; 64], &mut actions, &mut d),
-                ALDIS_ERR_INVALID_FIELD
-            );
+            let want = if reads { *code } else { 0 };
+            let got = step(&mut s, &re, &mut [0; 64], &mut actions, &mut d);
+            assert_eq!(got, want, "protocol {} case {i}: {d:?}", base.protocol);
+            if !reads {
+                // Accepted at `_init` as well.
+                let mut fresh = storage();
+                assert_eq!(
+                    init(&mut fresh, &c, &mut d),
+                    0,
+                    "protocol {} case {i}",
+                    base.protocol
+                );
+            }
         }
-        for (i, (edit, kind, field)) in ranges.iter().enumerate() {
-            let mut c = base;
-            edit(&mut c);
-            assert_eq!(
-                refused(&c),
-                (*kind, *field),
-                "protocol {} range {i}",
-                base.protocol
-            );
-        }
+    }
+    // Every listed entry of a USLP configuration is read, the second as the first.
+    let second: [(Edit, u32); 2] = [
+        (|c| c.vcs[1].uslp_cop = 7, ALDIS_ERR_INVALID_FIELD),
+        (|c| c.vcs[1].uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
+    ];
+    for (edit, want) in second {
+        let mut c = uslp_config();
+        c.vc_count = 2;
+        c.vcs[1] = vc(2, 2);
+        edit(&mut c);
+        assert_eq!(refused(&c).0, want);
     }
     // An entry past `vc_count` is not read.
     let mut c = tm_config();
