@@ -199,6 +199,79 @@ pub(crate) unsafe fn init_with<S: Storage>(
     Ok(())
 }
 
+/// An engine that [`place`] builds in caller storage: a plain Rust struct of a **head** and
+/// **buffers**, the only two fields, whose offsets the `unsafe impl` takes from `offset_of!`
+/// (CABI-040, GEN-012; OI-91 (b); M6 plan WP-3a).
+///
+/// The head is everything small, built by value from the configuration. The buffers are the
+/// large octet arrays, never built by value: `place` zeroes them. The engines keep no `repr(C)`
+/// layout constant and no `unsafe` (GEN-070); this trait and its impls are the one place that
+/// knows the layout.
+///
+/// # Safety
+/// An impl guarantees all of:
+/// - `HEAD_OFFSET` and `BUFFERS_OFFSET` are the offsets of the fields of type `Head` and
+///   `Buffers` in `Self`, taken with `core::mem::offset_of!`, never written by hand;
+/// - `Head` and `Buffers` are the only fields of `Self`;
+/// - `Buffers` is valid when all of its bytes are zero.
+///
+/// Then the slot of `Self` with every byte zero and a valid `Head` written at `HEAD_OFFSET` is a
+/// valid `Self`, on which `finish_place` may run (the compile-time assertion of `place` keeps
+/// the two fields disjoint and inside `Self`).
+#[expect(
+    unsafe_code,
+    reason = "an impl asserts the layout of an engine (GEN-071)"
+)]
+pub(crate) unsafe trait InPlace: Sized {
+    /// The small part, built from the configuration.
+    type Head;
+    /// The octet buffers, valid when all zero.
+    type Buffers;
+    /// The offset of the head field.
+    const HEAD_OFFSET: usize;
+    /// The offset of the buffers field.
+    const BUFFERS_OFFSET: usize;
+
+    /// Sets up what the zeroed buffers cannot express, once the engine is placed (for the
+    /// `ChannelMux`, the Insert Zone slot at the idle pattern, LNK-034). Safe: it runs on a
+    /// valid engine.
+    fn finish_place(&mut self) {}
+}
+
+/// Whether `Head` and `Buffers` are disjoint and inside `E` (the assertion of [`place`]).
+const fn layout_fits<E: InPlace>() -> bool {
+    let head_end = E::HEAD_OFFSET.saturating_add(size_of::<E::Head>());
+    let bufs_end = E::BUFFERS_OFFSET.saturating_add(size_of::<E::Buffers>());
+    let disjoint = head_end <= E::BUFFERS_OFFSET || bufs_end <= E::HEAD_OFFSET;
+    disjoint && head_end <= size_of::<E>() && bufs_end <= size_of::<E>()
+}
+
+/// Builds an engine at `engine` from its head, without an engine on the stack (CABI-040; the
+/// engine is 18 KB for FOP-1): zeroes the whole slot (the buffers, the padding, which makes every
+/// byte initialized for Miri, VER-026), writes `head` at its offset, and runs `finish_place`.
+///
+/// # Safety
+/// `engine` is non-null, aligned for `E`, and valid for writes of one `E`.
+#[expect(unsafe_code, reason = "initializes an engine in place (GEN-071)")]
+pub(crate) unsafe fn place<E: InPlace>(engine: *mut E, head: E::Head) {
+    const { assert!(layout_fits::<E>()) };
+    // SAFETY: by the contract `engine` is valid for writes of `size_of::<E>()` octets. The
+    // assertion above keeps the head in the engine, and `HEAD_OFFSET` is its offset (the
+    // trait's contract), so the write is in bounds and aligned. After the zeroing and the head
+    // every octet is initialized; `Buffers` is valid when zero and `Head` and `Buffers` are the
+    // only fields (the trait's contract), so the engine is valid and the reference is sound.
+    // Zeroing and writing go through raw pointers, so no reference to uninitialized memory is
+    // made before the engine is valid.
+    unsafe {
+        engine.cast::<u8>().write_bytes(0, size_of::<E>());
+        engine
+            .byte_add(E::HEAD_OFFSET)
+            .cast::<E::Head>()
+            .write(head);
+        (*engine).finish_place();
+    }
+}
+
 /// The handle `storage` checked against the magic of `S` (CABI-032).
 ///
 /// # Errors
@@ -472,6 +545,81 @@ mod tests {
             // A second handle sees the update: it was made in the storage.
             assert_eq!(get(big).unwrap().read(|w| w.head), 1);
         }
+    }
+
+    /// A plain Rust engine, with a layout the compiler chooses: a head, a padding hole, buffers.
+    struct Toy {
+        bufs: Bufs,
+        head: ToyHead,
+        marked: bool,
+    }
+
+    struct ToyHead {
+        count: u64,
+        flag: u8,
+    }
+
+    struct Bufs {
+        octets: [u8; 37],
+        counts: [u16; 3],
+    }
+
+    // SAFETY: `head` and `bufs` are the fields of `Toy` besides `marked`, which is valid when
+    // zero (`false`); the offsets are `offset_of!`; `Bufs` is valid when zeroed.
+    unsafe impl InPlace for Toy {
+        type Head = ToyHead;
+        type Buffers = Bufs;
+        const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+        const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+
+        fn finish_place(&mut self) {
+            self.marked = self.bufs.counts == [0; 3] && self.bufs.octets.iter().all(|b| *b == 0);
+        }
+    }
+
+    #[test]
+    fn place_zeroes_the_slot_writes_the_head_and_finishes() {
+        // req: CABI-040
+        // Storage that holds garbage, to show that every octet of the engine is overwritten.
+        let mut slot = core::mem::MaybeUninit::<Toy>::uninit();
+        // SAFETY: `slot` is valid for writes of one `Toy`; reads follow `place`, which
+        // initializes all of it.
+        unsafe {
+            slot.as_mut_ptr()
+                .cast::<u8>()
+                .write_bytes(0xFF, size_of::<Toy>());
+            place(slot.as_mut_ptr(), ToyHead { count: 7, flag: 3 });
+            let toy = slot.assume_init_ref();
+            assert_eq!((toy.head.count, toy.head.flag), (7, 3));
+            assert!(toy.bufs.octets.iter().all(|b| *b == 0));
+            assert_eq!(toy.bufs.counts, [0; 3]);
+            // `finish_place` saw the zeroed buffers.
+            assert!(toy.marked);
+        }
+    }
+
+    #[test]
+    fn the_layout_check_rejects_overlap_and_overrun() {
+        // req: CABI-040
+        #[expect(dead_code, reason = "only its size is used")]
+        struct Bad<const H: usize, const B: usize>([u8; 16]);
+        // SAFETY: only `layout_fits` reads the constants; `place` is never called on `Bad`.
+        unsafe impl<const H: usize, const B: usize> InPlace for Bad<H, B> {
+            type Head = [u8; 8];
+            type Buffers = [u8; 8];
+            const HEAD_OFFSET: usize = H;
+            const BUFFERS_OFFSET: usize = B;
+        }
+        // The fields are 8 octets each in an engine of 16.
+        const { assert!(layout_fits::<Bad<0, 8>>()) };
+        const { assert!(layout_fits::<Bad<8, 0>>()) };
+        // Overlap, in both orders.
+        const { assert!(!layout_fits::<Bad<0, 4>>()) };
+        const { assert!(!layout_fits::<Bad<4, 0>>()) };
+        // Beyond the engine.
+        const { assert!(!layout_fits::<Bad<0, 12>>()) };
+        const { assert!(!layout_fits::<Bad<12, 0>>()) };
+        const { assert!(layout_fits::<Toy>()) };
     }
 
     #[test]

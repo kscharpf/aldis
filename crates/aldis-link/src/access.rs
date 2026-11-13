@@ -220,16 +220,17 @@ pub struct AccessStatus {
 /// (GEN-011); a configuration whose longest SDU does not fit is refused with
 /// `CapacityExceeded`.
 ///
-/// The engine is its [`AccessGeneratorHead`] followed by its [`AccessGeneratorBuffers`]
-/// (`repr(C)`), so that a caller can build it in place (see [`crate::inplace`]).
+/// The two fields are public so that a caller can build the engine in place in its own storage,
+/// without an engine on the stack: all-zero buffers are the empty state (CABI-040, GEN-012).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct AccessGenerator<P: AccessProtocol, const Q: usize> {
-    head: AccessGeneratorHead<P>,
-    bufs: AccessGeneratorBuffers<Q>,
+    /// Everything but the octet buffers.
+    pub head: AccessGeneratorHead<P>,
+    /// The octet buffers, valid when all zero.
+    pub bufs: AccessGeneratorBuffers<Q>,
 }
 
-/// Everything of an [`AccessGenerator`] but its queue (see [`crate::inplace`]).
+/// Everything of an [`AccessGenerator`] but its queue.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,11 +243,10 @@ pub struct AccessGeneratorHead<P: AccessProtocol> {
 }
 
 /// The SDU queue of an [`AccessGenerator`]: `Q` octets, valid when all zero, which is the empty
-/// state (see [`crate::inplace`]).
+/// state.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct AccessGeneratorBuffers<const Q: usize> {
     queue: [u8; Q],
 }
@@ -272,17 +272,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
-    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
-    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
-
     /// The head of a generator with an empty queue: the part of [`Self::new`] that is built from
-    /// the configuration (see [`crate::inplace`]).
+    /// the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].

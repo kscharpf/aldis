@@ -33,9 +33,9 @@ use aldis::sync::{
 
 use crate::abi;
 use crate::capacities::{ALDIS_SYNC_MAX_CHUNK_OCTETS, ALDIS_SYNC_MAX_FRAME_OCTETS};
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{ALDIS_LINK_PROTOCOL_AOS, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP};
-use crate::link_common::{engine_in_place, range};
+use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -330,13 +330,17 @@ pub unsafe extern "C" fn aldis_sync_randomize(
     }
 }
 
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `Engine`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-const unsafe fn place(state: *mut Engine, head: AsmSearchHead) {
-    engine_in_place!(Engine, AsmSearchHead, AsmSearchBuffers<F>, state, head);
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are a plain octet array, valid when zeroed.
+unsafe impl<const NF: usize, const NC: usize, const NA: usize> InPlace for AsmSearch<NF, NC, NA> {
+    type Head = AsmSearchHead;
+    type Buffers = AsmSearchBuffers<NF>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 }
 
 /// One step of `engine` (API-057).

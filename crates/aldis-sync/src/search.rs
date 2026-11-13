@@ -242,15 +242,15 @@ impl Phase {
 /// [module](self) for their meaning. A type is built as
 /// `AsmSearch<64, 128, { max_actions(128) }>`.
 ///
-/// The engine is its [`AsmSearchHead`] followed by its [`AsmSearchBuffers`] (`repr(C)`), so that
-/// a caller can build it in place, in storage it owns (the pattern of `aldis-link`'s
-/// `inplace` module; CABI-040, GEN-012): the partial-unit storage of a `FRAME` of 65536 octets
-/// would otherwise pass through the stack.
+/// The engine is its [`AsmSearchHead`] and its [`AsmSearchBuffers`]. The fields are public so that
+/// a caller can build it in place, in storage it owns (CABI-040, GEN-012): the partial-unit
+/// storage of a `FRAME` of 65536 octets would otherwise pass through the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct AsmSearch<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize> {
-    head: AsmSearchHead,
-    bufs: AsmSearchBuffers<FRAME>,
+    /// Everything but the partial-unit storage.
+    pub head: AsmSearchHead,
+    /// The partial-unit storage, valid when all zero.
+    pub bufs: AsmSearchBuffers<FRAME>,
 }
 
 /// Everything of an [`AsmSearch`] but its partial-unit storage: the configuration, the phase,
@@ -270,7 +270,6 @@ pub struct AsmSearchHead {
 ///
 /// Requirements: SYNC-012, CABI-040 (in-place construction), CABI-030.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct AsmSearchBuffers<const FRAME: usize> {
     partial: [u8; FRAME],
 }
@@ -317,15 +316,6 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
             bufs: AsmSearchBuffers::ZERO,
         })
     }
-
-    /// The offset of the head in the engine, for an in-place build.
-    ///
-    /// Requirements: CABI-040 (in-place construction), SYNC-012.
-    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build.
-    ///
-    /// Requirements: CABI-040 (in-place construction), SYNC-012.
-    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 
     /// The head of an engine in `Searching` with an empty window: the part of [`Self::new`]
     /// that is built from the configuration, for an in-place build.

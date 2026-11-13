@@ -21,7 +21,7 @@ use aldis::link::access::{
 use aldis::link::bitstream::{
     BITSTREAM_GENERATOR_MAX_ACTIONS, BitstreamActions, BitstreamGenerator,
     BitstreamGeneratorBuffers, BitstreamGeneratorConfig, BitstreamGeneratorHead, BitstreamInput,
-    BitstreamOutput, BitstreamStatus,
+    BitstreamOutput, BitstreamProtocol, BitstreamStatus,
 };
 use aldis::link::generator::{
     GeneratorActions, GeneratorInput, GeneratorOutput, GeneratorStatus,
@@ -32,12 +32,12 @@ use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
 
 use crate::abi;
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{
     RouteFields, aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params,
     idle_packet, idle_policy, protocol, unsupported_protocol, uslp_params, valid_pvns, vc,
 };
-use crate::link_common::{engine_in_place, range, variant_payload};
+use crate::link_common::{range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -316,28 +316,45 @@ fn pg_head(c: &aldis_packet_generator_config_t) -> Result<PgHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: PacketProtocol, const ND: usize, const NQ: usize> InPlace
+    for PacketGenerator<P, ND, NQ>
+{
+    type Head = PacketGeneratorHead<P>;
+    type Buffers = PacketGeneratorBuffers<ND, NQ>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `PacketGeneratorState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn pg_place(state: *mut PacketGeneratorState, head: PgHead) {
-    type B = PacketGeneratorBuffers<D, Q>;
     match head {
         PgHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pg<Tm>>(state, 0) };
-            engine_in_place!(Pg<Tm>, PacketGeneratorHead<Tm>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         PgHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pg<Aos>>(state, 1) };
-            engine_in_place!(Pg<Aos>, PacketGeneratorHead<Aos>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         PgHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Pg<Uslp>>(state, 2) };
-            engine_in_place!(Pg<Uslp>, PacketGeneratorHead<Uslp>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }
@@ -850,28 +867,43 @@ fn ag_head(c: &aldis_access_generator_config_t) -> Result<AgHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: AccessProtocol, const NQ: usize> InPlace for AccessGenerator<P, NQ> {
+    type Head = AccessGeneratorHead<P>;
+    type Buffers = AccessGeneratorBuffers<NQ>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `AccessGeneratorState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn ag_place(state: *mut AccessGeneratorState, head: AgHead) {
-    type B = AccessGeneratorBuffers<Q>;
     match head {
         AgHead::Tm(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Ag<Tm>>(state, 0) };
-            engine_in_place!(Ag<Tm>, AccessGeneratorHead<Tm>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         AgHead::Aos(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Ag<Aos>>(state, 1) };
-            engine_in_place!(Ag<Aos>, AccessGeneratorHead<Aos>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         AgHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 2 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Ag<Uslp>>(state, 2) };
-            engine_in_place!(Ag<Uslp>, AccessGeneratorHead<Uslp>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }
@@ -1331,19 +1363,17 @@ fn bg_status(engine: &BitstreamGeneratorState) -> aldis_bitstream_generator_stat
     }
 }
 
-/// Builds the engine of `head` at `state`, in place (#240).
-///
-/// # Safety
-/// `state` is valid for writes of one `BitstreamGeneratorState`.
-#[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
-const unsafe fn bg_place(state: *mut BitstreamGeneratorState, head: BitstreamGeneratorHead<Aos>) {
-    engine_in_place!(
-        BitstreamGeneratorState,
-        BitstreamGeneratorHead<Aos>,
-        BitstreamGeneratorBuffers<Q>,
-        state,
-        head
-    );
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: BitstreamProtocol, const NQ: usize> InPlace for BitstreamGenerator<P, NQ> {
+    type Head = BitstreamGeneratorHead<P>;
+    type Buffers = BitstreamGeneratorBuffers<NQ>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
 }
 
 /// Places a `BitstreamGenerator` with an empty queue in `storage` (LNK-021; CABI-031,
@@ -1372,7 +1402,7 @@ pub unsafe extern "C" fn aldis_bitstream_generator_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             let head = BitstreamGenerator::<Aos, Q>::new_head(bg_config(&cfg)?);
-            handle::init_with(storage, |state| bg_place(state, head))
+            handle::init_with(storage, |state| place(state, head))
         })
     }
 }

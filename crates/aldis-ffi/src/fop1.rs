@@ -28,7 +28,7 @@ use aldis::tc::{Clcw, PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 
 use crate::abi::{self, flag};
 use crate::capacities::{ALDIS_FOP1_MAX_FRAME_OCTETS, ALDIS_FOP1_SENT_QUEUE_FRAMES};
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -66,6 +66,19 @@ type Store = Fop1Store<{ ALDIS_FOP1_SENT_QUEUE_FRAMES }, { ALDIS_FOP1_MAX_FRAME_
 pub(crate) struct Fop1State {
     engine: Engine,
     store: Store,
+}
+
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `engine` and `store` are the only fields of the state, and the offsets are
+// `offset_of!`; the store is plain arrays of octets, valid when zeroed (`Fop1Store`).
+unsafe impl InPlace for Fop1State {
+    type Head = Engine;
+    type Buffers = Store;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, engine);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, store);
 }
 
 /// The kind of an `aldis_fop1_input_t` (232.1 §5.3.2, Table 5-1; API-057).
@@ -801,19 +814,7 @@ pub unsafe extern "C" fn aldis_fop1_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             let engine = Engine::new(config(&cfg)?)?;
-            handle::init_with(storage, |state: *mut Fop1State| {
-                // SAFETY: `init_with` passes a pointer to the state in the slot: non-null,
-                // aligned, and valid for writes of one `Fop1State`. The store is plain arrays of
-                // octets, valid when zeroed (`Fop1Store`), so zeroing its octets initializes
-                // it; the engine is a small value moved in. Both go through raw field
-                // pointers, so no reference to uninitialized memory is made.
-                {
-                    (&raw mut (*state).store)
-                        .cast::<u8>()
-                        .write_bytes(0, size_of::<Store>());
-                    (&raw mut (*state).engine).write(engine);
-                }
-            })
+            handle::init_with(storage, |state: *mut Fop1State| place(state, engine))
         })
     }
 }

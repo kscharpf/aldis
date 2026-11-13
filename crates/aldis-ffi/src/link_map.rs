@@ -52,12 +52,12 @@ use crate::abi::{self, flag};
 use crate::capacities::{
     ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_MAP_CHANNELS, ALDIS_LINK_PACKET_QUEUE_OCTETS,
 };
-use crate::handle::{self, Storage};
+use crate::handle::{self, InPlace, Storage, place};
 use crate::link::{
     aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, qos, qos_code,
     unsupported_protocol,
 };
-use crate::link_common::{engine_in_place, range, variant_payload};
+use crate::link_common::{range, variant_payload};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -557,23 +557,39 @@ fn sg_head(c: &aldis_map_segmenter_config_t) -> Result<SgHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: SegmenterProtocol, const NM: usize, const NQ: usize> InPlace
+    for MapSegmenter<P, NM, NQ>
+{
+    type Head = MapSegmenterHead<P, NM>;
+    type Buffers = MapSegmenterBuffers<NQ>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `MapSegmenterState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn sg_place(state: *mut MapSegmenterState, head: SgHead) {
-    type B = MapSegmenterBuffers<Q>;
     match head {
         SgHead::Tc(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Sg<Tc>>(state, 0) };
-            engine_in_place!(Sg<Tc>, MapSegmenterHead<Tc, M>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         SgHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Sg<Uslp>>(state, 1) };
-            engine_in_place!(Sg<Uslp>, MapSegmenterHead<Uslp, M>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }
@@ -1227,23 +1243,39 @@ fn ra_head(c: &aldis_map_reassembler_config_t) -> Result<RaHead> {
     }
 }
 
+#[expect(
+    unsafe_code,
+    reason = "the layout of an engine built in place (GEN-071)"
+)]
+// SAFETY: `head` and `bufs` are the only fields of the engine, and the offsets are `offset_of!`;
+// the buffers are plain octet arrays, valid when zeroed.
+unsafe impl<P: ReassemblerProtocol, const NM: usize, const NS: usize> InPlace
+    for MapReassembler<P, NM, NS>
+{
+    type Head = MapReassemblerHead<P, NM>;
+    type Buffers = MapReassemblerBuffers<NM, NS>;
+    const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
+    const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
+}
+
 /// Builds the engine of `head` at `state`, in place (#240).
 ///
 /// # Safety
 /// `state` is valid for writes of one `MapReassemblerState`.
 #[expect(unsafe_code, reason = "initializes the engine in place (GEN-071)")]
 unsafe fn ra_place(state: *mut MapReassemblerState, head: RaHead) {
-    type B = MapReassemblerBuffers<M, S>;
     match head {
         RaHead::Tc(h) => {
             // SAFETY: as the contract says; the tag 0 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Ra<Tc>>(state, 0) };
-            engine_in_place!(Ra<Tc>, MapReassemblerHead<Tc, M>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
         RaHead::Uslp(h) => {
             // SAFETY: as the contract says; the tag 1 is the discriminant of the variant.
             let p = unsafe { variant_payload::<_, Ra<Uslp>>(state, 1) };
-            engine_in_place!(Ra<Uslp>, MapReassemblerHead<Uslp, M>, B, p, h);
+            // SAFETY: `p` points to the payload of the variant just tagged, valid for writes of one engine.
+            unsafe { place(p, h) };
         }
     }
 }

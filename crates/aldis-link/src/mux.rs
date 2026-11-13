@@ -799,16 +799,17 @@ struct Held<T> {
 /// configuration that needs more is refused with `CapacityExceeded`. The field slots hold
 /// `V × F` octets.
 ///
-/// The engine is its [`ChannelMuxHead`] followed by its [`ChannelMuxBuffers`] (`repr(C)`), so
-/// that a caller can build it in place (see [`crate::inplace`]).
+/// The two fields are public so that a caller can build the engine in place in its own storage,
+/// without an engine on the stack: all-zero buffers are the empty state (CABI-040, GEN-012).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct ChannelMux<P: MuxProtocol, const V: usize, const F: usize> {
-    head: ChannelMuxHead<P, V>,
-    bufs: ChannelMuxBuffers<V, F>,
+    /// Everything but the octet buffers.
+    pub head: ChannelMuxHead<P, V>,
+    /// The octet buffers, valid when all zero.
+    pub bufs: ChannelMuxBuffers<V, F>,
 }
 
-/// Everything of a [`ChannelMux`] but its octet buffers (see [`crate::inplace`]).
+/// Everything of a [`ChannelMux`] but its octet buffers.
 ///
 /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -830,10 +831,8 @@ pub struct ChannelMuxHead<P: MuxProtocol, const V: usize> {
 ///
 /// All zero is the empty state of the slots and the counts. The Insert Zone slot starts at the
 /// configured idle pattern (LNK-034): [`with_idle`](Self::with_idle) builds the buffers that
-/// way, and an in-place build writes that pattern at [`INSERT_OFFSET`](Self::INSERT_OFFSET)
-/// (see [`crate::inplace`]).
+/// way. An in-place build zeroes the buffers and then calls [`ChannelMux::init_slots`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C)]
 pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
     slots: [[u8; F]; V],
     insert: [u8; F],
@@ -843,12 +842,6 @@ pub struct ChannelMuxBuffers<const V: usize, const F: usize> {
 }
 
 impl<const V: usize, const F: usize> ChannelMuxBuffers<V, F> {
-    /// The offset of the Insert Zone slot in the buffers, for an in-place build (see
-    /// [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
-    pub const INSERT_OFFSET: usize = core::mem::offset_of!(Self, insert);
-
     /// Empty slots, and the Insert Zone slot filled with the idle pattern `idle` (LNK-034).
     #[must_use]
     pub const fn with_idle(idle: u8) -> Self {
@@ -898,17 +891,8 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         })
     }
 
-    /// The offset of the head in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
-    pub const HEAD_OFFSET: usize = core::mem::offset_of!(Self, head);
-    /// The offset of the buffers in the engine, for an in-place build (see [`crate::inplace`]).
-    ///
-    /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
-    pub const BUFFERS_OFFSET: usize = core::mem::offset_of!(Self, bufs);
-
     /// The head of a mux with no field offered: the part of [`Self::new`] that is built from
-    /// the configuration (see [`crate::inplace`]).
+    /// the configuration.
     ///
     /// # Errors
     /// As [`Self::new`].
@@ -934,8 +918,11 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// Puts every slot at its configured value (LNK-033, LNK-034): the head's OCF and Secondary
-    /// Header slots, and the Insert Zone slot at the idle pattern.
-    fn init_slots(&mut self) {
+    /// Header slots, and the Insert Zone slot at the idle pattern. An in-place build calls it on the
+    /// engine it has zeroed and given its head (CABI-040).
+    ///
+    /// Requirements: LNK-033, LNK-034, CABI-040; docs/04-engines.md §2.4.
+    pub fn init_slots(&mut self) {
         self.head.init_slots();
         self.bufs.insert.fill(self.head.config.idle_pattern);
     }
