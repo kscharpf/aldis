@@ -256,6 +256,7 @@ fn the_segmenter_storage_is_checked_and_tagged() {
 #[test]
 fn the_segmenter_protocol_is_chosen_in_the_configuration() {
     // req: LNK-001, CABI-040, LNK-040, LNK-078, API-040
+    type SgSet = fn(&mut aldis_map_segmenter_config_t);
     let mut s = sg_storage();
     let mut d = detail();
     assert_eq!(sg_init(&mut s, &tc_sg(), &mut d), 0);
@@ -270,7 +271,7 @@ fn the_segmenter_protocol_is_chosen_in_the_configuration() {
     cfg.channel.protocol = 9;
     assert_eq!(sg_init(&mut s, &cfg, &mut d), ALDIS_ERR_INVALID_FIELD);
     // The flags and constants: a member of TC is read under TC only, the others by both.
-    let sets: [(fn(&mut aldis_map_segmenter_config_t), bool); 5] = [
+    let sets: [(SgSet, bool); 5] = [
         (|c| c.tc_segment_header = 2, true),
         (|c| c.tc_fecf = 2, true),
         (|c| c.maps[0].segmentation = 2, false),

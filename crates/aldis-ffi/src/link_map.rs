@@ -675,8 +675,8 @@ pub unsafe extern "C" fn aldis_map_segmenter_init(
                         Sg::new_head(sg_config::<Uslp>(&cfg)?)?,
                     )
                 }
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
+                | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }
         })
     }
@@ -1334,8 +1334,8 @@ pub unsafe extern "C" fn aldis_map_reassembler_init(
                         Ra::new_head(ra_config::<Uslp>(&cfg)?)?,
                     )
                 }
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
+                | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }
         })
     }

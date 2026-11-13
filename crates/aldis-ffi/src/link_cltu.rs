@@ -353,8 +353,8 @@ pub unsafe extern "C" fn aldis_cltu_packer_init(
                         Cp::new_head(cp_config::<Uslp>(&cfg)?)?,
                     )
                 }
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
-                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
+                | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }
         })
     }

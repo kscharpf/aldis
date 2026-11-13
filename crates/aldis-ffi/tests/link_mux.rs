@@ -1007,13 +1007,11 @@ fn a_member_is_read_only_by_the_protocols_that_use_it() {
         }
     }
     // Every listed entry of a USLP configuration is read, the second as the first.
-    for (edit, want) in [
-        (
-            (|c| c.vcs[1].uslp_cop = 7) as fn(&mut aldis_channel_mux_config_t),
-            ALDIS_ERR_INVALID_FIELD,
-        ),
+    let second: [(Edit, u32); 2] = [
+        (|c| c.vcs[1].uslp_cop = 7, ALDIS_ERR_INVALID_FIELD),
         (|c| c.vcs[1].uslp_map = 16, ALDIS_ERR_OUT_OF_RANGE),
-    ] {
+    ];
+    for (edit, want) in second {
         let mut c = uslp_config();
         c.vc_count = 2;
         c.vcs[1] = vc(2, 2);
