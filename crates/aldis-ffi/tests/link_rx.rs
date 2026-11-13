@@ -23,8 +23,10 @@ use aldis_ffi::field::{
     ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_PACKET_LEN, ALDIS_FIELD_RAW_FRAMES,
     ALDIS_FIELD_VC_ID,
 };
+use aldis_ffi::link::common::*;
+use aldis_ffi::link::extractor::*;
+use aldis_ffi::link::receiver::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_rx::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {

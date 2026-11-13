@@ -5,15 +5,15 @@
 
 use aldis_ffi::farm1::aldis_farm1_action::*;
 use aldis_ffi::fop1::aldis_fop1_action::*;
-use aldis_ffi::link_cltu::aldis_cltu_packer_action::*;
-use aldis_ffi::link_gen::aldis_access_generator_action::*;
-use aldis_ffi::link_gen::aldis_bitstream_generator_action::*;
-use aldis_ffi::link_gen::aldis_packet_generator_action::*;
-use aldis_ffi::link_map::aldis_map_reassembler_action::*;
-use aldis_ffi::link_map::aldis_map_segmenter_action::*;
-use aldis_ffi::link_mux::aldis_channel_mux_action::*;
-use aldis_ffi::link_rx::aldis_frame_receiver_action::*;
-use aldis_ffi::link_rx::aldis_packet_extractor_action::*;
+use aldis_ffi::link::access::aldis_access_generator_action::*;
+use aldis_ffi::link::bitstream::aldis_bitstream_generator_action::*;
+use aldis_ffi::link::cltu::aldis_cltu_packer_action::*;
+use aldis_ffi::link::extractor::aldis_packet_extractor_action::*;
+use aldis_ffi::link::generator::aldis_packet_generator_action::*;
+use aldis_ffi::link::mux::aldis_channel_mux_action::*;
+use aldis_ffi::link::reassembler::aldis_map_reassembler_action::*;
+use aldis_ffi::link::receiver::aldis_frame_receiver_action::*;
+use aldis_ffi::link::segmenter::aldis_map_segmenter_action::*;
 
 #[test]
 #[expect(

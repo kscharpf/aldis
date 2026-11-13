@@ -17,8 +17,10 @@ use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
 use aldis_ffi::error::*;
 use aldis_ffi::field::{ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_VC_ID};
+use aldis_ffi::link::access::*;
+use aldis_ffi::link::bitstream::*;
+use aldis_ffi::link::generator::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_gen::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {

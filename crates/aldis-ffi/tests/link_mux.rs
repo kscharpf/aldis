@@ -25,9 +25,10 @@ use aldis_ffi::field::{
     ALDIS_FIELD_SECURITY_HEADER_LEN, ALDIS_FIELD_SPACECRAFT_ID, ALDIS_FIELD_VC_ID,
     ALDIS_FIELD_VC_PRIORITY, ALDIS_FIELD_VC_WEIGHT, ALDIS_FIELD_VCF_COUNT_LEN,
 };
+use aldis_ffi::link::common::*;
+use aldis_ffi::link::mux::*;
+use aldis_ffi::link::receiver::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_mux::*;
-use aldis_ffi::link_rx::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {

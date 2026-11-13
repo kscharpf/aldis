@@ -23,8 +23,10 @@ use aldis_ffi::field::{
     ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAP_ID, ALDIS_FIELD_MAX_FDU_LEN,
     ALDIS_FIELD_MAX_SDU_LEN, ALDIS_FIELD_SEGMENTATION, ALDIS_FIELD_UPID, ALDIS_FIELD_VCF_COUNT_LEN,
 };
+use aldis_ffi::link::common::*;
+use aldis_ffi::link::reassembler::*;
+use aldis_ffi::link::segmenter::*;
 use aldis_ffi::link::*;
-use aldis_ffi::link_map::*;
 
 fn detail() -> aldis_error_detail_t {
     aldis_error_detail_t {

@@ -34,8 +34,8 @@ use aldis::sync::{
 use crate::abi::{self, Out};
 use crate::capacities::{ALDIS_SYNC_MAX_CHUNK_OCTETS, ALDIS_SYNC_MAX_FRAME_OCTETS};
 use crate::handle::{self, InPlace, Storage};
+use crate::link::common::range;
 use crate::link::{ALDIS_LINK_PROTOCOL_AOS, ALDIS_LINK_PROTOCOL_TM, ALDIS_LINK_PROTOCOL_USLP};
-use crate::link_common::range;
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
