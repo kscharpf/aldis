@@ -4,11 +4,11 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
+
 <!-- changelog-base: d1b7be8305e163803c468cc3b89d72670b9750a1 -->
 
 ## [0.7.0-m6] — 2026-11-14
-
-Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
 
 ### Added
 - A1 packets plan (#296)
