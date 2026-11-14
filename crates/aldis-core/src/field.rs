@@ -11,7 +11,8 @@
 //! moves when a second crate starts to use its field (M2 plan D2).
 //!
 //! A `field` names a field of a data unit defined by a Blue Book; a `parameter` names a
-//! managed parameter, a configuration value, an argument, or a length the caller passes.
+//! managed parameter, a configuration value, an argument, or a length the caller passes; a
+//! `retired` code names nothing any more and is never reused.
 
 use crate::error::FieldId;
 
@@ -100,9 +101,10 @@ pub const VALUE: FieldId = FieldId::catalogued::<16>("value");
 /// Code 17, a parameter (CMN-030; API-082).
 pub const BITS: FieldId = FieldId::catalogued::<17>("bits");
 
-/// Length of a record pushed to a fixed-capacity byte queue.
+/// Length of a record pushed to a fixed-capacity byte queue, which left `aldis-core`; no error
+/// names this code.
 ///
-/// Code 18, a parameter (API-061; API-082).
+/// Code 18, retired (API-061; API-082).
 pub const RECORD_LEN: FieldId = FieldId::catalogued::<18>("record_len");
 
 /// Capacity of a fixed-capacity byte queue, in octets.

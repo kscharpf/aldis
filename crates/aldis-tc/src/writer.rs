@@ -16,7 +16,7 @@ use aldis_core::lookup::PhysicalLookup;
 use aldis_core::finishing::Unprotected;
 use aldis_core::layout::{FECF_LEN, FrameLayout, LayoutSpec};
 use aldis_core::security::SecurityLayout;
-use aldis_core::writer::{FramePlan, FrameWriter, Variable, VariablePlan};
+use aldis_core::writer::{FinishPlan, FramePlan, FrameWriter, Variable, VariablePlan};
 use aldis_core::{Error, Result};
 
 use crate::control::{ControlCommand, ControlOctets};
@@ -202,7 +202,9 @@ pub struct TcPlan {
     fields: FrameFields,
 }
 
-impl FramePlan for TcPlan {
+impl FramePlan for TcPlan {}
+
+impl FinishPlan for TcPlan {
     type OneShot = TcOneShot;
 }
 

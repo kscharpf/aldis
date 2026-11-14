@@ -24,7 +24,7 @@ use aldis_core::layout::{FrameLayout, LayoutSpec, OCF_LEN};
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
-use aldis_core::writer::{FramePlan, FrameWriter, Variable, VariablePlan};
+use aldis_core::writer::{FinishPlan, FramePlan, FrameWriter, Variable, VariablePlan};
 use aldis_core::{Error, Result};
 
 use crate::config::{OcfUse, PhysicalChannelConfig, VcConfig, frame_layout, frame_security};
@@ -509,7 +509,9 @@ pub struct UslpPlan {
     fecf_len: usize,
 }
 
-impl FramePlan for UslpPlan {
+impl FramePlan for UslpPlan {}
+
+impl FinishPlan for UslpPlan {
     type OneShot = UslpOneShot;
 }
 

@@ -129,12 +129,19 @@ impl SpacePacketHeader {
         }
     }
 
-    /// Parses the first 6 octets (SPP-001, SPP-003).
+    /// Decodes the Packet Primary Header from the first 6 octets of `bytes` (133.0 §4.1.3.1;
+    /// SPP-001, SPP-003, API-014).
+    ///
+    /// Only the primary header is read; octets after it are neither inspected nor required, so a
+    /// caller can route on [`apid`](Self::apid) without decoding the packet. The Packet Data
+    /// Length is not checked against `bytes`: [`SpacePacket::decode`](crate::SpacePacket::decode)
+    /// does that. This is the one place the primary header is validated; `SpacePacket::decode`
+    /// and `peek_length` call it.
     ///
     /// # Errors
-    /// `Incomplete` (`needed` = 6) if `bytes` is shorter; `UnsupportedVersion` if the version is
-    /// not `000`.
-    pub(crate) fn parse(bytes: &[u8]) -> Result<SpacePacketHeader> {
+    /// `Incomplete` (`needed` = 6) if `bytes` is shorter; `UnsupportedVersion` if the Packet
+    /// Version Number is not `000` (133.0 §4.1.3.2.2, SPP-001).
+    pub fn decode(bytes: &[u8]) -> Result<SpacePacketHeader> {
         let Some(h) = bytes.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
@@ -276,10 +283,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_and_octets() {
+    fn decode_and_octets() {
         // req: SPP-001, SPP-002, SPP-003, SPP-009, API-014, GEN-053
         let wire = [0x17, 0xFF, 0x80, 0x00, 0xFF, 0xFF];
-        let h = SpacePacketHeader::parse(&wire).unwrap();
+        let h = SpacePacketHeader::decode(&wire).unwrap();
         assert_eq!(h.fields(), tc_idle());
         assert!(!h.has_secondary_header() && h.is_idle());
         assert_eq!(
@@ -294,7 +301,7 @@ mod tests {
             (h.data_len(), h.packet_len(), h.octets()),
             (65_536, 65_542, wire)
         );
-        let tm = SpacePacketHeader::parse(&[0x08, 0x01, 0x3F, 0xFF, 0x00, 0x00]).unwrap();
+        let tm = SpacePacketHeader::decode(&[0x08, 0x01, 0x3F, 0xFF, 0x00, 0x00]).unwrap();
         assert!(tm.has_secondary_header());
         assert_eq!(
             (
@@ -312,14 +319,33 @@ mod tests {
     }
 
     #[test]
-    fn parse_errors() {
+    fn decode_reads_only_the_primary_header() {
+        // req: SPP-003, API-014
+        // 6 header octets, then a length field that promises more data than follows.
+        let mut buf = [0xAA_u8; 10];
+        buf[..6].copy_from_slice(&[0x08, 0x2A, 0xC1, 0x02, 0x00, 0x63]);
+        let h = SpacePacketHeader::decode(&buf).unwrap();
+        assert_eq!(h.apid().get(), 0x02A);
+        assert_eq!(
+            (h.packet_type(), h.has_secondary_header()),
+            (PacketType::Telemetry, true)
+        );
+        assert_eq!(h.sequence_flags(), SequenceFlags::Unsegmented);
+        assert_eq!(h.sequence_count().get(), 0x0102);
+        assert_eq!(h.data_len(), 100);
+        assert_eq!(h.octets(), buf[..6]);
+        assert_eq!(h, SpacePacketHeader::decode(&buf[..6]).unwrap());
+    }
+
+    #[test]
+    fn decode_errors() {
         // req: SPP-001, SPP-003, GEN-041
-        let e = SpacePacketHeader::parse(&[0; 5]).unwrap_err();
+        let e = SpacePacketHeader::decode(&[0; 5]).unwrap_err();
         assert_eq!(
             (e.kind(), e.detail()),
             (ErrorKind::Incomplete, ErrorDetail::Needed(6))
         );
-        let e = SpacePacketHeader::parse(&[0xA0, 0, 0, 0, 0, 0]).unwrap_err();
+        let e = SpacePacketHeader::decode(&[0xA0, 0, 0, 0, 0, 0]).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::UnsupportedVersion, Some(field::PACKET_VERSION))

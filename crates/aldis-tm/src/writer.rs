@@ -8,7 +8,7 @@ use aldis_core::ids::VcId;
 use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
-use aldis_core::writer::{Fixed, FramePlan, FrameWriter};
+use aldis_core::writer::{FinishPlan, Fixed, FramePlan, FrameWriter};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::config::TmMasterChannelConfig;
@@ -182,8 +182,11 @@ pub struct TmOneShot(());
 pub struct TmPlan;
 
 impl FramePlan for TmPlan {
-    type OneShot = TmOneShot;
     const SECONDARY_ID_LEN: usize = 1;
+}
+
+impl FinishPlan for TmPlan {
+    type OneShot = TmOneShot;
 }
 
 /// Two-phase frame writer (132.0 §4.1; TM-009, API-020…API-023, API-072, API-074, RS-023).

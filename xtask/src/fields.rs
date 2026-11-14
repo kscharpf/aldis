@@ -282,9 +282,10 @@ fn parse(text: &str, doc: &str, owners: &[&str], problems: &mut Vec<String>) -> 
         let kind = match kind.as_str() {
             "field" => FieldKind::Field,
             "parameter" => FieldKind::Parameter,
+            "retired" => FieldKind::Retired,
             other => {
                 problems.push(format!(
-                    "{at}: kind {other:?} is neither `field` nor `parameter`"
+                    "{at}: kind {other:?} is none of `field`, `parameter`, `retired`"
                 ));
                 continue;
             }
@@ -323,6 +324,15 @@ fn parse(text: &str, doc: &str, owners: &[&str], problems: &mut Vec<String>) -> 
         });
     }
     entries
+}
+
+/// How a constant's documentation names a row's kind: `a field`, `a parameter`, or `retired`.
+const fn kind_phrase(kind: FieldKind) -> &'static str {
+    match kind {
+        FieldKind::Field => "a field",
+        FieldKind::Parameter => "a parameter",
+        FieldKind::Retired => "retired",
+    }
 }
 
 /// Why a code above the legacy range does not belong in `block`, given the crates that use it:
@@ -410,6 +420,10 @@ fn check(entries: &[Entry], blocks: &[Block], doc: &str, problems: &mut Vec<Stri
             }
             *n = (*n).max(e.code.saturating_add(1));
         }
+        // A retired code has no user to check; it stays where it was (API-082).
+        if e.kind == FieldKind::Retired {
+            continue;
+        }
         if let Some(why) = misplaced(&e.used_by, block, blocks) {
             problems.push(format!("{at}: code {} {why}", e.code));
         }
@@ -492,21 +506,20 @@ fn module(entries: &[Entry]) -> String {
          //! moves when a second crate starts to use its field (M2 plan D2).\n\
          //!\n\
          //! A `field` names a field of a data unit defined by a Blue Book; a `parameter` names a\n\
-         //! managed parameter, a configuration value, an argument, or a length the caller passes.\n\
+         //! managed parameter, a configuration value, an argument, or a length the caller passes; a\n\
+         //! `retired` code names nothing any more and is never reused.\n\
          \n\
          use crate::error::FieldId;\n",
     );
     for e in entries {
-        let kind = match e.kind {
-            FieldKind::Field => "field",
-            FieldKind::Parameter => "parameter",
-        };
         out.push('\n');
         out.push_str(&doc_comment(&format!("{}.", e.meaning)));
         out.push_str("///\n");
         out.push_str(&doc_comment(&format!(
-            "Code {}, a {kind} ({}; API-082).",
-            e.code, e.defined_by
+            "Code {}, {} ({}; API-082).",
+            e.code,
+            kind_phrase(e.kind),
+            e.defined_by
         )));
         out.push_str(&const_item(e));
     }
@@ -535,16 +548,14 @@ fn ffi(entries: &[Entry]) -> String {
          use aldis::core::field;\n",
     );
     for e in entries {
-        let kind = match e.kind {
-            FieldKind::Field => "field",
-            FieldKind::Parameter => "parameter",
-        };
         out.push('\n');
         out.push_str(&doc_comment(&format!("{}.", e.meaning)));
         out.push_str("///\n");
         out.push_str(&doc_comment(&format!(
-            "Code {}, a {kind} ({}; API-082, CABI-021).",
-            e.code, e.defined_by
+            "Code {}, {} ({}; API-082, CABI-021).",
+            e.code,
+            kind_phrase(e.kind),
+            e.defined_by
         )));
         let _ = writeln!(
             out,
@@ -878,7 +889,7 @@ mod tests {
         assert!(problems(&["| x | `apid` | field | A | core | B |"])[0].contains("not a 16-bit"));
         assert!(problems(&["| 1 | `Apid` | field | A | core | B |"])[0].contains("lower case"));
         assert!(problems(&["| 1 | `all` | field | A | core | B |"])[0].contains("ALL"));
-        assert!(problems(&["| 1 | `apid` | wire | A | core | B |"])[0].contains("neither"));
+        assert!(problems(&["| 1 | `apid` | wire | A | core | B |"])[0].contains("none of"));
         assert!(problems(&["| 1 | `apid` | field |  | core | B |"])[0].contains("empty Meaning"));
         assert!(problems(&["| 1 | `apid` | field | A | core |"])[0].contains("expected 6 cells"));
         let mut p = Vec::new();
@@ -922,6 +933,28 @@ mod tests {
              API-082, CABI-021).\npub const ALDIS_FIELD_APID: u16 = 1;\n"
         ));
         assert!(c.contains("    assert!(ALDIS_FIELD_WIDTH == field::WIDTH.code().get());\n"));
+    }
+
+    #[test]
+    fn a_retired_row_skips_the_crate_check() {
+        // req: API-082
+        // Code 150 is in the block of `cop1`; a live row that `cop1` does not use is a problem.
+        let unused = "| 150 | `gone` | parameter | Gone | core | X |";
+        let p = problems(&[APID, unused]);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert!(p[0].contains("`cop1` does not use it"), "{p:?}");
+        // The same row, retired, is not; its code still counts toward the block's order.
+        let retired = "| 150 | `gone` | retired | Gone | core | X |";
+        assert_eq!(problems(&[APID, retired]), Vec::<String>::new());
+        let skipped = "| 151 | `later` | parameter | L | cop1 | X |";
+        assert_eq!(problems(&[APID, retired, skipped]), Vec::<String>::new());
+        let mut p = Vec::new();
+        let entries = catalogue(&doc(&[APID, retired]), "d.md", &mut p);
+        assert_eq!(entries[1].kind, FieldKind::Retired);
+        assert!(module(&entries).contains("/// Code 150, retired (X; API-082).\n"));
+        assert!(ffi(&entries).contains("/// Code 150, retired (X; API-082, CABI-021).\n"));
+        let j: FieldCatalogue = serde_json::from_str(&json(&entries).unwrap()).unwrap();
+        assert_eq!(j.fields[1].kind, FieldKind::Retired);
     }
 
     #[test]
