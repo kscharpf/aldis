@@ -118,6 +118,22 @@ pub fn run_tcp(
 /// # Errors
 /// If `staging` holds no `core-cpu1`, or as [`run_tcp`].
 pub fn run_cfs(case_id: &str, staging: &Path, port: u16, log: &Path) -> Result<String, String> {
+    run_cfs_bound(case_id, staging, port, log, |_| ())
+}
+
+/// As [`run_cfs`], and calls `bound` with the port actually listened on (useful with port 0)
+/// after the socket is open and before `core-cpu1` starts, so a caller can pass the port on
+/// without a race.
+///
+/// # Errors
+/// As [`run_cfs`].
+pub fn run_cfs_bound(
+    case_id: &str,
+    staging: &Path,
+    port: u16,
+    log: &Path,
+    bound: impl FnOnce(u16),
+) -> Result<String, String> {
     let exe = staging.join(CFS_EXECUTABLE);
     if !exe.is_file() {
         return Err(format!(
@@ -128,7 +144,8 @@ pub fn run_cfs(case_id: &str, staging: &Path, port: u16, log: &Path) -> Result<S
     run_tcp(
         case_id,
         port,
-        |_| {
+        |addr| {
+            bound(addr.port());
             let mut c = Command::new(exe);
             c.current_dir(staging);
             c

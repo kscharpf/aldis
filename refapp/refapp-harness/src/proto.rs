@@ -10,8 +10,11 @@ use std::io::{ErrorKind, Read, Write};
 /// Protocol version of HELLO and `HELLO_ACK` (§8.2).
 pub const PROTOCOL_VERSION: u16 = 1;
 
-/// Largest body the harness accepts (1 MiB). §8.2 sets no limit; the bound keeps a corrupt
-/// length from allocating without limit (a Judgement call of WP-2, recorded in the plan's PR).
+/// Largest body the harness accepts (1 MiB).
+///
+/// §8.2 sets no limit; the bound keeps a corrupt
+/// length from allocating without limit. Decided by the coordinator, recorded in the body of
+/// PR #596 ("Coordinator decisions").
 pub const MAX_BODY: usize = 1 << 20;
 
 const T_HELLO: u8 = 0x01;

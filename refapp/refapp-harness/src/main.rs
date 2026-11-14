@@ -75,6 +75,9 @@ fn parse_node_run<'a>(case: &'a str, mut rest: &'a [&'a str]) -> Result<NodeRun<
                     .split_once('=')
                     .filter(|(k, v)| !k.is_empty() && !v.is_empty())
                     .ok_or_else(|| format!("--component wants <name>=<version>, not `{kv}`"))?;
+                if run.components.iter().any(|(name, _)| name == k) {
+                    return Err(format!("--component `{k}` given twice"));
+                }
                 run.components.push((k.to_owned(), v.to_owned()));
                 rest = tail;
             }

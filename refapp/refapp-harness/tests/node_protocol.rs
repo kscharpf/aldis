@@ -313,23 +313,21 @@ fn the_cfs_launcher_runs_core_cpu1_in_its_staging_directory() {
     assert!(err.contains("core-cpu1"), "{err}");
 
     // A stand-in for cFS: it writes console output, notes its working directory, and connects
-    // as the bridge does once started.
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    // as the bridge does once started, to the port the launcher reports having bound.
     let exe = staging.join(launch::CFS_EXECUTABLE);
     std::fs::write(
         &exe,
         format!(
-            "#!/bin/sh\necho 'console line'\npwd > cwd.txt\nexec {NODE} --connect 127.0.0.1:{port}\n"
+            "#!/bin/sh\necho 'console line'\npwd > cwd.txt\nexec {NODE} --connect 127.0.0.1:$(cat port.txt)\n"
         ),
     )
     .unwrap();
     std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
     let log = dir.join("cfs.log");
-    let trace = launch::run_cfs("a0-empty", &staging, port, &log).unwrap();
+    let trace = launch::run_cfs_bound("a0-empty", &staging, 0, &log, |port| {
+        std::fs::write(staging.join("port.txt"), port.to_string()).unwrap();
+    })
+    .unwrap();
     assert_eq!(trace, golden("a0-empty"));
     assert!(
         std::fs::read_to_string(&log)
@@ -381,4 +379,25 @@ fn the_harness_side_never_reads_the_clock() {
     ] {
         assert!(!src.contains("SystemTime") && !src.contains("Instant::now"));
     }
+}
+
+#[test]
+fn run_node_refuses_a_repeated_component_name() {
+    // req: APP-084
+    let out = Command::new(env!("CARGO_BIN_EXE_refapp-harness"))
+        .args([
+            "run-node",
+            "a0-empty",
+            "--component",
+            "cfe=v1",
+            "--component",
+            "cfe=v2",
+            "stdio",
+            "true",
+        ])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("`cfe` given twice"), "{err}");
 }
