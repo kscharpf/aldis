@@ -731,7 +731,8 @@ nightly="$(cat tooling-nightly)"
 # over it, and on a runner whose overlay filesystem refuses that rename the build fails with
 # "detected a concurrent sysroot build with different settings" (run 43542616543). A directory
 # that does not exist needs no replacing.
-export MIRI_SYSROOT="$(mktemp -d)/sysroot"
+sysroot_dir="$(mktemp -d)"
+export MIRI_SYSROOT="$sysroot_dir/sysroot"
 cargo +"$nightly" miri setup
 tests=()
 for f in crates/aldis-ffi/tests/*.rs; do
@@ -750,7 +751,8 @@ const FFI_MIRI_LIB_SCRIPT: &str = r#"
 # integration tests (`ffi-miri`).
 nightly="$(cat tooling-nightly)"
 # Fresh sysroot, as in `ffi-miri`.
-export MIRI_SYSROOT="$(mktemp -d)/sysroot"
+sysroot_dir="$(mktemp -d)"
+export MIRI_SYSROOT="$sysroot_dir/sysroot"
 cargo +"$nightly" miri setup
 tests=()
 for f in crates/aldis-ffi/tests/*.rs; do
