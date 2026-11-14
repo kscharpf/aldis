@@ -73,7 +73,7 @@ impl<'a> SpacePacket<'a> {
         bytes: &'a [u8],
         mode: DecodeMode,
     ) -> Result<(SpacePacket<'a>, AnomalySet<SppAnomaly>)> {
-        let header = SpacePacketHeader::parse(bytes)?;
+        let header = SpacePacketHeader::decode(bytes)?;
         let total = header.packet_len();
         let data = bytes
             .get(PRIMARY_HEADER_LEN..total)
@@ -95,7 +95,7 @@ impl<'a> SpacePacket<'a> {
     /// # Errors
     /// `Incomplete` (`needed` = 6) if `prefix` is shorter; `UnsupportedVersion` (SPP-001).
     pub fn peek_length(prefix: &[u8]) -> Result<usize> {
-        SpacePacketHeader::parse(prefix).map(|h| h.packet_len())
+        SpacePacketHeader::decode(prefix).map(|h| h.packet_len())
     }
 
     /// Splits the data field into the secondary header and the user data with the APID's
