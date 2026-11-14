@@ -94,9 +94,10 @@ pub const ALDIS_FIELD_VALUE: u16 = 16;
 /// Code 17, a parameter (CMN-030; API-082, CABI-021).
 pub const ALDIS_FIELD_BITS: u16 = 17;
 
-/// Length of a record pushed to a fixed-capacity byte queue.
+/// Length of a record pushed to a fixed-capacity byte queue, which left `aldis-core`; no error
+/// names this code.
 ///
-/// Code 18, a parameter (API-061; API-082, CABI-021).
+/// Code 18, retired (API-061; API-082, CABI-021).
 pub const ALDIS_FIELD_RECORD_LEN: u16 = 18;
 
 /// Capacity of a fixed-capacity byte queue, in octets.
