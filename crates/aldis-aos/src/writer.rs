@@ -15,7 +15,7 @@ use aldis_core::layout::FrameLayout;
 use aldis_core::ocf::Ocf;
 use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::SecurityLayout;
-use aldis_core::writer::{Fixed, FramePlan, FrameWriter};
+use aldis_core::writer::{FinishPlan, Fixed, FramePlan, FrameWriter};
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::bpdu::{BitstreamPointer, ValidBitCount};
@@ -318,8 +318,11 @@ pub struct AosPlan {
 }
 
 impl FramePlan for AosPlan {
-    type OneShot = AosOneShot;
     const OCF_FIELD: FieldId = field::OCF;
+}
+
+impl FinishPlan for AosPlan {
+    type OneShot = AosOneShot;
 
     fn seal(&self, frame: &mut [u8]) {
         if self.fhec {

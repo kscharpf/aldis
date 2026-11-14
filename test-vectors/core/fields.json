@@ -89,7 +89,7 @@
     {
       "code": 18,
       "name": "record_len",
-      "kind": "parameter"
+      "kind": "retired"
     },
     {
       "code": 19,

@@ -34,7 +34,7 @@
           "minimum": 1
         },
         "kind": {
-          "description": "Whether the code names a Blue Book field or a parameter.",
+          "description": "Whether the code names a Blue Book field, a parameter, or nothing (retired).",
           "$ref": "#/$defs/FieldKind"
         },
         "name": {
@@ -61,6 +61,11 @@
           "description": "A managed parameter, configuration value, argument, or length the caller passes.",
           "type": "string",
           "const": "parameter"
+        },
+        {
+          "description": "A code that names nothing any more; it stays in the catalogue and is never reused\n(API-082).",
+          "type": "string",
+          "const": "retired"
         }
       ]
     }
