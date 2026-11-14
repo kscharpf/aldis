@@ -41,7 +41,10 @@ RUN mkdir -p /opt/aldis-cpp \
 # cargo tools. cbindgen generates include/aldis/aldis.h (CABI-002; MPL-2.0, VER-055); its version
 # is also pinned in xtask/src/header.rs, which refuses another. The tooling nightly carries
 # rust-src for `-Z build-std` and Clippy for the LEON3 check, whose target is tier 3 (OI-08),
-# and Miri (VER-026, check ffi-miri) with its sysroot built here, so that the check needs no network.
+# and Miri (VER-026, checks ffi-miri and ffi-miri-lib). The image holds the Miri component but no
+# Miri sysroot: the check builds its own at run time (`cargo miri setup`) and downloads the crates
+# of the standard library from crates.io, because rust-src's vendor directory is not used and
+# the registry cache is removed below, so that check needs network access.
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
 RUN case "$TARGETARCH" in \
       amd64) triple=x86_64-unknown-linux-gnu; sha=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71 ;; \
@@ -59,7 +62,6 @@ RUN cd /opt/aldis-rust \
  && rustup target add s390x-unknown-linux-gnu \
  && rustup toolchain install "$(cat tooling-nightly)" --profile minimal \
       --component llvm-tools --component rust-src --component clippy --component miri \
- && cargo +"$(cat tooling-nightly)" miri setup \
  && cargo install --locked --root /opt/cargo cargo-llvm-cov@0.9.1 cargo-deny@0.20.2 \
       cbindgen@0.29.4 \
  && rm -rf /opt/cargo/registry /opt/cargo/git
