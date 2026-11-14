@@ -164,7 +164,7 @@ commands:
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
                                trace --scope m3 --strict, trace --scope m4 --strict,
-                               trace --scope m5 --strict, trace --scope m6,
+                               trace --scope m5 --strict, trace --scope m6 --strict,
                                trace --scope a1 --strict, trace --scope a2 --strict,
                                trace --scope a3 --strict,
                                trace --scope aint --strict; a step that
@@ -211,8 +211,8 @@ pub(crate) const CI: &[Step] = &[
     ("trace --scope m4 --strict", || trace::run(Some("m4"), true)),
     // M5 is closed: every in-scope requirement must keep an artefact (m5 plan D1).
     ("trace --scope m5 --strict", || trace::run(Some("m5"), true)),
-    // M6 is in progress: progress is reported, not enforced, until its exit (m6 plan D7).
-    ("trace --scope m6", || trace::run(Some("m6"), false)),
+    // M6 is closed: every in-scope requirement must keep an artefact (m6 plan D7).
+    ("trace --scope m6 --strict", || trace::run(Some("m6"), true)),
     // A1 is closed: every in-scope requirement must keep an artefact (a1 plan D2).
     ("trace --scope a1 --strict", || trace::run(Some("a1"), true)),
     // A2 is closed: every in-scope requirement must keep an artefact (a2 plan D1).
