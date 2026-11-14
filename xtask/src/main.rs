@@ -64,8 +64,10 @@ commands:
                                layouts probed from the codec encoders, or regenerate it
                                (VER-072)
   header [--write]             check that include/aldis/aldis.h and the aldis-ffi capacities
-                               match a fresh generation with the pinned cbindgen, or
-                               regenerate them (CABI-002, CABI-003, CABI-030)
+                               match a fresh generation with the pinned cbindgen, and that the
+                               ALDIS_*_WORDS and protocol constants fit the engine states and
+                               the codec constants (aldis_ffi::layout), or regenerate them
+                               (CABI-002, CABI-003, CABI-030, CABI-031)
   header c-smoke <cc> <c++>    build the aldis-ffi static library and run a C
                                program with it, as C99, C11, C23, C++11, and C++17 with
                                -Wall -Wextra -Wpedantic -Werror (CABI-001, CABI-003, VER-050)
