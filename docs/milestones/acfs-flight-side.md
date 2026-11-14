@@ -9,7 +9,7 @@
 |---|---|---|---|
 | WP-0 Plan and specification | merged | #78 | Branch `spec/refapp-cfs`: this plan, [reference-application.md](../reference-application.md) §10, APP-110…APP-125, OI-36…OI-38, roadmap §3 row, glossary |
 | WP-1 cFS build skeleton | planned | — | Decisions D2–D7, D11, D12 accepted |
-| WP-2 Harness: cFS node and TCP transport | planned | — | Decisions D9, D18 accepted |
+| WP-2 Harness: cFS node and TCP transport | merged | #596 | Decisions D9, D18 accepted |
 | WP-3 Tooling: C header, trace scan, verify inputs | planned | — | Decisions D12, D15, D17 accepted |
 | WP-4 P1 Packets | planned | — | Entry: A1 exited; WP-1 to WP-3 |
 | WP-5 P2 Frames | planned | — | Entry: A2 exited (2026-11-10); the M4 engine handles in the C ABI |

@@ -1,6 +1,6 @@
 # Aldis: Specification
 
-**Status:** pre-release (0.x); milestones M0–M5 are released and M6 is in progress ([roadmap](08-roadmap.md)) · **Scope:** v1 (core packets and links) · **Applies to:** the Rust reference implementation, the C ABI over it, and the header-only C++ wrapper `aldis.hpp`; native C and C++ implementations are deferred to Phase 3
+**Status:** pre-release (0.x); milestones M0–M6 are released ([roadmap](08-roadmap.md)) · **Scope:** v1 (core packets and links) · **Applies to:** the Rust reference implementation, the C ABI over it, and the header-only C++ wrapper `aldis.hpp`; native C and C++ implementations are deferred to Phase 3
 
 This directory holds the specification for a family of libraries that add CCSDS protocol support to spacecraft flight software and ground systems. The specification is **language-neutral**. Language-specific *profiles* define how each implementation exposes it. A shared **conformance test-vector suite** keeps every implementation behaving the same. For what the project is and how to use it, read the [root README](../README.md) first.
 
@@ -57,7 +57,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [M3 COP-1](milestones/m3-cop1.md) | `aldis-cop1`: FOP-1 and FARM-1, with their C ABI handles (complete, `v0.4.0-m3`) |
 | [M4 Link engines](milestones/m4-link-engines.md) | `aldis-link`: generators, multiplexer, receiver, extractor, segmentation, CLTU packer (complete, `v0.5.0-m4`) |
 | [M5 C ABI completion](milestones/m5-c-abi-completion.md) | `aldis-sync` (ASM, CADU, randomizer), C test harness, ABI versioning, `aldis.hpp` (complete, `v0.6.0-m5`) |
-| [M6 Crate architecture simplification](milestones/m6-architecture.md) | One checking pipeline, one frame-format trait per codec, a generic C ABI over the engines (phases 1–2 merged; phase 3 and the exit deferred until after AINT) |
+| [M6 Crate architecture simplification](milestones/m6-architecture.md) | One checking pipeline, one frame-format trait per codec, a generic C ABI over the engines (complete, `v0.7.0-m6`) |
 | [C0 Foundations (native C++)](milestones/c0-foundations.md) | Native C++ track foundations (retired; deferred to Phase 3) |
 | [A0 Scenario](milestones/a0-scenario.md) | Reference application: scenario specification (area APP) and `refapp/` skeleton (exited) |
 | [A1 Packets](milestones/a1-packets.md) | Reference application: housekeeping Space Packets and the first golden trace (exited) |

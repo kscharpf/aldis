@@ -12,7 +12,7 @@
 | WP-2 Transport driver | merged | #536 | The driver crate (D4, D5): socket, clock, the node's step loop, the loss script, the run log; self-test against the Rust ground node over loopback; no ground system needed |
 | WP-3 Spike: TM into the ground system | merged | #545 | Frames of the A2 and A3 node into the ground system, TM only; every discrepancy filed (D6) |
 | WP-4 COP-1 cases against the ground system | merged | #565 | The ground system's configuration and ops script; `a3-nominal` and the lossy-link case pass (D7); discrepancies filed |
-| WP-5 Exit | in progress | #569 | `trace --scope aint --strict`; the evidence record; follow-up issues settled; CI decision carried out (D8); roadmap, READMEs |
+| WP-5 Exit | merged | #569 | `trace --scope aint --strict`; the evidence record; follow-up issues settled; CI decision carried out (D8); roadmap, READMEs |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
