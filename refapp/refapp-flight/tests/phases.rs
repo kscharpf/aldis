@@ -14,6 +14,7 @@ mod phases {
     enum Out {
         Unit(Vec<u8>),
         Packet(u16, Vec<u8>),
+        PacketIn(u16, Vec<u8>),
         Event(u16, Vec<u64>),
     }
 
@@ -28,7 +29,7 @@ mod phases {
             self.0.push(Out::Packet(apid.get(), octets.to_vec()));
         }
         fn packet_in(&mut self, apid: Apid, octets: &[u8]) {
-            self.0.push(Out::Packet(apid.get(), octets.to_vec()));
+            self.0.push(Out::PacketIn(apid.get(), octets.to_vec()));
         }
         fn app_event(&mut self, code: u16, args: &[u64]) {
             self.0.push(Out::Event(code, args.to_vec()));
@@ -132,5 +133,39 @@ mod phases {
             "the dump ran"
         );
         assert!(whole_out.0.iter().any(|o| matches!(o, Out::Event(..))));
+    }
+
+    // req: APP-010, APP-012, APP-129
+    #[test]
+    fn the_phases_then_a_step_without_delivery_give_one_step() {
+        // The use of the docs of `handle_delivered`: the phases of the delivery, then `step` with
+        // no delivered unit, which runs steps 2 to 6 again at the same instant. At 1 s a
+        // housekeeping slot is due, so steps 4 and 5 output.
+        let now = 1_000_000_u64;
+        let units = [command(1, 0x01, None, &[]), command(2, 0x04, None, &[0])];
+        let delivered: Vec<&[u8]> = units.iter().map(Vec::as_slice).collect();
+
+        let mut whole = FlightNode::new();
+        let mut parts = FlightNode::new();
+        let (mut whole_out, mut parts_out) = (Rec::default(), Rec::default());
+
+        let with_units = input(now, &delivered);
+        let deadline = whole.step(&with_units, &mut whole_out);
+
+        parts.handle_delivered(with_units.now, with_units.delivered, &mut parts_out);
+        parts.execute_due(with_units.now, &mut parts_out);
+        parts.dump_segments(with_units.now, &mut parts_out);
+        let parts_deadline = parts.step(&input(now, &[]), &mut parts_out);
+
+        assert_eq!(parts_out.0, whole_out.0);
+        assert_eq!(parts, whole);
+        assert_eq!(parts_deadline, deadline);
+        assert!(
+            whole_out
+                .0
+                .iter()
+                .any(|o| matches!(o, Out::Packet(a, _) if *a == apid::HOUSEKEEPING)),
+            "a housekeeping packet at the instant"
+        );
     }
 }
