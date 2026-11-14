@@ -31,7 +31,7 @@
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use crate::verify::{CHECK_ENV, all_checks, inputs_differ};
+use crate::verify::{CHECK_ENV, REFAPP_HARNESS_RUNS, all_checks, inputs_differ};
 use crate::{check_lock, repo};
 
 /// What a step does.
@@ -572,6 +572,12 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
                 ],
             ),
         ]);
+        // The gate's `cargo run -p refapp-harness` lines, from the list that builds its script.
+        run.extend(
+            REFAPP_HARNESS_RUNS
+                .iter()
+                .map(|(name, _, args)| cmd_in(name, "refapp", "cargo", args)),
+        );
     }
     if mode == Mode::Full {
         full_steps(t, tools, &mut run, &mut skipped);
@@ -748,7 +754,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "refapp",
-        "partly: check runs its fmt, clippy, tests, and flight build, not the scenario and golden checks",
+        "partly: check runs its fmt, clippy, tests, flight build, and harness runs, not `readme-diagram`",
     ),
     (
         "fuzz-smoke",
@@ -1914,6 +1920,48 @@ mod tests {
         let n = steps_for(&["crosscheck/src/main.rs"], ALL, Mode::Default);
         assert!(n.contains(&"crosscheck clippy") && n.contains(&"crosscheck fmt"));
         assert!(!n.contains(&"xtask header"));
+    }
+
+    #[test]
+    fn default_tier_runs_every_harness_line_of_the_refapp_check() {
+        // req: VER-068
+        let script = all_checks()
+            .into_iter()
+            .find(|c| c.name == "refapp")
+            .expect("the refapp gate check")
+            .script;
+        let gate: Vec<&str> = script
+            .lines()
+            .filter(|l| l.starts_with("cargo run -p refapp-harness "))
+            .collect();
+        assert_eq!(gate.len(), super::REFAPP_HARNESS_RUNS.len());
+        for mode in [Mode::Default, Mode::Full] {
+            let p = plan(&everything(), ALL, mode);
+            let steps: Vec<String> = p
+                .items
+                .iter()
+                .filter_map(|i| match &i.action {
+                    Action::Cmd { program, args, dir } if *dir == "refapp" => {
+                        let line = format!("{program} {}", args.join(" "));
+                        line.starts_with("cargo run -p refapp-harness ")
+                            .then_some(line)
+                    }
+                    Action::Cmd { .. } | Action::Xtask(_) => None,
+                })
+                .collect();
+            assert_eq!(steps, gate, "{mode:?}");
+        }
+        // The quick tier does not check `refapp/`.
+        let n = steps_for(&["refapp/src/x.rs"], ALL, Mode::Quick);
+        assert!(!n.contains(&"refapp compare"));
+        let n = steps_for(&["refapp/src/x.rs"], ALL, Mode::Default);
+        for step in [
+            "refapp gen-scenario",
+            "refapp check-golden",
+            "refapp compare",
+        ] {
+            assert!(n.contains(&step), "{step}");
+        }
     }
 
     #[test]

@@ -476,10 +476,7 @@ fn rust() -> Vec<Check> {
             Group::Cross,
             reading(SHELL_INPUTS, check("shell", c, false, 90, SHELL)),
         ),
-        grouped(
-            Group::Coverage,
-            reading(REFAPP_INPUTS, check("refapp", c, false, 11, REFAPP)),
-        ),
+        grouped(Group::Coverage, refapp_check(c)),
         grouped(
             Group::Coverage,
             check("fuzz-smoke", c, false, 14, "cargo xtask fuzz smoke\n"),
@@ -810,7 +807,56 @@ const SHELL: &str = "\
 scripts/check-shell
 ";
 
-const REFAPP: &str = "\
+/// The `refapp-harness` runs of the `refapp` check, in order: the step name of `cargo xtask check`,
+/// the script comment, and the arguments of `cargo` (run in `refapp/`). The gate script
+/// (`refapp_script`) and the default tier of `check` (`plan`) both read this list, so they cannot
+/// drift (VER-068).
+pub(crate) const REFAPP_HARNESS_RUNS: &[(&str, &str, &[&str])] = &[
+    (
+        "refapp gen-scenario",
+        "Generated scenario files are current (APP-107).",
+        &[
+            "run",
+            "-p",
+            "refapp-harness",
+            "--locked",
+            "--",
+            "gen-scenario",
+            "--check",
+        ],
+    ),
+    (
+        "refapp check-golden",
+        "Golden traces are canonical and reproduced (APP-080, APP-085).",
+        &[
+            "run",
+            "-p",
+            "refapp-harness",
+            "--locked",
+            "--",
+            "check-golden",
+        ],
+    ),
+    (
+        "refapp compare",
+        "",
+        &["run", "-p", "refapp-harness", "--locked", "--", "compare"],
+    ),
+];
+
+/// The `refapp` check.
+fn refapp_check(c: Host) -> Check {
+    reading(
+        REFAPP_INPUTS,
+        check("refapp", c, false, 11, refapp_script()),
+    )
+}
+
+/// The script of the `refapp` check.
+fn refapp_script() -> String {
+    use std::fmt::Write as _;
+    let mut s = String::from(
+        "\
 # refapp/ is its own workspace (docs/reference-application.md §9, APP-106).
 cd refapp
 cargo fmt --all --check
@@ -819,16 +865,23 @@ cargo test --workspace --locked
 # Flight node, bare metal (APP-102).
 cargo build -p refapp-flight --target thumbv7em-none-eabihf --locked
 cargo clippy -p refapp-flight --target thumbv7em-none-eabihf --locked
-# Generated scenario files are current (APP-107).
-cargo run -p refapp-harness --locked -- gen-scenario --check
-# Golden traces are canonical and reproduced (APP-080, APP-085).
-cargo run -p refapp-harness --locked -- check-golden
-cargo run -p refapp-harness --locked -- compare
-cd ..
+",
+    );
+    for (_, note, args) in REFAPP_HARNESS_RUNS {
+        if !note.is_empty() {
+            let _ = writeln!(s, "# {note}");
+        }
+        let _ = writeln!(s, "cargo {}", args.join(" "));
+    }
+    s.push_str(
+        "cd ..
 # The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl and its demo
 # output from a fresh run compared with that trace (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
 cargo xtask readme-diagram
-";
+",
+    );
+    s
+}
 
 const SPEC: &str = "\
 cargo xtask spec-lint
