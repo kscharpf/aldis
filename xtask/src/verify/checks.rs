@@ -726,6 +726,13 @@ const FFI_MIRI_SCRIPT: &str = r#"
 # `vectors`, which takes about two hours, runs weekly (.github/workflows/miri-weekly.yml).
 # Isolation is off: the tests read test-vectors/.
 nightly="$(cat tooling-nightly)"
+# The sysroot goes into a fresh directory, not the one the image builds (`cargo miri setup`,
+# Containerfile): that one never matches the builder's hash, so every run rebuilds it, by renaming
+# over it, and on a runner whose overlay filesystem refuses that rename the build fails with
+# "detected a concurrent sysroot build with different settings" (run 43542616543). A directory
+# that does not exist needs no replacing.
+export MIRI_SYSROOT="$(mktemp -d)/sysroot"
+cargo +"$nightly" miri setup
 tests=()
 for f in crates/aldis-ffi/tests/*.rs; do
   name="$(basename "$f" .rs)"
@@ -742,6 +749,9 @@ const FFI_MIRI_LIB_SCRIPT: &str = r#"
 # of the gating script, so it covers whatever that skips. Nightly-only: the gate runs the other
 # integration tests (`ffi-miri`).
 nightly="$(cat tooling-nightly)"
+# Fresh sysroot, as in `ffi-miri`.
+export MIRI_SYSROOT="$(mktemp -d)/sysroot"
+cargo +"$nightly" miri setup
 tests=()
 for f in crates/aldis-ffi/tests/*.rs; do
   name="$(basename "$f" .rs)"
