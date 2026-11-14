@@ -16,12 +16,26 @@ use crate::table::Activation;
 impl FlightNode {
     /// Step 1 of §2.1: handles the delivered link units in delivery order. An immediate command
     /// executes here.
-    pub(crate) fn handle_delivered(
-        &mut self,
-        now: Instant,
-        units: Delivered<'_>,
-        out: &mut dyn Output,
-    ) {
+    ///
+    /// Public so that a caller with its own sequencing can run the phases of one instant one at a
+    /// time; [`Node::step`](refapp_scenario::Node::step) runs them in this order (APP-010):
+    /// `handle_delivered`, then [`execute_due`](FlightNode::execute_due), then
+    /// [`dump_segments`](FlightNode::dump_segments), then housekeeping, payload and, at frame
+    /// level, the frame of the slot (§2.1 steps 4 to 6), which are not public. A caller that runs
+    /// the phases itself SHALL keep these invariants (§2.1, §8.1):
+    ///
+    /// - one call per delivery instant, with every unit of that instant in delivery order, before
+    ///   any other phase at that instant (APP-002, APP-129);
+    /// - `now` never decreases from one call of any phase to the next, and every phase of an
+    ///   instant gets the same `now`;
+    /// - the outputs of the phases are recorded in call order, which is the output order of the
+    ///   step (§8.1);
+    /// - steps 4 to 6 of the instant follow steps 1 to 3: [`Node::step`](refapp_scenario::Node::step)
+    ///   with no delivered unit runs steps 2 to 6, and the `next_deadline` it returns is the
+    ///   node's only deadline (§8.1).
+    ///
+    /// Requirements: APP-002, APP-010, APP-012, APP-013, APP-024, APP-129, APP-131.
+    pub fn handle_delivered(&mut self, now: Instant, units: Delivered<'_>, out: &mut dyn Output) {
         for unit in units {
             self.handle_unit(now, unit, out);
         }
@@ -99,7 +113,17 @@ impl FlightNode {
 
     /// Step 2 of §2.1: executes the time-tagged commands due at `now`, in queue order, and
     /// brings the queue occupancy of the housekeeping status up to date (APP-012).
-    pub(crate) fn execute_due(&mut self, now: Instant, out: &mut dyn Output) {
+    ///
+    /// Runs after [`handle_delivered`](FlightNode::handle_delivered) and before
+    /// [`dump_segments`](FlightNode::dump_segments) at the same `now` (§2.1 order, APP-010).
+    /// The caller SHALL call it at every instant at or after the time tag of a queued command and
+    /// at the instant of every delivery (§2.3: a command executes in the first step at or after
+    /// its time tag; the queue-full check of a delivery sees the queue as the instant began,
+    /// OI-87); [`Node::step`](refapp_scenario::Node::step) returns that instant as its deadline
+    /// (§8.1). The `now` invariants of `handle_delivered` apply.
+    ///
+    /// Requirements: APP-002, APP-010, APP-012, APP-013, APP-016.
+    pub fn execute_due(&mut self, now: Instant, out: &mut dyn Output) {
         // bound: each pass removes one command from a queue of at most 8.
         while let Some(command) = self.queue.pop_due(now) {
             self.execute(now, command, out);
@@ -178,7 +202,17 @@ impl FlightNode {
 
     /// Step 3 of §2.1: sends the dump packets due at `now`, one per 125 000 µs slot, each stamped
     /// with its slot instant, and raises `DUMP_COMPLETED` after the last one (APP-016).
-    pub(crate) fn dump_segments(&mut self, now: Instant, out: &mut dyn Output) {
+    ///
+    /// Runs after [`execute_due`](FlightNode::execute_due) at the same `now`, so that a dump a
+    /// command started at this instant sends its first packet at this instant, and before
+    /// housekeeping and payload, so that `DUMP_COMPLETED` follows the last dump packet and
+    /// precedes their packets of the same instant (§2.1 step 3, APP-010). The caller SHALL call
+    /// it at every instant at which the node's `next_deadline` says a dump packet is due (§8.1);
+    /// a call at an instant where none is due outputs nothing (APP-074). The `now` invariants of
+    /// `handle_delivered` apply.
+    ///
+    /// Requirements: APP-002, APP-010, APP-016, APP-131.
+    pub fn dump_segments(&mut self, now: Instant, out: &mut dyn Output) {
         let Some(mut dump) = self.dump.take() else {
             return;
         };

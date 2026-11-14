@@ -13,7 +13,7 @@ The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0
 | `refapp-scenario/` | `no_std`: the constants generated from the scenario file, and the node interface (`Node`, `StepInput`, `Output`, §8.1) |
 | `refapp-flight/` | `no_std`, no heap: the flight node; flight lint set (APP-102) |
 | `refapp-ground/` | The ground node; flight lint set's restriction lints (APP-103) |
-| `refapp-harness/` | `std` tool: scheduler and link model, trace writer, canonical-form check, comparator, scenario generator |
+| `refapp-harness/` | `std` tool: scheduler and link model, trace writer, canonical-form check, comparator, scenario generator; the harness side of the node protocol over a child's stdin and stdout and over loopback TCP, the cFS launcher, and the test node `refapp-test-node` (§8.2, §10.6) |
 | `refapp-interop/` | `std` tool, no third-party dependency of its own (std plus workspace crates): the transport driver of the interoperability milestone (AINT): steps the flight node against a UDP socket and a clock, the loss script, the run log, and the self-test over loopback in virtual time (APP-157…APP-163) |
 | `scenario/scenario.json` | The one scenario file every implementation reads (APP-107); `scenario.schema.json` is generated from the harness's model |
 | `golden/<case>.jsonl` | Golden traces (§7); `golden/CHANGES.md` records every trace-version change (APP-087) |
@@ -26,6 +26,9 @@ Run from this directory:
 
 ```sh
 cargo run -p refapp-harness -- run <case>          # writes target/runs/<case>.jsonl and <case>.manifest.json
+cargo run -p refapp-harness -- run-node <case> [--out <dir>] [--component <name>=<version>]... stdio <program> [<arg>...]
+cargo run -p refapp-harness -- run-node <case> [--out <dir>] [--component <name>=<version>]... cfs <staging-dir> <port>
+                                                   # the flight node in another process (node protocol, §8.2, §10.6); the node's console goes to <case>.node.log, never to the trace
 cargo run -p refapp-harness -- compare [<case>]    # byte comparison with golden/<case>.jsonl (default: every case)
 cargo run -p refapp-harness -- check-golden        # every golden trace is canonical and decodes with the strict codecs
 cargo run -p refapp-harness -- gen-scenario        # (also run by `cargo xtask fix`) regenerate the schema and Rust constants after editing scenario.json
