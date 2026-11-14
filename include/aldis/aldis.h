@@ -381,9 +381,10 @@
 #define ALDIS_FIELD_BITS 17
 
 /**
- * Length of a record pushed to a fixed-capacity byte queue.
+ * Length of a record pushed to a fixed-capacity byte queue, which left `aldis-core`; no error
+ * names this code.
  *
- * Code 18, a parameter (API-061; API-082, CABI-021).
+ * Code 18, retired (API-061; API-082, CABI-021).
  */
 #define ALDIS_FIELD_RECORD_LEN 18
 

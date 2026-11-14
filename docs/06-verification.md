@@ -33,6 +33,7 @@
 | VER-025 | Mutation testing (e.g. `cargo-mutants`) SHALL run on Layers 0–2 before each release. Surviving mutants SHALL be triaged. | — | A |
 | VER-026 | The FFI layer SHALL be tested under Miri and with AddressSanitizer/UBSan from a C test harness. The sanitizer run is the gating check `c-sanitizers`; the Miri run is split (maintainer, 2026-11-07): the gating check `ffi-miri` runs the integration tests of `aldis-ffi` when its inputs change (VER-056), except the tests ignored under Miri (today one largest-frame sync test, about 5 minutes; maintainer, 2026-11-07); the nightly-only, non-gating check `ffi-miri-lib` runs the unit tests and the ignored tests (VER-059), and the `vectors` test, about two hours, runs in a weekly run (`miri-weekly.yml`). | GEN-071 | T |
 | VER-054 | Property-test input strategies (generators of valid and invalid identifiers, configurations, headers, data units, and engine input sequences) SHALL be defined once, in a tooling crate (RS-017), and used by the Rust property tests (VER-023). | — | I |
+| VER-073 | A tooling crate type that models or stores data for tests, such as the byte queue of `aldis-testkit`, SHALL have unit tests, and a property test against a model where its behaviour has many cases, so that the models the tests rely on are themselves tested. | RS-017 | T |
 
 ## 4. Targets and CI matrix
 

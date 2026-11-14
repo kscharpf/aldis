@@ -327,6 +327,9 @@ pub enum FieldKind {
     Field,
     /// A managed parameter, configuration value, argument, or length the caller passes.
     Parameter,
+    /// A code that names nothing any more; it stays in the catalogue and is never reused
+    /// (API-082).
+    Retired,
 }
 
 /// One entry of the field catalogue (03-api-model.md §9.1, API-082).
@@ -338,7 +341,7 @@ pub struct FieldEntry {
     pub code: NonZeroU16,
     /// The display name, never compared (API-082).
     pub name: String,
-    /// Whether the code names a Blue Book field or a parameter.
+    /// Whether the code names a Blue Book field, a parameter, or nothing (retired).
     pub kind: FieldKind,
 }
 

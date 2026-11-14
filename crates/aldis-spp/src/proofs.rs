@@ -55,7 +55,7 @@ fn primary_header_every_input() {
     let bytes: [u8; 6] = kani::any();
     let w = wire(bytes);
     let peek = SpacePacket::peek_length(&bytes);
-    match SpacePacketHeader::parse(&bytes) {
+    match SpacePacketHeader::decode(&bytes) {
         Err(e) => {
             assert!(w.version != 0);
             assert_eq!(e.kind(), ErrorKind::UnsupportedVersion);
@@ -183,7 +183,7 @@ fn header_encode_decode_every_field() {
     let header = SpacePacketHeader::new(fields, secondary, data_len);
     let octets = header.octets();
     assert_eq!(octets[0] >> 5, 0);
-    let back = SpacePacketHeader::parse(&octets);
+    let back = SpacePacketHeader::decode(&octets);
     assert_eq!(back, Ok(header));
     if let Ok(h) = back {
         assert_eq!(h.fields(), fields);
