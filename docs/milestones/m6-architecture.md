@@ -1,7 +1,7 @@
 # Milestone 6 — Crate architecture simplification
 
 **Goal:** the simplest crate architecture that still meets every requirement. Most protocols (TM, TC, AOS, USLP) were added one work package at a time by copying a sibling, so the codecs, the link engines, and the C ABI each restate protocol facts. The pattern of this milestone: **each protocol fact is stated once, in the codec crate or in `aldis-core`, and the engine, FFI, and feature layers are generic over it.** The work changes no wire behaviour: every vector, every requirement, and the trace stay as they are.
-**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M5](m5-c-abi-completion.md) (complete; its release `v0.6.0-m5` was made 2026-11-06) · **Release:** none (maintainer, 2026-11-14: no M6 release)
+**Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §1 · **Builds on:** [M5](m5-c-abi-completion.md) (complete; its release `v0.6.0-m5` was made 2026-11-06) · **Release:** `v0.7.0-m6` (2026-11-14; maintainer, 2026-11-14, chat: release M6 through its release pull request, the maintainer cuts the tag after the merge)
 
 **Status: complete.** Phases 1–3 and the exit (WP-4) are done; the OI-93 follow-up of WP-2d is #475. Decisions D1–D8 (§2) accepted (maintainer, 2026-11-08 and 2026-11-09, chat); OI-91 (b), OI-94 (b), and the protocol-tagged C config of OI-92 accepted (maintainer, 2026-11-12, chat; the C shape is proposed in WP-3b). Entry gate: M5 (roadmap §1), met: its exit criteria are met on `main` ([M5 plan](m5-c-abi-completion.md) §4; exit pull request #283, `cargo xtask trace --scope m5 --strict`); its release `v0.6.0-m5` was made 2026-11-06. WP-3a–WP-3d and WP-4 waited until after the AINT interoperability milestone ([roadmap §4](../08-roadmap.md#4-overlap), maintainer, 2026-11-10).
 
@@ -21,7 +21,7 @@
 | WP-3b Generic engine entry points | merged | #585 | Phase 3 step 2 |
 | WP-3c One FFI module per engine | merged | #587 | Phase 3 step 3 |
 | WP-3d Generated sizes and constants | merged | #593 | Phase 3 step 4; verifies, does not generate: `aldis_ffi::layout` lists each `ALDIS_*_WORDS` and protocol constant with the value that the state type or the codec gives, the `layout` example prints the list, `cargo xtask header` fails on a literal that does not fit, and `header --write` (so `fix`) rewrites a literal of an exact row (a words literal above the need, a wrong protocol constant); a words literal below the need fails the compile (E0080) and is fixed by hand; the six words literals of farm1, fop1, oid, and the spp state types keep their spare words (maintainer, 2026-11-13); the `*_MAX_ACTIONS` keep their compile-time equality assertions |
-| WP-4 Exit | in progress | #599 | `cargo xtask trace` against the entry baseline; exit checklist |
+| WP-4 Exit | merged | #599 | `cargo xtask trace` against the entry baseline; exit checklist |
 
 A pull request that starts or merges a work package changes only the Notes column of its row (roadmap §6 rule 1). The State and PRs columns are derived by `cargo xtask status-table` and written by the coordinator; title a pull request `refactor(m6/wp-1b): <description>`, the type being a conventional-commit type and the scope naming the milestone and work package ([pr-body.md](../process/pr-body.md)).
 
