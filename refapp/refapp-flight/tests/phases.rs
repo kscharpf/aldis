@@ -142,7 +142,13 @@ mod phases {
         // no delivered unit, which runs steps 2 to 6 again at the same instant. At 1 s a
         // housekeeping slot is due, so steps 4 and 5 output.
         let now = 1_000_000_u64;
-        let units = [command(1, 0x01, None, &[]), command(2, 0x04, None, &[0])];
+        let mut dump_args = 0x0001_0000_u32.to_be_bytes().to_vec();
+        dump_args.extend_from_slice(&300_u16.to_be_bytes());
+        let units = [
+            command(1, 0x01, None, &[]),
+            command(2, 0x04, None, &[0]),
+            command(3, 0x02, None, &dump_args),
+        ];
         let delivered: Vec<&[u8]> = units.iter().map(Vec::as_slice).collect();
 
         let mut whole = FlightNode::new();
@@ -167,5 +173,12 @@ mod phases {
                 .any(|o| matches!(o, Out::Packet(a, _) if *a == apid::HOUSEKEEPING)),
             "a housekeeping packet at the instant"
         );
+        // The dump packet due at the instant is sent once, not again by the second call.
+        let dump_packets = whole_out
+            .0
+            .iter()
+            .filter(|o| matches!(o, Out::Packet(a, _) if *a == apid::DUMP))
+            .count();
+        assert_eq!(dump_packets, 1);
     }
 }
