@@ -297,6 +297,7 @@ pub fn run(write: bool) -> Result<usize, String> {
             CAPACITIES_TOML,
         ));
     }
+    problems.extend(constants(&root, write)?);
     let header = generate(&root)?;
     problems.extend(header_problems(&header));
     if write {
@@ -320,6 +321,122 @@ pub fn run(write: bool) -> Result<usize, String> {
     }
     println!("header: {HEADER}, {} problem(s)", problems.len());
     Ok(problems.len())
+}
+
+/// One line of the `layout` example of `aldis-ffi` (`aldis_ffi::layout`): a constant of the
+/// header, the literal of its definition, the value the type or the codec gives, and whether the
+/// literal must equal it or only be at least it.
+#[derive(Debug, PartialEq, Eq)]
+struct Layout {
+    name: String,
+    literal: u64,
+    value: u64,
+    exact: bool,
+}
+
+/// Parses the output of the `layout` example.
+fn parse_layout(text: &str) -> Result<Vec<Layout>, String> {
+    text.lines()
+        .map(|line| {
+            let parts: Vec<&str> = line.split(' ').collect();
+            let [name, literal, value, fit] = parts.as_slice() else {
+                return Err(format!("layout example: unexpected line `{line}`"));
+            };
+            let number = |s: &str| {
+                s.parse::<u64>()
+                    .map_err(|e| format!("layout example: {line}: {e}"))
+            };
+            let exact = match *fit {
+                "exact" => true,
+                "min" => false,
+                other => return Err(format!("layout example: unknown fit `{other}`")),
+            };
+            Ok(Layout {
+                name: (*name).to_owned(),
+                literal: number(literal)?,
+                value: number(value)?,
+                exact,
+            })
+        })
+        .collect()
+}
+
+/// The rows whose literal does not fit the value that the type or the codec gives.
+fn misfits(rows: &[Layout]) -> Vec<&Layout> {
+    rows.iter()
+        .filter(|r| {
+            if r.exact {
+                r.literal != r.value
+            } else {
+                r.literal < r.value
+            }
+        })
+        .collect()
+}
+
+/// `text` with the literal of `pub const <name>: <type> = <literal>;` replaced by `value`, or
+/// `None` when the definition is not there.
+fn rewrite_literal(text: &str, name: &str, value: u64) -> Option<String> {
+    let head = format!("pub const {name}: ");
+    let at = text.find(&head)?;
+    let eq = at + text.get(at..)?.find(" = ")? + 3;
+    let end = eq + text.get(eq..)?.find(';')?;
+    Some(format!("{}{value}{}", text.get(..eq)?, text.get(end..)?))
+}
+
+/// Checks the constants that the header publishes as literals against the values of the types
+/// and the codecs (CABI-030, CABI-031; M6 plan WP-3d), or with `write` rewrites the literals.
+/// Returns the problems left. The values come from `aldis_ffi::layout`, which the `layout`
+/// example prints, because `xtask` does not link `aldis-ffi`.
+fn constants(root: &Path, write: bool) -> Result<Vec<String>, String> {
+    let out = run_cmd(
+        Command::new("cargo")
+            .args([
+                "--color",
+                "never",
+                "run",
+                "--quiet",
+                "-p",
+                "aldis-ffi",
+                "--example",
+                "layout",
+            ])
+            .current_dir(root),
+    )?;
+    let rows = parse_layout(&out)?;
+    if rows.is_empty() {
+        return Err("layout example printed no constants".to_owned());
+    }
+    let mut problems = Vec::new();
+    for row in misfits(&rows) {
+        if write && row.exact {
+            let done = repo::files("crates/aldis-ffi/src", &["rs"])
+                .into_iter()
+                .any(|path| {
+                    let Ok(text) = std::fs::read_to_string(&path) else {
+                        return false;
+                    };
+                    rewrite_literal(&text, &row.name, row.value)
+                        .is_some_and(|new| std::fs::write(&path, new).is_ok())
+                });
+            if done {
+                println!("wrote {} = {}", row.name, row.value);
+                continue;
+            }
+        }
+        problems.push(if row.exact {
+            format!(
+                "{} is {} in crates/aldis-ffi/src, but the type or codec gives {}; run `cargo xtask header --write`",
+                row.name, row.literal, row.value
+            )
+        } else {
+            format!(
+                "{} is {} in crates/aldis-ffi/src, below the {} words the state needs; raise it by hand",
+                row.name, row.literal, row.value
+            )
+        });
+    }
+    Ok(problems)
 }
 
 /// The first fenced `c` block of `readme` as a C translation unit: its `#` lines first, then the other
@@ -719,6 +836,29 @@ mod tests {
         let unknown = "[spp]\ntracker_max_apids = 4\nextra = 1\n[tc]\nmax_maps = 64\n[uslp]\nmax_vcs = 1\nmax_maps = 1\n[fop1]\nsent_queue_frames = 1\nmax_frame_octets = 6\n[link]\nmax_virtual_channels = 1\nmax_map_channels = 1\npacket_queue_octets = 64\nmax_frame_octets = 16\n[sync]\nmax_chunk_octets = 8\nmax_frame_octets = 8\n";
         let e = capacities_rs(&parse_toml(unknown).unwrap()).unwrap_err();
         assert!(e.contains("unknown key [spp] extra"), "{e}");
+    }
+
+    // req: CABI-030, CABI-031
+    #[test]
+    fn layout_lines_are_checked_for_fit() {
+        let rows =
+            parse_layout("A 5 5 exact\nB 8 5 min\nC 4 5 exact\nD 4 5 min\nE 6 5 exact\n").unwrap();
+        let bad: Vec<&str> = misfits(&rows).iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(bad, ["C", "D", "E"]);
+        assert!(parse_layout("A 5 5\n").is_err());
+        assert!(parse_layout("A x 5 min\n").is_err());
+        assert!(parse_layout("A 5 5 loose\n").is_err());
+    }
+
+    // req: CABI-030
+    #[test]
+    fn a_literal_is_rewritten_in_place() {
+        let text = "/// doc\npub const ALDIS_X_WORDS: usize = 12;\n\nconst _: () = ();\n";
+        assert_eq!(
+            rewrite_literal(text, "ALDIS_X_WORDS", 7).unwrap(),
+            "/// doc\npub const ALDIS_X_WORDS: usize = 7;\n\nconst _: () = ();\n"
+        );
+        assert!(rewrite_literal(text, "ALDIS_Y_WORDS", 7).is_none());
     }
 
     // req: CABI-002, CABI-030
