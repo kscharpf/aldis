@@ -391,7 +391,7 @@ fn split_standing(unreleased: &str) -> (String, String) {
         let para = para.trim_matches(['\n', '\r']);
         if para.trim_start().starts_with(STANDING_OPEN) {
             standing.push(para);
-        } else if !para.is_empty() {
+        } else if !para.trim().is_empty() {
             notes.push(para);
         }
     }
@@ -839,12 +839,12 @@ mod tests {
         // A second release keeps the layout, and a real note still moves.
         let noted = out.replace(
             "<!-- changelog-base: bbb -->",
-            "A summary.\n\n    indented\n\n<!-- changelog-base: bbb -->",
+            "A summary.\n\n    indented\n\n  \t \n\nlast\n\n<!-- changelog-base: bbb -->",
         );
         let again = insert_release(&noted, "0.3.0", "2026-03-01", "", "ccc").unwrap();
         assert!(again.contains("## [Unreleased]\n\nGenerated at release:"));
         assert!(again.contains("## [0.3.0] — 2026-03-01\n\nA summary."));
-        assert!(again.contains("A summary.\n\n    indented\n\n"));
+        assert!(again.contains("A summary.\n\n    indented\n\nlast\n\n"));
     }
 
     #[test]
