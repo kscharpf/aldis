@@ -89,6 +89,7 @@ In the A1 retrospective follow-up of 2026-11-07/08 every fix round got a fresh `
 
 - **Measurement behind the decision** (maintainer, 2026-11-07). Every merge to `main` made every other open pull request stale, and each needed a fresh `scripts/reverify` (about 10 minutes hosted); #316 needed four verify runs and #313 three, mostly because `main` moved.
 - **Only the maintainer assigns pull requests** (maintainer, 2026-11-09). On 2026-11-08 two sessions built overlapping trains, #368 and #369, 13 s apart.
+- **Proposing a train (2026-11-16, #490 D-d).** The rule was that only the maintainer names a train's pull requests (2026-11-09). With several `READY FOR TRAIN` pull requests waiting, the maintainer composed the list by hand each time. The coordinator may now propose a train from every `READY FOR TRAIN` pull request when none is open, with the order and the `scripts/train --plan` result; the maintainer still names the pull requests and the order before any train is built, and merges. No `scripts/train --ready` mode: `--plan` is the preview.
 
 ### Reporting
 
