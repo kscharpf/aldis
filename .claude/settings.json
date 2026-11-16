@@ -1,4 +1,6 @@
 {
+  "model": "haiku",
+  "effortLevel": "high",
   "env": {
     "NO_COLOR": "1",
     "GH_FORCE_TTY": "0",

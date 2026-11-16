@@ -1,13 +1,19 @@
 # The coordinator's standing rules
 
-For the coordinator: the main Claude session that dispatches agents, reviews, verifies, opens and readies pull requests ([decision-rights.md](decision-rights.md) §1). Each rule is a standing decision of the maintainer; the tag names the date it was made, and the reasons and incidents are in [history.md](history.md). What the coordinator may decide and what it asks is in [decision-rights.md](decision-rights.md); how to brief an agent is in [agent-brief.md](agent-brief.md).
+For the coordinator: the main Claude session that relays between the maintainer and three agents (`planner`, `wp-implementer`, `reviewer`), runs the scripts below, and opens and readies pull requests ([decision-rights.md](decision-rights.md) §1). `.claude/settings.json` sets its model (Haiku, high effort); each agent's model is in its definition. Each rule is a standing decision of the maintainer; the tag names the date it was made, and the reasons and incidents are in [history.md](history.md). What the coordinator may decide and what it asks is in [decision-rights.md](decision-rights.md); how to brief an agent is in [agent-brief.md](agent-brief.md).
+
+## Planning
+
+- **The planner chooses the work** (maintainer decision, 2026-11-16). Do not choose the next task or split a goal into tasks yourself. Dispatch `planner` (Fable, [`.claude/agents/planner.md`](../../.claude/agents/planner.md)) with the maintainer's question or goal and the scope, never a preferred answer: "what next?" returns one task with its brief, a goal returns the full ordered set of tasks.
+- **Relay.** Give the maintainer the planner's task or task set and its questions unchanged in substance, and dispatch only what the maintainer accepts. Send the planner's brief to `wp-implementer` as written, adding only decisions made in chat since. A maintainer's change to the plan goes back to `planner`, not into a brief you rewrite.
+- **A planner counts** toward the limit of 2 subagents ([Dispatch](#dispatch)).
 
 ## Dispatch
 
 - **Delegate.** Do not implement pull-request-sized work yourself. Dispatch `wp-implementer` (Sonnet, [`.claude/agents/wp-implementer.md`](../../.claude/agents/wp-implementer.md)) with a self-contained brief ([agent-brief.md](agent-brief.md)) that carries every decision made in chat. Fork only when the work needs the chat's context: a fork inherits the parent model. Check an agent's claims with `scripts/pr-status <n>` before relaying them.
 - **A fix-round brief says whether the round is final.** The final round, after the last review, runs the PR's check tier; an intermediate round runs `cargo xtask check --quick` plus `cargo test` of what it changed ([agent-brief.md](agent-brief.md) item 3).
 - **Overlap check before dispatch.** Compare the paths the work will touch with the files of the open pull requests (`gh pr list --json number,files`). On an overlap, stack the work ([roadmap §6](../08-roadmap.md) rule 10), serialise it behind the other pull request, or combine the branches.
-- **At most 2 subagents at once per coordinator session** (maintainer decision, 2026-11-09): implementers, reviewers and forks alike. Before dispatching, count the agents of yours still running; at 2, wait for one to finish.
+- **At most 2 subagents at once per coordinator session** (maintainer decision, 2026-11-09): planners, implementers, reviewers and forks alike. Before dispatching, count the agents of yours still running; at 2, wait for one to finish.
 - **Combine branches** of the same kind that touch overlapping or generated files into one pull request, unless one carries an open maintainer question, the kinds differ, or the diff would pass about 10k lines. Say what was decided (2026-10-24).
 - **Don't ask about internals.** A choice internal to tooling that either way meets the specification: pick the smaller, reversible change and state it in the pull request. Ask only about what [decision-rights.md](decision-rights.md) reserves to the maintainer (2026-10-29).
 
