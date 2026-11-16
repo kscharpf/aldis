@@ -12,7 +12,7 @@ v1 is built in two active tracks against one specification (Track C, native C++,
 
 ## 1. Track R — Rust reference (M0–M6)
 
-Every milestone defines the **C ABI for what it adds**: a codec milestone adds its codecs' functions to `aldis.h`, and an engine milestone adds its engines' handles.
+`aldis-ffi` is frozen ([#490](https://github.com/kscharpf/aldis/issues/490) D-a): it stays in this repository, keeps compiling and passing its tests, and migrates with every core API change. New **C ABI** surface (codec functions in `aldis.h`, engine handles) is added only when a consumer milestone, A5 or an ACFS phase, needs it.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
@@ -53,7 +53,7 @@ ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one 
 | Phase | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
-| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI | `a2-*` traces reproduced in nightly CI |
+| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI; M6 WP-3 (merged, #593; it lands before A5 and ACFS P2, #490 D-b) | `a2-*` traces reproduced in nightly CI |
 | **P3 COP-1** | FARM-1 through its C ABI handle | P2 (so M4); A3 (exited 2026-11-11); the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
 
 The alternative to one milestone with phases is three milestones, one per row; the plan's D1 compares them.
