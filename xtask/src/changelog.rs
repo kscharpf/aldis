@@ -378,9 +378,29 @@ fn without_marker(unreleased: &str) -> String {
         .join("\n")
 }
 
-/// Builds the release section: the heading, the hand-kept text of the Unreleased section (if
-/// any), and the generated entries. The Unreleased section becomes empty again, with the marker
-/// set to `head`.
+/// The opening words of the standing paragraph of `[Unreleased]`.
+const STANDING_OPEN: &str = "Generated at release:";
+
+/// Splits the Unreleased text, without its marker, into the standing paragraph and the rest.
+/// The rule is structural: the standing paragraph is every blank-line separated paragraph whose
+/// first line, leading indentation aside, starts with [`STANDING_OPEN`]; all other text is a
+/// hand-kept release note, moved unchanged.
+fn split_standing(unreleased: &str) -> (String, String) {
+    let (mut standing, mut notes) = (Vec::new(), Vec::new());
+    for para in unreleased.split("\n\n") {
+        let para = para.trim_matches(['\n', '\r']);
+        if para.trim_start().starts_with(STANDING_OPEN) {
+            standing.push(para);
+        } else if !para.trim().is_empty() {
+            notes.push(para);
+        }
+    }
+    (standing.join("\n\n"), notes.join("\n\n"))
+}
+
+/// Builds the release section: the heading, the hand-kept release notes of the Unreleased
+/// section (if any), and the generated entries. The standing paragraph (see [`split_standing`])
+/// stays under `[Unreleased]`, followed by the marker set to `head`. Covers GEN-080.
 fn insert_release(
     changelog: &str,
     version: &str,
@@ -392,15 +412,20 @@ fn insert_release(
         return Err(format!("CHANGELOG.md already has a section for {version}"));
     }
     let (after, end) = unreleased_span(changelog)?;
-    let kept = without_marker(&changelog[after..end]);
-    let kept = kept.trim();
+    let (standing, kept) = split_standing(&without_marker(&changelog[after..end]));
+    let kept = kept.as_str();
+    let standing = if standing.is_empty() {
+        String::new()
+    } else {
+        format!("\n{standing}\n")
+    };
     let mut body = String::new();
     if !kept.is_empty() {
         let _ = write!(body, "{kept}\n\n");
     }
     body.push_str(generated);
     Ok(format!(
-        "{}\n{MARKER_OPEN}{head} -->\n\n## [{version}] — {date}\n\n{body}{}",
+        "{}{standing}\n{MARKER_OPEN}{head} -->\n\n## [{version}] — {date}\n\n{body}{}",
         &changelog[..after],
         &changelog[end..]
     ))
@@ -790,6 +815,36 @@ mod tests {
         );
         assert!(insert_release(&out, "0.2.0", "2026-02-01", "", "c").is_err());
         assert!(insert_release("# Changelog\n", "0.2.0", "2026-02-01", "", "c").is_err());
+    }
+
+    #[test]
+    fn release_leaves_the_standing_paragraph_under_unreleased() {
+        // req: GEN-080
+        let log = "# Changelog\n\n## [Unreleased]\n\nGenerated at release: `cargo xtask changelog`\nlists the pull requests.\n\n\
+                   <!-- changelog-base: aaa -->\n\n## [0.1.0] — 2026-01-01\n- old\n";
+        let out = insert_release(
+            log,
+            "0.2.0",
+            "2026-02-01",
+            "### Fixed\n- gen (#9)\n\n",
+            "bbb",
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            "# Changelog\n\n## [Unreleased]\n\nGenerated at release: `cargo xtask changelog`\nlists the pull requests.\n\n\
+             <!-- changelog-base: bbb -->\n\n## [0.2.0] — 2026-02-01\n\n### Fixed\n- gen (#9)\n\n\
+             ## [0.1.0] — 2026-01-01\n- old\n"
+        );
+        // A second release keeps the layout, and a real note still moves.
+        let noted = out.replace(
+            "<!-- changelog-base: bbb -->",
+            "A summary.\n\n    indented\n\n  \t \n\nlast\n\n<!-- changelog-base: bbb -->",
+        );
+        let again = insert_release(&noted, "0.3.0", "2026-03-01", "", "ccc").unwrap();
+        assert!(again.contains("## [Unreleased]\n\nGenerated at release:"));
+        assert!(again.contains("## [0.3.0] — 2026-03-01\n\nA summary."));
+        assert!(again.contains("A summary.\n\n    indented\n\nlast\n\n"));
     }
 
     #[test]
