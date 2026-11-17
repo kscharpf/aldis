@@ -21,6 +21,7 @@
 //! `MapSegmenter`, the `MapReassembler`, and the `CltuPacker` (M4 WP-6) are implemented. Requirements
 //! are traced by ID in each module's documentation.
 #![no_std]
+#![forbid(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 

@@ -30,9 +30,10 @@ license = "MIT OR Apache-2.0"  # OI-01 (resolved; dual since 2026-10-24)
 repository = "https://github.com/kscharpf/aldis"
 
 # Lint set required by docs/profiles/rust.md §5 and docs/06-verification.md VER-001.
-# aldis-ffi defines its own table (unsafe "deny" instead of "forbid", GEN-071).
+# aldis-ffi inherits this table too (GEN-071); every other crate also carries
+# #![forbid(unsafe_code)] at its target roots, which `cargo xtask unsafe-forbid` checks (GEN-070).
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 missing_docs = "deny"
 unreachable_pub = "warn"
 # cargo-llvm-cov sets cfg(coverage_nightly) so test modules can be excluded from coverage (VER-024);
