@@ -35,7 +35,7 @@ impl UdpPort {
     /// A port that receives on `socket` and sends to `peer`.
     #[must_use]
     pub const fn new(socket: UdpSocket, peer: SocketAddr) -> Self {
-        UdpPort { socket, peer }
+        Self { socket, peer }
     }
 }
 

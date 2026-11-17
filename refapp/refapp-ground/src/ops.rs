@@ -130,11 +130,11 @@ impl Fop1Directive {
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
-            Fop1Directive::InitiateAdWithoutClcw => 1,
-            Fop1Directive::InitiateAdWithClcw => 2,
-            Fop1Directive::InitiateAdWithUnlock => 3,
-            Fop1Directive::TerminateAd => 5,
-            Fop1Directive::SetVs(_) => 7,
+            Self::InitiateAdWithoutClcw => 1,
+            Self::InitiateAdWithClcw => 2,
+            Self::InitiateAdWithUnlock => 3,
+            Self::TerminateAd => 5,
+            Self::SetVs(_) => 7,
         }
     }
 
@@ -142,22 +142,22 @@ impl Fop1Directive {
     #[must_use]
     pub const fn qualifier(self) -> u8 {
         match self {
-            Fop1Directive::SetVs(vs) => vs,
-            Fop1Directive::InitiateAdWithoutClcw
-            | Fop1Directive::InitiateAdWithClcw
-            | Fop1Directive::InitiateAdWithUnlock
-            | Fop1Directive::TerminateAd => 0,
+            Self::SetVs(vs) => vs,
+            Self::InitiateAdWithoutClcw
+            | Self::InitiateAdWithClcw
+            | Self::InitiateAdWithUnlock
+            | Self::TerminateAd => 0,
         }
     }
 
     /// The directive as the engine takes it (232.1 Table 4-1).
     pub(crate) const fn to_engine(self) -> Directive {
         match self {
-            Fop1Directive::InitiateAdWithoutClcw => Directive::InitiateAdWithoutClcwCheck,
-            Fop1Directive::InitiateAdWithClcw => Directive::InitiateAdWithClcwCheck,
-            Fop1Directive::InitiateAdWithUnlock => Directive::InitiateAdWithUnlock,
-            Fop1Directive::TerminateAd => Directive::TerminateAd,
-            Fop1Directive::SetVs(v_s) => Directive::SetVs {
+            Self::InitiateAdWithoutClcw => Directive::InitiateAdWithoutClcwCheck,
+            Self::InitiateAdWithClcw => Directive::InitiateAdWithClcwCheck,
+            Self::InitiateAdWithUnlock => Directive::InitiateAdWithUnlock,
+            Self::TerminateAd => Directive::TerminateAd,
+            Self::SetVs(v_s) => Directive::SetVs {
                 v_s: FrameSeqNum::new(v_s),
             },
         }
@@ -197,7 +197,7 @@ impl Script {
     ///
     /// # Errors
     /// The first entry whose packet cannot be encoded (a time or length out of range).
-    pub(crate) fn new(entries: &[OpsEntry]) -> Result<Script, ScriptError> {
+    pub(crate) fn new(entries: &[OpsEntry]) -> Result<Self, ScriptError> {
         let mut commands = SequenceCounter::default();
         let mut tables = SequenceCounter::default();
         let mut packets = Vec::with_capacity(entries.len());
@@ -231,7 +231,7 @@ impl Script {
                 OpsEntry::Command { .. } | OpsEntry::TableUpload { .. } => None,
             });
         }
-        Ok(Script {
+        Ok(Self {
             packets,
             directives,
         })

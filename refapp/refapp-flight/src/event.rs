@@ -72,19 +72,19 @@ impl Event {
     #[must_use]
     pub fn parts(&self) -> (u16, [u16; 3]) {
         match *self {
-            Event::CmdExecuted { function, seq } => (0x0001, [function, seq, 0]),
-            Event::CmdRejected {
+            Self::CmdExecuted { function, seq } => (0x0001, [function, seq, 0]),
+            Self::CmdRejected {
                 function,
                 seq,
                 reason,
             } => (0x0002, [function, seq, reason]),
-            Event::TableActivated {
+            Self::TableActivated {
                 table_id,
                 length,
                 crc,
             } => (0x0010, [table_id, length, crc]),
-            Event::TableRejected { table_id, reason } => (0x0011, [table_id, reason, 0]),
-            Event::DumpCompleted { address, length } => {
+            Self::TableRejected { table_id, reason } => (0x0011, [table_id, reason, 0]),
+            Self::DumpCompleted { address, length } => {
                 let [a3, a2, a1, a0] = address.to_be_bytes();
                 (
                     0x0020,
@@ -95,7 +95,7 @@ impl Event {
                     ],
                 )
             }
-            Event::PayloadMode { mode } => (0x0030, [u16::from(mode.octet()), 0, 0]),
+            Self::PayloadMode { mode } => (0x0030, [u16::from(mode.octet()), 0, 0]),
         }
     }
 

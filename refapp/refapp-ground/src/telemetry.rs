@@ -71,9 +71,9 @@ pub(crate) struct Telemetry {
 
 impl Telemetry {
     /// A ground node that has received nothing.
-    pub(crate) fn new() -> Telemetry {
+    pub(crate) fn new() -> Self {
         let dump = Apid::from_const::<{ apid::DUMP }>();
-        Telemetry {
+        Self {
             tracker: SequenceTracker::new(),
             dump: ReassemblerState::new(dump),
             dump_buf: vec![0; SDU_HEADER_LEN.saturating_add(MAX_DUMP_LENGTH)],

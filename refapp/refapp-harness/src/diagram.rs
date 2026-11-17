@@ -40,8 +40,8 @@ struct Report {
 }
 
 impl Report {
-    const fn of(clcw: &Clcw) -> Report {
-        Report {
+    const fn of(clcw: &Clcw) -> Self {
+        Self {
             n_r: clcw.report_value.get(),
             retransmit: clcw.retransmit,
             lockout: clcw.lockout,
