@@ -1095,12 +1095,21 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// ([`Fop1Target::uslp`]) is not a `const fn`, so a `static` of the USLP format has no
     /// `const` configuration.
     ///
+    /// [`decide`](Self::decide) takes `&mut self`, so an engine that is to be driven sits in a
+    /// cell with a `const` constructor, which gives the `&mut` with no `unsafe` in the caller:
+    /// `critical_section::Mutex<RefCell<_>>` or `static_cell::ConstStaticCell` in `no_std`,
+    /// `std::sync::Mutex` in the example below. This crate depends on none of them.
+    ///
     /// ```
-    /// use aldis_cop1::{Fop1, Fop1Config, Fop1State, Fop1Target, TimeoutType, fop1_max_actions};
+    /// use aldis_cop1::{
+    ///     Directive, Fop1, Fop1Config, Fop1Input, Fop1State, Fop1Target, TimeoutType,
+    ///     fop1_max_actions,
+    /// };
     /// use aldis_core::ids::FrameSeqNum;
-    /// use aldis_core::time::Duration;
+    /// use aldis_core::time::{Duration, Instant};
     /// use aldis_tc::{PhysicalChannelConfig, TcSpacecraftId, TcVcId};
     /// use core::num::NonZeroU8;
+    /// use std::sync::Mutex;
     ///
     /// // The `[fop1]` sizes of `capacities.toml`; the store is 17 KiB.
     /// const Q: usize = 16;
@@ -1126,14 +1135,24 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     ///     }
     /// };
     ///
-    /// // Built when the program is: the store is data of the program, not stack.
-    /// static ENGINE: Fop1<Q, F, N> = match Fop1::new(CONFIG) {
+    /// // Built when the program is: the store is data of the program, not stack. The `Mutex`
+    /// // gives the `&mut` that `decide` needs.
+    /// static ENGINE: Mutex<Fop1<Q, F, N>> = Mutex::new(match Fop1::new(CONFIG) {
     ///     Ok(engine) => engine,
     ///     Err(_) => panic!("the configuration is valid"),
-    /// };
+    /// });
     ///
-    /// assert_eq!(ENGINE.state(), Fop1State::Initial);
-    /// assert_eq!(ENGINE.v_s(), FrameSeqNum::new(0));
+    /// let mut engine = ENGINE.lock().unwrap();
+    /// assert_eq!(engine.state(), Fop1State::Initial);
+    /// assert_eq!(engine.v_s(), FrameSeqNum::new(0));
+    /// let input = Fop1Input::Directive {
+    ///     handle: 1,
+    ///     directive: Directive::InitiateAdWithoutClcwCheck,
+    /// };
+    /// let mut out = [0u8; F];
+    /// engine.decide(input, Instant::from_micros(0), &mut out)?.commit();
+    /// assert_eq!(engine.state(), Fop1State::Active);
+    /// # Ok::<(), aldis_core::Error>(())
     /// ```
     ///
     /// # Errors

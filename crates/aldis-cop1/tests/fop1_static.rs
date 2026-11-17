@@ -8,17 +8,25 @@
 //! configuration in a `static` initializer, with no `unsafe`, and the store is zeroed when the
 //! program is built, not on the stack at run time. The checks of the configuration run then too:
 //! a refused configuration is a compile-time value here.
+//!
+//! `decide` takes `&mut self`, so an engine that is to be driven sits in a cell with a `const`
+//! constructor. This test uses `std::sync::Mutex`; a `no_std` caller uses
+//! `critical_section::Mutex<RefCell<_>>` or `static_cell::ConstStaticCell`. The cell gives the
+//! `&mut` with no `unsafe` in the caller.
 #![expect(
     clippy::panic,
     reason = "a const initializer fails the build with `panic!`"
 )]
 
-use aldis_cop1::{Fop1, Fop1Config, Fop1State, Fop1Target, TimeoutType, fop1_max_actions};
+use aldis_cop1::{
+    Directive, Fop1, Fop1Config, Fop1Input, Fop1State, Fop1Target, TimeoutType, fop1_max_actions,
+};
 use aldis_core::ids::FrameSeqNum;
-use aldis_core::time::Duration;
+use aldis_core::time::{Duration, Instant};
 use aldis_core::{ErrorKind, Result, field};
 use aldis_tc::{PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 use core::num::NonZeroU8;
+use std::sync::Mutex;
 
 /// The `[fop1]` section of `crates/aldis-ffi/capacities.toml`: `sent_queue_frames` and
 /// `max_frame_octets`.
@@ -64,12 +72,19 @@ static ENGINE: Engine = match Fop1::new(config(8)) {
     Err(_) => panic!("the configuration is valid"),
 };
 
+/// An engine in a cell with a `const` constructor: `decide` borrows it as `&mut` through the
+/// guard, with no `unsafe`. The test that drives it is the only user of this static.
+static CELL: Mutex<Engine> = Mutex::new(match Fop1::new(config(8)) {
+    Ok(engine) => engine,
+    Err(_) => panic!("the configuration is valid"),
+});
+
 /// The refusal of `new` for a window of 0, a value of the compile-time evaluation.
 const REFUSED: Result<Engine> = Fop1::new(config(0));
 
 #[test]
 fn the_static_engine_is_the_initial_engine() {
-    // req: GEN-011, VER-011
+    // req: GEN-011
     assert_eq!(ENGINE.state(), Fop1State::Initial);
     assert_eq!(ENGINE.v_s(), FrameSeqNum::new(0));
     assert_eq!(ENGINE.nn_r(), FrameSeqNum::new(0));
@@ -92,4 +107,22 @@ fn a_refused_configuration_is_a_compile_time_value() {
         (e.kind(), e.field()),
         (ErrorKind::InvalidConfig, Some(field::SLIDING_WINDOW_K))
     );
+}
+
+#[test]
+fn the_static_engine_in_a_cell_decides_and_commits() {
+    // req: GEN-011, API-058
+    let mut engine = CELL.lock().unwrap();
+    assert_eq!(engine.state(), Fop1State::Initial);
+    let mut out = [0u8; F];
+    let input = Fop1Input::Directive {
+        handle: 1,
+        directive: Directive::InitiateAdWithoutClcwCheck,
+    };
+    let actions = engine
+        .decide(input, Instant::from_micros(0), &mut out)
+        .unwrap()
+        .commit();
+    assert!(actions.iter().next().is_some());
+    assert_eq!(engine.state(), Fop1State::Active);
 }
