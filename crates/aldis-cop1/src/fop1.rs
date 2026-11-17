@@ -312,8 +312,9 @@ pub struct Fop1Target<P: Fop1Format = TcFormat> {
 }
 
 /// A frame of a target to build, by its type and what it carries: the FDU of a Type-AD or a
-/// Type-BD frame, the Control Command of a Type-BC frame (232.0 §4.1.3.3). A pair of a frame
-/// type and a payload that do not belong together has no value (RS-020).
+/// Type-BD frame, the Control Command of a Type-BC frame (232.0 §4.1.2.3.3 Table 4-1,
+/// §4.1.3.3). A pair of a frame type and a payload that do not belong together has no value
+/// (RS-020).
 #[derive(Debug, Clone, Copy)]
 enum Payload<'a> {
     Ad(&'a [u8]),
