@@ -369,18 +369,15 @@ impl RawStart {
     /// Reads the first four octets; `None` if `bytes` is shorter.
     pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
         let h = bytes.first_chunk::<TRUNCATED_HEADER_LEN>()?;
-        let ids = UslpSpacecraftId::new(layout::Scid::<4>::get_u16(h))
-            .zip(UslpVcId::new(layout::Vcid::<4>::get_u8(h)))
-            .zip(UslpMapId::new(layout::Map::<4>::get_u8(h)));
-        ids.map(|((spacecraft_id, vc_id), map_id)| Self {
+        Some(Self {
             version: layout::Version::<4>::get_u8(h),
             channel: ChannelFields {
-                spacecraft_id,
+                spacecraft_id: layout::Scid::<4>::spacecraft_id(h),
                 source_or_destination: SourceOrDestination::from_bit(
                     layout::SourceOrDestination::<4>::flag(h),
                 ),
-                vc_id,
-                map_id,
+                vc_id: layout::Vcid::<4>::vc_id(h),
+                map_id: layout::Map::<4>::map_id(h),
             },
             truncated: layout::EndOfPrimaryHeader::<4>::flag(h),
         })
@@ -697,6 +694,29 @@ mod tests {
         );
         assert_eq!((h.channel(), h.vcf_count()), (channel(), count));
         assert!(RawStart::parse(&o[..3]).is_none() && RawRest::parse(&o[..6]).is_none());
+    }
+
+    #[test]
+    fn identifiers_read_at_every_limit() {
+        // req: API-001, API-002, RS-020
+        // `None` is a short input only: an all-ones start holds the largest identifiers.
+        let start = RawStart::parse(&[0xFF; 4]).unwrap();
+        assert_eq!(start.channel.spacecraft_id.get(), UslpSpacecraftId::MAX);
+        assert_eq!(start.channel.vc_id.get(), UslpVcId::MAX);
+        assert_eq!(start.channel.map_id.get(), UslpMapId::MAX);
+        let start = RawStart::parse(&[0; 4]).unwrap();
+        assert_eq!(
+            (
+                start.channel.spacecraft_id.get(),
+                start.channel.vc_id.get(),
+                start.channel.map_id.get()
+            ),
+            (0, 0, 0)
+        );
+        for map in 0..=UslpMapId::MAX {
+            let start = RawStart::parse(&[0, 0, 0, map << 1]).unwrap();
+            assert_eq!(start.channel.map_id.get(), map);
+        }
     }
 
     #[test]

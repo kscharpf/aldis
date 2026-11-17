@@ -161,9 +161,9 @@ impl SpacePacketHeader {
                 } else {
                     PacketType::Telemetry
                 },
-                apid: Apid::new(layout::Apid::get_u16(h)).unwrap_or(Apid::IDLE),
+                apid: layout::Apid::apid(h),
                 sequence_flags: SequenceFlags::from_bits(layout::Flags::get_u8(h)),
-                sequence_count: SeqCount::new(layout::Count::get_u16(h)).unwrap_or_default(),
+                sequence_count: layout::Count::seq_count(h),
             },
             secondary_header: layout::SecondaryHeader::flag(h),
             data_len: u32::from(layout::Length::get_u16(h)).wrapping_add(1),
@@ -335,6 +335,29 @@ mod tests {
         assert_eq!(h.data_len(), 100);
         assert_eq!(h.octets(), buf[..6]);
         assert_eq!(h, SpacePacketHeader::decode(&buf[..6]).unwrap());
+    }
+
+    #[test]
+    fn identifiers_read_at_every_limit() {
+        // req: SPP-009, GEN-051, RS-020
+        // Every bit of the APID (bits 5-15) and Packet Sequence Count (bits 18-31) clear, then
+        // set, with the version (bits 0-2, which decode requires to be `000`) clear in both.
+        let low = SpacePacketHeader::decode(&[0x00; 6]).unwrap();
+        assert_eq!(low.apid().get(), 0);
+        assert_eq!(low.sequence_count(), SeqCount::default());
+        assert_eq!(low.packet_type(), PacketType::Telemetry);
+        let high = SpacePacketHeader::decode(&[0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).unwrap();
+        assert_eq!(high.apid(), Apid::IDLE);
+        assert_eq!(high.apid().get(), Apid::MAX);
+        assert_eq!(high.sequence_count().get(), SeqCount::MAX);
+        assert_eq!(high.packet_name(), Some(high.sequence_count()));
+        // Each field alone: its neighbours do not leak into it.
+        let apid_only = SpacePacketHeader::decode(&[0x07, 0xFF, 0x00, 0x00, 0x00, 0x00]).unwrap();
+        assert_eq!(apid_only.apid().get(), Apid::MAX);
+        assert_eq!(apid_only.sequence_count().get(), 0);
+        let count_only = SpacePacketHeader::decode(&[0x00, 0x00, 0x3F, 0xFF, 0x00, 0x00]).unwrap();
+        assert_eq!(count_only.apid().get(), 0);
+        assert_eq!(count_only.sequence_count().get(), SeqCount::MAX);
     }
 
     #[test]

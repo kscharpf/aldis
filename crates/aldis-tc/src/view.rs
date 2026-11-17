@@ -211,7 +211,7 @@ pub(crate) fn parse<
     let segment_header = if head.segmented {
         frame
             .get(PRIMARY_HEADER_LEN)
-            .and_then(|&octet| SegmentHeader::from_octet(octet))
+            .map(|&octet| SegmentHeader::from_octet(octet))
     } else {
         None
     };

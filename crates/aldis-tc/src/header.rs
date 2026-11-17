@@ -99,12 +99,12 @@ impl SegmentHeader {
     }
 
     /// Parses the Segment Header octet; every value is a Segment Header (232.0 §4.1.3.2.2).
-    pub(crate) fn from_octet(octet: u8) -> Option<Self> {
+    pub(crate) const fn from_octet(octet: u8) -> Self {
         let octet = [octet];
-        TcMapId::new(segment::MapId::get_u8(&octet)).map(|map_id| Self {
+        Self {
             sequence_flags: SequenceFlags::from_bits(segment::Flags::get_u8(&octet)),
-            map_id,
-        })
+            map_id: segment::MapId::map_id(&octet),
+        }
     }
 }
 
@@ -141,15 +141,13 @@ impl RawHeader {
     /// Reads the first five octets; `None` if `bytes` is shorter (232.0 §4.1.2).
     pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
         let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
-        let ids =
-            TcSpacecraftId::new(layout::Scid::get_u16(h)).zip(TcVcId::new(layout::Vcid::get_u8(h)));
-        ids.map(|(spacecraft_id, vc_id)| Self {
+        Some(Self {
             version: layout::Version::get_u8(h),
             bypass: layout::Bypass::flag(h),
             control_command: layout::ControlCommand::flag(h),
             spare: layout::Spare::get_u8(h),
-            spacecraft_id,
-            vc_id,
+            spacecraft_id: layout::Scid::spacecraft_id(h),
+            vc_id: layout::Vcid::vc_id(h),
             frame_len: usize::from(layout::Length::get_u16(h)).saturating_add(1),
             sequence_number: FrameSeqNum::new(layout::Sequence::get_u8(h)),
         })
@@ -355,10 +353,10 @@ mod tests {
         // req: TC-004
         for bits in 0..=255_u8 {
             assert_eq!(SequenceFlags::from_bits(bits).bits(), bits & 0b11);
-            let sh = SegmentHeader::from_octet(bits).unwrap();
+            let sh = SegmentHeader::from_octet(bits);
             assert_eq!(sh.octet(), bits);
         }
-        let sh = SegmentHeader::from_octet(0b0100_0101).unwrap();
+        let sh = SegmentHeader::from_octet(0b0100_0101);
         assert_eq!(
             (sh.sequence_flags, sh.map_id.get()),
             (SequenceFlags::First, 5)
@@ -407,6 +405,21 @@ mod tests {
             map_id: TcMapId::new(63).unwrap(),
         };
         assert_eq!(seg.octet(), 0xBF);
+    }
+
+    #[test]
+    fn identifiers_read_at_every_limit() {
+        // req: TC-004, API-001, API-002, RS-020
+        // `None` is a short input only: an all-ones header holds the largest identifiers.
+        let raw = RawHeader::parse(&[0xFF; 5]).unwrap();
+        assert_eq!(raw.spacecraft_id.get(), TcSpacecraftId::MAX);
+        assert_eq!(raw.vc_id.get(), TcVcId::MAX);
+        let raw = RawHeader::parse(&[0; 5]).unwrap();
+        assert_eq!((raw.spacecraft_id.get(), raw.vc_id.get()), (0, 0));
+        // Every Segment Header octet has a MAP ID.
+        for octet in 0..=255_u8 {
+            assert_eq!(SegmentHeader::from_octet(octet).map_id.get(), octet & 0x3F);
+        }
     }
 
     #[test]
