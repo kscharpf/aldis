@@ -265,14 +265,14 @@ impl TmPlan {
     /// data (132.0 §4.1.4.6.3 note 1).
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin), which names these in this order: `InvalidField`
-    /// (`sync_flag`) if `fields.status` is a `VCA_SDU`'s, or if the VC carries `VCA_SDUs`, since
-    /// an OID frame uses a VC that transfers Packets (132.0 §4.1.4.6.3); `InvalidField`
-    /// (`first_header_pointer`) if `fields.status` is another packet pointer than Only Idle
-    /// Data; `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero Security Header or Trailer
-    /// length, since the multiplexing function that creates an OID frame sets a VCID that does
-    /// not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out` nor `oid` is changed
-    /// (GEN-042).
+    /// First, `InvalidField` if `fields` are not those of [`TmFrameFields::oid`]: (`sync_flag`)
+    /// for the status of a `VCA_SDU`, (`first_header_pointer`) for another packet pointer than
+    /// Only Idle Data (TM-010). Then as for [`begin`](Self::begin), which names these in this
+    /// order: `InvalidField` (`sync_flag`) if the VC carries `VCA_SDUs`, since an OID frame uses
+    /// a VC that transfers Packets (132.0 §4.1.4.6.3); `InvalidField` (`vc_id`) if the VC uses
+    /// SDLS, a nonzero Security Header or Trailer length, since the multiplexing function that
+    /// creates an OID frame sets a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010). On error
+    /// neither `out` nor `oid` is changed (GEN-042).
     ///
     /// The Idle Data cannot be checked on decode: it depends on where `oid` stands in the
     /// sequence, which a stateless decoder does not know (CMN-021), and receivers discard it
@@ -1091,6 +1091,15 @@ mod tests {
         assert_eq!(kf(e), pointer_error);
         let e = TmPlan::begin_oid(&mut out, &mc, &vca, &mut oid).unwrap_err();
         assert_eq!(kf(e), vca_error);
+        // req: TM-010
+        // The status is checked before the channel: the pointer error also on a `VCA_SDU` VC
+        // (where the channel check would give `sync_flag`) and on an unconfigured VC (where it
+        // would give `UnknownChannel`) (TM-010).
+        for vc in [1, 2] {
+            let fields = packets(vc, starts_at(0));
+            let e = TmPlan::begin_oid(&mut out, &mc, &fields, &mut oid).unwrap_err();
+            assert_eq!(kf(e), pointer_error);
+        }
         let e = encode_oid(&mc, &pointer, &[1, 2, 3], None, &mut oid, &mut out).unwrap_err();
         assert_eq!(kf(e), pointer_error);
         let e = encode_oid_galois(
