@@ -214,23 +214,19 @@ impl Clcw {
                 }
             }
         }
-        TcVcId::new(layout::VcId::get_u8(h))
-            .map(|vc_id| {
-                let clcw = Self {
-                    status: ClcwStatus::masked(layout::Status::get_u8(h)),
-                    cop_in_effect: CopInEffect::masked(layout::CopInEffect::get_u8(h)),
-                    vc_id,
-                    no_rf_available: layout::NoRfAvailable::flag(h),
-                    no_bit_lock: layout::NoBitLock::flag(h),
-                    lockout: layout::Lockout::flag(h),
-                    wait: layout::Wait::flag(h),
-                    retransmit: layout::Retransmit::flag(h),
-                    farm_b_counter: FarmBCounter::masked(layout::FarmBCounter::get_u8(h)),
-                    report_value: FrameSeqNum::new(layout::ReportValue::get_u8(h)),
-                };
-                (clcw, anomalies)
-            })
-            .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::VC_ID))
+        let clcw = Self {
+            status: ClcwStatus::masked(layout::Status::get_u8(h)),
+            cop_in_effect: CopInEffect::masked(layout::CopInEffect::get_u8(h)),
+            vc_id: layout::VcId::vc_id(h),
+            no_rf_available: layout::NoRfAvailable::flag(h),
+            no_bit_lock: layout::NoBitLock::flag(h),
+            lockout: layout::Lockout::flag(h),
+            wait: layout::Wait::flag(h),
+            retransmit: layout::Retransmit::flag(h),
+            farm_b_counter: FarmBCounter::masked(layout::FarmBCounter::get_u8(h)),
+            report_value: FrameSeqNum::new(layout::ReportValue::get_u8(h)),
+        };
+        Ok((clcw, anomalies))
     }
 
     /// Decodes the CLCW of a Type-1 Report taken from an Operational Control Field (232.0
@@ -334,6 +330,17 @@ mod tests {
         };
         assert_eq!(all.to_octets(), [0x1F, 0xFC, 0xFE, 0xFF]);
         assert_eq!(Clcw::decode(all.to_octets()).unwrap(), all);
+    }
+
+    #[test]
+    fn every_vc_id_decodes() {
+        // req: TC-030, API-001, API-002, RS-020
+        // The 6-bit field holds nothing but valid identifiers: no value is an error.
+        for vc in 0..=TcVcId::MAX {
+            let octets = [0x01, vc << 2, 0, 0];
+            assert_eq!(Clcw::decode(octets).unwrap().vc_id.get(), vc);
+            assert_eq!(Clcw::decode_lenient(octets).unwrap().vc_id.get(), vc);
+        }
     }
 
     #[test]

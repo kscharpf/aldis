@@ -11,7 +11,7 @@
 
 use crate::error::{Error, Result, as_u64};
 use crate::field;
-use crate::ids::{SpacecraftId, VcId};
+use crate::ids::{MapId, SpacecraftId, VcId};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -239,6 +239,29 @@ impl<const N: usize, const OFFSET: usize, const WIDTH: u8> Field<N, OFFSET, WIDT
         VcId::from_field(Self::get_u8(header))
     }
 
+    /// The Multiplexer Access Point Identifier in a field of exactly `BITS` bits, with no error
+    /// to return (GEN-051, API-001, API-002, RS-020).
+    ///
+    /// A field whose width is not `BITS` does not compile, so the value always fits the type and
+    /// a decoder needs no fallback.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::MapId;
+    /// // A 6-bit field read as a 4-bit identifier.
+    /// let _: MapId<4> = Field::<1, 2, 6>::map_id(&[0]);
+    /// ```
+    #[must_use]
+    pub const fn map_id<const BITS: u32>(header: &[u8; N]) -> MapId<BITS> {
+        const {
+            assert!(
+                WIDTH as u32 == BITS,
+                "the field is not as wide as the identifier"
+            );
+        };
+        MapId::from_field(Self::get_u8(header))
+    }
+
     /// Whether a one-bit field is set (GEN-051).
     #[must_use]
     pub const fn flag(header: &[u8; N]) -> bool {
@@ -379,8 +402,8 @@ octet_int!(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Field, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set, write_u16, write_u32,
-        write_u64,
+        Field, MapId, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set, write_u16,
+        write_u32, write_u64,
     };
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
@@ -465,6 +488,27 @@ mod tests {
         assert_eq!(all.get(), SpacecraftId::<10>::MAX);
         assert_eq!(Field::<1, 0, 8>::vc_id::<8>(&[0xFF]).get(), VcId::<8>::MAX);
         assert_eq!(Field::<1, 0, 3>::vc_id::<3>(&[0xFF]).get(), VcId::<3>::MAX);
+    }
+
+    #[test]
+    fn map_id_fields_read_as_their_type() {
+        // req: GEN-051, API-001, API-002, RS-020
+        // The USLP MAP ID (4 bits) and the TC Segment Header MAP ID (6 bits).
+        type Uslp = Field<4, 27, 4>;
+        type Segment = Field<1, 2, 6>;
+        let h = [0x00, 0x00, 0x00, 0x1E];
+        let map: MapId<4> = Uslp::map_id(&h);
+        assert_eq!(u64::from(map.get()), get(&h, 27, 4).unwrap());
+        assert_eq!(map.get(), 0b1111);
+        let octet = [0b0100_0101];
+        let map: MapId<6> = Segment::map_id(&octet);
+        assert_eq!(u64::from(map.get()), get(&octet, 2, 6).unwrap());
+        assert_eq!(Segment::map_id::<6>(&[0xFF]).get(), MapId::<6>::MAX);
+        assert_eq!(Segment::map_id::<6>(&[0xC0]).get(), 0);
+        assert_eq!(
+            Field::<1, 0, 8>::map_id::<8>(&[0xFF]).get(),
+            MapId::<8>::MAX
+        );
     }
 
     #[test]
