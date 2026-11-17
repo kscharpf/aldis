@@ -167,6 +167,14 @@ impl Apid {
     pub const fn is_idle(self) -> bool {
         self.0 == Self::MAX
     }
+
+    /// The APID of an 11-bit field: the mask of the field is the range of the type, so no value
+    /// is out of range and nothing falls back (API-001, RS-020). Used by
+    /// [`Field::apid`](crate::bits::Field::apid), which checks the width when the code is
+    /// compiled.
+    pub(crate) const fn from_field(value: u16) -> Self {
+        Self(value & Self::MAX)
+    }
 }
 
 impl TryFrom<u16> for Apid {
@@ -219,6 +227,14 @@ impl SeqCount {
     #[must_use]
     pub const fn get(self) -> u16 {
         self.0
+    }
+
+    /// The count of a 14-bit field: the mask of the field is the range of the type, so no value
+    /// is out of range and nothing falls back (API-001, RS-020). Used by
+    /// [`Field::seq_count`](crate::bits::Field::seq_count), which checks the width when the code
+    /// is compiled.
+    pub(crate) const fn from_field(value: u16) -> Self {
+        Self(value & Self::MAX)
     }
 
     /// The next count, modulo 16384 (133.0 §4.1.3.4.3.4).
