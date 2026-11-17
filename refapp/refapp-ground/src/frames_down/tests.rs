@@ -15,7 +15,8 @@ use aldis::core::ocf::Ocf;
 use aldis::core::oid::OidGenerator;
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode as spp_encode};
 use aldis::tm::{
-    DataFieldStatus, PacketOffset, PacketPointer, TmFrameContent, TmFrameFields, encode, encode_oid,
+    DataFieldStatus, McFrameCount, PacketOffset, PacketPointer, TmFrameContent, TmFrameFields,
+    VcFrameCount, encode, encode_oid,
 };
 use refapp_scenario::{Delivered, Instant, Node, Output, StepInput};
 
@@ -98,8 +99,8 @@ fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Ve
     let down = FrameDownlink::new().unwrap();
     let fields = TmFrameFields::new(
         VcId::new(vc).unwrap(),
-        mc,
-        vcc,
+        McFrameCount::new(mc),
+        VcFrameCount::new(vcc),
         DataFieldStatus::Packets(match pointer {
             0x7FF => PacketPointer::NoPacketStart,
             0x7FE => PacketPointer::OnlyIdleData,
@@ -119,9 +120,11 @@ fn oid_frame(mc: u8, vcc: u8, ocf: [u8; 4]) -> Vec<u8> {
     let mut out = vec![0; 223];
     let n = encode_oid(
         &down.channel,
-        VcId::new(7).unwrap(),
-        mc,
-        vcc,
+        &TmFrameFields::oid(
+            VcId::new(7).unwrap(),
+            McFrameCount::new(mc),
+            VcFrameCount::new(vcc),
+        ),
         &[],
         Some(Ocf::decode(ocf)),
         &mut OidGenerator::new(),
@@ -315,8 +318,8 @@ fn frame_with(vc: u8, data: &[u8], tweak: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> 
     .unwrap();
     let fields = TmFrameFields::new(
         VcId::new(vc).unwrap(),
-        0,
-        0,
+        McFrameCount::default(),
+        VcFrameCount::default(),
         DataFieldStatus::Packets(PacketPointer::StartsAt(PacketOffset::new(0).unwrap())),
     );
     let mut content = TmFrameContent::new(data);

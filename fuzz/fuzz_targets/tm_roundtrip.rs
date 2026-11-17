@@ -12,9 +12,9 @@ use aldis_core::ocf::Ocf;
 use aldis_core::oid::OidGenerator;
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
-    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketOffset,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig, VcFrameCount, encode,
 };
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -79,8 +79,8 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
     };
     let fields = TmFrameFields::new(
         VcId::new(u.int_in_range(0..=7)?).unwrap(),
-        u.arbitrary()?,
-        u.arbitrary()?,
+        McFrameCount::new(u.arbitrary()?),
+        VcFrameCount::new(u.arbitrary()?),
         status(u)?,
     );
     // Lengths near the configured ones, so that most encodes succeed.
@@ -189,7 +189,12 @@ fn oid_frame(
     reference.fill(&mut skipped);
     let before = oid.clone();
     let mut frame = vec![0_u8; cap];
-    match TmPlan::begin_oid(&mut frame, mc, vcid, 0, 0, &mut oid) {
+    match TmPlan::begin_oid(
+        &mut frame,
+        mc,
+        &TmFrameFields::oid(vcid, McFrameCount::default(), VcFrameCount::default()),
+        &mut oid,
+    ) {
         Err(_) => assert_eq!(oid, before, "a rejected OID frame advanced the generator"),
         Ok(w) => {
             let n = w.unsecured().unwrap().finalize().len();

@@ -42,6 +42,88 @@ pub(crate) const fn mismatch(
         .with_detail(ErrorDetail::Expected { expected, found })
 }
 
+/// Master Channel Frame Count, 8 bits, modulo 256 (132.0 §4.1.2.5; TM-009, API-001).
+///
+/// Every `u8` is a count, so the constructor does not check. The type keeps it apart from the
+/// [`VcFrameCount`], which a header carries next to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct McFrameCount(u8);
+
+impl McFrameCount {
+    /// The count (`0..=255` all fit in 8 bits).
+    #[must_use]
+    pub const fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    /// The count of a running count that wraps: its low 8 bits (132.0 §4.1.2.5). The count is
+    /// reduced modulo the field, which is how a counter that wraps is written (LNK-032).
+    #[must_use]
+    pub const fn wrapping(running: u64) -> Self {
+        let [.., low] = running.to_be_bytes();
+        Self(low)
+    }
+
+    /// The numeric value (132.0 §4.1.2.5).
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<u8> for McFrameCount {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl From<McFrameCount> for u8 {
+    fn from(count: McFrameCount) -> Self {
+        count.0
+    }
+}
+
+/// Virtual Channel Frame Count, 8 bits, modulo 256 (132.0 §4.1.2.6; TM-009, API-001).
+///
+/// Every `u8` is a count, so the constructor does not check. The type keeps it apart from the
+/// [`McFrameCount`], which a header carries next to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct VcFrameCount(u8);
+
+impl VcFrameCount {
+    /// The count (`0..=255` all fit in 8 bits).
+    #[must_use]
+    pub const fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    /// The count of a running count that wraps: its low 8 bits (132.0 §4.1.2.6). The count is
+    /// reduced modulo the field, which is how a counter that wraps is written (LNK-032).
+    #[must_use]
+    pub const fn wrapping(running: u64) -> Self {
+        let [.., low] = running.to_be_bytes();
+        Self(low)
+    }
+
+    /// The numeric value (132.0 §4.1.2.6).
+    #[must_use]
+    pub const fn get(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<u8> for VcFrameCount {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl From<VcFrameCount> for u8 {
+    fn from(count: VcFrameCount) -> Self {
+        count.0
+    }
+}
+
 /// Segment Length Identifier, 2 bits (132.0 §4.1.2.7.5; TM-007, API-001).
 ///
 /// With the Synchronization Flag `0` it is `11` ([`SegmentLengthId::NO_SEGMENTS`]); with the flag
@@ -376,9 +458,9 @@ pub struct TmPrimaryHeader {
     /// Operational Control Field Flag (132.0 §4.1.2.4).
     pub ocf_flag: bool,
     /// Master Channel Frame Count, modulo 256 (132.0 §4.1.2.5).
-    pub mc_frame_count: u8,
+    pub mc_frame_count: McFrameCount,
     /// Virtual Channel Frame Count, modulo 256 (132.0 §4.1.2.6).
-    pub vc_frame_count: u8,
+    pub vc_frame_count: VcFrameCount,
     /// Transfer Frame Secondary Header Flag (132.0 §4.1.2.7.2).
     pub fsh_flag: bool,
     /// Synchronization Flag (132.0 §4.1.2.7.3).
@@ -390,11 +472,6 @@ pub struct TmPrimaryHeader {
     /// First Header Pointer, raw (132.0 §4.1.2.7.6).
     pub first_header_pointer: FirstHeaderPointer,
 }
-
-/// The value of SCID 0, the fallback of a masked field that always fits (GEN-020).
-const SCID_ZERO: SpacecraftId<10> = SpacecraftId::new(0).expect("0 fits");
-/// The value of VCID 0, the fallback of a masked field that always fits (GEN-020).
-const VCID_ZERO: VcId<3> = VcId::new(0).expect("0 fits");
 
 impl TmPrimaryHeader {
     /// Decodes the Primary Header at the start of `prefix`; octets after it are ignored
@@ -417,11 +494,11 @@ impl TmPrimaryHeader {
             ));
         }
         Ok(Self {
-            scid: SpacecraftId::new(layout::Scid::get_u16(h)).unwrap_or(SCID_ZERO),
-            vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
+            scid: layout::Scid::spacecraft_id(h),
+            vcid: layout::Vcid::vc_id(h),
             ocf_flag: layout::OcfFlag::flag(h),
-            mc_frame_count: layout::McCount::get_u8(h),
-            vc_frame_count: layout::VcCount::get_u8(h),
+            mc_frame_count: McFrameCount(layout::McCount::get_u8(h)),
+            vc_frame_count: VcFrameCount(layout::VcCount::get_u8(h)),
             fsh_flag: layout::FshFlag::flag(h),
             sync_flag: layout::SyncFlag::flag(h),
             packet_order_flag: layout::OrderFlag::flag(h),
@@ -438,8 +515,8 @@ impl TmPrimaryHeader {
         layout::Scid::put_u16(&mut h, self.scid.get());
         layout::Vcid::put_u8(&mut h, self.vcid.get());
         layout::OcfFlag::put_flag(&mut h, self.ocf_flag);
-        layout::McCount::put_u8(&mut h, self.mc_frame_count);
-        layout::VcCount::put_u8(&mut h, self.vc_frame_count);
+        layout::McCount::put_u8(&mut h, self.mc_frame_count.0);
+        layout::VcCount::put_u8(&mut h, self.vc_frame_count.0);
         layout::FshFlag::put_flag(&mut h, self.fsh_flag);
         layout::SyncFlag::put_flag(&mut h, self.sync_flag);
         layout::OrderFlag::put_flag(&mut h, self.packet_order_flag);
@@ -489,8 +566,8 @@ mod layout {
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub(crate) mod tests {
     use super::{
-        DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
-        TmPrimaryHeader,
+        DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketOffset, PacketPointer,
+        SegmentLengthId, TmPrimaryHeader, VcFrameCount,
     };
     use crate::field;
     use aldis_core::ids::{SpacecraftId, VcId};
@@ -505,8 +582,8 @@ pub(crate) mod tests {
             scid: SpacecraftId::new(0x2A5).unwrap(),
             vcid: VcId::new(5).unwrap(),
             ocf_flag: true,
-            mc_frame_count: 0x12,
-            vc_frame_count: 0x34,
+            mc_frame_count: McFrameCount::new(0x12),
+            vc_frame_count: VcFrameCount::new(0x34),
             fsh_flag: true,
             sync_flag: false,
             packet_order_flag: false,
@@ -576,6 +653,18 @@ pub(crate) mod tests {
         );
         let e = FirstHeaderPointer::try_from(0x800).unwrap_err();
         assert_eq!(e.field(), Some(field::FIRST_HEADER_POINTER));
+    }
+
+    #[test]
+    fn frame_counts_wrap_modulo_256() {
+        // req: TM-009, API-001, LNK-032
+        assert_eq!(McFrameCount::new(0xFF).get(), 0xFF);
+        assert_eq!(u8::from(McFrameCount::from(7)), 7);
+        assert_eq!(McFrameCount::wrapping(0x1_0000_0102), McFrameCount::new(2));
+        assert_eq!(VcFrameCount::new(0xFF).get(), 0xFF);
+        assert_eq!(u8::from(VcFrameCount::from(9)), 9);
+        assert_eq!(VcFrameCount::wrapping(255), VcFrameCount::new(255));
+        assert_eq!(VcFrameCount::wrapping(256), VcFrameCount::default());
     }
 
     #[test]

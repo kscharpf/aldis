@@ -8,9 +8,9 @@ use aldis_core::ids::VcId;
 use aldis_core::ocf::Ocf;
 use aldis_core::security::SecurityLayout;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
-    SegmentLengthId, TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig,
-    TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketOffset,
+    PacketPointer, SegmentLengthId, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmVirtualChannelConfig, VcFrameCount, encode,
 };
 use proptest::prelude::*;
 
@@ -204,7 +204,8 @@ pub fn frame_of(mc: TmMasterChannelConfig) -> impl Strategy<Value = EncodedTmFra
             )
         })
         .prop_map(|(mc, vcid, mcc, vcc, status, fsh, sh, data, st, ocf)| {
-            let fields = TmFrameFields::new(vcid, mcc, vcc, status);
+            let fields =
+                TmFrameFields::new(vcid, McFrameCount::new(mcc), VcFrameCount::new(vcc), status);
             let mut frame = EncodedTmFrame {
                 mc,
                 fields,

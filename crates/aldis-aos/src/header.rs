@@ -159,11 +159,6 @@ impl From<FrameCountCycle> for u8 {
     }
 }
 
-/// The value of SCID 0, the fallback of a masked field that always fits (GEN-020).
-const SCID_ZERO: SpacecraftId<10> = SpacecraftId::new(0).expect("0 fits");
-/// The value of VCID 0, the fallback of a masked field that always fits (GEN-020).
-const VCID_ZERO: VcId<6> = VcId::new(0).expect("0 fits");
-
 /// An AOS Transfer Frame Primary Header as owned values, after FHEC correction (732.0 §4.1.2;
 /// AOS-002, AOS-010…AOS-014, API-014).
 ///
@@ -283,14 +278,16 @@ impl AosPrimaryHeader {
         let h = &received.octets;
         let lsb = layout::ScidLow::get_u8(h);
         let bits_42_43 = layout::ScidHigh::get_u8(h);
-        let (scid, spare) = match edition {
-            AosEdition::Issue5 => (u16::from_be_bytes([bits_42_43, lsb]), 0),
-            AosEdition::Issue4Compatible => (u16::from(lsb), bits_42_43),
+        // The SCID as two octets whose low 10 bits it is: the 2 high bits and the 8 low bits in
+        // Issue 5, the 8 bits alone in Issue 4 (AOS-002).
+        let (scid_octets, spare) = match edition {
+            AosEdition::Issue5 => ([bits_42_43, lsb], 0),
+            AosEdition::Issue4Compatible => ([0, lsb], bits_42_43),
         };
         Self {
             edition,
-            scid: SpacecraftId::new(scid).unwrap_or(SCID_ZERO),
-            vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
+            scid: layout::Scid::spacecraft_id(&scid_octets),
+            vcid: layout::Vcid::vc_id(h),
             vc_frame_count: VcFrameCount(layout::Count::get_u32(h)),
             replay_flag: layout::Replay::flag(h),
             cycle_use_flag: layout::CycleUse::flag(h),
@@ -512,6 +509,9 @@ mod layout {
     pub(super) type CycleUse = Field<N, 41, 1>;
     pub(super) type ScidHigh = Field<N, 42, 2>;
     pub(super) type Cycle = Field<N, 44, 4>;
+    /// The 10-bit Spacecraft ID of the two octets that `parse` joins from `ScidHigh` and
+    /// `ScidLow`, or from `ScidLow` alone in Issue 4.
+    pub(super) type Scid = Field<2, 6, 10>;
     pub(super) type Fhec = Field<N, 48, 16>;
 }
 
