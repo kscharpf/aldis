@@ -11,6 +11,7 @@ version = 2
 yanked = "deny"
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, not vulnerable; a build-time macro dependency of spacepackets in a dev-only workspace that is never shipped (cross-checks.md §1)" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained, not vulnerable; it comes in through spacepackets' std feature, which the ASCII time cross-check needs, in a dev-only workspace that is never shipped (cross-checks.md §1); drop when spacepackets no longer depends on chrono (#631)" },
 ]
 
 [licenses]
