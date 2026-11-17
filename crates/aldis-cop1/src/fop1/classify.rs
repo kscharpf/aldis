@@ -71,7 +71,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     }
 
     /// The event of a directive (232.1 Table 4-1, Table 5-1; COP-014, COP-015).
-    fn directive_event(&self, directive: Directive) -> Fop1Event {
+    const fn directive_event(&self, directive: Directive) -> Fop1Event {
         match directive {
             Directive::InitiateAdWithoutClcwCheck => Fop1Event::E23,
             Directive::InitiateAdWithClcwCheck => Fop1Event::E24,

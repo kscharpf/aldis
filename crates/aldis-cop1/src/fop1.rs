@@ -341,24 +341,33 @@ impl Fop1Target<TcFormat> {
     /// whose managed parameters give the Maximum Transfer Frame Length and the FECF (232.0
     /// §4.1.4, Table 5-1, Table 5-3; COP-010; M6 plan WP-2c).
     ///
+    /// A `const fn`: a target of constant parameters is built and checked when the program is
+    /// built, for a [`Fop1Config`] in a `const` (see [`Fop1::new`]).
+    ///
     /// # Errors
     /// `InvalidConfig` (`max_frame_len`) if a frame of the length of `physical` has no data
     /// field octet (232.0 Table 5-3, CMN-041): `PhysicalChannelConfig::new` has checked the
     /// length, 6 to 1 024 octets and 8 or more with a FECF, so this does not fail in practice;
     /// the VC and table constructors it calls are the ones that would report it.
-    pub fn tc(
+    pub const fn tc(
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,
         physical: PhysicalChannelConfig,
     ) -> Result<Self> {
         let max_frame_len = physical.max_frame_len();
-        let vc = VcConfig::new(
+        let vc = match VcConfig::new(
             spacecraft_id,
             vc_id,
             max_frame_len,
             SegmentHeaderUse::Absent(SecurityLayout::NONE),
-        )?;
-        let table = VcTable::new(physical, &[vc], &[])?;
+        ) {
+            Ok(vc) => vc,
+            Err(e) => return Err(e),
+        };
+        let table = match VcTable::new(physical, &[vc], &[]) {
+            Ok(table) => table,
+            Err(e) => return Err(e),
+        };
         Ok(Self::new(
             TcChannel {
                 table,
@@ -367,7 +376,12 @@ impl Fop1Target<TcFormat> {
             },
             vc_id.get(),
             max_frame_len,
-            max_fdu_len::<TcFormat>(&physical, &(), TcFormat::SDU_HEADER_LEN),
+            max_fdu_len(
+                max_frame_len,
+                physical.fecf(),
+                TcFormat::PRIMARY_HEADER_LEN,
+                TcFormat::SDU_HEADER_LEN,
+            ),
         ))
     }
 }
@@ -456,8 +470,12 @@ impl Fop1Target<UslpFormat> {
         // The Primary Header with the VCF Count of a Type-AD frame (one octet, because the VCF
         // Count Length check above refuses any other length; OI-66), the TFDF Header (one octet:
         // the rules with a pointer are refused above), the TFDZ, and the FECF.
-        let max_fdu_len =
-            max_fdu_len::<UslpFormat>(&physical, &vc.vcf_count_len(false), tfdf.len());
+        let max_fdu_len = max_fdu_len(
+            max_frame_len,
+            physical.fecf(),
+            UslpFormat::primary_header_len(&vc.vcf_count_len(false)),
+            tfdf.len(),
+        );
         if max_fdu_len < SET_VR_LEN {
             return Err(bad_config(field::MAX_FRAME_LEN));
         }
@@ -833,8 +851,9 @@ pub struct Fop1Head<const Q: usize, const F: usize, const N: usize, P: Fop1Forma
 /// The one large part of a FOP-1 (`Q × F` octets and one more `F`), for the capacities `Q`
 /// (entries of the `Sent_Queue`) and `F` (octets of a frame or an FDU) of [`Fop1`]. It is a
 /// plain array type that is valid when zeroed (GEN-011), so that a caller places a [`Fop1`] in
-/// its own storage (a static, or memory that a C caller zeroes) without building it by value
-/// ([`Fop1::BUFFERS_OFFSET`]). A [`Fop1`] owns its store from [`Fop1::new`] on, and the store
+/// its own storage (memory that a C caller zeroes) without building it by value
+/// ([`Fop1::BUFFERS_OFFSET`]); a Rust caller builds the [`Fop1`] in a `static` through the
+/// `const fn` [`Fop1::new`]. A [`Fop1`] owns its store from [`Fop1::new`] on, and the store
 /// starts zeroed; no function that decides or commits an input takes one (RS-021).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fop1Store<const Q: usize, const F: usize> {
@@ -997,13 +1016,13 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Head<Q, 
 
     /// The head of a FOP-1 in State S6 (Initial) with V(S) = NN(R) = 0, every Out flag Ready, no
     /// timer, and `Suspend_State` 0 (232.1 §5.1; OI-59). [`Fop1::new`] pairs it with an empty
-    /// [`Fop1Store`].
+    /// [`Fop1Store`]. A `const fn`, like [`Fop1::new`].
     ///
     /// # Errors
     /// `InvalidConfig` naming `sliding_window_k` for a K outside 1..=min(255, `Q`) (COP-015),
     /// `t1_initial` for a `T1_Initial` of 0, and `max_frame_len` for a target whose frames do
     /// not fit `F` octets (API-040).
-    pub fn new(config: Fop1Config<P>) -> Result<Self> {
+    pub const fn new(config: Fop1Config<P>) -> Result<Self> {
         let () = Self::BOUND;
         if !Self::k_fits(config.sliding_window_k) {
             return Err(bad_config(field::SLIDING_WINDOW_K));
@@ -1042,8 +1061,12 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Head<Q, 
 
     /// Whether `k` is a valid FOP Sliding Window Width: 1..=min(255, `Q`) (232.1 §5.1.12;
     /// COP-015).
-    fn k_fits(k: u8) -> bool {
-        k >= 1 && usize::from(k) <= Q
+    #[expect(
+        clippy::as_conversions,
+        reason = "u8 to usize is lossless, and `usize::from` is not a const fn"
+    )]
+    const fn k_fits(k: u8) -> bool {
+        k >= 1 && (k as usize) <= Q
     }
 }
 
@@ -1061,17 +1084,68 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// A FOP-1 in State S6 (Initial) with V(S) = NN(R) = 0, every Out flag Ready, no timer,
     /// and `Suspend_State` 0, with an empty store (232.1 §5.1; OI-59, OI-45).
     ///
-    /// The engine holds its store, `Q × F` octets and one more `F`, and is built by value; a
-    /// caller that cannot afford that places it with [`Fop1Head::new`] and the offsets
-    /// ([`HEAD_OFFSET`](Self::HEAD_OFFSET)).
+    /// The engine holds its store, `Q × F` octets and one more `F`, and is built by value, with
+    /// no `unsafe`. A Rust caller whose stack cannot hold it (at the `[fop1]` sizes of
+    /// `capacities.toml`, 16 × 1024 octets, it cannot: OI-45, VER-011) places it in a `static`
+    /// from a `const` configuration: this is a `const fn`, as are [`Fop1Target::tc`],
+    /// [`Fop1Head::new`], and the constructors under them, so the compiler builds the engine and
+    /// its zeroed store and checks the configuration (GEN-011). The C ABI places the engine in
+    /// caller storage with [`Fop1Head::new`] and the hidden offsets ([`HEAD_OFFSET`](Self::HEAD_OFFSET),
+    /// [`BUFFERS_OFFSET`](Self::BUFFERS_OFFSET); CABI-040). The target of a USLP channel
+    /// ([`Fop1Target::uslp`]) is not a `const fn`, so a `static` of the USLP format has no
+    /// `const` configuration.
+    ///
+    /// ```
+    /// use aldis_cop1::{Fop1, Fop1Config, Fop1State, Fop1Target, TimeoutType, fop1_max_actions};
+    /// use aldis_core::ids::FrameSeqNum;
+    /// use aldis_core::time::Duration;
+    /// use aldis_tc::{PhysicalChannelConfig, TcSpacecraftId, TcVcId};
+    /// use core::num::NonZeroU8;
+    ///
+    /// // The `[fop1]` sizes of `capacities.toml`; the store is 17 KiB.
+    /// const Q: usize = 16;
+    /// const F: usize = 1024;
+    /// const N: usize = fop1_max_actions(Q);
+    ///
+    /// const CONFIG: Fop1Config = {
+    ///     let Ok(physical) = PhysicalChannelConfig::new(F, true) else { panic!() };
+    ///     let Ok(target) = Fop1Target::tc(
+    ///         TcSpacecraftId::from_const::<0x2A5>(),
+    ///         TcVcId::from_const::<5>(),
+    ///         physical,
+    ///     ) else { panic!() };
+    ///     let Some(transmission_limit) = NonZeroU8::new(3) else { panic!() };
+    ///     Fop1Config {
+    ///         target,
+    ///         t1_initial: Duration::from_micros(1_000_000),
+    ///         transmission_limit,
+    ///         timeout_type: TimeoutType::Tt0,
+    ///         sliding_window_k: 8,
+    ///         ad_repetitions: 1,
+    ///         bc_repetitions: 1,
+    ///     }
+    /// };
+    ///
+    /// // Built when the program is: the store is data of the program, not stack.
+    /// static ENGINE: Fop1<Q, F, N> = match Fop1::new(CONFIG) {
+    ///     Ok(engine) => engine,
+    ///     Err(_) => panic!("the configuration is valid"),
+    /// };
+    ///
+    /// assert_eq!(ENGINE.state(), Fop1State::Initial);
+    /// assert_eq!(ENGINE.v_s(), FrameSeqNum::new(0));
+    /// ```
     ///
     /// # Errors
     /// As [`Fop1Head::new`].
-    pub fn new(config: Fop1Config<P>) -> Result<Self> {
-        Ok(Self {
-            head: Fop1Head::new(config)?,
-            store: Fop1Store::new(),
-        })
+    pub const fn new(config: Fop1Config<P>) -> Result<Self> {
+        match Fop1Head::new(config) {
+            Ok(head) => Ok(Self {
+                head,
+                store: Fop1Store::new(),
+            }),
+            Err(e) => Err(e),
+        }
     }
 
     /// The target Virtual Channel (COP-010).

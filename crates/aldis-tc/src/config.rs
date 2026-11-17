@@ -248,14 +248,18 @@ impl MapConfig {
 /// The longest frame of a Virtual Channel or MAP: `limit` octets (at most the Physical
 /// Channel's) with a secondary slot of `secondary_len` and the SDLS lengths of `security`
 /// (CMN-041).
-fn longest_frame(
+const fn longest_frame(
     physical: &PhysicalChannelConfig,
     limit: usize,
     secondary_len: usize,
     security: SecurityLayout,
 ) -> LayoutSpec {
     LayoutSpec {
-        frame_len: limit.min(physical.max_frame_len),
+        frame_len: if limit < physical.max_frame_len {
+            limit
+        } else {
+            physical.max_frame_len
+        },
         primary_header_len: PRIMARY_HEADER_LEN,
         secondary_len,
         security,
@@ -264,12 +268,17 @@ fn longest_frame(
     }
 }
 
+/// `InvalidConfig` or `CapacityExceeded` naming `parameter` (232.0 Tables 5-3, 5-4).
+const fn table_error(kind: ErrorKind, parameter: aldis_core::FieldId) -> Error {
+    Error::new(kind).with_field(parameter)
+}
+
 /// The channels of one Physical Channel, with room for `V` Virtual Channels and `M` MAPs
 /// (232.0 §5; GEN-011, GEN-060, M2 plan D14).
 ///
 /// Built only by [`new`](Self::new), so the entries are unique and each MAP belongs to a
 /// Virtual Channel with Segment Headers (RS-020).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VcTable<const V: usize, const M: usize> {
     physical: PhysicalChannelConfig,
     vcs: [Option<VcConfig>; V],
@@ -278,6 +287,8 @@ pub struct VcTable<const V: usize, const M: usize> {
 
 impl<const V: usize, const M: usize> VcTable<V, M> {
     /// The channels of `physical` (232.0 §5; GEN-060, API-040).
+    ///
+    /// A `const fn`: a table of constant parameters is checked when the program is built.
     ///
     /// # Errors
     /// - `CapacityExceeded` (`vc_id`, `map_id`) for more than `V` Virtual Channels or `M`
@@ -289,58 +300,88 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     /// - `InvalidConfig` (`frame_data_field`) for a Virtual Channel or MAP whose Segment
     ///   Header, Security Header and Trailer, and FECF leave no data octet in its longest
     ///   frame (CMN-041, API-070).
-    pub fn new(
+    pub const fn new(
         physical: PhysicalChannelConfig,
         vcs: &[VcConfig],
         maps: &[MapConfig],
     ) -> Result<Self> {
         if vcs.is_empty() {
-            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+            return Err(table_error(ErrorKind::InvalidConfig, field::VC_ID));
         }
         let mut table = Self {
             physical,
             vcs: [None; V],
             maps: [None; M],
         };
-        for (i, vc) in vcs.iter().enumerate() {
-            if table.vc(vc.spacecraft_id, vc.vc_id).is_some() {
-                return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
+        // First every entry is checked, one at a time in the order given, against those before
+        // it; then the checked entries are stored. A `const fn` has no iterator.
+        let mut index = 0;
+        let mut rest = vcs;
+        // bound: each pass drops the first entry of a slice, so at most its length.
+        while let [vc, tail @ ..] = rest {
+            if given_vc(vcs, index, vc.spacecraft_id, vc.vc_id) {
+                return Err(table_error(ErrorKind::InvalidConfig, field::VC_ID));
             }
             let secondary = if vc.has_segment_header() {
                 SEGMENT_HEADER_LEN
             } else {
                 0
             };
-            longest_frame(&physical, vc.max_frame_len, secondary, vc.security()).check_room(0)?;
-            let slot = table
-                .vcs
-                .get_mut(i)
-                .ok_or(Error::new(ErrorKind::CapacityExceeded).with_field(field::VC_ID))?;
-            *slot = Some(*vc);
-        }
-        for (i, map) in maps.iter().enumerate() {
-            let vc = table
-                .vc(map.spacecraft_id, map.vc_id)
-                .filter(VcConfig::has_segment_header)
-                .ok_or(Error::new(ErrorKind::InvalidConfig).with_field(field::MAP_ID))?;
-            if table
-                .map(map.spacecraft_id, map.vc_id, map.map_id)
-                .is_some()
+            if let Err(e) =
+                longest_frame(&physical, vc.max_frame_len, secondary, vc.security()).check_room(0)
             {
-                return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAP_ID));
+                return Err(e);
             }
-            longest_frame(
+            if index >= V {
+                return Err(table_error(ErrorKind::CapacityExceeded, field::VC_ID));
+            }
+            rest = tail;
+            index = index.saturating_add(1);
+        }
+        let mut slots = table.vcs.as_mut_slice();
+        let mut rest = vcs;
+        // bound: each pass drops the first entry of a slice, so at most its length.
+        while let ([vc, tail @ ..], [slot, others @ ..]) = (rest, slots) {
+            *slot = Some(*vc);
+            rest = tail;
+            slots = others;
+        }
+        let mut index = 0;
+        let mut rest = maps;
+        // bound: each pass drops the first entry of a slice, so at most its length.
+        while let [map, tail @ ..] = rest {
+            let Some(vc) = find_vc(&table.vcs, map.spacecraft_id, map.vc_id) else {
+                return Err(table_error(ErrorKind::InvalidConfig, field::MAP_ID));
+            };
+            if !vc.has_segment_header() {
+                return Err(table_error(ErrorKind::InvalidConfig, field::MAP_ID));
+            }
+            if given_map(maps, index, *map) {
+                return Err(table_error(ErrorKind::InvalidConfig, field::MAP_ID));
+            }
+            if let Err(e) = longest_frame(
                 &physical,
                 vc.max_frame_len,
                 SEGMENT_HEADER_LEN,
                 map.security,
             )
-            .check_room(0)?;
-            let slot = table
-                .maps
-                .get_mut(i)
-                .ok_or(Error::new(ErrorKind::CapacityExceeded).with_field(field::MAP_ID))?;
+            .check_room(0)
+            {
+                return Err(e);
+            }
+            if index >= M {
+                return Err(table_error(ErrorKind::CapacityExceeded, field::MAP_ID));
+            }
+            rest = tail;
+            index = index.saturating_add(1);
+        }
+        let mut slots = table.maps.as_mut_slice();
+        let mut rest = maps;
+        // bound: each pass drops the first entry of a slice, so at most its length.
+        while let ([map, tail @ ..], [slot, others @ ..]) = (rest, slots) {
             *slot = Some(*map);
+            rest = tail;
+            slots = others;
         }
         Ok(table)
     }
@@ -362,6 +403,94 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
     }
 }
 
+/// Whether one of the first `before` entries of `vcs` is the Virtual Channel (`spacecraft_id`,
+/// `vc_id`).
+const fn given_vc(
+    vcs: &[VcConfig],
+    before: usize,
+    spacecraft_id: TcSpacecraftId,
+    vc_id: TcVcId,
+) -> bool {
+    let mut left = before;
+    let mut rest = vcs;
+    // bound: each pass drops the first entry of a slice, so at most its length.
+    while let [vc, tail @ ..] = rest {
+        if left == 0 {
+            return false;
+        }
+        if vc.spacecraft_id.get() == spacecraft_id.get() && vc.vc_id.get() == vc_id.get() {
+            return true;
+        }
+        left = left.saturating_sub(1);
+        rest = tail;
+    }
+    false
+}
+
+/// Whether one of the first `before` entries of `maps` is the MAP `map` (same Spacecraft ID,
+/// Virtual Channel, and MAP ID).
+const fn given_map(maps: &[MapConfig], before: usize, map: MapConfig) -> bool {
+    let mut left = before;
+    let mut rest = maps;
+    // bound: each pass drops the first entry of a slice, so at most its length.
+    while let [m, tail @ ..] = rest {
+        if left == 0 {
+            return false;
+        }
+        if m.spacecraft_id.get() == map.spacecraft_id.get()
+            && m.vc_id.get() == map.vc_id.get()
+            && m.map_id.get() == map.map_id.get()
+        {
+            return true;
+        }
+        left = left.saturating_sub(1);
+        rest = tail;
+    }
+    false
+}
+
+/// The Virtual Channel (`spacecraft_id`, `vc_id`) among the entries of a table.
+const fn find_vc(
+    vcs: &[Option<VcConfig>],
+    spacecraft_id: TcSpacecraftId,
+    vc_id: TcVcId,
+) -> Option<VcConfig> {
+    let mut rest = vcs;
+    // bound: each pass drops the first entry of a slice, so at most its length.
+    while let [entry, tail @ ..] = rest {
+        if let Some(vc) = entry
+            && vc.spacecraft_id.get() == spacecraft_id.get()
+            && vc.vc_id.get() == vc_id.get()
+        {
+            return Some(*vc);
+        }
+        rest = tail;
+    }
+    None
+}
+
+/// The MAP (`spacecraft_id`, `vc_id`, `map_id`) among the entries of a table.
+const fn find_map(
+    maps: &[Option<MapConfig>],
+    spacecraft_id: TcSpacecraftId,
+    vc_id: TcVcId,
+    map_id: TcMapId,
+) -> Option<MapConfig> {
+    let mut rest = maps;
+    // bound: each pass drops the first entry of a slice, so at most its length.
+    while let [entry, tail @ ..] = rest {
+        if let Some(m) = entry
+            && m.spacecraft_id.get() == spacecraft_id.get()
+            && m.vc_id.get() == vc_id.get()
+            && m.map_id.get() == map_id.get()
+        {
+            return Some(*m);
+        }
+        rest = tail;
+    }
+    None
+}
+
 impl<const V: usize, const M: usize> PhysicalLookup for VcTable<V, M> {
     type Physical = PhysicalChannelConfig;
 
@@ -378,9 +507,7 @@ impl<const V: usize, const M: usize> ChannelLookup<TcSpacecraftId, TcVcId> for V
     }
 
     fn vc(&self, spacecraft_id: TcSpacecraftId, vc_id: TcVcId) -> Option<VcConfig> {
-        self.vcs()
-            .find(|vc| vc.spacecraft_id == spacecraft_id && vc.vc_id == vc_id)
-            .copied()
+        find_vc(&self.vcs, spacecraft_id, vc_id)
     }
 }
 
@@ -393,9 +520,7 @@ impl<const V: usize, const M: usize> MapLookup<TcSpacecraftId, TcVcId, TcMapId> 
         vc_id: TcVcId,
         map_id: TcMapId,
     ) -> Option<MapConfig> {
-        self.maps()
-            .find(|m| m.spacecraft_id == spacecraft_id && m.vc_id == vc_id && m.map_id == map_id)
-            .copied()
+        find_map(&self.maps, spacecraft_id, vc_id, map_id)
     }
 }
 

@@ -65,13 +65,18 @@ impl LayoutSpec {
     /// Checks that a frame of this spec has room for data: after a data-field header of
     /// `data_header_len` octets (0 for none), at least one octet is left (CMN-041, API-070).
     ///
+    /// It is a `const fn`, so that a configuration is checked at compile time: the
+    /// data field is `frame_len` less [`overhead`](Self::overhead), as in
+    /// [`FrameLayout::compute`].
+    ///
     /// # Errors
     /// `InvalidConfig` (`frame_data_field`) if the other fields, and the header, leave no
     /// octet for the data.
-    pub fn check_room(&self, data_header_len: usize) -> Result<()> {
-        FrameLayout::compute(self)?
-            .with_data_header(data_header_len)
-            .map(|_| ())
+    pub const fn check_room(&self, data_header_len: usize) -> Result<()> {
+        match self.frame_len.checked_sub(self.overhead()) {
+            Some(data_len) if data_len > data_header_len => Ok(()),
+            _ => Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_DATA_FIELD)),
+        }
     }
 }
 
