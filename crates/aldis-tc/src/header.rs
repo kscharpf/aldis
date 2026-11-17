@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn identifiers_read_at_every_limit() {
-        // req: TC-001, TC-004, API-001, API-002, RS-020
+        // req: TC-004, API-001, API-002, RS-020
         // `None` is a short input only: an all-ones header holds the largest identifiers.
         let raw = RawHeader::parse(&[0xFF; 5]).unwrap();
         assert_eq!(raw.spacecraft_id.get(), TcSpacecraftId::MAX);
