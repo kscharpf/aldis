@@ -21,6 +21,8 @@ Evaluated 2026-10-19 for SPP, CUC, and CDS, and 2026-10-20 for the P-field and A
 
 **Exception RUSTSEC-2024-0436** (maintainer decision 2026-10-19). The advisory reports that `paste` 1.0.15, a required dependency of `spacepackets`, is unmaintained. It reports no vulnerability. `paste` is a build-time macro helper, and `crosscheck/` is a dev-only workspace that is never shipped. The exception therefore lives in `file:crosscheck/deny.toml` only, which repeats the root policy and adds this one `ignore`. The root `file:deny.toml`, which governs the shipped crates, is unchanged. The `deny` check of `cargo xtask verify` (and of the nightly CI) checks `crosscheck/` with its own file.
 
+**Exception RUSTSEC-2026-0543** (maintainer decision 2026-11-17). The advisory reports that `chrono` is unmaintained (all versions affected, no safe upgrade). It reports no vulnerability. `chrono` 0.4.45 comes in through the `std` feature of `spacepackets` =0.18.0, which the ASCII time cross-check needs, and `crosscheck/` is a dev-only workspace that is never shipped. The exception lives in `file:crosscheck/deny.toml` only, as the one above does, and the root `file:deny.toml` is unchanged. Replacing `chrono` (for example with `jiff`) was considered and rejected, because `chrono` stays in the tree through `spacepackets`. The entry goes when `spacepackets` no longer depends on `chrono` (issue #631).
+
 ### NASA cFE `MSG` v7.0.1 (C, GitHub `nasa/cFE`)
 
 Evaluated and added 2026-10-21 for the Space Packet primary header and cFE's telemetry time (maintainer's choice; M2 D15, OI-32).
