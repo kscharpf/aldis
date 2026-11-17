@@ -5,6 +5,7 @@
 //! Requirements are traced by ID in each module's documentation; every public item cites its
 //! clause of CCSDS 232.1-B-2 and its requirement IDs (RS-015).
 #![no_std]
+#![forbid(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
