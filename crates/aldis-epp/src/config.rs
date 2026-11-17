@@ -27,19 +27,19 @@ pub struct EpiSet(u8);
 
 impl EpiSet {
     /// The empty set (133.1 §5 Table 5-1, EPP-010).
-    pub const EMPTY: EpiSet = EpiSet(0);
+    pub const EMPTY: Self = Self(0);
 
     /// The set whose bit `n` is set for each member EPI `n`; every `u8` is a valid set (133.1 §5
     /// Table 5-1, EPP-010).
     #[must_use]
-    pub const fn from_bits(bits: u8) -> EpiSet {
-        EpiSet(bits)
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
     }
 
     /// The set with `epi` added (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
-    pub const fn with(self, epi: Epi) -> EpiSet {
-        EpiSet(self.0 | (1 << epi.get()))
+    pub const fn with(self, epi: Epi) -> Self {
+        Self(self.0 | (1 << epi.get()))
     }
 
     /// Whether `epi` is in the set (133.1 §5 Table 5-1, EPP-010).
@@ -64,19 +64,19 @@ pub struct ExtendedEpiSet(u16);
 
 impl ExtendedEpiSet {
     /// The empty set (133.1 §5 Table 5-1, EPP-010).
-    pub const EMPTY: ExtendedEpiSet = ExtendedEpiSet(0);
+    pub const EMPTY: Self = Self(0);
 
     /// The set whose bit `n` is set for each member extended EPI `n`; every `u16` is a valid set
     /// (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
-    pub const fn from_bits(bits: u16) -> ExtendedEpiSet {
-        ExtendedEpiSet(bits)
+    pub const fn from_bits(bits: u16) -> Self {
+        Self(bits)
     }
 
     /// The set with `extension` added (133.1 §5 Table 5-1, EPP-010).
     #[must_use]
-    pub const fn with(self, extension: EpiExtension) -> ExtendedEpiSet {
-        ExtendedEpiSet(self.0 | (1 << extension.get()))
+    pub const fn with(self, extension: EpiExtension) -> Self {
+        Self(self.0 | (1 << extension.get()))
     }
 
     /// Whether `extension` is in the set (133.1 §5 Table 5-1, EPP-010).
@@ -116,7 +116,7 @@ impl EppConfig {
         max_data_len: u32,
         valid_epis: EpiSet,
         valid_extended_epis: ExtendedEpiSet,
-    ) -> Result<EppConfig> {
+    ) -> Result<Self> {
         if min_data_len > max_data_len {
             return Err(Error::new(ErrorKind::InvalidConfig)
                 .with_field(field::MIN_DATA_LEN)
@@ -133,7 +133,7 @@ impl EppConfig {
                     found: wide(max_data_len),
                 }));
         }
-        Ok(EppConfig {
+        Ok(Self {
             min_data_len,
             max_data_len,
             valid_epis,

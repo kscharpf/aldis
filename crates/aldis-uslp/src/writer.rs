@@ -204,7 +204,7 @@ impl Plan {
         content: FrameContent<'_>,
         tfdz_len: Option<usize>,
         purpose: Purpose,
-    ) -> Result<Plan> {
+    ) -> Result<Self> {
         let channel = fields.channel();
         let oid = matches!(purpose, Purpose::Oid);
         let vc = find_vc(channels, channel, oid)?;
@@ -273,7 +273,7 @@ impl Plan {
         ) {
             tfdf.check_pointer(tfdz_len)?;
         }
-        Ok(Plan {
+        Ok(Self {
             channel,
             kind: fields.kind,
             count,

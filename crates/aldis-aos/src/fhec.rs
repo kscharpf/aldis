@@ -58,34 +58,34 @@ const LOG: [u8; 15] = [0, 1, 4, 2, 8, 5, 10, 3, 14, 9, 7, 6, 13, 11, 12];
 struct Gf(u8);
 
 impl Gf {
-    const ZERO: Gf = Gf(0);
-    const ONE: Gf = Gf(1);
+    const ZERO: Self = Self(0);
+    const ONE: Self = Self(1);
 
     /// The symbol in the upper nibble of an octet (the first sent, §4.1.2.6.5 e).
-    const fn high(octet: u8) -> Gf {
-        Gf(octet >> 4)
+    const fn high(octet: u8) -> Self {
+        Self(octet >> 4)
     }
 
     /// The symbol in the lower nibble of an octet.
-    const fn low(octet: u8) -> Gf {
-        Gf(octet & 0x0F)
+    const fn low(octet: u8) -> Self {
+        Self(octet & 0x0F)
     }
 
     /// The octet holding `high` then `low`.
-    const fn octet(high: Gf, low: Gf) -> u8 {
+    const fn octet(high: Self, low: Self) -> u8 {
         high.0 << 4 | low.0
     }
 
     /// Addition (and subtraction) in GF(2⁴).
-    const fn add(self, other: Gf) -> Gf {
-        Gf(self.0 ^ other.0)
+    const fn add(self, other: Self) -> Self {
+        Self(self.0 ^ other.0)
     }
 
     /// α^(e mod 15).
-    fn alpha_pow(e: u8) -> Gf {
+    fn alpha_pow(e: u8) -> Self {
         let i = usize::from(e % 15);
         #[expect(clippy::indexing_slicing, reason = "e % 15 < 15, the table length")]
-        Gf(ANTILOG[i])
+        Self(ANTILOG[i])
     }
 
     /// The logarithm to base α of a non-zero element; `None` for zero, which has no logarithm.
@@ -95,20 +95,20 @@ impl Gf {
     }
 
     /// Multiplication: α^(log a + log b), or zero if either factor is zero.
-    fn mul(self, other: Gf) -> Gf {
+    fn mul(self, other: Self) -> Self {
         match (self.log(), other.log()) {
             // Both logarithms are at most 14, so the sum cannot wrap.
-            (Some(a), Some(b)) => Gf::alpha_pow(a.wrapping_add(b)),
-            _ => Gf::ZERO,
+            (Some(a), Some(b)) => Self::alpha_pow(a.wrapping_add(b)),
+            _ => Self::ZERO,
         }
     }
 
     /// The multiplicative inverse α^(15 − log a); zero for zero, which has none.
-    fn inv(self) -> Gf {
+    fn inv(self) -> Self {
         match self.log() {
             // The logarithm is at most 14, so the difference cannot wrap.
-            Some(a) => Gf::alpha_pow(15_u8.wrapping_sub(a)),
-            None => Gf::ZERO,
+            Some(a) => Self::alpha_pow(15_u8.wrapping_sub(a)),
+            None => Self::ZERO,
         }
     }
 }
@@ -162,9 +162,9 @@ impl CorrectedSymbols {
     #[must_use]
     pub const fn get(self) -> u8 {
         match self {
-            CorrectedSymbols::Zero => 0,
-            CorrectedSymbols::One => 1,
-            CorrectedSymbols::Two => 2,
+            Self::Zero => 0,
+            Self::One => 1,
+            Self::Two => 2,
         }
     }
 }

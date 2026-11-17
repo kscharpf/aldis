@@ -235,11 +235,7 @@ impl<'b, L: Length, P: FramePlan, S: FrameState> FrameWriter<'b, L, P, S> {
 
 impl<'b, L: Length, P: FramePlan> FrameWriter<'b, L, P, Unprotected> {
     /// Takes the first frame-length octets of `out` for the frame of `layout`.
-    fn take(
-        out: &'b mut [u8],
-        layout: FrameLayout,
-        plan: P,
-    ) -> Result<FrameWriter<'b, L, P, Unprotected>> {
+    fn take(out: &'b mut [u8], layout: FrameLayout, plan: P) -> Result<Self> {
         let len = layout.frame_len();
         let frame = out.get_mut(..len).ok_or(Error::buffer_too_small(len))?;
         Ok(FrameWriter {
@@ -325,11 +321,7 @@ impl<'b, P: FramePlan> FrameWriter<'b, Fixed, P, Unprotected> {
     /// # Errors
     /// `BufferTooSmall` (`needed` = the frame length) if `out` is shorter than the frame; `out`
     /// is then unchanged.
-    pub fn reserve_fixed(
-        out: &'b mut [u8],
-        layout: FrameLayout,
-        plan: P,
-    ) -> Result<FrameWriter<'b, Fixed, P, Unprotected>> {
+    pub fn reserve_fixed(out: &'b mut [u8], layout: FrameLayout, plan: P) -> Result<Self> {
         let writer = FrameWriter::take(out, layout, plan)?;
         writer.frame.fill(0);
         Ok(writer)
@@ -476,11 +468,7 @@ impl<'b, P: VariablePlan> FrameWriter<'b, Variable, P, Unprotected> {
     /// # Errors
     /// `BufferTooSmall` (`needed` = the frame length) if `out` cannot hold the longest frame;
     /// `out` is then unchanged.
-    pub fn reserve_variable(
-        out: &'b mut [u8],
-        layout: FrameLayout,
-        plan: P,
-    ) -> Result<FrameWriter<'b, Variable, P, Unprotected>> {
+    pub fn reserve_variable(out: &'b mut [u8], layout: FrameLayout, plan: P) -> Result<Self> {
         let mut writer = FrameWriter::take(out, layout, plan)?;
         let total = writer.total;
         writer.plan.write_header(writer.frame, total, false);

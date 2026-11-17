@@ -105,10 +105,10 @@ impl SegmenterService {
     #[must_use]
     pub const fn kind(self) -> Option<MapService> {
         match self {
-            SegmenterService::Any => None,
-            SegmenterService::Packets => Some(MapService::Packets),
-            SegmenterService::Sdu => Some(MapService::Sdu),
-            SegmenterService::OctetStream { .. } => Some(MapService::OctetStream),
+            Self::Any => None,
+            Self::Packets => Some(MapService::Packets),
+            Self::Sdu => Some(MapService::Sdu),
+            Self::OctetStream { .. } => Some(MapService::OctetStream),
         }
     }
 }
@@ -172,8 +172,8 @@ impl<P: SegmenterProtocol> MapEntry<P> {
     /// A MAP `id` of `service` that neither segments nor blocks: an SDU longer than one FDU is
     /// refused (LNK-040).
     #[must_use]
-    pub const fn new(id: P::Map, service: SegmenterService, params: P::MapParams) -> MapEntry<P> {
-        MapEntry {
+    pub const fn new(id: P::Map, service: SegmenterService, params: P::MapParams) -> Self {
+        Self {
             id,
             service,
             max_sdu_len: None,
@@ -188,11 +188,11 @@ impl<P: SegmenterProtocol> MapEntry<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0 and for more than 65 535 octets, the length a queued
     /// entry counts.
-    pub const fn with_segmentation(self, max_sdu_len: usize) -> Result<MapEntry<P>> {
+    pub const fn with_segmentation(self, max_sdu_len: usize) -> Result<Self> {
         if max_sdu_len == 0 || max_sdu_len > MAX_ENTRY {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_SDU_LEN))
         } else {
-            Ok(MapEntry {
+            Ok(Self {
                 max_sdu_len: Some(max_sdu_len),
                 ..self
             })
@@ -201,8 +201,8 @@ impl<P: SegmenterProtocol> MapEntry<P> {
 
     /// The same MAP with blocking of packets permitted (LNK-040, LNK-042).
     #[must_use]
-    pub const fn with_blocking(self) -> MapEntry<P> {
-        MapEntry {
+    pub const fn with_blocking(self) -> Self {
+        Self {
             blocking: true,
             ..self
         }
@@ -281,7 +281,7 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
         channel: P::Channel,
         max_fdu_len: usize,
         maps: &[MapEntry<P>],
-    ) -> Result<MapSegmenterConfig<P, M>> {
+    ) -> Result<Self> {
         let header = P::header_len(&channel);
         if max_fdu_len <= header || max_fdu_len > P::max_fdu_len(&channel) {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_FDU_LEN));
@@ -308,10 +308,10 @@ impl<P: SegmenterProtocol, const M: usize> MapSegmenterConfig<P, M> {
             if duplicate {
                 return Err(bad_map);
             }
-            MapSegmenterConfig::<P, M>::check_map(&channel, map)?;
+            Self::check_map(&channel, map)?;
             *slot = Some(*map);
         }
-        Ok(MapSegmenterConfig {
+        Ok(Self {
             vc,
             channel,
             max_fdu_len,
@@ -495,17 +495,17 @@ enum Kind {
 impl Kind {
     const fn tag(self) -> u8 {
         match self {
-            Kind::Packet => 1,
-            Kind::Sdu => 2,
-            Kind::Octets => 3,
+            Self::Packet => 1,
+            Self::Sdu => 2,
+            Self::Octets => 3,
         }
     }
 
-    const fn from_tag(tag: u8) -> Option<Kind> {
+    const fn from_tag(tag: u8) -> Option<Self> {
         match tag {
-            1 => Some(Kind::Packet),
-            2 => Some(Kind::Sdu),
-            3 => Some(Kind::Octets),
+            1 => Some(Self::Packet),
+            2 => Some(Self::Sdu),
+            3 => Some(Self::Octets),
             _ => None,
         }
     }
@@ -553,7 +553,7 @@ struct StreamTimer {
 }
 
 impl StreamTimer {
-    const IDLE: StreamTimer = StreamTimer {
+    const IDLE: Self = Self {
         started: None,
         due: false,
     };
@@ -612,8 +612,8 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     /// of a MAP, or a TFDZ of an octet stream, with the four octets of its entry.
     ///
     /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
-    pub fn new(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenter<P, M, Q>> {
-        Ok(MapSegmenter {
+    pub fn new(config: MapSegmenterConfig<P, M>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: MapSegmenterBuffers::ZERO,
         })
@@ -636,7 +636,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-040…LNK-043, LNK-002, LNK-003; docs/04-engines.md §2.3.
     pub fn new_head(config: MapSegmenterConfig<P, M>) -> Result<MapSegmenterHead<P, M>> {
-        MapSegmenter::<P, M, Q>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(MapSegmenterHead {
             config,
             queue_len: 0,
@@ -759,7 +759,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
                 }
             }
             SegmenterInput::Reconfigure(config) => {
-                MapSegmenter::<P, M, Q>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let octets = self.head.octets;
                 self.head.config = config;
                 self.head.queue_len = 0;
@@ -1240,8 +1240,8 @@ mod tc_impl {
         /// is a parameter of each MAP. The FECF of the physical channel takes two octets of the
         /// data field's limit (232.0 §4.1.3.1.2).
         #[must_use]
-        pub const fn with_segment_header(physical: PhysicalChannelConfig) -> TcSegmenterParams {
-            TcSegmenterParams {
+        pub const fn with_segment_header(physical: PhysicalChannelConfig) -> Self {
+            Self {
                 segment_header: true,
                 physical,
                 blocking: false,
@@ -1255,8 +1255,8 @@ mod tc_impl {
         pub const fn without_segment_header(
             physical: PhysicalChannelConfig,
             blocking: bool,
-        ) -> TcSegmenterParams {
-            TcSegmenterParams {
+        ) -> Self {
+            Self {
                 segment_header: false,
                 physical,
                 blocking,
@@ -1302,11 +1302,11 @@ mod tc_impl {
             MAX_DATA_FIELD.saturating_sub(if channel.fecf() { FECF_LEN } else { 0 })
         }
 
-        fn implicit_map(channel: &TcSegmenterParams) -> Option<MapEntry<Tc>> {
+        fn implicit_map(channel: &TcSegmenterParams) -> Option<MapEntry<Self>> {
             if channel.segment_header {
                 return None;
             }
-            let entry = MapEntry::<Tc>::new(MapId::<6>::new(0)?, SegmenterService::Any, ());
+            let entry = MapEntry::<Self>::new(MapId::<6>::new(0)?, SegmenterService::Any, ());
             Some(if channel.blocking {
                 entry.with_blocking()
             } else {
@@ -1314,7 +1314,7 @@ mod tc_impl {
             })
         }
 
-        fn check_map(_: &TcSegmenterParams, _: &MapEntry<Tc>) -> Result<()> {
+        fn check_map(_: &TcSegmenterParams, _: &MapEntry<Self>) -> Result<()> {
             Ok(())
         }
 
@@ -1324,7 +1324,7 @@ mod tc_impl {
 
         fn write_header(
             channel: &TcSegmenterParams,
-            map: &MapEntry<Tc>,
+            map: &MapEntry<Self>,
             framing: Framing,
             header: &mut [u8],
         ) {
@@ -1384,9 +1384,9 @@ mod uslp_impl {
         /// segmenter serves the variable-length TFDZ (732.1 §4.1.4.2.2.1.1).
         ///
         /// Requirements: LNK-040…LNK-043, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
-        pub const fn new(vc: VcParams) -> Result<UslpSegmenterParams> {
+        pub const fn new(vc: VcParams) -> Result<Self> {
             match vc.frame_type {
-                TransferFrameType::Variable => Ok(UslpSegmenterParams { vc }),
+                TransferFrameType::Variable => Ok(Self { vc }),
                 TransferFrameType::Fixed => {
                     Err(Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSFER_FRAME_TYPE))
                 }
@@ -1439,7 +1439,7 @@ mod uslp_impl {
             MAX_TFDF
         }
 
-        fn implicit_map(_: &UslpSegmenterParams) -> Option<MapEntry<Uslp>> {
+        fn implicit_map(_: &UslpSegmenterParams) -> Option<MapEntry<Self>> {
             None
         }
 
@@ -1447,7 +1447,7 @@ mod uslp_impl {
         // are contiguous (732.1 §4.1.4.2.2.1.6, §4.2.2.2.7 note; LNK-078). The sequence-controlled
         // service is the one COP-1 uses; a request of the expedited service for an FDU that needs
         // the count is refused when it is made (`allows`).
-        fn check_map(channel: &UslpSegmenterParams, map: &MapEntry<Uslp>) -> Result<()> {
+        fn check_map(channel: &UslpSegmenterParams, map: &MapEntry<Self>) -> Result<()> {
             if *map.params() == Upid::OnlyIdleData {
                 return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::UPID));
             }
@@ -1470,7 +1470,7 @@ mod uslp_impl {
 
         fn write_header(
             _: &UslpSegmenterParams,
-            map: &MapEntry<Uslp>,
+            map: &MapEntry<Self>,
             framing: Framing,
             header: &mut [u8],
         ) {

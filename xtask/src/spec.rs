@@ -79,7 +79,7 @@ fn link_targets(cell: &str) -> Vec<String> {
 
 impl Spec {
     /// Loads areas, requirements, and error kinds.
-    pub fn load() -> Result<Spec, String> {
+    pub fn load() -> Result<Self, String> {
         let docs = repo::root().join("docs");
         let mut problems = Vec::new();
 
@@ -164,7 +164,7 @@ impl Spec {
             );
         }
 
-        Ok(Spec {
+        Ok(Self {
             areas,
             requirements,
             error_kinds,

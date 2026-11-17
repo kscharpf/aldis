@@ -40,16 +40,16 @@ pub enum ConstructionRule {
 impl ConstructionRule {
     /// The rule in the low three bits of `bits`; the other bits are ignored (Table 4-3).
     #[must_use]
-    pub const fn from_bits(bits: u8) -> ConstructionRule {
+    pub const fn from_bits(bits: u8) -> Self {
         match bits & 0b111 {
-            0b000 => ConstructionRule::PacketsSpanningFrames,
-            0b001 => ConstructionRule::SduStart,
-            0b010 => ConstructionRule::SduContinuation,
-            0b011 => ConstructionRule::OctetStream,
-            0b100 => ConstructionRule::StartingSegment,
-            0b101 => ConstructionRule::ContinuingSegment,
-            0b110 => ConstructionRule::LastSegment,
-            _ => ConstructionRule::NoSegmentation,
+            0b000 => Self::PacketsSpanningFrames,
+            0b001 => Self::SduStart,
+            0b010 => Self::SduContinuation,
+            0b011 => Self::OctetStream,
+            0b100 => Self::StartingSegment,
+            0b101 => Self::ContinuingSegment,
+            0b110 => Self::LastSegment,
+            _ => Self::NoSegmentation,
         }
     }
 
@@ -57,14 +57,14 @@ impl ConstructionRule {
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
-            ConstructionRule::PacketsSpanningFrames => 0b000,
-            ConstructionRule::SduStart => 0b001,
-            ConstructionRule::SduContinuation => 0b010,
-            ConstructionRule::OctetStream => 0b011,
-            ConstructionRule::StartingSegment => 0b100,
-            ConstructionRule::ContinuingSegment => 0b101,
-            ConstructionRule::LastSegment => 0b110,
-            ConstructionRule::NoSegmentation => 0b111,
+            Self::PacketsSpanningFrames => 0b000,
+            Self::SduStart => 0b001,
+            Self::SduContinuation => 0b010,
+            Self::OctetStream => 0b011,
+            Self::StartingSegment => 0b100,
+            Self::ContinuingSegment => 0b101,
+            Self::LastSegment => 0b110,
+            Self::NoSegmentation => 0b111,
         }
     }
 
@@ -98,9 +98,9 @@ impl TfdzOffset {
 
     /// The offset, or `None` for [`POINTER_NONE`] (API-001).
     #[must_use]
-    pub const fn new(offset: u16) -> Option<TfdzOffset> {
-        if offset <= TfdzOffset::MAX {
-            Some(TfdzOffset(offset))
+    pub const fn new(offset: u16) -> Option<Self> {
+        if offset <= Self::MAX {
+            Some(Self(offset))
         } else {
             None
         }
@@ -118,17 +118,17 @@ impl TryFrom<u16> for TfdzOffset {
 
     /// # Errors
     /// `OutOfRange` (`fhp_lvo_pointer`) for [`POINTER_NONE`], with the largest offset.
-    fn try_from(offset: u16) -> Result<TfdzOffset, Error> {
-        TfdzOffset::new(offset).ok_or(Error::out_of_range(
+    fn try_from(offset: u16) -> Result<Self, Error> {
+        Self::new(offset).ok_or(Error::out_of_range(
             field::FHP_LVO_POINTER,
-            u64::from(TfdzOffset::MAX),
+            u64::from(Self::MAX),
             u64::from(offset),
         ))
     }
 }
 
 impl From<TfdzOffset> for u16 {
-    fn from(offset: TfdzOffset) -> u16 {
+    fn from(offset: TfdzOffset) -> Self {
         offset.0
     }
 }
@@ -154,10 +154,10 @@ pub enum LastValidOctet {
 impl FirstHeaderPointer {
     /// The pointer of a 16-bit field value (§4.1.4.2.4.3–4).
     #[must_use]
-    pub const fn from_raw(raw: u16) -> FirstHeaderPointer {
+    pub const fn from_raw(raw: u16) -> Self {
         match TfdzOffset::new(raw) {
-            Some(offset) => FirstHeaderPointer::PacketStartsAt(offset),
-            None => FirstHeaderPointer::NoPacketStartOrEnd,
+            Some(offset) => Self::PacketStartsAt(offset),
+            None => Self::NoPacketStartOrEnd,
         }
     }
 
@@ -165,8 +165,8 @@ impl FirstHeaderPointer {
     #[must_use]
     pub const fn raw(self) -> u16 {
         match self {
-            FirstHeaderPointer::PacketStartsAt(n) => n.get(),
-            FirstHeaderPointer::NoPacketStartOrEnd => POINTER_NONE,
+            Self::PacketStartsAt(n) => n.get(),
+            Self::NoPacketStartOrEnd => POINTER_NONE,
         }
     }
 }
@@ -174,10 +174,10 @@ impl FirstHeaderPointer {
 impl LastValidOctet {
     /// The pointer of a 16-bit field value (§4.1.4.2.4.5–6).
     #[must_use]
-    pub const fn from_raw(raw: u16) -> LastValidOctet {
+    pub const fn from_raw(raw: u16) -> Self {
         match TfdzOffset::new(raw) {
-            Some(offset) => LastValidOctet::At(offset),
-            None => LastValidOctet::SduContinues,
+            Some(offset) => Self::At(offset),
+            None => Self::SduContinues,
         }
     }
 
@@ -185,8 +185,8 @@ impl LastValidOctet {
     #[must_use]
     pub const fn raw(self) -> u16 {
         match self {
-            LastValidOctet::At(n) => n.get(),
-            LastValidOctet::SduContinues => POINTER_NONE,
+            Self::At(n) => n.get(),
+            Self::SduContinues => POINTER_NONE,
         }
     }
 }
@@ -217,20 +217,20 @@ impl TfdzRule {
     /// The rule of a field value and, for rules `000`–`010`, the raw pointer that follows it;
     /// the pointer is ignored for the other rules (USLP-005).
     #[must_use]
-    pub const fn new(rule: ConstructionRule, pointer: u16) -> TfdzRule {
+    pub const fn new(rule: ConstructionRule, pointer: u16) -> Self {
         match rule {
             ConstructionRule::PacketsSpanningFrames => {
-                TfdzRule::PacketsSpanningFrames(FirstHeaderPointer::from_raw(pointer))
+                Self::PacketsSpanningFrames(FirstHeaderPointer::from_raw(pointer))
             }
-            ConstructionRule::SduStart => TfdzRule::SduStart(LastValidOctet::from_raw(pointer)),
+            ConstructionRule::SduStart => Self::SduStart(LastValidOctet::from_raw(pointer)),
             ConstructionRule::SduContinuation => {
-                TfdzRule::SduContinuation(LastValidOctet::from_raw(pointer))
+                Self::SduContinuation(LastValidOctet::from_raw(pointer))
             }
-            ConstructionRule::OctetStream => TfdzRule::OctetStream,
-            ConstructionRule::StartingSegment => TfdzRule::StartingSegment,
-            ConstructionRule::ContinuingSegment => TfdzRule::ContinuingSegment,
-            ConstructionRule::LastSegment => TfdzRule::LastSegment,
-            ConstructionRule::NoSegmentation => TfdzRule::NoSegmentation,
+            ConstructionRule::OctetStream => Self::OctetStream,
+            ConstructionRule::StartingSegment => Self::StartingSegment,
+            ConstructionRule::ContinuingSegment => Self::ContinuingSegment,
+            ConstructionRule::LastSegment => Self::LastSegment,
+            ConstructionRule::NoSegmentation => Self::NoSegmentation,
         }
     }
 
@@ -238,14 +238,14 @@ impl TfdzRule {
     #[must_use]
     pub const fn rule(self) -> ConstructionRule {
         match self {
-            TfdzRule::PacketsSpanningFrames(_) => ConstructionRule::PacketsSpanningFrames,
-            TfdzRule::SduStart(_) => ConstructionRule::SduStart,
-            TfdzRule::SduContinuation(_) => ConstructionRule::SduContinuation,
-            TfdzRule::OctetStream => ConstructionRule::OctetStream,
-            TfdzRule::StartingSegment => ConstructionRule::StartingSegment,
-            TfdzRule::ContinuingSegment => ConstructionRule::ContinuingSegment,
-            TfdzRule::LastSegment => ConstructionRule::LastSegment,
-            TfdzRule::NoSegmentation => ConstructionRule::NoSegmentation,
+            Self::PacketsSpanningFrames(_) => ConstructionRule::PacketsSpanningFrames,
+            Self::SduStart(_) => ConstructionRule::SduStart,
+            Self::SduContinuation(_) => ConstructionRule::SduContinuation,
+            Self::OctetStream => ConstructionRule::OctetStream,
+            Self::StartingSegment => ConstructionRule::StartingSegment,
+            Self::ContinuingSegment => ConstructionRule::ContinuingSegment,
+            Self::LastSegment => ConstructionRule::LastSegment,
+            Self::NoSegmentation => ConstructionRule::NoSegmentation,
         }
     }
 
@@ -253,13 +253,13 @@ impl TfdzRule {
     #[must_use]
     pub const fn pointer(self) -> Option<u16> {
         match self {
-            TfdzRule::PacketsSpanningFrames(p) => Some(p.raw()),
-            TfdzRule::SduStart(p) | TfdzRule::SduContinuation(p) => Some(p.raw()),
-            TfdzRule::OctetStream
-            | TfdzRule::StartingSegment
-            | TfdzRule::ContinuingSegment
-            | TfdzRule::LastSegment
-            | TfdzRule::NoSegmentation => None,
+            Self::PacketsSpanningFrames(p) => Some(p.raw()),
+            Self::SduStart(p) | Self::SduContinuation(p) => Some(p.raw()),
+            Self::OctetStream
+            | Self::StartingSegment
+            | Self::ContinuingSegment
+            | Self::LastSegment
+            | Self::NoSegmentation => None,
         }
     }
 }
@@ -349,11 +349,11 @@ impl TfdfHeader {
     ///
     /// A data field has at most 65 536 octets, so the pointer fits its 16 bits.
     #[must_use]
-    pub const fn only_idle_data(data_len: usize) -> TfdfHeader {
+    pub const fn only_idle_data(data_len: usize) -> Self {
         let [.., a, b] = data_len
             .saturating_sub(FIXED_TFDF_HEADER_LEN.saturating_add(1))
             .to_be_bytes();
-        TfdfHeader {
+        Self {
             rule: TfdzRule::SduStart(LastValidOctet::from_raw(u16::from_be_bytes([a, b]))),
             upid: Upid::OnlyIdleData,
         }
@@ -368,7 +368,7 @@ impl TfdfHeader {
     /// pointer is read (USLP-016); `Malformed` (`fhp_lvo_pointer`) for a pointer other than
     /// `0xFFFF` that is not below the TFDZ length (USLP-006); `InvalidField`
     /// (`frame_data_field`) if `tfdf` holds no TFDZ octet after the header (CMN-041).
-    pub(crate) fn parse(data_field: &[u8], fixed_tfdz: bool) -> Result<(TfdfHeader, &[u8]), Error> {
+    pub(crate) fn parse(data_field: &[u8], fixed_tfdz: bool) -> Result<(Self, &[u8]), Error> {
         let &first = data_field
             .first()
             .ok_or_else(|| invalid(field::FRAME_DATA_FIELD))?;
@@ -389,7 +389,7 @@ impl TfdfHeader {
         if pointer != POINTER_NONE && usize::from(pointer) >= zone.len() {
             return Err(Error::new(ErrorKind::Malformed).with_field(field::FHP_LVO_POINTER));
         }
-        let header = TfdfHeader {
+        let header = Self {
             rule: TfdzRule::new(rule, pointer),
             upid,
         };

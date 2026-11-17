@@ -73,56 +73,56 @@ pub enum Reason {
 
 impl Reason {
     /// Every reason, in code order.
-    pub const ALL: [Reason; 18] = [
-        Reason::UnexpectedVersion,
-        Reason::UnexpectedSpacecraft,
-        Reason::ReservedFlags,
-        Reason::ReservedSpare,
-        Reason::InvalidVcid,
-        Reason::InvalidMapId,
-        Reason::TruncatedFrameNotAllowed,
-        Reason::VcfCountLengthMismatch,
-        Reason::OcfFlagMismatch,
-        Reason::FixedLengthMismatch,
-        Reason::FrameTooLong,
-        Reason::FrameTooShort,
-        Reason::LengthMismatch,
-        Reason::FecfMismatch,
-        Reason::ConstructionRuleMismatch,
-        Reason::PointerBeyondZone,
-        Reason::OidHeaderMismatch,
-        Reason::NonTruncatedFrameNotAllowed,
+    pub const ALL: [Self; 18] = [
+        Self::UnexpectedVersion,
+        Self::UnexpectedSpacecraft,
+        Self::ReservedFlags,
+        Self::ReservedSpare,
+        Self::InvalidVcid,
+        Self::InvalidMapId,
+        Self::TruncatedFrameNotAllowed,
+        Self::VcfCountLengthMismatch,
+        Self::OcfFlagMismatch,
+        Self::FixedLengthMismatch,
+        Self::FrameTooLong,
+        Self::FrameTooShort,
+        Self::LengthMismatch,
+        Self::FecfMismatch,
+        Self::ConstructionRuleMismatch,
+        Self::PointerBeyondZone,
+        Self::OidHeaderMismatch,
+        Self::NonTruncatedFrameNotAllowed,
     ];
 
     /// The stable numeric code, 1–18 (`docs/standards/uslp-frame.md` §3.1; M2 plan D14).
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
-            Reason::UnexpectedVersion => 1,
-            Reason::UnexpectedSpacecraft => 2,
-            Reason::ReservedFlags => 3,
-            Reason::ReservedSpare => 4,
-            Reason::InvalidVcid => 5,
-            Reason::InvalidMapId => 6,
-            Reason::TruncatedFrameNotAllowed => 7,
-            Reason::VcfCountLengthMismatch => 8,
-            Reason::OcfFlagMismatch => 9,
-            Reason::FixedLengthMismatch => 10,
-            Reason::FrameTooLong => 11,
-            Reason::FrameTooShort => 12,
-            Reason::LengthMismatch => 13,
-            Reason::FecfMismatch => 14,
-            Reason::ConstructionRuleMismatch => 15,
-            Reason::PointerBeyondZone => 16,
-            Reason::OidHeaderMismatch => 17,
-            Reason::NonTruncatedFrameNotAllowed => 18,
+            Self::UnexpectedVersion => 1,
+            Self::UnexpectedSpacecraft => 2,
+            Self::ReservedFlags => 3,
+            Self::ReservedSpare => 4,
+            Self::InvalidVcid => 5,
+            Self::InvalidMapId => 6,
+            Self::TruncatedFrameNotAllowed => 7,
+            Self::VcfCountLengthMismatch => 8,
+            Self::OcfFlagMismatch => 9,
+            Self::FixedLengthMismatch => 10,
+            Self::FrameTooLong => 11,
+            Self::FrameTooShort => 12,
+            Self::LengthMismatch => 13,
+            Self::FecfMismatch => 14,
+            Self::ConstructionRuleMismatch => 15,
+            Self::PointerBeyondZone => 16,
+            Self::OidHeaderMismatch => 17,
+            Self::NonTruncatedFrameNotAllowed => 18,
         }
     }
 
     /// The reason with numeric code `code`, or `None` (M2 plan D14).
     #[must_use]
-    pub fn from_code(code: u8) -> Option<Reason> {
-        Reason::ALL.into_iter().find(|r| r.code() == code)
+    pub fn from_code(code: u8) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.code() == code)
     }
 }
 
@@ -174,7 +174,7 @@ impl<'a> CheckBytes<'a> for UslpFrame<'a> {
         bytes: &'a [u8],
         channels: &L,
         mode: DecodeMode,
-    ) -> Result<(UslpFrame<'a>, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>>
+    ) -> Result<(Self, AnomalySet<UslpAnomaly>, Self::Matched), Rejection<Reason>>
     where
         L: ChannelLookup<UslpSpacecraftId, UslpVcId, Vc = VcConfig>
             + MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId, Map = MapConfig>

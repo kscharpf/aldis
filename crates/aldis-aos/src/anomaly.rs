@@ -37,8 +37,8 @@ pub(crate) struct Deviations {
 
 impl Deviations {
     /// No deviation yet.
-    pub(crate) const fn new(mode: DecodeMode) -> Deviations {
-        Deviations {
+    pub(crate) const fn new(mode: DecodeMode) -> Self {
+        Self {
             mode,
             anomalies: AnomalySet::empty(),
             strict: None,

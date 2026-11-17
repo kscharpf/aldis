@@ -56,8 +56,8 @@ impl TmChannel {
         physical: TmPhysicalChannelConfig,
         ocf: DeliveryService,
         fsh: DeliveryService,
-    ) -> TmChannel {
-        TmChannel { physical, ocf, fsh }
+    ) -> Self {
+        Self { physical, ocf, fsh }
     }
 
     /// The managed parameters of the physical channel.
@@ -115,8 +115,8 @@ impl TmVc {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-077; 132.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(config: TmVirtualChannelConfig, served: bool) -> TmVc {
-        TmVc { config, served }
+    pub const fn new(config: TmVirtualChannelConfig, served: bool) -> Self {
+        Self { config, served }
     }
 
     /// The codec's configuration of the VC.
@@ -191,12 +191,12 @@ impl ReceiveProtocol for Tm {
     }
 
     fn receive<const V: usize>(
-        cx: &mut FrameContext<'_, Tm, V>,
+        cx: &mut FrameContext<'_, Self, V>,
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         let frame = Self::plain_octets(plain);
         let h = header::<{ PRIMARY_HEADER_LEN + 1 }>(frame)?;
-        let vc: VcId<3> = vc_of::<Tm>(layout::Vcid::get_u8(&h))?;
+        let vc: VcId<3> = vc_of::<Self>(layout::Vcid::get_u8(&h))?;
         let ocf_flag = layout::OcfFlag::flag(&h);
         let fsh_flag = layout::FshFlag::flag(&h);
         let sync = layout::SyncFlag::flag(&h);

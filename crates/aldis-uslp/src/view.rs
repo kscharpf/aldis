@@ -428,7 +428,7 @@ impl<'a> UslpFrame<'a> {
     >(
         bytes: &'a [u8],
         channels: &L,
-    ) -> Result<UslpFrame<'a>> {
+    ) -> Result<Self> {
         parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
@@ -448,7 +448,7 @@ impl<'a> UslpFrame<'a> {
     >(
         bytes: &'a [u8],
         channels: &L,
-    ) -> Result<Lenient<UslpFrame<'a>, UslpAnomaly>> {
+    ) -> Result<Lenient<Self, UslpAnomaly>> {
         parse(bytes, channels, Channels::Open, DecodeMode::Lenient, false)
             .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)

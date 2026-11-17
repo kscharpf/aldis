@@ -355,11 +355,11 @@ mod uslp_impl {
         /// `InvalidConfig` (`upid`) for "Only Idle Data": that UPID of the SANA registry marks a
         /// TFDZ of idle data (732.1 §4.1.4.2.3, §4.1.4.1.9), so no packet could be carried in
         /// it.
-        pub fn new(upid: Upid, map: MapId<4>, qos: Qos) -> Result<UslpParams> {
+        pub fn new(upid: Upid, map: MapId<4>, qos: Qos) -> Result<Self> {
             if upid == Upid::OnlyIdleData {
                 Err(Error::new(ErrorKind::InvalidConfig).with_field(field::UPID))
             } else {
-                Ok(UslpParams { upid, map, qos })
+                Ok(Self { upid, map, qos })
             }
         }
     }

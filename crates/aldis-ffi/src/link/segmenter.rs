@@ -320,10 +320,10 @@ impl SgProtocol for Tc {
         })
     }
 
-    fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Tc>> {
+    fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Self>> {
         match parse::<aldis_map_service>(m.service)? {
             aldis_map_service::ALDIS_MAP_SERVICE_ANY => {
-                sg_entry::<Tc>(m, SegmenterService::Any, ())
+                sg_entry::<Self>(m, SegmenterService::Any, ())
             }
             aldis_map_service::ALDIS_MAP_SERVICE_PACKETS
             | aldis_map_service::ALDIS_MAP_SERVICE_SDU
@@ -348,7 +348,7 @@ impl SgProtocol for Uslp {
         UslpSegmenterParams::new(vc)
     }
 
-    fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Uslp>> {
+    fn entry(m: &aldis_map_segmenter_map_t) -> Result<MapEntry<Self>> {
         let service = match parse::<aldis_map_service>(m.service)? {
             aldis_map_service::ALDIS_MAP_SERVICE_PACKETS => SegmenterService::Packets,
             aldis_map_service::ALDIS_MAP_SERVICE_SDU => SegmenterService::Sdu,
@@ -357,7 +357,7 @@ impl SgProtocol for Uslp {
             },
             aldis_map_service::ALDIS_MAP_SERVICE_ANY => return Err(wrong_service()),
         };
-        sg_entry::<Uslp>(m, service, upid(m.uslp_upid)?)
+        sg_entry::<Self>(m, service, upid(m.uslp_upid)?)
     }
 }
 
@@ -398,8 +398,8 @@ unsafe impl<P: SegmenterProtocol, const NM: usize, const NQ: usize> InPlace
 {
     type Head = MapSegmenterHead<P, NM>;
     type Buffers = MapSegmenterBuffers<NQ>;
-    const HEAD_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <MapSegmenter<P, NM, NQ>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -456,13 +456,13 @@ impl MapSegmenterState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
-            MapSegmenterState::Tc(e) => {
+            Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 sg_run(e, input, data, now, area)
             }
-            MapSegmenterState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -473,15 +473,15 @@ impl MapSegmenterState {
 
     const fn status(&self) -> SegmenterStatus {
         match self {
-            MapSegmenterState::Tc(e) => *e.status(),
-            MapSegmenterState::Uslp(e) => *e.status(),
+            Self::Tc(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 
     fn next_deadline(&self) -> Option<Instant> {
         match self {
-            MapSegmenterState::Tc(e) => e.next_deadline(),
-            MapSegmenterState::Uslp(e) => e.next_deadline(),
+            Self::Tc(e) => e.next_deadline(),
+            Self::Uslp(e) => e.next_deadline(),
         }
     }
 }

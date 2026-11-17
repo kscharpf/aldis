@@ -59,7 +59,7 @@ impl ModCounter {
     ///
     /// # Errors
     /// `OutOfRange` if `bits` is not 1–64 or `value` needs more than `bits` bits.
-    pub fn new(bits: u8, value: u64) -> Result<ModCounter> {
+    pub fn new(bits: u8, value: u64) -> Result<Self> {
         if bits == 0 {
             return Err(Error::out_of_range(field::BITS, 1, 0));
         }
@@ -69,7 +69,7 @@ impl ModCounter {
         if value & !mask(bits) != 0 {
             return Err(Error::out_of_range(field::VALUE, mask(bits), value));
         }
-        Ok(ModCounter { bits, value })
+        Ok(Self { bits, value })
     }
 
     /// The width in bits.
@@ -86,8 +86,8 @@ impl ModCounter {
 
     /// The next value, modulo 2^bits.
     #[must_use]
-    pub const fn next(self) -> ModCounter {
-        ModCounter {
+    pub const fn next(self) -> Self {
+        Self {
             bits: self.bits,
             value: self.value.wrapping_add(1) & mask(self.bits),
         }
@@ -103,7 +103,7 @@ impl ModCounter {
     /// # Errors
     /// `OutOfRange` if `later` needs more than `bits` bits.
     pub fn distance_to(self, later: u64) -> Result<u64> {
-        ModCounter::new(self.bits, later)
+        Self::new(self.bits, later)
             .map(|later| later.value.wrapping_sub(self.value) & mask(self.bits))
     }
 
@@ -113,8 +113,7 @@ impl ModCounter {
     /// # Errors
     /// `OutOfRange` if `next` needs more than `bits` bits.
     pub fn classify(self, next: u64) -> Result<Continuity> {
-        ModCounter::new(self.bits, next)
-            .map(|later| classify_masked(self.bits, self.value, later.value))
+        Self::new(self.bits, next).map(|later| classify_masked(self.bits, self.value, later.value))
     }
 }
 

@@ -1274,14 +1274,14 @@ struct Oid {
 }
 
 impl Oid {
-    fn new(form: u32) -> Oid {
+    fn new(form: u32) -> Self {
         let h = Box::into_raw(Box::new(aldis_oid_generator_t {
             words: [0; ALDIS_OID_GENERATOR_WORDS],
         }));
         // SAFETY: `h` points to live storage.
         call(|e| unsafe { aldis_oid_generator_init(h, form, e) })
             .unwrap_or_else(|f| panic!("aldis_oid_generator_init: {}", f.kind));
-        Oid { h }
+        Self { h }
     }
 
     /// The next `len` octets, from `aldis_oid_generator_fill`.

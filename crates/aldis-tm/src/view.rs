@@ -48,7 +48,7 @@ impl<'a> TmFrame<'a> {
     ///
     /// # Errors
     /// As for [`decode_with`](Self::decode_with), except `UnknownChannel`.
-    pub fn decode(bytes: &'a [u8], pc: &TmPhysicalChannelConfig) -> Result<TmFrame<'a>> {
+    pub fn decode(bytes: &'a [u8], pc: &TmPhysicalChannelConfig) -> Result<Self> {
         TmFrame::decode_with(bytes, pc, &NoSdls)
     }
 
@@ -61,7 +61,7 @@ impl<'a> TmFrame<'a> {
     pub fn decode_lenient(
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
-    ) -> Result<Lenient<TmFrame<'a>, TmAnomaly>> {
+    ) -> Result<Lenient<Self, TmAnomaly>> {
         TmFrame::decode_with_lenient(bytes, pc, &NoSdls)
     }
 
@@ -97,7 +97,7 @@ impl<'a> TmFrame<'a> {
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
-    ) -> Result<TmFrame<'a>> {
+    ) -> Result<Self> {
         TmFrame::decode_in(bytes, pc, vcs, pc.fecf(), DecodeMode::Strict).map(|(frame, _)| frame)
     }
 
@@ -114,7 +114,7 @@ impl<'a> TmFrame<'a> {
         bytes: &'a [u8],
         pc: &TmPhysicalChannelConfig,
         vcs: &L,
-    ) -> Result<Lenient<TmFrame<'a>, TmAnomaly>> {
+    ) -> Result<Lenient<Self, TmAnomaly>> {
         TmFrame::decode_in(bytes, pc, vcs, pc.fecf(), DecodeMode::Lenient)
             .map(|(frame, anomalies)| Lenient::new(frame, anomalies))
     }
@@ -161,7 +161,7 @@ impl<'a> TmFrame<'a> {
         vcs: &L,
         fecf: bool,
         mode: DecodeMode,
-    ) -> Result<(TmFrame<'a>, AnomalySet<TmAnomaly>)> {
+    ) -> Result<(Self, AnomalySet<TmAnomaly>)> {
         let header = TmFrame::check(bytes, pc, fecf)?;
         let security = security_layout(vcs, header.scid, header.vcid)?;
         TmFrame::parse(bytes, pc, header, security, mode)
@@ -207,7 +207,7 @@ impl<'a> TmFrame<'a> {
         header: TmPrimaryHeader,
         security: SecurityLayout,
         mode: DecodeMode,
-    ) -> Result<(TmFrame<'a>, AnomalySet<TmAnomaly>)> {
+    ) -> Result<(Self, AnomalySet<TmAnomaly>)> {
         let fsh_len = if header.fsh_flag {
             Some(fsh_id(bytes)?)
         } else {
@@ -531,7 +531,7 @@ impl<'a> UncheckedTmFrame<'a> {
 impl<'a> From<TmFrame<'a>> for UncheckedTmFrame<'a> {
     /// Forgets that the FECF was checked, to read a checked frame through the accessors of
     /// the unchecked one (API-015).
-    fn from(frame: TmFrame<'a>) -> UncheckedTmFrame<'a> {
+    fn from(frame: TmFrame<'a>) -> Self {
         UncheckedTmFrame { frame }
     }
 }

@@ -77,7 +77,7 @@ fn maps<P: SegmenterProtocol>(
 }
 
 impl Proto for Tc {
-    fn config(c: &Map<String, Value>) -> MapSegmenterConfig<Tc, M> {
+    fn config(c: &Map<String, Value>) -> MapSegmenterConfig<Self, M> {
         let fecf = c["fecf"].as_bool().unwrap();
         let header = c["segment_header"].as_bool().unwrap();
         let channel = if header {
@@ -88,9 +88,9 @@ impl Proto for Tc {
                 c["blocking"].as_bool().unwrap(),
             )
         };
-        let entries = maps::<Tc>(c, |m| {
+        let entries = maps::<Self>(c, |m| {
             let id = MapId::<6>::new(u8::try_from(num(&m["map_id"])).unwrap()).unwrap();
-            let mut e = MapEntry::<Tc>::new(id, SegmenterService::Any, ());
+            let mut e = MapEntry::<Self>::new(id, SegmenterService::Any, ());
             if m["segmentation"].as_bool().unwrap() {
                 e = e.with_segmentation(usize_of(&m["max_sdu_len"])).unwrap();
             }
@@ -121,9 +121,9 @@ impl Proto for Tc {
 }
 
 impl Proto for Uslp {
-    fn config(c: &Map<String, Value>) -> MapSegmenterConfig<Uslp, M> {
+    fn config(c: &Map<String, Value>) -> MapSegmenterConfig<Self, M> {
         let count = VcfCountLen::new(2).unwrap();
-        let entries = maps::<Uslp>(c, |m| {
+        let entries = maps::<Self>(c, |m| {
             let id = MapId::<4>::new(u8::try_from(num(&m["map_id"])).unwrap()).unwrap();
             let upid = Upid::from_bits(u8::try_from(num(&m["upid"])).unwrap()).unwrap();
             let service = match m["service"].as_str().unwrap() {
@@ -134,7 +134,7 @@ impl Proto for Uslp {
                 },
                 other => panic!("unknown service {other}"),
             };
-            let mut e = MapEntry::<Uslp>::new(id, service, upid);
+            let mut e = MapEntry::<Self>::new(id, service, upid);
             if let Some(max) = m.get("max_sdu_len") {
                 e = e.with_segmentation(usize_of(max)).unwrap();
             }

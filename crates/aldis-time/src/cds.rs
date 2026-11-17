@@ -56,9 +56,9 @@ impl SubMillis {
     #[must_use]
     pub const fn resolution(self) -> CdsSubMs {
         match self {
-            SubMillis::None => CdsSubMs::None,
-            SubMillis::Micros(_) => CdsSubMs::Micros,
-            SubMillis::Picos(_) => CdsSubMs::Picos,
+            Self::None => CdsSubMs::None,
+            Self::Micros(_) => CdsSubMs::Micros,
+            Self::Picos(_) => CdsSubMs::Picos,
         }
     }
 
@@ -66,9 +66,9 @@ impl SubMillis {
     #[must_use]
     pub const fn get(self) -> u32 {
         match self {
-            SubMillis::None => 0,
-            SubMillis::Micros(us) => widen16(us.get()),
-            SubMillis::Picos(ps) => ps.get(),
+            Self::None => 0,
+            Self::Micros(us) => widen16(us.get()),
+            Self::Picos(ps) => ps.get(),
         }
     }
 }
@@ -107,9 +107,9 @@ impl CdsSubMs {
     /// Segment length in octets.
     const fn octets(self) -> usize {
         match self {
-            CdsSubMs::None => 0,
-            CdsSubMs::Micros => 2,
-            CdsSubMs::Picos => 4,
+            Self::None => 0,
+            Self::Micros => 2,
+            Self::Picos => 4,
         }
     }
 
@@ -117,9 +117,9 @@ impl CdsSubMs {
     #[must_use]
     pub const fn max(self) -> u32 {
         match self {
-            CdsSubMs::None => 0,
-            CdsSubMs::Micros => 999,
-            CdsSubMs::Picos => 999_999_999,
+            Self::None => 0,
+            Self::Micros => 999,
+            Self::Picos => 999_999_999,
         }
     }
 }
@@ -136,8 +136,8 @@ pub struct CdsFormat {
 impl CdsFormat {
     /// A format; every combination of day length and resolution is valid (301.0 §3.3.2, TIME-020).
     #[must_use]
-    pub const fn new(epoch: CdsEpoch, day: CdsDayLen, subms: CdsSubMs) -> CdsFormat {
-        CdsFormat {
+    pub const fn new(epoch: CdsEpoch, day: CdsDayLen, subms: CdsSubMs) -> Self {
+        Self {
             epoch,
             day,
             subms,
@@ -147,8 +147,8 @@ impl CdsFormat {
 
     /// The same format with undefined P-field octets after octet 1 (301.0 §3.3.2, TIME-005).
     #[must_use]
-    pub const fn with_tail(self, tail: PFieldTail) -> CdsFormat {
-        CdsFormat { tail, ..self }
+    pub const fn with_tail(self, tail: PFieldTail) -> Self {
+        Self { tail, ..self }
     }
 
     /// The epoch (301.0 §3.3.2, TIME-020).
@@ -223,7 +223,7 @@ impl CdsFormat {
     ///
     /// # Errors
     /// `ReservedValue` (`subms`) for submillisecond code `11`, in both modes (TIME-020).
-    pub(crate) fn from_pfield(pfield: &PField) -> Result<CdsFormat> {
+    pub(crate) fn from_pfield(pfield: &PField) -> Result<Self> {
         let first = pfield.first();
         let subms = match first & 0b11 {
             0b00 => CdsSubMs::None,
@@ -233,7 +233,7 @@ impl CdsFormat {
                 return Err(Error::new(ErrorKind::ReservedValue).with_field(field::SUBMS));
             }
         };
-        Ok(CdsFormat {
+        Ok(Self {
             epoch: if first & 0b1000 == 0 {
                 CdsEpoch::Ccsds1958
             } else {
@@ -279,7 +279,7 @@ impl Cds {
     /// # Errors
     /// `OutOfRange` (`cds_day`) if the day does not fit the 16- or 24-bit day segment;
     /// `InvalidField` (`subms`) if the value's submillisecond resolution is not the format's.
-    pub const fn new(format: CdsFormat, value: CdsValue) -> Result<Cds> {
+    pub const fn new(format: CdsFormat, value: CdsValue) -> Result<Self> {
         let max_day = match format.day {
             CdsDayLen::Bits16 => 0xFFFF,
             CdsDayLen::Bits24 => 0xFF_FFFF,
@@ -299,7 +299,7 @@ impl Cds {
         ) {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::SUBMS));
         }
-        Ok(Cds { format, value })
+        Ok(Self { format, value })
     }
 
     /// The format (301.0 §3.3, TIME-020, TIME-021).
@@ -339,7 +339,7 @@ impl Cds {
     ///
     /// # Errors
     /// `OutOfRange` (`day`, `ms_of_day`, or `subms`) for a segment outside its range.
-    pub(crate) fn from_t(format: CdsFormat, t: &[u8]) -> Result<Cds> {
+    pub(crate) fn from_t(format: CdsFormat, t: &[u8]) -> Result<Self> {
         let mut octets = t.iter();
         let mut take = |n: usize| {
             octets
@@ -358,7 +358,7 @@ impl Cds {
             CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(raw)?),
         };
         // The day has at most the format's octets, and the resolution comes from the format.
-        Ok(Cds {
+        Ok(Self {
             format,
             value: CdsValue {
                 day,

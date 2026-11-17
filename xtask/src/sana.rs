@@ -113,7 +113,7 @@ impl Snapshot {
     }
 
     /// Parses a snapshot file.
-    fn parse(text: &str) -> Result<Snapshot, String> {
+    fn parse(text: &str) -> Result<Self, String> {
         let meta = |key: &str| {
             text.lines()
                 .find_map(|l| l.strip_prefix(&format!("# {key}\t")))
@@ -135,7 +135,7 @@ impl Snapshot {
                 COLUMNS.len()
             ));
         }
-        Ok(Snapshot {
+        Ok(Self {
             url,
             retrieved,
             sha256,
@@ -356,22 +356,22 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
         "impl Upid {\n\
          \x20   /// The UPID of a 5-bit field value, or `None` above 31 (732.1 §4.1.4.2.3.1; USLP-007).\n\
          \x20   #[must_use]\n\
-         \x20   pub const fn from_bits(bits: u8) -> Option<Upid> {\n\
+         \x20   pub const fn from_bits(bits: u8) -> Option<Self> {\n\
          \x20       if bits > 0x1F {\n\
          \x20           return None;\n\
          \x20       }\n\
-         \x20       Some(Upid::from_field(bits))\n\
+         \x20       Some(Self::from_field(bits))\n\
          \x20   }\n\n\
          \x20   /// The UPID of the low five bits of `bits`, the field of a TFDF Header (732.1\n\
          \x20   /// §4.1.4.2.3.1; USLP-007).\n\
-         \x20   pub(crate) const fn from_field(bits: u8) -> Upid {\n\
+         \x20   pub(crate) const fn from_field(bits: u8) -> Self {\n\
          \x20       match bits & 0x1F {\n",
     );
     for (value, name, ..) in &assigned {
-        let _ = writeln!(s, "            0b{value:05b} => Upid::{name},");
+        let _ = writeln!(s, "            0b{value:05b} => Self::{name},");
     }
     s.push_str(
-        "            other => Upid::Other(UnassignedUpid(other)),\n\
+        "            other => Self::Other(UnassignedUpid(other)),\n\
          \x20       }\n\
          \x20   }\n\n\
          \x20   /// The 5-bit field value (732.1 §4.1.4.2.3.1; USLP-007).\n\
@@ -380,10 +380,10 @@ fn upid_table(snap: &Snapshot) -> Result<String, String> {
          \x20       match self {\n",
     );
     for (value, name, ..) in &assigned {
-        let _ = writeln!(s, "            Upid::{name} => 0b{value:05b},");
+        let _ = writeln!(s, "            Self::{name} => 0b{value:05b},");
     }
     s.push_str(
-        "            Upid::Other(u) => u.get(),\n        }\n    }\n}\n\n\
+        "            Self::Other(u) => u.get(),\n        }\n    }\n}\n\n\
          /// Whether the registry assigns `bits` (USLP-007).\n\
          pub(crate) const fn is_assigned(bits: u8) -> bool {\n    matches!(\n        bits,\n",
     );
@@ -623,7 +623,7 @@ mod tests {
         };
         let table = upid_table(&snap(rows.clone())).unwrap();
         assert!(table.contains("    OnlyIdleData,\n"));
-        assert!(table.contains("0b11111 => Upid::OnlyIdleData,"));
+        assert!(table.contains("0b11111 => Self::OnlyIdleData,"));
         let mut unnamed = rows.clone();
         unnamed[0] = row("Assigned", "0b00000", "1.3.112.4.58.99");
         assert!(upid_table(&snap(unnamed)).is_err());

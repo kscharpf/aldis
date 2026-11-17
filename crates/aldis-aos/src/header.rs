@@ -65,9 +65,9 @@ impl VcFrameCount {
 
     /// The count, or `None` if `value` needs more than 24 bits (API-001).
     #[must_use]
-    pub const fn new(value: u32) -> Option<VcFrameCount> {
-        if value <= VcFrameCount::MAX {
-            Some(VcFrameCount(value))
+    pub const fn new(value: u32) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -85,13 +85,9 @@ impl TryFrom<u32> for VcFrameCount {
 
     /// # Errors
     /// `OutOfRange` (`vcf_count`) above 2²⁴ − 1.
-    fn try_from(value: u32) -> Result<VcFrameCount> {
-        VcFrameCount::new(value).ok_or_else(|| {
-            Error::out_of_range(
-                field::VCF_COUNT,
-                u64::from(VcFrameCount::MAX),
-                u64::from(value),
-            )
+    fn try_from(value: u32) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
+            Error::out_of_range(field::VCF_COUNT, u64::from(Self::MAX), u64::from(value))
         })
     }
 }
@@ -101,17 +97,17 @@ impl VcFrameCount {
     /// bits for the VC Frame Count Cycle (732.0 §4.1.2.4, §4.1.2.5.5; AOS-019). The count is
     /// reduced modulo the field, which is how a counter that wraps is written (LNK-032).
     #[must_use]
-    pub const fn wrapping(running: u64) -> (VcFrameCount, FrameCountCycle) {
+    pub const fn wrapping(running: u64) -> (Self, FrameCountCycle) {
         let h = running.to_be_bytes();
         (
-            VcFrameCount(running_layout::Count::get_u32(&h)),
+            Self(running_layout::Count::get_u32(&h)),
             FrameCountCycle(running_layout::Cycle::get_u8(&h)),
         )
     }
 }
 
 impl From<VcFrameCount> for u32 {
-    fn from(count: VcFrameCount) -> u32 {
+    fn from(count: VcFrameCount) -> Self {
         count.0
     }
 }
@@ -126,9 +122,9 @@ impl FrameCountCycle {
 
     /// The cycle, or `None` if `value` needs more than 4 bits (API-001).
     #[must_use]
-    pub const fn new(value: u8) -> Option<FrameCountCycle> {
-        if value <= FrameCountCycle::MAX {
-            Some(FrameCountCycle(value))
+    pub const fn new(value: u8) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -146,11 +142,11 @@ impl TryFrom<u8> for FrameCountCycle {
 
     /// # Errors
     /// `OutOfRange` (`vc_frame_count_cycle`) above 15.
-    fn try_from(value: u8) -> Result<FrameCountCycle> {
-        FrameCountCycle::new(value).ok_or_else(|| {
+    fn try_from(value: u8) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
             Error::out_of_range(
                 field::VC_FRAME_COUNT_CYCLE,
-                u64::from(FrameCountCycle::MAX),
+                u64::from(Self::MAX),
                 u64::from(value),
             )
         })
@@ -158,7 +154,7 @@ impl TryFrom<u8> for FrameCountCycle {
 }
 
 impl From<FrameCountCycle> for u8 {
-    fn from(cycle: FrameCountCycle) -> u8 {
+    fn from(cycle: FrameCountCycle) -> Self {
         cycle.0
     }
 }
@@ -276,14 +272,14 @@ impl AosPrimaryHeader {
     /// - `HeaderUncorrectable` if the FHEC detects more errors than it can correct (AOS-014);
     /// - `UnsupportedVersion` (`frame_version`) if the Transfer Frame Version Number is not
     ///   `01` (AOS-011).
-    pub fn decode(prefix: &[u8], pc: &AosPhysicalChannelConfig) -> Result<AosPrimaryHeader> {
+    pub fn decode(prefix: &[u8], pc: &AosPhysicalChannelConfig) -> Result<Self> {
         let received = correct(prefix, pc)?;
         check_version(received.octets[0])?;
-        Ok(AosPrimaryHeader::parse(&received, pc.edition()))
+        Ok(Self::parse(&received, pc.edition()))
     }
 
     /// The fields of corrected header octets whose version is checked.
-    pub(crate) fn parse(received: &Received, edition: AosEdition) -> AosPrimaryHeader {
+    pub(crate) fn parse(received: &Received, edition: AosEdition) -> Self {
         let h = &received.octets;
         let lsb = layout::ScidLow::get_u8(h);
         let bits_42_43 = layout::ScidHigh::get_u8(h);
@@ -291,7 +287,7 @@ impl AosPrimaryHeader {
             AosEdition::Issue5 => (u16::from_be_bytes([bits_42_43, lsb]), 0),
             AosEdition::Issue4Compatible => (u16::from(lsb), bits_42_43),
         };
-        AosPrimaryHeader {
+        Self {
             edition,
             scid: SpacecraftId::new(scid).unwrap_or(SCID_ZERO),
             vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
@@ -316,8 +312,8 @@ impl AosPrimaryHeader {
         vc_frame_count: VcFrameCount,
         replay_flag: bool,
         cycle: Option<FrameCountCycle>,
-    ) -> AosPrimaryHeader {
-        let mut header = AosPrimaryHeader {
+    ) -> Self {
+        let mut header = Self {
             edition: pc.edition(),
             scid,
             vcid,
@@ -349,8 +345,8 @@ impl AosPrimaryHeader {
         vc_frame_count: VcFrameCount,
         cycle: Option<FrameCountCycle>,
         fhec: bool,
-    ) -> AosPrimaryHeader {
-        AosPrimaryHeader {
+    ) -> Self {
+        Self {
             edition,
             scid,
             vcid,

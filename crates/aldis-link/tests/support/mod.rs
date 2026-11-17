@@ -49,7 +49,7 @@ pub(crate) trait Plained: ReceiveProtocol {
 
 impl Plained for Tm {
     fn plain_len<'a, const V: usize>(
-        config: &FrameReceiverConfig<Tm, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
         frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
@@ -75,7 +75,7 @@ impl aldis_core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs {
 
 impl Plained for Aos {
     fn plain_len<'a, const V: usize>(
-        config: &FrameReceiverConfig<Aos, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
         frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
@@ -124,7 +124,7 @@ impl aldis_core::lookup::MapLookup<TcSpacecraftId, TcVcId, aldis_tc::TcMapId> fo
 
 impl Plained for Tc {
     fn plain_len<'a, const V: usize>(
-        config: &FrameReceiverConfig<Tc, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
         frame_len: usize,
     ) -> Result<Self::Plain<'a>> {
@@ -166,7 +166,7 @@ impl aldis_core::lookup::MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for No
 
 impl Plained for Uslp {
     fn plain_len<'a, const V: usize>(
-        config: &FrameReceiverConfig<Uslp, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
         frame_len: usize,
     ) -> Result<Self::Plain<'a>> {

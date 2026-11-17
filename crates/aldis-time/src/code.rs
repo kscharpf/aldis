@@ -29,7 +29,7 @@ impl AgencyFormat {
     ///
     /// # Errors
     /// `OutOfRange` (`t_len`) outside 1–16.
-    pub const fn new(t_len: u8) -> Result<AgencyFormat> {
+    pub const fn new(t_len: u8) -> Result<Self> {
         if t_len == 0 || t_len > MAX_AGENCY_LEN {
             // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
             let limit = if t_len == 0 { 1 } else { MAX_AGENCY_LEN };
@@ -39,7 +39,7 @@ impl AgencyFormat {
                 wide8(t_len),
             ));
         }
-        Ok(AgencyFormat {
+        Ok(Self {
             t_len,
             tail: PFieldTail::EMPTY,
         })
@@ -47,8 +47,8 @@ impl AgencyFormat {
 
     /// The same format with undefined P-field octets after octet 1 (301.0 §3.6.2, TIME-005).
     #[must_use]
-    pub const fn with_tail(self, tail: PFieldTail) -> AgencyFormat {
-        AgencyFormat { tail, ..self }
+    pub const fn with_tail(self, tail: PFieldTail) -> Self {
+        Self { tail, ..self }
     }
 
     /// T-field length in octets (301.0 §3.6.2, TIME-006).
@@ -79,8 +79,8 @@ impl AgencyFormat {
     }
 
     /// The format an agency-defined P-field describes.
-    fn from_pfield(pfield: &PField) -> AgencyFormat {
-        AgencyFormat {
+    fn from_pfield(pfield: &PField) -> Self {
+        Self {
             t_len: (pfield.first() & 0x0F).wrapping_add(1),
             tail: PFieldTail::from_chain(pfield.rest()),
         }
@@ -99,7 +99,7 @@ impl Agency {
     ///
     /// # Errors
     /// `LengthMismatch` (`tfield`) if `t` is not exactly the format's T-field length.
-    pub fn new(format: AgencyFormat, t: &[u8]) -> Result<Agency> {
+    pub fn new(format: AgencyFormat, t: &[u8]) -> Result<Self> {
         if t.len() != format.t_len() {
             return Err(Error::new(ErrorKind::LengthMismatch)
                 .with_field(field::TFIELD)
@@ -108,16 +108,16 @@ impl Agency {
                     found: u64::try_from(t.len()).unwrap_or(u64::MAX),
                 }));
         }
-        Ok(Agency::from_t(format, t))
+        Ok(Self::from_t(format, t))
     }
 
     /// Copies a T-field of the right length.
-    fn from_t(format: AgencyFormat, t: &[u8]) -> Agency {
+    fn from_t(format: AgencyFormat, t: &[u8]) -> Self {
         let mut octets = [0_u8; 16];
         for (d, s) in octets.iter_mut().zip(t) {
             *d = *s;
         }
-        Agency { format, t: octets }
+        Self { format, t: octets }
     }
 
     /// The format (301.0 §3.6, TIME-006).
@@ -152,10 +152,10 @@ impl TimeFormat {
     #[must_use]
     pub const fn t_len(&self) -> usize {
         match self {
-            TimeFormat::Cuc(f) => f.t_len(),
-            TimeFormat::Cds(f) => f.t_len(),
-            TimeFormat::Ccs(f) => f.t_len(),
-            TimeFormat::Agency(f) => f.t_len(),
+            Self::Cuc(f) => f.t_len(),
+            Self::Cds(f) => f.t_len(),
+            Self::Ccs(f) => f.t_len(),
+            Self::Agency(f) => f.t_len(),
         }
     }
 
@@ -168,10 +168,10 @@ impl TimeFormat {
     pub const fn encoded_len(&self, include_pfield: bool) -> usize {
         let p_len = if include_pfield {
             match self {
-                TimeFormat::Cuc(f) => f.pfield_len(),
-                TimeFormat::Cds(f) => f.pfield_len(),
-                TimeFormat::Ccs(f) => f.pfield_len(),
-                TimeFormat::Agency(f) => f.pfield_len(),
+                Self::Cuc(f) => f.pfield_len(),
+                Self::Cds(f) => f.pfield_len(),
+                Self::Ccs(f) => f.pfield_len(),
+                Self::Agency(f) => f.pfield_len(),
             }
         } else {
             0
@@ -183,20 +183,20 @@ impl TimeFormat {
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
-            TimeFormat::Cuc(f) => f.pfield(),
-            TimeFormat::Cds(f) => f.pfield(),
-            TimeFormat::Ccs(f) => f.pfield(),
-            TimeFormat::Agency(f) => f.pfield(),
+            Self::Cuc(f) => f.pfield(),
+            Self::Cds(f) => f.pfield(),
+            Self::Ccs(f) => f.pfield(),
+            Self::Agency(f) => f.pfield(),
         }
     }
 
     /// Whether the format carries undefined P-field octets (TIME-005).
     const fn has_tail(&self) -> bool {
         match self {
-            TimeFormat::Cuc(f) => !f.tail().is_empty(),
-            TimeFormat::Cds(f) => !f.tail().is_empty(),
-            TimeFormat::Ccs(f) => !f.tail().is_empty(),
-            TimeFormat::Agency(f) => !f.tail().is_empty(),
+            Self::Cuc(f) => !f.tail().is_empty(),
+            Self::Cds(f) => !f.tail().is_empty(),
+            Self::Ccs(f) => !f.tail().is_empty(),
+            Self::Agency(f) => !f.tail().is_empty(),
         }
     }
 }
@@ -388,11 +388,11 @@ impl TimeCode {
     #[must_use]
     pub const fn format(&self) -> Option<TimeFormat> {
         match self {
-            TimeCode::Cuc(c) => Some(TimeFormat::Cuc(c.format())),
-            TimeCode::Cds(c) => Some(TimeFormat::Cds(c.format())),
-            TimeCode::Ccs(c) => Some(TimeFormat::Ccs(c.format())),
-            TimeCode::Agency(c) => Some(TimeFormat::Agency(c.format())),
-            TimeCode::Unknown(_) => None,
+            Self::Cuc(c) => Some(TimeFormat::Cuc(c.format())),
+            Self::Cds(c) => Some(TimeFormat::Cds(c.format())),
+            Self::Ccs(c) => Some(TimeFormat::Ccs(c.format())),
+            Self::Agency(c) => Some(TimeFormat::Agency(c.format())),
+            Self::Unknown(_) => None,
         }
     }
 
@@ -400,11 +400,11 @@ impl TimeCode {
     #[must_use]
     pub fn pfield(&self) -> PField {
         match self {
-            TimeCode::Cuc(c) => c.format().pfield(),
-            TimeCode::Cds(c) => c.format().pfield(),
-            TimeCode::Ccs(c) => c.format().pfield(),
-            TimeCode::Agency(c) => c.format().pfield(),
-            TimeCode::Unknown(p) => p.pfield(),
+            Self::Cuc(c) => c.format().pfield(),
+            Self::Cds(c) => c.format().pfield(),
+            Self::Ccs(c) => c.format().pfield(),
+            Self::Agency(c) => c.format().pfield(),
+            Self::Unknown(p) => p.pfield(),
         }
     }
 
@@ -412,11 +412,11 @@ impl TimeCode {
     fn t_octets(&self) -> ([u8; MAX_T_LEN], usize) {
         let mut out = [0_u8; MAX_T_LEN];
         let (src, n): (&[u8], usize) = match self {
-            TimeCode::Cuc(c) => (&c.t_octets(), c.format().t_len()),
-            TimeCode::Cds(c) => (&c.t_octets(), c.format().t_len()),
-            TimeCode::Ccs(c) => (&c.t_octets(), c.format().t_len()),
-            TimeCode::Agency(c) => (c.tfield(), c.format().t_len()),
-            TimeCode::Unknown(_) => (&[], 0),
+            Self::Cuc(c) => (&c.t_octets(), c.format().t_len()),
+            Self::Cds(c) => (&c.t_octets(), c.format().t_len()),
+            Self::Ccs(c) => (&c.t_octets(), c.format().t_len()),
+            Self::Agency(c) => (c.tfield(), c.format().t_len()),
+            Self::Unknown(_) => (&[], 0),
         };
         for (d, s) in out.iter_mut().zip(src) {
             *d = *s;
@@ -432,7 +432,7 @@ impl TimeCode {
     /// `BufferTooSmall` if `out` is too short (`out` is then unchanged); `InvalidField`
     /// (`pfield`) for [`TimeCode::Unknown`] without its P-field, which would write nothing.
     pub fn encode(&self, include_pfield: bool, out: &mut [u8]) -> Result<usize> {
-        if !include_pfield && matches!(self, TimeCode::Unknown(_)) {
+        if !include_pfield && matches!(self, Self::Unknown(_)) {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::PFIELD));
         }
         let pfield = self.pfield();

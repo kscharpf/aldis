@@ -123,7 +123,7 @@ mod fop1_runner {
     }
 
     impl Engine {
-        fn new(c: &Map<String, Value>) -> Engine {
+        fn new(c: &Map<String, Value>) -> Self {
             assert_eq!(c["frame_target"], "tc");
             let cfg = aldis_fop1_config_t {
                 scid: u16::try_from(num(&c["scid"])).unwrap(),
@@ -150,7 +150,7 @@ mod fop1_runner {
                 aldis_fop1_init(&raw mut *storage, &raw const cfg, core::ptr::null_mut())
             };
             assert_eq!(status, ALDIS_OK);
-            Engine { storage }
+            Self { storage }
         }
 
         fn step(&mut self, input: &aldis_fop1_input_t, now: u64, out: &mut [u8]) -> Step {
@@ -438,7 +438,7 @@ mod farm1_runner {
     }
 
     impl Engine {
-        fn new(c: &Map<String, Value>) -> Engine {
+        fn new(c: &Map<String, Value>) -> Self {
             assert_eq!(c["frame_target"], "tc");
             let w = c["window"].as_object().unwrap();
             let allowed = w["retransmission_allowed"].as_bool().unwrap();
@@ -463,7 +463,7 @@ mod farm1_runner {
                 aldis_farm1_init(&raw mut *storage, &raw const cfg, core::ptr::null_mut())
             };
             assert_eq!(status, ALDIS_OK);
-            Engine { storage }
+            Self { storage }
         }
 
         fn step(

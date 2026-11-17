@@ -51,18 +51,14 @@ pub enum SourceOrDestination {
 impl SourceOrDestination {
     /// The identifier of the bit (732.1 §4.1.2.3.3).
     #[must_use]
-    pub const fn from_bit(bit: bool) -> SourceOrDestination {
-        if bit {
-            SourceOrDestination::Destination
-        } else {
-            SourceOrDestination::Source
-        }
+    pub const fn from_bit(bit: bool) -> Self {
+        if bit { Self::Destination } else { Self::Source }
     }
 
     /// The bit: `true` for the destination (732.1 §4.1.2.3.3).
     #[must_use]
     pub const fn bit(self) -> bool {
-        matches!(self, SourceOrDestination::Destination)
+        matches!(self, Self::Destination)
     }
 }
 
@@ -83,11 +79,11 @@ pub enum FrameKind {
 impl FrameKind {
     /// The kind of the two flags, or `None` for the reserved `01` (732.1 Table 4-1).
     #[must_use]
-    pub const fn from_flags(bypass: bool, protocol_control: bool) -> Option<FrameKind> {
+    pub const fn from_flags(bypass: bool, protocol_control: bool) -> Option<Self> {
         match (bypass, protocol_control) {
-            (false, false) => Some(FrameKind::SequenceControlled),
-            (true, false) => Some(FrameKind::Expedited),
-            (true, true) => Some(FrameKind::ProtocolControl),
+            (false, false) => Some(Self::SequenceControlled),
+            (true, false) => Some(Self::Expedited),
+            (true, true) => Some(Self::ProtocolControl),
             (false, true) => None,
         }
     }
@@ -96,34 +92,34 @@ impl FrameKind {
     /// It also selects the VC's VCF Count Length (USLP-004).
     #[must_use]
     pub const fn bypass_flag(self) -> bool {
-        !matches!(self, FrameKind::SequenceControlled)
+        !matches!(self, Self::SequenceControlled)
     }
 
     /// The Protocol Control Command Flag (732.1 §4.1.2.8.2).
     #[must_use]
     pub const fn protocol_control_flag(self) -> bool {
-        matches!(self, FrameKind::ProtocolControl)
+        matches!(self, Self::ProtocolControl)
     }
 }
 
 impl From<CopFrameKind> for FrameKind {
     /// Type-AD is sequence-controlled, Type-BD expedited, and Type-BC Protocol Control
     /// (732.1 Table 4-1, 232.1 §4.2.7.4; USLP-001, COP-010).
-    fn from(kind: CopFrameKind) -> FrameKind {
+    fn from(kind: CopFrameKind) -> Self {
         match kind {
-            CopFrameKind::Ad => FrameKind::SequenceControlled,
-            CopFrameKind::Bd => FrameKind::Expedited,
-            CopFrameKind::Bc => FrameKind::ProtocolControl,
+            CopFrameKind::Ad => Self::SequenceControlled,
+            CopFrameKind::Bd => Self::Expedited,
+            CopFrameKind::Bc => Self::ProtocolControl,
         }
     }
 }
 
 impl From<FrameKind> for CopFrameKind {
-    fn from(kind: FrameKind) -> CopFrameKind {
+    fn from(kind: FrameKind) -> Self {
         match kind {
-            FrameKind::SequenceControlled => CopFrameKind::Ad,
-            FrameKind::Expedited => CopFrameKind::Bd,
-            FrameKind::ProtocolControl => CopFrameKind::Bc,
+            FrameKind::SequenceControlled => Self::Ad,
+            FrameKind::Expedited => Self::Bd,
+            FrameKind::ProtocolControl => Self::Bc,
         }
     }
 }
@@ -134,17 +130,17 @@ pub struct VcfCountLen(u8);
 
 impl VcfCountLen {
     /// No VCF Count field.
-    pub const NONE: VcfCountLen = VcfCountLen(0);
+    pub const NONE: Self = Self(0);
 
     /// A length of `octets`, at most 7 (732.1 Table 4-2).
     ///
     /// # Errors
     /// `InvalidConfig` (`vcf_count_len`) above 7.
-    pub const fn new(octets: u8) -> Result<VcfCountLen, Error> {
+    pub const fn new(octets: u8) -> Result<Self, Error> {
         if octets > 7 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VCF_COUNT_LEN));
         }
-        Ok(VcfCountLen(octets))
+        Ok(Self(octets))
     }
 
     /// The length in octets (732.1 Table 4-2).
@@ -180,18 +176,18 @@ pub struct VcfCount {
 impl VcfCount {
     /// `value` in a field of `len` octets, or `None` if it does not fit (732.1 §4.1.2.12.3).
     #[must_use]
-    pub fn new(len: VcfCountLen, value: u64) -> Option<VcfCount> {
+    pub fn new(len: VcfCountLen, value: u64) -> Option<Self> {
         if value > len.max_count() {
             return None;
         }
-        Some(VcfCount { len, value })
+        Some(Self { len, value })
     }
 
     /// `value` modulo the field of `len` octets: the count of a counter that wraps (732.1
     /// §4.1.2.12.3; LNK-032).
     #[must_use]
-    pub fn wrapping(len: VcfCountLen, value: u64) -> VcfCount {
-        VcfCount {
+    pub fn wrapping(len: VcfCountLen, value: u64) -> Self {
+        Self {
             len,
             value: value & len.max_count(),
         }
@@ -245,8 +241,8 @@ impl UslpPrimaryHeader {
         kind: FrameKind,
         ocf_flag: bool,
         vcf_count: VcfCount,
-    ) -> UslpPrimaryHeader {
-        UslpPrimaryHeader {
+    ) -> Self {
+        Self {
             channel,
             frame_len: u32::try_from(frame_len).unwrap_or(u32::MAX),
             kind,
@@ -267,7 +263,7 @@ impl UslpPrimaryHeader {
         kind: FrameKind,
         ocf_flag: bool,
         vcf_count: VcfCount,
-    ) -> Result<UslpPrimaryHeader, Error> {
+    ) -> Result<Self, Error> {
         if frame_len == 0 || frame_len > MAX_FRAME_LEN {
             return Err(Error::out_of_range(
                 field::FRAME_LEN,
@@ -275,9 +271,7 @@ impl UslpPrimaryHeader {
                 len_u64(frame_len),
             ));
         }
-        Ok(UslpPrimaryHeader::new(
-            channel, frame_len, kind, ocf_flag, vcf_count,
-        ))
+        Ok(Self::new(channel, frame_len, kind, ocf_flag, vcf_count))
     }
 
     /// The fields the truncated header shares (732.1 §4.1.2.2–5).
@@ -373,12 +367,12 @@ pub(crate) struct RawStart {
 
 impl RawStart {
     /// Reads the first four octets; `None` if `bytes` is shorter.
-    pub(crate) fn parse(bytes: &[u8]) -> Option<RawStart> {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
         let h = bytes.first_chunk::<TRUNCATED_HEADER_LEN>()?;
         let ids = UslpSpacecraftId::new(layout::Scid::<4>::get_u16(h))
             .zip(UslpVcId::new(layout::Vcid::<4>::get_u8(h)))
             .zip(UslpMapId::new(layout::Map::<4>::get_u8(h)));
-        ids.map(|((spacecraft_id, vc_id), map_id)| RawStart {
+        ids.map(|((spacecraft_id, vc_id), map_id)| Self {
             version: layout::Version::<4>::get_u8(h),
             channel: ChannelFields {
                 spacecraft_id,
@@ -421,9 +415,9 @@ pub(crate) struct RawRest {
 
 impl RawRest {
     /// Reads octets 4–6; `None` if `bytes` is shorter than seven octets.
-    pub(crate) fn parse(bytes: &[u8]) -> Option<RawRest> {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
         let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
-        Some(RawRest {
+        Some(Self {
             frame_len: usize::from(layout::FrameLength::<PRIMARY_HEADER_LEN>::get_u16(h))
                 .saturating_add(1),
             bypass: layout::Bypass::<PRIMARY_HEADER_LEN>::flag(h),

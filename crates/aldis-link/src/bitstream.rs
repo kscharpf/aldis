@@ -54,16 +54,12 @@ impl<P: BitstreamProtocol> BitstreamGeneratorConfig<P> {
     ///
     /// # Errors
     /// `InvalidConfig` (`field_len`) unless the zone holds 1 to 2 047 octets.
-    pub const fn new(
-        vc: P::Vc,
-        field_len: usize,
-        idle_pattern: u8,
-    ) -> Result<BitstreamGeneratorConfig<P>> {
+    pub const fn new(vc: P::Vc, field_len: usize, idle_pattern: u8) -> Result<Self> {
         let zone = field_len.saturating_sub(P::HEADER_LEN);
         if zone == 0 || zone > P::MAX_ZONE_LEN {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FIELD_LEN))
         } else {
-            Ok(BitstreamGeneratorConfig {
+            Ok(Self {
                 vc,
                 field_len,
                 idle_pattern,
@@ -239,8 +235,8 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     ///
     /// Requirements: LNK-021, LNK-002, LNK-003; docs/04-engines.md §2.2.
     #[must_use]
-    pub const fn new(config: BitstreamGeneratorConfig<P>) -> BitstreamGenerator<P, Q> {
-        BitstreamGenerator {
+    pub const fn new(config: BitstreamGeneratorConfig<P>) -> Self {
+        Self {
             head: Self::new_head(config),
             bufs: BitstreamGeneratorBuffers::ZERO,
         }

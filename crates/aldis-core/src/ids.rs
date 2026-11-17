@@ -101,13 +101,13 @@ impl Apid {
     /// Largest APID.
     pub const MAX: u16 = 0x07FF;
     /// APID reserved for Idle Packets: all ones (133.0 §4.1.3.3.4.4).
-    pub const IDLE: Apid = Apid(Apid::MAX);
+    pub const IDLE: Self = Self(Self::MAX);
 
     /// The APID, or `None` if `value` exceeds 11 bits.
     #[must_use]
-    pub const fn new(value: u16) -> Option<Apid> {
-        if value <= Apid::MAX {
-            Some(Apid(value))
+    pub const fn new(value: u16) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -121,9 +121,9 @@ impl Apid {
     /// let _ = Apid::from_const::<2048>();
     /// ```
     #[must_use]
-    pub const fn from_const<const N: u16>() -> Apid {
-        const { assert!(N <= Apid::MAX, "APID constant out of range") };
-        Apid(N)
+    pub const fn from_const<const N: u16>() -> Self {
+        const { assert!(N <= Self::MAX, "APID constant out of range") };
+        Self(N)
     }
 
     /// The numeric value.
@@ -135,21 +135,21 @@ impl Apid {
     /// Whether this is the Idle Packet APID.
     #[must_use]
     pub const fn is_idle(self) -> bool {
-        self.0 == Apid::MAX
+        self.0 == Self::MAX
     }
 }
 
 impl TryFrom<u16> for Apid {
     type Error = Error;
 
-    fn try_from(value: u16) -> Result<Apid> {
-        Apid::new(value)
-            .ok_or_else(|| Error::out_of_range(field::APID, u64::from(Apid::MAX), u64::from(value)))
+    fn try_from(value: u16) -> Result<Self> {
+        Self::new(value)
+            .ok_or_else(|| Error::out_of_range(field::APID, u64::from(Self::MAX), u64::from(value)))
     }
 }
 
 impl From<Apid> for u16 {
-    fn from(id: Apid) -> u16 {
+    fn from(id: Apid) -> Self {
         id.0
     }
 }
@@ -164,9 +164,9 @@ impl SeqCount {
 
     /// The count, or `None` if `value` exceeds 14 bits.
     #[must_use]
-    pub const fn new(value: u16) -> Option<SeqCount> {
-        if value <= SeqCount::MAX {
-            Some(SeqCount(value))
+    pub const fn new(value: u16) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -180,9 +180,9 @@ impl SeqCount {
     /// let _ = SeqCount::from_const::<16384>();
     /// ```
     #[must_use]
-    pub const fn from_const<const N: u16>() -> SeqCount {
-        const { assert!(N <= SeqCount::MAX, "sequence count constant out of range") };
-        SeqCount(N)
+    pub const fn from_const<const N: u16>() -> Self {
+        const { assert!(N <= Self::MAX, "sequence count constant out of range") };
+        Self(N)
     }
 
     /// The numeric value.
@@ -193,13 +193,13 @@ impl SeqCount {
 
     /// The next count, modulo 16384 (133.0 §4.1.3.4.3.4).
     #[must_use]
-    pub const fn next(self) -> SeqCount {
-        SeqCount(self.0.wrapping_add(1) & SeqCount::MAX)
+    pub const fn next(self) -> Self {
+        Self(self.0.wrapping_add(1) & Self::MAX)
     }
 
     /// Classifies `next` as received after `self` modulo 16384 (133.0 §4.1.3.4.3, CMN-031).
     #[must_use]
-    pub const fn classify(self, next: SeqCount) -> Continuity {
+    pub const fn classify(self, next: Self) -> Continuity {
         classify_masked(14, u16_to_u64(self.0), u16_to_u64(next.0))
     }
 }
@@ -207,11 +207,11 @@ impl SeqCount {
 impl TryFrom<u16> for SeqCount {
     type Error = Error;
 
-    fn try_from(value: u16) -> Result<SeqCount> {
-        SeqCount::new(value).ok_or_else(|| {
+    fn try_from(value: u16) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
             Error::out_of_range(
                 field::SEQUENCE_COUNT,
-                u64::from(SeqCount::MAX),
+                u64::from(Self::MAX),
                 u64::from(value),
             )
         })
@@ -219,13 +219,13 @@ impl TryFrom<u16> for SeqCount {
 }
 
 impl From<SeqCount> for u16 {
-    fn from(count: SeqCount) -> u16 {
+    fn from(count: SeqCount) -> Self {
         count.0
     }
 }
 
 impl From<SeqCount> for ModCounter {
-    fn from(count: SeqCount) -> ModCounter {
+    fn from(count: SeqCount) -> Self {
         from_valid(14, u64::from(count.0))
     }
 }
@@ -240,8 +240,8 @@ impl FrameSeqNum {
 
     /// The sequence number (`0..=255` all fit in 8 bits).
     #[must_use]
-    pub const fn new(value: u8) -> FrameSeqNum {
-        FrameSeqNum(value)
+    pub const fn new(value: u8) -> Self {
+        Self(value)
     }
 
     /// The numeric value.
@@ -252,31 +252,31 @@ impl FrameSeqNum {
 
     /// The next number, modulo 256.
     #[must_use]
-    pub const fn next(self) -> FrameSeqNum {
-        FrameSeqNum(self.0.wrapping_add(1))
+    pub const fn next(self) -> Self {
+        Self(self.0.wrapping_add(1))
     }
 
     /// Classifies `next` as received after `self` modulo 256 (CMN-031).
     #[must_use]
-    pub const fn classify(self, next: FrameSeqNum) -> Continuity {
+    pub const fn classify(self, next: Self) -> Continuity {
         classify_masked(8, u8_to_u64(self.0), u8_to_u64(next.0))
     }
 }
 
 impl From<u8> for FrameSeqNum {
-    fn from(value: u8) -> FrameSeqNum {
-        FrameSeqNum(value)
+    fn from(value: u8) -> Self {
+        Self(value)
     }
 }
 
 impl From<FrameSeqNum> for u8 {
-    fn from(seq: FrameSeqNum) -> u8 {
+    fn from(seq: FrameSeqNum) -> Self {
         seq.0
     }
 }
 
 impl From<FrameSeqNum> for ModCounter {
-    fn from(seq: FrameSeqNum) -> ModCounter {
+    fn from(seq: FrameSeqNum) -> Self {
         from_valid(8, u64::from(seq.0))
     }
 }
@@ -290,15 +290,15 @@ impl PacketVersion {
     /// Largest value.
     pub const MAX: u8 = 7;
     /// Version-1 CCSDS Packet (Space Packet), binary `000`.
-    pub const SPACE_PACKET: PacketVersion = PacketVersion(0);
+    pub const SPACE_PACKET: Self = Self(0);
     /// Version-8 CCSDS Packet (Encapsulation Packet), binary `111`.
-    pub const ENCAPSULATION: PacketVersion = PacketVersion(7);
+    pub const ENCAPSULATION: Self = Self(7);
 
     /// The version, or `None` if `value` exceeds 3 bits.
     #[must_use]
-    pub const fn new(value: u8) -> Option<PacketVersion> {
-        if value <= PacketVersion::MAX {
-            Some(PacketVersion(value))
+    pub const fn new(value: u8) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -312,9 +312,9 @@ impl PacketVersion {
     /// let _ = PacketVersion::from_const::<8>();
     /// ```
     #[must_use]
-    pub const fn from_const<const N: u8>() -> PacketVersion {
-        const { assert!(N <= PacketVersion::MAX, "version constant out of range") };
-        PacketVersion(N)
+    pub const fn from_const<const N: u8>() -> Self {
+        const { assert!(N <= Self::MAX, "version constant out of range") };
+        Self(N)
     }
 
     /// The numeric value.
@@ -327,11 +327,11 @@ impl PacketVersion {
 impl TryFrom<u8> for PacketVersion {
     type Error = Error;
 
-    fn try_from(value: u8) -> Result<PacketVersion> {
-        PacketVersion::new(value).ok_or_else(|| {
+    fn try_from(value: u8) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
             Error::out_of_range(
                 field::PACKET_VERSION,
-                u64::from(PacketVersion::MAX),
+                u64::from(Self::MAX),
                 u64::from(value),
             )
         })
@@ -339,7 +339,7 @@ impl TryFrom<u8> for PacketVersion {
 }
 
 impl From<PacketVersion> for u8 {
-    fn from(version: PacketVersion) -> u8 {
+    fn from(version: PacketVersion) -> Self {
         version.0
     }
 }

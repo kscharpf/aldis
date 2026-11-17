@@ -17,8 +17,8 @@ pub struct OidGenerator {
 impl OidGenerator {
     /// The generator in its device start-up state (all-ones seed).
     #[must_use]
-    pub const fn new() -> OidGenerator {
-        OidGenerator { register: u32::MAX }
+    pub const fn new() -> Self {
+        Self { register: u32::MAX }
     }
 
     /// The next bit of the sequence.
@@ -44,8 +44,8 @@ impl OidGenerator {
 }
 
 impl Default for OidGenerator {
-    fn default() -> OidGenerator {
-        OidGenerator::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -66,9 +66,9 @@ impl OidGeneratorGalois {
 
     /// The generator in its device start-up state.
     #[must_use]
-    pub const fn new() -> OidGeneratorGalois {
-        OidGeneratorGalois {
-            register: OidGeneratorGalois::SEED,
+    pub const fn new() -> Self {
+        Self {
+            register: Self::SEED,
         }
     }
 
@@ -77,7 +77,7 @@ impl OidGeneratorGalois {
         let out = self.register & 1;
         self.register >>= 1;
         if out == 1 {
-            self.register ^= OidGeneratorGalois::TAPS;
+            self.register ^= Self::TAPS;
         }
         u8::from(out == 1)
     }
@@ -96,8 +96,8 @@ impl OidGeneratorGalois {
 }
 
 impl Default for OidGeneratorGalois {
-    fn default() -> OidGeneratorGalois {
-        OidGeneratorGalois::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

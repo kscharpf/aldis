@@ -293,8 +293,8 @@ unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
 {
     type Head = PacketExtractorHead<P>;
     type Buffers = PacketExtractorBuffers<NM>;
-    const HEAD_OFFSET: usize = <PacketExtractor<P, NM, ND>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <PacketExtractor<P, NM, ND>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -338,19 +338,19 @@ impl PacketExtractorState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
-            PacketExtractorState::Tm(e) => {
+            Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 pe_run(e, input, data, Ok(TmParams), area)
             }
-            PacketExtractorState::Aos(e) => {
+            Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 pe_run(e, input, data, aos_params(ch), area)
             }
-            PacketExtractorState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -361,9 +361,9 @@ impl PacketExtractorState {
 
     const fn status(&self) -> ExtractorStatus {
         match self {
-            PacketExtractorState::Tm(e) => *e.status(),
-            PacketExtractorState::Aos(e) => *e.status(),
-            PacketExtractorState::Uslp(e) => *e.status(),
+            Self::Tm(e) => *e.status(),
+            Self::Aos(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 }

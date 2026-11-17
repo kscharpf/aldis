@@ -15,8 +15,8 @@ pub struct Duration(u64);
 impl Instant {
     /// The instant `micros` microseconds after the epoch.
     #[must_use]
-    pub const fn from_micros(micros: u64) -> Instant {
-        Instant(micros)
+    pub const fn from_micros(micros: u64) -> Self {
+        Self(micros)
     }
 
     /// Microseconds since the epoch.
@@ -27,39 +27,39 @@ impl Instant {
 
     /// This instant plus `d`, saturating at the largest representable instant.
     #[must_use]
-    pub const fn saturating_add(self, d: Duration) -> Instant {
-        Instant(self.0.saturating_add(d.0))
+    pub const fn saturating_add(self, d: Duration) -> Self {
+        Self(self.0.saturating_add(d.0))
     }
 
     /// Time elapsed since `earlier`; zero if `earlier` is later than `self` (API-003).
     #[must_use]
-    pub const fn duration_since(self, earlier: Instant) -> Duration {
+    pub const fn duration_since(self, earlier: Self) -> Duration {
         Duration(self.0.saturating_sub(earlier.0))
     }
 }
 
 impl Duration {
     /// Zero duration.
-    pub const ZERO: Duration = Duration(0);
+    pub const ZERO: Self = Self(0);
     /// Largest duration.
-    pub const MAX: Duration = Duration(u64::MAX);
+    pub const MAX: Self = Self(u64::MAX);
 
     /// A duration of `micros` microseconds.
     #[must_use]
-    pub const fn from_micros(micros: u64) -> Duration {
-        Duration(micros)
+    pub const fn from_micros(micros: u64) -> Self {
+        Self(micros)
     }
 
     /// A duration of `millis` milliseconds, saturating.
     #[must_use]
-    pub const fn from_millis(millis: u64) -> Duration {
-        Duration(millis.saturating_mul(1_000))
+    pub const fn from_millis(millis: u64) -> Self {
+        Self(millis.saturating_mul(1_000))
     }
 
     /// A duration of `secs` seconds, saturating.
     #[must_use]
-    pub const fn from_secs(secs: u64) -> Duration {
-        Duration(secs.saturating_mul(1_000_000))
+    pub const fn from_secs(secs: u64) -> Self {
+        Self(secs.saturating_mul(1_000_000))
     }
 
     /// The duration in microseconds.
@@ -70,8 +70,8 @@ impl Duration {
 
     /// Sum, saturating.
     #[must_use]
-    pub const fn saturating_add(self, other: Duration) -> Duration {
-        Duration(self.0.saturating_add(other.0))
+    pub const fn saturating_add(self, other: Self) -> Self {
+        Self(self.0.saturating_add(other.0))
     }
 }
 

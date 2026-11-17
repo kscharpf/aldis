@@ -23,7 +23,7 @@ pub enum Val {
     Str(&'static str),
     /// A string under a key ending in `_hex`, decoded.
     Bytes(&'static [u8]),
-    List(&'static [Val]),
+    List(&'static [Self]),
     Obj(Map),
 }
 
@@ -97,8 +97,8 @@ pub enum Fail {
 }
 
 impl From<Error> for Fail {
-    fn from(e: Error) -> Fail {
-        Fail::Api(e)
+    fn from(e: Error) -> Self {
+        Self::Api(e)
     }
 }
 
@@ -118,60 +118,75 @@ pub fn get(map: Map, key: &str) -> Option<Val> {
 impl Val {
     pub const fn num(self) -> Option<u64> {
         match self {
-            Val::Num(n) => Some(n),
-            Val::Null | Val::Bool(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
-                None
-            }
+            Self::Num(n) => Some(n),
+            Self::Null
+            | Self::Bool(_)
+            | Self::Str(_)
+            | Self::Bytes(_)
+            | Self::List(_)
+            | Self::Obj(_) => None,
         }
     }
 
     pub const fn bool(self) -> Option<bool> {
         match self {
-            Val::Bool(b) => Some(b),
-            Val::Null | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
-                None
-            }
+            Self::Bool(b) => Some(b),
+            Self::Null
+            | Self::Num(_)
+            | Self::Str(_)
+            | Self::Bytes(_)
+            | Self::List(_)
+            | Self::Obj(_) => None,
         }
     }
 
     pub const fn str(self) -> Option<&'static str> {
         match self {
-            Val::Str(s) => Some(s),
-            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Bytes(_) | Val::List(_) | Val::Obj(_) => {
-                None
-            }
+            Self::Str(s) => Some(s),
+            Self::Null
+            | Self::Bool(_)
+            | Self::Num(_)
+            | Self::Bytes(_)
+            | Self::List(_)
+            | Self::Obj(_) => None,
         }
     }
 
     /// The octets of a `_hex` value, or of any other string.
     pub const fn bytes(self) -> Option<&'static [u8]> {
         match self {
-            Val::Bytes(b) => Some(b),
-            Val::Str(s) => Some(s.as_bytes()),
-            Val::Null | Val::Bool(_) | Val::Num(_) | Val::List(_) | Val::Obj(_) => None,
+            Self::Bytes(b) => Some(b),
+            Self::Str(s) => Some(s.as_bytes()),
+            Self::Null | Self::Bool(_) | Self::Num(_) | Self::List(_) | Self::Obj(_) => None,
         }
     }
 
-    pub const fn list(self) -> Option<&'static [Val]> {
+    pub const fn list(self) -> Option<&'static [Self]> {
         match self {
-            Val::List(l) => Some(l),
-            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::Obj(_) => {
-                None
-            }
+            Self::List(l) => Some(l),
+            Self::Null
+            | Self::Bool(_)
+            | Self::Num(_)
+            | Self::Str(_)
+            | Self::Bytes(_)
+            | Self::Obj(_) => None,
         }
     }
 
     pub const fn obj(self) -> Option<Map> {
         match self {
-            Val::Obj(m) => Some(m),
-            Val::Null | Val::Bool(_) | Val::Num(_) | Val::Str(_) | Val::Bytes(_) | Val::List(_) => {
-                None
-            }
+            Self::Obj(m) => Some(m),
+            Self::Null
+            | Self::Bool(_)
+            | Self::Num(_)
+            | Self::Str(_)
+            | Self::Bytes(_)
+            | Self::List(_) => None,
         }
     }
 
     pub const fn is_null(self) -> bool {
-        matches!(self, Val::Null)
+        matches!(self, Self::Null)
     }
 }
 
@@ -246,8 +261,8 @@ pub struct Out {
 }
 
 impl Out {
-    pub const fn new(expect: Map) -> Out {
-        Out {
+    pub const fn new(expect: Map) -> Self {
+        Self {
             expect,
             seen: 0,
             ok: true,
@@ -327,10 +342,10 @@ impl Out {
     }
 
     /// A nested object, compared exactly.
-    pub fn obj(&mut self, key: &str, f: impl FnOnce(&mut Out)) {
+    pub fn obj(&mut self, key: &str, f: impl FnOnce(&mut Self)) {
         let ok = match self.take(key).and_then(Val::obj) {
             Some(map) => {
-                let mut inner = Out::new(map);
+                let mut inner = Self::new(map);
                 f(&mut inner);
                 inner.finish()
             }
@@ -397,8 +412,8 @@ pub struct Text {
 }
 
 impl Text {
-    pub const fn new() -> Text {
-        Text {
+    pub const fn new() -> Self {
+        Self {
             buf: [0; 48],
             len: 0,
         }

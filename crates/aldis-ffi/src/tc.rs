@@ -325,8 +325,8 @@ pub struct aldis_tc_content_t {
 
 impl Default for aldis_tc_content_t {
     /// No User Data and no Control Command.
-    fn default() -> aldis_tc_content_t {
-        aldis_tc_content_t {
+    fn default() -> Self {
+        Self {
             user_data: core::ptr::null(),
             user_data_len: 0,
             control: aldis_tc_control_t::default(),
