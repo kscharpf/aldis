@@ -22,6 +22,9 @@ aldis-aos = { path = "../crates/aldis-aos", default-features = false }
 aldis-uslp = { path = "../crates/aldis-uslp", default-features = false }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
+# Reads each member's `[lints]` table for `xtask unsafe-forbid` (VER-055). Already in Cargo.lock
+# without the `display` feature, so no new package.
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 
 # Tooling lint profile (RS-017).
 [lints.rust]

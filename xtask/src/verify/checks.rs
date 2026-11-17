@@ -801,7 +801,8 @@ cargo xtask symbols
 # refapp/ uses Aldis only through the facade and forbids unsafe (APP-100, APP-105).
 cargo xtask refapp-deps
 # Only aldis-ffi may use unsafe code: every other crate forbids it at its roots and lowers
-# the lint nowhere (GEN-070, GEN-071, VER-002).
+# the lint nowhere, and every manifest keeps the workspace table or its own deny or forbid
+# (GEN-070, GEN-071, VER-002).
 cargo xtask unsafe-forbid
 ";
 
