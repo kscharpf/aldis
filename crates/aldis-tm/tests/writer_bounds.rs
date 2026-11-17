@@ -14,9 +14,9 @@
 use aldis_core::ErrorKind;
 use aldis_core::ids::{SpacecraftId, VcId};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FshLen, PacketOffset, PacketPointer, TmFrame,
+    DataFieldContent, DataFieldStatus, FshLen, McFrameCount, PacketOffset, PacketPointer, TmFrame,
     TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan,
-    TmVirtualChannelConfig, encode,
+    TmVirtualChannelConfig, VcFrameCount, encode,
 };
 
 const FRAME: usize = 64;
@@ -39,7 +39,12 @@ fn channel() -> (TmMasterChannelConfig, TmFrameFields) {
         .with_vc(vc)
         .unwrap();
     let pointer = PacketPointer::StartsAt(PacketOffset::new(0).unwrap());
-    let fields = TmFrameFields::new(vcid, 0xA5, 0x5A, DataFieldStatus::Packets(pointer));
+    let fields = TmFrameFields::new(
+        vcid,
+        McFrameCount::new(0xA5),
+        VcFrameCount::new(0x5A),
+        DataFieldStatus::Packets(pointer),
+    );
     (mc, fields)
 }
 

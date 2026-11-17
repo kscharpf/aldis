@@ -395,8 +395,8 @@ fn tm_same(
             rust.scid.get(),
             rust.vcid.get(),
             rust.ocf_flag,
-            rust.mc_frame_count,
-            rust.vc_frame_count
+            rust.mc_frame_count.get(),
+            rust.vc_frame_count.get()
         )
     );
     assert_eq!(

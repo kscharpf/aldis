@@ -6,8 +6,8 @@ use aldis_core::security::SecurityLayout;
 use aldis_core::{CopFrameKind, Error, ErrorKind, Result, field};
 use aldis_tm::TmPhysicalChannelConfig;
 use aldis_tm::{
-    DataFieldContent, FirstHeaderPointer, FshLen, SegmentLengthId, TmPrimaryHeader,
-    TmVirtualChannelConfig,
+    DataFieldContent, FirstHeaderPointer, FshLen, McFrameCount, SegmentLengthId, TmPrimaryHeader,
+    TmVirtualChannelConfig, VcFrameCount,
 };
 
 use super::{Admitted, FrameFields, Fsh, MuxProtocol, VcConfig};
@@ -215,14 +215,12 @@ impl MuxProtocol for Tm {
         vc: Option<&TmVc>,
         f: &FrameFields<Self>,
     ) -> Result<TmPrimaryHeader> {
-        let [.., mc] = f.mc_count.to_be_bytes();
-        let [.., count] = f.vc_count.to_be_bytes();
         Ok(TmPrimaryHeader {
             scid: channel.scid,
             vcid: f.vc,
             ocf_flag: f.ocf,
-            mc_frame_count: mc,
-            vc_frame_count: count,
+            mc_frame_count: McFrameCount::wrapping(f.mc_count),
+            vc_frame_count: VcFrameCount::wrapping(f.vc_count),
             fsh_flag: f.secondary,
             // Synchronization Flag 1 for a `VCA_SDU`; Packet Order Flag 0 and Segment Length
             // Identifier 11 (132.0 §4.1.2.7).

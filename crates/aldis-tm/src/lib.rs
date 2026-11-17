@@ -45,8 +45,8 @@ pub use config::{
 };
 pub use format::TmFormat;
 pub use header::{
-    DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer, SegmentLengthId,
-    TmPrimaryHeader,
+    DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketOffset, PacketPointer,
+    SegmentLengthId, TmPrimaryHeader, VcFrameCount,
 };
 pub use view::{TmFrame, UncheckedTmFrame};
 pub use writer::{

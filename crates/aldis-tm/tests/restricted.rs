@@ -26,9 +26,9 @@ use aldis_tm::MAX_FRAME_LEN;
 use aldis_tm::field;
 use aldis_tm::header::PRIMARY_HEADER_LEN;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, PacketOffset, PacketPointer,
-    SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmVirtualChannelConfig, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketOffset,
+    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
+    TmPhysicalChannelConfig, TmVirtualChannelConfig, VcFrameCount, encode,
 };
 
 /// Failing cases are saved here and replayed first.
@@ -103,7 +103,7 @@ fn round_trip(
     let mut out = vec![0_u8; mc.pc().frame_len()];
     let n = encode(
         mc,
-        &TmFrameFields::new(vcid, 1, 2, status),
+        &TmFrameFields::new(vcid, McFrameCount::new(1), VcFrameCount::new(2), status),
         &content,
         &mut out,
     )?;
@@ -371,7 +371,7 @@ proptest! {
         };
         let data = vec![0_u8; mc.frame_layout(vcid).unwrap().data().len()];
         let mut out = vec![0_u8; pc.frame_len()];
-        let n = encode(&mc, &TmFrameFields::new(vcid, counts.0, counts.1, status), &TmFrameContent::new(&data), &mut out).unwrap();
+        let n = encode(&mc, &TmFrameFields::new(vcid, McFrameCount::new(counts.0), VcFrameCount::new(counts.1), status), &TmFrameContent::new(&data), &mut out).unwrap();
         let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc).unwrap();
         prop_assert_eq!(f.data_field_status(), status);
     }
@@ -394,7 +394,7 @@ proptest! {
         let content = TmFrameContent { secondary_header_data: fsh_data, ..TmFrameContent::new(&zone) };
         let status = DataFieldStatus::Packets(PacketPointer::NoPacketStart);
         let mut out = vec![0_u8; pc.frame_len()];
-        let n = encode(&mc, &TmFrameFields::new(vcid, 0, 0, status), &content, &mut out).unwrap();
+        let n = encode(&mc, &TmFrameFields::new(vcid, McFrameCount::default(), VcFrameCount::default(), status), &content, &mut out).unwrap();
         let f = TmFrame::decode_with(&out[..n], mc.pc(), &mc).unwrap();
         prop_assert_eq!(f.fsh_len(), Some(len));
         prop_assert_eq!(f.secondary_header_data(), Some(fsh_data));
@@ -417,7 +417,7 @@ proptest! {
             .unwrap();
         let data_len = mc.frame_layout(VcId::new(0).unwrap()).unwrap().data().len();
         let raw = if use_offset { offset.get() } else { raw.get() };
-        let fields = TmFrameFields::new(VcId::new(0).unwrap(), 0, 0, DataFieldStatus::Packets(PacketPointer::NoPacketStart));
+        let fields = TmFrameFields::new(VcId::new(0).unwrap(), McFrameCount::default(), VcFrameCount::default(), DataFieldStatus::Packets(PacketPointer::NoPacketStart));
         let data = vec![0_u8; data_len];
         let mut out = vec![0_u8; pc.frame_len()];
         let n = encode(&mc, &fields, &TmFrameContent::new(&data), &mut out).unwrap();
