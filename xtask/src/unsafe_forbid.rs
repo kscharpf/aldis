@@ -5,14 +5,19 @@
 //! member keeps the guarantee of a crate-level `forbid`, which no attribute inside the crate can
 //! lower. This check fails when
 //!
+//! 0. the root `Cargo.toml` cannot be read or parsed, or its `[workspace.lints.rust]` does not set
+//!    `unsafe_code` to `forbid` or `deny` (the table that every `[lints] workspace = true` member
+//!    inherits, so (3) holds only while it does),
+//!
 //! 1. a member other than `aldis-ffi` lacks `#![forbid(unsafe_code)]` at the root of a library or
 //!    binary target (its integration tests, examples, and benches get only the workspace `deny`),
 //!    or
 //! 2. any `allow`, `expect`, or `warn` of `unsafe_code`, also inside `cfg_attr`, appears in the
 //!    Rust source of a member other than `aldis-ffi`, which covers the targets of (1) and the
 //!    files that no `forbid` reaches, or
-//! 3. the manifest of such a member has neither `[lints] workspace = true` nor an `unsafe_code`
-//!    of its own set to `forbid` or `deny` in `[lints.rust]`, or cannot be parsed: rustc's default
+//! 3. the manifest of such a member has neither `[lints] workspace = true` (which (0) backs) nor
+//!    an `unsafe_code` of its own set to `forbid` or `deny` in `[lints.rust]`, or cannot be
+//!    parsed: rustc's default
 //!    level is `allow`, so without the table the targets that (1) does not reach (integration
 //!    tests, examples, benches, build scripts) would compile `unsafe` code unflagged.
 //!
@@ -181,8 +186,17 @@ fn source_problems(pkg: &Value) -> Result<Vec<String>, String> {
     Ok(problems)
 }
 
+/// The level that the lint table `rust` (a `[lints.rust]` or `[workspace.lints.rust]`) gives
+/// `unsafe_code`, in the string form or the `{ level = … }` form.
+fn unsafe_level(rust: Option<&toml_edit::Item>) -> Option<&str> {
+    rust?
+        .get(LINT)
+        .and_then(|u| u.as_str().or_else(|| u.get("level")?.as_str()))
+}
+
 /// The way the manifest text `manifest` of the member `name` fails to keep `unsafe_code` at
-/// `deny` or `forbid` for every target, if it does (GEN-070, VER-002).
+/// `deny` or `forbid` for every target, if it does (GEN-070, VER-002). A member that inherits the
+/// workspace table passes here; `workspace_problem` checks that table.
 fn manifest_problem(name: &str, manifest: &str) -> Option<String> {
     let doc = match manifest.parse::<DocumentMut>() {
         Ok(doc) => doc,
@@ -196,11 +210,7 @@ fn manifest_problem(name: &str, manifest: &str) -> Option<String> {
     {
         return None;
     }
-    let level = lints
-        .and_then(|l| l.get("rust"))
-        .and_then(|r| r.get(LINT))
-        .and_then(|u| u.as_str().or_else(|| u.get("level")?.as_str()));
-    match level {
+    match unsafe_level(lints.and_then(|l| l.get("rust"))) {
         Some("forbid" | "deny") => None,
         Some(other) => Some(format!(
             "GEN-070 {name}: [lints.rust] sets {LINT} = \"{other}\"; use forbid or deny"
@@ -209,6 +219,42 @@ fn manifest_problem(name: &str, manifest: &str) -> Option<String> {
             "GEN-070 {name}: Cargo.toml has neither [lints] workspace = true nor {LINT} in \
              [lints.rust]"
         )),
+    }
+}
+
+/// The way the root manifest text `manifest` fails to set `unsafe_code` to `deny` or `forbid` in
+/// `[workspace.lints.rust]`, the table every member with `[lints] workspace = true` inherits, if
+/// it does (GEN-070, VER-002).
+fn workspace_problem(manifest: &str) -> Option<String> {
+    let doc = match manifest.parse::<DocumentMut>() {
+        Ok(doc) => doc,
+        Err(e) => return Some(format!("GEN-070 workspace: Cargo.toml does not parse: {e}")),
+    };
+    let rust = doc
+        .get("workspace")
+        .and_then(|w| w.get("lints"))
+        .and_then(|l| l.get("rust"));
+    match unsafe_level(rust) {
+        Some("forbid" | "deny") => None,
+        Some(other) => Some(format!(
+            "GEN-070 workspace: [workspace.lints.rust] sets {LINT} = \"{other}\"; use forbid or \
+             deny"
+        )),
+        None => Some(format!(
+            "GEN-070 workspace: Cargo.toml sets no {LINT} in [workspace.lints.rust]"
+        )),
+    }
+}
+
+/// Problems with the workspace lint table in `root/Cargo.toml` (GEN-070, VER-002).
+fn workspace_lint_problems(root: &Path) -> Vec<String> {
+    let path = root.join("Cargo.toml");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => workspace_problem(&text).into_iter().collect(),
+        Err(e) => vec![format!(
+            "GEN-070 workspace: cannot read {}: {e}",
+            path.display()
+        )],
     }
 }
 
@@ -247,7 +293,10 @@ pub fn check() -> Result<usize, String> {
         .flatten()
         .filter(|p| p["name"].as_str() != Some(FFI))
         .collect();
-    let mut problems = Vec::new();
+    let root = meta["workspace_root"]
+        .as_str()
+        .map_or_else(repo::root, std::path::PathBuf::from);
+    let mut problems = workspace_lint_problems(&root);
     for p in &packages {
         problems.extend(lint_problems(p));
         problems.extend(root_problems(p));
@@ -266,7 +315,10 @@ pub fn check() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{forbids_unsafe, lint_problems, manifest_problem, root_problems, weakening_lines};
+    use super::{
+        forbids_unsafe, lint_problems, manifest_problem, root_problems, weakening_lines,
+        workspace_lint_problems, workspace_problem,
+    };
     use serde_json::json;
 
     /// An inner attribute `#![<level>(unsafe_code)]`, assembled here so that this file holds no
@@ -400,6 +452,61 @@ fn f() {{}}
         assert_eq!(lint_problems(&pkg), Vec::<String>::new());
         std::fs::write(&path, "[lints.rust]\nunsafe_code = \"allow\"\n").unwrap();
         assert_eq!(lint_problems(&pkg).len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_workspace_table_that_lowers_the_lint_fails() {
+        // req: GEN-070, VER-002
+        let lint = super::LINT;
+        let head = "[workspace]\nmembers = []\n";
+        for ok in [
+            format!("{head}\n[workspace.lints.rust]\n{lint} = \"deny\"\n"),
+            format!("{head}\n[workspace.lints.rust]\n{lint} = \"forbid\"\n"),
+            format!(
+                "{head}\n[workspace.lints.rust]\n{lint} = {{ level = \"deny\", priority = 1 }}\n"
+            ),
+        ] {
+            assert_eq!(workspace_problem(&ok), None, "{ok}");
+        }
+        let allow = workspace_problem(&format!(
+            "{head}\n[workspace.lints.rust]\n{lint} = \"allow\"\n"
+        ))
+        .unwrap();
+        assert!(allow.starts_with("GEN-070 workspace: "), "{allow}");
+        for bad in [
+            head.to_owned(),
+            format!("{head}\n[workspace.lints.rust]\nmissing_docs = \"deny\"\n"),
+            format!("{head}\n[workspace.lints.clippy]\n{lint} = \"deny\"\n"),
+            format!("{head}\n[workspace.lints.rust]\n{lint} = {{ level = \"warn\" }}\n"),
+        ] {
+            assert!(workspace_problem(&bad).is_some(), "{bad}");
+        }
+        let unparsable = workspace_problem("[workspace\n").unwrap();
+        assert!(unparsable.contains("does not parse"), "{unparsable}");
+    }
+
+    #[test]
+    fn a_root_manifest_that_cannot_be_read_fails() {
+        // req: GEN-070, VER-002
+        assert_eq!(
+            workspace_lint_problems(std::path::Path::new("/nonexistent")).len(),
+            1
+        );
+        let dir = std::env::temp_dir().join(format!("xtask-unsafe-root-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace.lints.rust]\nunsafe_code = \"deny\"\n",
+        )
+        .unwrap();
+        assert_eq!(workspace_lint_problems(&dir), Vec::<String>::new());
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace.lints.rust]\nunsafe_code = \"allow\"\n",
+        )
+        .unwrap();
+        assert_eq!(workspace_lint_problems(&dir).len(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
