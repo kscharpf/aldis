@@ -37,7 +37,7 @@ The Clippy `nursery` group holds lints that are still under development and may 
 | `redundant_pub_crate` | Not adopted | Conflicts with `unreachable_pub`: in a private module it asks for `pub`, which `unreachable_pub` then reports. |
 | `or_fun_call` | Not adopted | The arguments it flags are `const fn` error constructors with no side effects that return a small `Copy` value (RS-011). Eager construction costs nothing, and a closure adds a coverage region (VER-024). |
 | `option_if_let_else` | Not adopted | The suggested `map_or_else` takes closures, which a `const fn` cannot call, so it conflicts with `missing_const_for_fn`. Elsewhere it does not improve readability. |
-| `use_self` | Deferred | Style only. The code mostly names the type rather than writing `Self`. Adopting it is a separate, mechanical change. |
+| `use_self` | Denied | A type named `Self` inside its own `impl` does not change when the type is renamed, moved, or gains a parameter. Adoption was checked on 1,563 findings in 129 files of the main workspace (every one machine-applicable, none in a macro expansion), fixed with `cargo clippy --fix`; the one finding in a generated file, the UPID table, was fixed in its generator (`xtask/src/sana.rs`). |
 | `suspicious_operation_groupings` | Not adopted | False positives on contiguous interval validation chains. |
 | `trailing_empty_array` | Not adopted | Flags zero-sized C ABI storage handle types (`aldis_oid_generator_t`). |
 | `useless_let_if_seq` | Not adopted | Flags multi-stage conditional state machine parsing in `aldis-spp`. |

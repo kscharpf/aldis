@@ -236,8 +236,8 @@ pub struct aldis_tm_content_t {
 
 impl Default for aldis_tm_content_t {
     /// Every buffer empty and `NULL`.
-    fn default() -> aldis_tm_content_t {
-        aldis_tm_content_t {
+    fn default() -> Self {
+        Self {
             fsh_data: core::ptr::null(),
             fsh_data_len: 0,
             security_header: core::ptr::null(),

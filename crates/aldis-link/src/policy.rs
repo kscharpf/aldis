@@ -34,7 +34,7 @@ impl Weight {
     /// A weight of 1: one selection per cycle, the weight of round robin.
     ///
     /// Requirements: LNK-031; docs/04-engines.md §2.4.
-    pub const ONE: Weight = Weight(1);
+    pub const ONE: Self = Self(1);
 
     /// The weight `n`.
     ///
@@ -42,11 +42,11 @@ impl Weight {
     /// `InvalidConfig` (`vc_weight`) for 0: a VC with no selection per cycle is never served.
     ///
     /// Requirements: LNK-031; docs/04-engines.md §2.4.
-    pub const fn new(n: u16) -> Result<Weight> {
+    pub const fn new(n: u16) -> Result<Self> {
         if n == 0 {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_WEIGHT))
         } else {
-            Ok(Weight(n))
+            Ok(Self(n))
         }
     }
 
@@ -76,8 +76,8 @@ impl Selector {
     ///
     /// Requirements: LNK-031; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn new() -> Selector {
-        Selector {
+    pub const fn new() -> Self {
+        Self {
             last: None,
             left: 0,
         }

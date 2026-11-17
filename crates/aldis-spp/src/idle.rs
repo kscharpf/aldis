@@ -31,7 +31,7 @@ impl<'p> IdlePacket<'p> {
     ///
     /// # Errors
     /// `OutOfRange` (`packet_len`) below 7 octets or above `config`'s maximum (SPP-006).
-    pub fn new(config: &SppConfig, total_len: usize) -> Result<IdlePacket<'p>> {
+    pub fn new(config: &SppConfig, total_len: usize) -> Result<Self> {
         if total_len < MIN_PACKET_LEN {
             return Err(Error::out_of_range(
                 field::PACKET_LEN,
@@ -49,7 +49,7 @@ impl<'p> IdlePacket<'p> {
 
     /// The same packet with Packet Sequence Count `count` (133.0 §4.1.3.4.3; SPP-010, SPP-011).
     #[must_use]
-    pub const fn with_sequence_count(self, count: SeqCount) -> IdlePacket<'p> {
+    pub const fn with_sequence_count(self, count: SeqCount) -> Self {
         IdlePacket {
             sequence_count: count,
             ..self
@@ -59,7 +59,7 @@ impl<'p> IdlePacket<'p> {
     /// The same packet with Idle Data repeating `pattern`; an empty pattern means the default
     /// `0x00` (133.0 §4.1.4.3.4, SPP-010).
     #[must_use]
-    pub const fn with_pattern(self, pattern: &'p [u8]) -> IdlePacket<'p> {
+    pub const fn with_pattern(self, pattern: &'p [u8]) -> Self {
         IdlePacket {
             pattern: if pattern.is_empty() {
                 DEFAULT_PATTERN

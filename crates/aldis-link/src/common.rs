@@ -34,8 +34,8 @@ pub struct Counter(u64);
 impl Counter {
     /// A counter at 0 (LNK-002).
     #[must_use]
-    pub const fn new() -> Counter {
-        Counter(0)
+    pub const fn new() -> Self {
+        Self(0)
     }
 
     /// The count (LNK-002).
@@ -66,8 +66,8 @@ pub struct Occupancy {
 impl Occupancy {
     /// An empty store whose high-water mark is 0 (LNK-002).
     #[must_use]
-    pub const fn new() -> Occupancy {
-        Occupancy {
+    pub const fn new() -> Self {
+        Self {
             current: 0,
             high_water: 0,
         }
@@ -124,21 +124,21 @@ impl ValidPvns {
     /// Space Packets only.
     ///
     /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
-    pub const SPACE: ValidPvns = ValidPvns {
+    pub const SPACE: Self = Self {
         space: true,
         encapsulation: false,
     };
     /// Encapsulation Packets only.
     ///
     /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
-    pub const ENCAPSULATION: ValidPvns = ValidPvns {
+    pub const ENCAPSULATION: Self = Self {
         space: false,
         encapsulation: true,
     };
     /// Space Packets and Encapsulation Packets.
     ///
     /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
-    pub const BOTH: ValidPvns = ValidPvns {
+    pub const BOTH: Self = Self {
         space: true,
         encapsulation: true,
     };
@@ -148,9 +148,9 @@ impl ValidPvns {
     ///
     /// # Errors
     /// `InvalidConfig` (`valid_pvns`) if neither is set (LNK-078).
-    pub const fn new(space: bool, encapsulation: bool) -> Result<ValidPvns> {
+    pub const fn new(space: bool, encapsulation: bool) -> Result<Self> {
         if space || encapsulation {
-            Ok(ValidPvns {
+            Ok(Self {
                 space,
                 encapsulation,
             })
@@ -164,7 +164,7 @@ impl ValidPvns {
     /// # Errors
     /// `InvalidConfig` (`valid_pvns`) for an empty list or a version other than 0 and 7: the
     /// engines delimit only these two packets (133.0 §4.1.3.5, 133.1 §4.1.2.8).
-    pub fn from_versions(versions: &[u8]) -> Result<ValidPvns> {
+    pub fn from_versions(versions: &[u8]) -> Result<Self> {
         let mut space = false;
         let mut encapsulation = false;
         for &v in versions {
@@ -174,7 +174,7 @@ impl ValidPvns {
                 _ => return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VALID_PVNS)),
             }
         }
-        ValidPvns::new(space, encapsulation)
+        Self::new(space, encapsulation)
     }
 
     /// Whether Space Packets are valid.
@@ -218,8 +218,8 @@ impl IdlePacketKind {
     #[must_use]
     pub const fn is_valid_in(self, pvns: ValidPvns) -> bool {
         match self {
-            IdlePacketKind::SpacePacket => pvns.space,
-            IdlePacketKind::Encapsulation => pvns.encapsulation,
+            Self::SpacePacket => pvns.space,
+            Self::Encapsulation => pvns.encapsulation,
         }
     }
 }

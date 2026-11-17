@@ -42,8 +42,8 @@ impl AosChannel {
     ///
     /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(physical: AosPhysicalChannelConfig) -> AosChannel {
-        AosChannel { physical }
+    pub const fn new(physical: AosPhysicalChannelConfig) -> Self {
+        Self { physical }
     }
 
     /// The managed parameters of the physical channel.
@@ -99,8 +99,8 @@ impl AosVc {
     ///
     /// Requirements: LNK-050…LNK-054, LNK-077; 732.0 §4.3.3–§4.3.7; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(content: AosContent, ocf: bool) -> AosVc {
-        AosVc { content, ocf }
+    pub const fn new(content: AosContent, ocf: bool) -> Self {
+        Self { content, ocf }
     }
 
     /// What the VC carries.
@@ -149,13 +149,13 @@ impl ReceiveProtocol for Aos {
     }
 
     fn receive<const V: usize>(
-        cx: &mut FrameContext<'_, Aos, V>,
+        cx: &mut FrameContext<'_, Self, V>,
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         let frame = Self::plain_octets(plain);
         let h = header::<PRIMARY_HEADER_LEN>(frame)?;
         let [_, _, c0, c1, c2, _] = h;
-        let vc: VcId<6> = vc_of::<Aos>(layout::Vcid::get_u8(&h))?;
+        let vc: VcId<6> = vc_of::<Self>(layout::Vcid::get_u8(&h))?;
         let replay = layout::Replay::flag(&h);
         let cycle_use = layout::CycleUse::flag(&h);
         let oid = vc.get() == OID_VC;

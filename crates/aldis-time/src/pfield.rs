@@ -37,16 +37,16 @@ pub enum TimeCodeId {
 impl TimeCodeId {
     /// The identification in bits 1–3 of `octet` (301.0 §3.1.1, TIME-001).
     #[must_use]
-    pub const fn from_octet(octet: u8) -> TimeCodeId {
+    pub const fn from_octet(octet: u8) -> Self {
         match (octet >> 4) & 0b111 {
-            0b001 => TimeCodeId::CucLevel1,
-            0b010 => TimeCodeId::CucLevel2,
-            0b100 => TimeCodeId::Cds,
-            0b101 => TimeCodeId::Ccs,
-            0b110 => TimeCodeId::Agency,
-            0b000 => TimeCodeId::Reserved000,
-            0b011 => TimeCodeId::Reserved011,
-            _ => TimeCodeId::Reserved111,
+            0b001 => Self::CucLevel1,
+            0b010 => Self::CucLevel2,
+            0b100 => Self::Cds,
+            0b101 => Self::Ccs,
+            0b110 => Self::Agency,
+            0b000 => Self::Reserved000,
+            0b011 => Self::Reserved011,
+            _ => Self::Reserved111,
         }
     }
 
@@ -55,7 +55,7 @@ impl TimeCodeId {
     pub const fn is_reserved(self) -> bool {
         matches!(
             self,
-            TimeCodeId::Reserved000 | TimeCodeId::Reserved011 | TimeCodeId::Reserved111
+            Self::Reserved000 | Self::Reserved011 | Self::Reserved111
         )
     }
 
@@ -63,14 +63,14 @@ impl TimeCodeId {
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
-            TimeCodeId::CucLevel1 => 0b001,
-            TimeCodeId::CucLevel2 => 0b010,
-            TimeCodeId::Cds => 0b100,
-            TimeCodeId::Ccs => 0b101,
-            TimeCodeId::Agency => 0b110,
-            TimeCodeId::Reserved000 => 0b000,
-            TimeCodeId::Reserved011 => 0b011,
-            TimeCodeId::Reserved111 => 0b111,
+            Self::CucLevel1 => 0b001,
+            Self::CucLevel2 => 0b010,
+            Self::Cds => 0b100,
+            Self::Ccs => 0b101,
+            Self::Agency => 0b110,
+            Self::Reserved000 => 0b000,
+            Self::Reserved011 => 0b011,
+            Self::Reserved111 => 0b111,
         }
     }
 }
@@ -91,7 +91,7 @@ impl PField {
     /// # Errors
     /// - `Incomplete` (`needed` = octets required so far) if `bytes` ends inside the chain.
     /// - `Malformed` if the chain is longer than [`MAX_PFIELD_LEN`] octets (TIME-005).
-    pub fn parse(bytes: &[u8]) -> Result<PField> {
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
         let Some((&first, tail)) = bytes.split_first() else {
             return Err(Error::incomplete(1));
         };
@@ -107,7 +107,7 @@ impl PField {
             more = octet & EXTENSION != 0;
         }
         if !more {
-            return Ok(PField {
+            return Ok(Self {
                 first,
                 rest,
                 rest_len,
@@ -167,7 +167,7 @@ impl PField {
 
     /// Builds a P-field from octet 1, defined extension octets, and an undefined tail; sets
     /// every extension flag from the chain (encoder side).
-    pub(crate) fn build(first: u8, defined: &[u8], tail: PFieldTail) -> PField {
+    pub(crate) fn build(first: u8, defined: &[u8], tail: PFieldTail) -> Self {
         let mut rest = [0_u8; MAX_PFIELD_LEN - 1];
         let mut rest_len: u8 = 0;
         for (slot, &octet) in rest.iter_mut().zip(defined.iter().chain(tail.as_bytes())) {
@@ -188,7 +188,7 @@ impl PField {
         } else {
             first & !EXTENSION
         };
-        PField {
+        Self {
             first,
             rest,
             rest_len,
@@ -207,7 +207,7 @@ pub struct PFieldTail {
 
 impl PFieldTail {
     /// No undefined octets (301.0 §3.1.1, TIME-005).
-    pub const EMPTY: PFieldTail = PFieldTail {
+    pub const EMPTY: Self = Self {
         octets: [0; MAX_PFIELD_LEN - 1],
         len: 0,
     };
@@ -217,12 +217,12 @@ impl PFieldTail {
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if there are more than 7 octets, or the extension flags do
     /// not form a chain: set on every octet but the last, clear on the last.
-    pub fn new(octets: &[u8]) -> Result<PFieldTail> {
+    pub fn new(octets: &[u8]) -> Result<Self> {
         let invalid = Error::new(ErrorKind::InvalidField).with_field(field::PFIELD_TAIL);
         if octets.len() >= MAX_PFIELD_LEN {
             return Err(invalid);
         }
-        let mut tail = PFieldTail::EMPTY;
+        let mut tail = Self::EMPTY;
         let n = octets.len();
         for (i, (slot, &octet)) in tail.octets.iter_mut().zip(octets).enumerate() {
             let last = i.wrapping_add(1) == n;
@@ -236,8 +236,8 @@ impl PFieldTail {
     }
 
     /// A tail copied from octets already known to form a chain (decoder side).
-    pub(crate) fn from_chain(octets: &[u8]) -> PFieldTail {
-        let mut tail = PFieldTail::EMPTY;
+    pub(crate) fn from_chain(octets: &[u8]) -> Self {
+        let mut tail = Self::EMPTY;
         for (slot, &octet) in tail.octets.iter_mut().zip(octets) {
             *slot = octet;
             tail.len = tail.len.wrapping_add(1);
@@ -273,17 +273,17 @@ pub struct ReservedPField(PField);
 impl ReservedPField {
     /// `pfield` if its time code ID is reserved, else `None` (301.0 §3.1.1, TIME-002).
     #[must_use]
-    pub const fn new(pfield: PField) -> Option<ReservedPField> {
+    pub const fn new(pfield: PField) -> Option<Self> {
         if pfield.id().is_reserved() {
-            Some(ReservedPField(pfield))
+            Some(Self(pfield))
         } else {
             None
         }
     }
 
     /// Wraps a P-field the caller has already found to have a reserved ID (decoder side).
-    pub(crate) const fn from_reserved(pfield: PField) -> ReservedPField {
-        ReservedPField(pfield)
+    pub(crate) const fn from_reserved(pfield: PField) -> Self {
+        Self(pfield)
     }
 
     /// The P-field (301.0 §3.1.1, TIME-002).
@@ -294,7 +294,7 @@ impl ReservedPField {
 }
 
 impl From<ReservedPField> for PField {
-    fn from(reserved: ReservedPField) -> PField {
+    fn from(reserved: ReservedPField) -> Self {
         reserved.0
     }
 }

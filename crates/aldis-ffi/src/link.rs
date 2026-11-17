@@ -177,8 +177,8 @@ pub struct aldis_link_occupancy_t {
 }
 
 impl From<Occupancy> for aldis_link_occupancy_t {
-    fn from(o: Occupancy) -> aldis_link_occupancy_t {
-        aldis_link_occupancy_t {
+    fn from(o: Occupancy) -> Self {
+        Self {
             current: o.current(),
             high_water: o.high_water(),
         }
@@ -197,8 +197,8 @@ pub(crate) struct RouteFields {
 }
 
 impl From<Option<Route>> for RouteFields {
-    fn from(route: Option<Route>) -> RouteFields {
-        route.map_or_else(RouteFields::default, |r| RouteFields {
+    fn from(route: Option<Route>) -> Self {
+        route.map_or_else(Self::default, |r| Self {
             present: 1,
             map_id: r.map.get(),
             qos: qos_code(r.qos),

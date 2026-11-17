@@ -51,17 +51,17 @@ pub enum Reason {
 
 impl Reason {
     /// Every reason, in code order.
-    pub const ALL: [Reason; 10] = [
-        Reason::UnexpectedVersion,
-        Reason::UnexpectedSpacecraft,
-        Reason::ReservedFlags,
-        Reason::ReservedSpare,
-        Reason::InvalidVcid,
-        Reason::FrameTooLong,
-        Reason::FrameTooShort,
-        Reason::LengthMismatch,
-        Reason::FecfMismatch,
-        Reason::ReservedControlCommand,
+    pub const ALL: [Self; 10] = [
+        Self::UnexpectedVersion,
+        Self::UnexpectedSpacecraft,
+        Self::ReservedFlags,
+        Self::ReservedSpare,
+        Self::InvalidVcid,
+        Self::FrameTooLong,
+        Self::FrameTooShort,
+        Self::LengthMismatch,
+        Self::FecfMismatch,
+        Self::ReservedControlCommand,
     ];
 
     /// The stable numeric code, 1–9 and 11 (`docs/standards/tc-frame.md` §4; M2 plan D14). Code
@@ -71,23 +71,23 @@ impl Reason {
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
-            Reason::UnexpectedVersion => 1,
-            Reason::UnexpectedSpacecraft => 2,
-            Reason::ReservedFlags => 3,
-            Reason::ReservedSpare => 4,
-            Reason::InvalidVcid => 5,
-            Reason::FrameTooLong => 6,
-            Reason::FrameTooShort => 7,
-            Reason::LengthMismatch => 8,
-            Reason::FecfMismatch => 9,
-            Reason::ReservedControlCommand => 11,
+            Self::UnexpectedVersion => 1,
+            Self::UnexpectedSpacecraft => 2,
+            Self::ReservedFlags => 3,
+            Self::ReservedSpare => 4,
+            Self::InvalidVcid => 5,
+            Self::FrameTooLong => 6,
+            Self::FrameTooShort => 7,
+            Self::LengthMismatch => 8,
+            Self::FecfMismatch => 9,
+            Self::ReservedControlCommand => 11,
         }
     }
 
     /// The reason with numeric code `code`, or `None` (M2 plan D14).
     #[must_use]
-    pub fn from_code(code: u8) -> Option<Reason> {
-        Reason::ALL.into_iter().find(|r| r.code() == code)
+    pub fn from_code(code: u8) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.code() == code)
     }
 }
 
@@ -146,7 +146,7 @@ impl<'a> CheckBytes<'a> for TcFrame<'a> {
         bytes: &'a [u8],
         channels: &L,
         mode: DecodeMode,
-    ) -> Result<(TcFrame<'a>, AnomalySet<TcAnomaly>, Self::Matched), Rejection<Reason>>
+    ) -> Result<(Self, AnomalySet<TcAnomaly>, Self::Matched), Rejection<Reason>>
     where
         L: ChannelLookup<TcSpacecraftId, TcVcId, Vc = VcConfig>
             + MapLookup<TcSpacecraftId, TcVcId, TcMapId, Map = MapConfig>

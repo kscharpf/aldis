@@ -47,7 +47,7 @@ impl<'s> Segmenter<'s> {
         apid: Apid,
         sdu: &'s [u8],
         max_user_len: usize,
-    ) -> Result<Segmenter<'s>> {
+    ) -> Result<Self> {
         if sdu.is_empty() {
             return Err(invalid(field::SDU).with_detail(ErrorDetail::Expected {
                 expected: 1,
@@ -269,7 +269,7 @@ impl<'b> Reassembler<'b> {
     /// A reassembler for `apid` that assembles SDUs of up to `buf.len()` octets (133.0 §4.1.3.4.2,
     /// SPP-013).
     #[must_use]
-    pub const fn new(apid: Apid, buf: &'b mut [u8]) -> Reassembler<'b> {
+    pub const fn new(apid: Apid, buf: &'b mut [u8]) -> Self {
         Reassembler {
             apid,
             buf,
@@ -437,8 +437,8 @@ pub struct ReassemblerState {
 impl ReassemblerState {
     /// The state of a new reassembler for `apid`, as [`Reassembler::new`] starts (SPP-013).
     #[must_use]
-    pub const fn new(apid: Apid) -> ReassemblerState {
-        ReassemblerState {
+    pub const fn new(apid: Apid) -> Self {
+        Self {
             apid,
             filled: 0,
             assembling: false,

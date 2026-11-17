@@ -36,10 +36,10 @@ impl RandomizerSequence {
     ///
     /// # Errors
     /// `InvalidConfig` naming `randomizer_sequence` for any other value (SYNC-020).
-    pub const fn from_period(bits: u32) -> Result<RandomizerSequence> {
+    pub const fn from_period(bits: u32) -> Result<Self> {
         match bits {
-            131_071 => Ok(RandomizerSequence::Period131071),
-            255 => Ok(RandomizerSequence::Period255),
+            131_071 => Ok(Self::Period131071),
+            255 => Ok(Self::Period255),
             _ => Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RANDOMIZER_SEQUENCE)),
         }
     }
@@ -48,16 +48,16 @@ impl RandomizerSequence {
     #[must_use]
     pub const fn period(self) -> u32 {
         match self {
-            RandomizerSequence::Period131071 => 131_071,
-            RandomizerSequence::Period255 => 255,
+            Self::Period131071 => 131_071,
+            Self::Period255 => 255,
         }
     }
 
     /// The register at the start of a unit: bit 0 is the oldest bit, the next to leave.
     const fn seed(self) -> u32 {
         match self {
-            RandomizerSequence::Period131071 => SEED_131071,
-            RandomizerSequence::Period255 => SEED_255,
+            Self::Period131071 => SEED_131071,
+            Self::Period255 => SEED_255,
         }
     }
 
@@ -68,16 +68,16 @@ impl RandomizerSequence {
     /// b(n) = b(n−1) ⊕ b(n−3) ⊕ b(n−5) ⊕ b(n−8).
     const fn feedback(self, reg: u32) -> u32 {
         match self {
-            RandomizerSequence::Period131071 => (reg ^ (reg >> 14)) & 1,
-            RandomizerSequence::Period255 => (reg ^ (reg >> 3) ^ (reg >> 5) ^ (reg >> 7)) & 1,
+            Self::Period131071 => (reg ^ (reg >> 14)) & 1,
+            Self::Period255 => (reg ^ (reg >> 3) ^ (reg >> 5) ^ (reg >> 7)) & 1,
         }
     }
 
     /// The width of the register in bits.
     const fn width(self) -> u32 {
         match self {
-            RandomizerSequence::Period131071 => 17,
-            RandomizerSequence::Period255 => 8,
+            Self::Period131071 => 17,
+            Self::Period255 => 8,
         }
     }
 }

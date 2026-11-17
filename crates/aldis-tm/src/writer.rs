@@ -42,8 +42,8 @@ impl TmFrameFields {
         mc_frame_count: u8,
         vc_frame_count: u8,
         status: DataFieldStatus,
-    ) -> TmFrameFields {
-        TmFrameFields {
+    ) -> Self {
+        Self {
             vcid,
             mc_frame_count,
             vc_frame_count,
@@ -72,7 +72,7 @@ pub struct TmFrameContent<'d> {
 impl<'d> TmFrameContent<'d> {
     /// A frame holding `data` and no other variable field.
     #[must_use]
-    pub const fn new(data: &'d [u8]) -> TmFrameContent<'d> {
+    pub const fn new(data: &'d [u8]) -> Self {
         TmFrameContent {
             secondary_header_data: &[],
             security_header: &[],
@@ -92,7 +92,7 @@ struct Plan {
 
 impl Plan {
     /// Checks `fields` against `mc` and derives the header (TM-009, TM-011).
-    fn new(mc: &TmMasterChannelConfig, fields: &TmFrameFields) -> Result<Plan> {
+    fn new(mc: &TmMasterChannelConfig, fields: &TmFrameFields) -> Result<Self> {
         let entry = mc
             .entry(fields.vcid)
             .ok_or(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))?;
@@ -137,7 +137,7 @@ impl Plan {
             } => (packet_order_flag, segment_length_id, first_header_pointer),
         };
         let fsh = mc.fsh_of(vc);
-        Ok(Plan {
+        Ok(Self {
             header: TmPrimaryHeader {
                 scid: mc.scid(),
                 vcid: fields.vcid,

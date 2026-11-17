@@ -392,8 +392,8 @@ impl Anomaly for Flag {
         self.0
     }
 
-    fn from_bit(bit: u8) -> Option<Flag> {
-        (bit < CAPACITY).then_some(Flag(bit))
+    fn from_bit(bit: u8) -> Option<Self> {
+        (bit < CAPACITY).then_some(Self(bit))
     }
 }
 

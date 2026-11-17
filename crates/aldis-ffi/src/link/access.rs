@@ -233,8 +233,8 @@ fn ag_config<P: AccessProtocol>(
 unsafe impl<P: AccessProtocol, const NQ: usize> InPlace for AccessGenerator<P, NQ> {
     type Head = AccessGeneratorHead<P>;
     type Buffers = AccessGeneratorBuffers<NQ>;
-    const HEAD_OFFSET: usize = <AccessGenerator<P, NQ>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <AccessGenerator<P, NQ>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -277,15 +277,15 @@ impl AccessGeneratorState {
     ) -> Result<AccessActions> {
         let ch = &input.config.channel;
         match self {
-            AccessGeneratorState::Tm(e) => {
+            Self::Tm(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)?;
                 ag_run(e, input, data, Ok(()), area)
             }
-            AccessGeneratorState::Aos(e) => {
+            Self::Aos(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)?;
                 ag_run(e, input, data, Ok(()), area)
             }
-            AccessGeneratorState::Uslp(e) => {
+            Self::Uslp(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)?;
                 ag_run(e, input, data, uslp_params(ch), area)
             }
@@ -294,9 +294,9 @@ impl AccessGeneratorState {
 
     fn status(&self) -> aldis_access_generator_status_t {
         let s = match self {
-            AccessGeneratorState::Tm(e) => *e.status(),
-            AccessGeneratorState::Aos(e) => *e.status(),
-            AccessGeneratorState::Uslp(e) => *e.status(),
+            Self::Tm(e) => *e.status(),
+            Self::Aos(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         };
         aldis_access_generator_status_t {
             sdus_in: s.sdus_in.get(),

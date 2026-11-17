@@ -184,12 +184,12 @@ enum Advance {
 
 impl Phase {
     /// The empty window of a search that has just begun (SYNC-007).
-    const START: Phase = Phase::Searching { window: 0, read: 0 };
+    const START: Self = Self::Searching { window: 0, read: 0 };
 
     /// Takes the next stream bit (SYNC-007…SYNC-009).
     fn advance(&mut self, bit: bool, unit_bits: usize, tolerance: AsmErrors) -> Advance {
         match *self {
-            Phase::Searching { window, read } => {
+            Self::Searching { window, read } => {
                 let window = (window << 1) | u32::from(bit);
                 let read = read.saturating_add(1);
                 // A match needs 32 bits read since the search began (SYNC-007).
@@ -201,30 +201,30 @@ impl Phase {
                     None
                 };
                 *self = match matched {
-                    Some(errors) => Phase::Collecting {
+                    Some(errors) => Self::Collecting {
                         errors,
                         skipped: read.saturating_sub(32),
                         collected: 0,
                     },
-                    None => Phase::Searching { window, read },
+                    None => Self::Searching { window, read },
                 };
                 Advance::Passed
             }
-            Phase::Collecting {
+            Self::Collecting {
                 errors,
                 skipped,
                 collected,
             } => {
                 let next = collected.saturating_add(1);
                 if next >= unit_bits {
-                    *self = Phase::START;
+                    *self = Self::START;
                     Advance::Completed {
                         index: collected,
                         errors,
                         skipped,
                     }
                 } else {
-                    *self = Phase::Collecting {
+                    *self = Self::Collecting {
                         errors,
                         skipped,
                         collected: next,
@@ -308,8 +308,8 @@ impl<const FRAME: usize, const CHUNK: usize, const ACTIONS: usize>
     ///
     /// # Errors
     /// `CapacityExceeded` when the frame length of `config` is above `FRAME` (SYNC-002).
-    pub fn new(config: SyncConfig) -> Result<AsmSearch<FRAME, CHUNK, ACTIONS>> {
-        Ok(AsmSearch {
+    pub fn new(config: SyncConfig) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: AsmSearchBuffers::ZERO,
         })

@@ -22,8 +22,8 @@ pub struct Actions<A: Copy, const N: usize> {
 
 impl<A: Copy, const N: usize> Actions<A, N> {
     /// An empty list (API-057).
-    pub const fn new() -> Actions<A, N> {
-        Actions {
+    pub const fn new() -> Self {
+        Self {
             items: [None; N],
             len: 0,
         }
@@ -72,8 +72,8 @@ impl<A: Copy, const N: usize> Actions<A, N> {
 }
 
 impl<A: Copy, const N: usize> Default for Actions<A, N> {
-    fn default() -> Actions<A, N> {
-        Actions::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -90,8 +90,8 @@ pub struct OutRange {
 impl OutRange {
     /// The range of `len` octets from offset `start` (API-061).
     #[must_use]
-    pub const fn new(start: usize, len: usize) -> OutRange {
-        OutRange { start, len }
+    pub const fn new(start: usize, len: usize) -> Self {
+        Self { start, len }
     }
 
     /// The offset of the first octet in the output area (API-061).

@@ -72,7 +72,7 @@ impl Fsh {
     /// `InvalidConfig` (`fsh_len`) unless `data` holds 1 to 63 octets.
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
-    pub fn new(data: &[u8]) -> Result<Fsh> {
+    pub fn new(data: &[u8]) -> Result<Self> {
         let len = u8::try_from(data.len())
             .ok()
             .filter(|&n| n >= 1 && usize::from(n) <= MAX_FSH_DATA)
@@ -81,14 +81,14 @@ impl Fsh {
         for (d, s) in buf.iter_mut().zip(data) {
             *d = *s;
         }
-        Ok(Fsh { len, data: buf })
+        Ok(Self { len, data: buf })
     }
 
     /// The Secondary Header of the length `len` (the Identification Field and the data) with
     /// every data octet 0: the initial value of a slot whose caller gave none.
     #[cfg(feature = "tm")]
-    const fn zeroed(len: FshLen) -> Fsh {
-        Fsh {
+    const fn zeroed(len: FshLen) -> Self {
+        Self {
             len: len.get().saturating_sub(1),
             data: [0; MAX_FSH_DATA],
         }
@@ -181,11 +181,11 @@ impl Cop {
     /// # Errors
     /// `InvalidField` (`protocol_control_command_flag`) for Bypass 0 with Protocol Control
     /// Command 1, the reserved combination of 732.1 Table 4-1.
-    pub const fn new(vcf_count: u64, bypass: bool, protocol_control: bool) -> Result<Cop> {
+    pub const fn new(vcf_count: u64, bypass: bool, protocol_control: bool) -> Result<Self> {
         match (bypass, protocol_control) {
-            (false, false) => Ok(Cop::TypeAd { vcf_count }),
-            (true, false) => Ok(Cop::TypeBd),
-            (true, true) => Ok(Cop::TypeBc),
+            (false, false) => Ok(Self::TypeAd { vcf_count }),
+            (true, false) => Ok(Self::TypeBd),
+            (true, true) => Ok(Self::TypeBc),
             (false, true) => Err(Error::new(ErrorKind::InvalidField)
                 .with_field(field::PROTOCOL_CONTROL_COMMAND_FLAG)),
         }
@@ -197,9 +197,9 @@ impl Cop {
     #[must_use]
     pub const fn kind(self) -> CopFrameKind {
         match self {
-            Cop::TypeAd { .. } => CopFrameKind::Ad,
-            Cop::TypeBd => CopFrameKind::Bd,
-            Cop::TypeBc => CopFrameKind::Bc,
+            Self::TypeAd { .. } => CopFrameKind::Ad,
+            Self::TypeBd => CopFrameKind::Bd,
+            Self::TypeBc => CopFrameKind::Bc,
         }
     }
 
@@ -225,8 +225,8 @@ impl Cop {
     #[must_use]
     pub const fn vcf_count(self) -> Option<u64> {
         match self {
-            Cop::TypeAd { vcf_count } => Some(vcf_count),
-            Cop::TypeBd | Cop::TypeBc => None,
+            Self::TypeAd { vcf_count } => Some(vcf_count),
+            Self::TypeBd | Self::TypeBc => None,
         }
     }
 }
@@ -474,8 +474,8 @@ impl<P: MuxProtocol> VcConfig<P> {
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn new(params: P::VcParams) -> VcConfig<P> {
-        VcConfig {
+    pub const fn new(params: P::VcParams) -> Self {
+        Self {
             priority: 0,
             weight: Weight::ONE,
             params,
@@ -490,14 +490,14 @@ impl<P: MuxProtocol> VcConfig<P> {
     /// 232.0 §4.3.3.3, §4.3.6.3, §4.3.7.3), so this direction is Aldis's own choice; a caller that
     /// holds a rank passes it inverted (for example 255 less the rank).
     #[must_use]
-    pub const fn with_priority(self, priority: u8) -> VcConfig<P> {
-        VcConfig { priority, ..self }
+    pub const fn with_priority(self, priority: u8) -> Self {
+        Self { priority, ..self }
     }
 
     /// The same VC with the weight of weighted round robin (LNK-031).
     #[must_use]
-    pub const fn with_weight(self, weight: Weight) -> VcConfig<P> {
-        VcConfig { weight, ..self }
+    pub const fn with_weight(self, weight: Weight) -> Self {
+        Self { weight, ..self }
     }
 
     /// The VC.
@@ -566,11 +566,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     ///   for a frame that leaves no data field to some VC; (`ocf_flag`, `fsh_len`) for an MC
     ///   and a VC that both have an OCF or a Secondary Header (132.0 §2.2.4 b, c); and the
     ///   protocol's own checks (LNK-078).
-    pub fn new(
-        channel: P::Channel,
-        policy: MuxPolicy,
-        vcs: &[VcConfig<P>],
-    ) -> Result<ChannelMuxConfig<P, V>> {
+    pub fn new(channel: P::Channel, policy: MuxPolicy, vcs: &[VcConfig<P>]) -> Result<Self> {
         if vcs.len() > V {
             return Err(Error::new(ErrorKind::CapacityExceeded).with_field(field::CAPACITY));
         }
@@ -582,7 +578,7 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
                 _ => return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID)),
             }
         }
-        ChannelMuxConfig {
+        Self {
             channel,
             policy,
             idle_pattern: 0,
@@ -598,18 +594,18 @@ impl<P: MuxProtocol, const V: usize> ChannelMuxConfig<P, V> {
     ///
     /// # Errors
     /// `InvalidConfig` (`insert_zone_len`) for a physical channel without an Insert Zone.
-    pub fn with_insert_zone_fill(self, idle_pattern: u8) -> Result<ChannelMuxConfig<P, V>> {
+    pub fn with_insert_zone_fill(self, idle_pattern: u8) -> Result<Self> {
         if self.insert_zone_len() == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::INSERT_ZONE_LEN));
         }
-        Ok(ChannelMuxConfig {
+        Ok(Self {
             idle_pattern,
             ..self
         })
     }
 
     /// Checks the relations between the parameters (LNK-078).
-    fn checked(self) -> Result<ChannelMuxConfig<P, V>> {
+    fn checked(self) -> Result<Self> {
         let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
         P::check_channel(&self.channel, &self.vcs)?;
         if self.policy == MuxPolicy::FixedPriority {
@@ -883,10 +879,10 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     ///
     /// # Errors
     /// `CapacityExceeded` (`frame_len`) if the frame is longer than `F` octets.
-    pub fn new(config: ChannelMuxConfig<P, V>) -> Result<ChannelMux<P, V, F>> {
+    pub fn new(config: ChannelMuxConfig<P, V>) -> Result<Self> {
         let idle = config.idle_pattern;
         let head = Self::new_head(config)?;
-        Ok(ChannelMux {
+        Ok(Self {
             head,
             bufs: ChannelMuxBuffers::with_idle(idle),
         })
@@ -909,7 +905,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     pub fn new_head(config: ChannelMuxConfig<P, V>) -> Result<ChannelMuxHead<P, V>> {
-        ChannelMux::<P, V, F>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         let mut head = ChannelMuxHead {
             config,
             held: [None; V],
@@ -1003,7 +999,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             MuxInput::SetInsert(data) => self.set_insert(data)?,
             MuxInput::Opportunity => self.opportunity(out, &mut actions)?,
             MuxInput::Reconfigure(config) => {
-                ChannelMux::<P, V, F>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let octets = self
                     .head
                     .held

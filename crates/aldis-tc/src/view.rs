@@ -308,7 +308,7 @@ impl<'a> TcFrame<'a> {
     >(
         bytes: &'a [u8],
         channels: &L,
-    ) -> Result<TcFrame<'a>> {
+    ) -> Result<Self> {
         parse(bytes, channels, Channels::Open, DecodeMode::Strict, false)
             .map(|p| p.frame)
             .map_err(Error::from)
@@ -328,7 +328,7 @@ impl<'a> TcFrame<'a> {
     >(
         bytes: &'a [u8],
         channels: &L,
-    ) -> Result<Lenient<TcFrame<'a>, TcAnomaly>> {
+    ) -> Result<Lenient<Self, TcAnomaly>> {
         parse(bytes, channels, Channels::Open, DecodeMode::Lenient, false)
             .map(|p| Lenient::new(p.frame, p.anomalies))
             .map_err(Error::from)

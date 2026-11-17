@@ -59,8 +59,8 @@ impl<F> Deref for Plain<F> {
 /// Only the [`Checked`] proof is dropped: the result has the same [`Plain`] proof as the
 /// original, so no proof is made, only forgotten.
 impl<F> From<Plain<Checked<F>>> for Plain<F> {
-    fn from(plain: Plain<Checked<F>>) -> Plain<F> {
-        Plain {
+    fn from(plain: Plain<Checked<F>>) -> Self {
+        Self {
             frame: plain.frame.into_frame(),
         }
     }

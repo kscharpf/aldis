@@ -501,12 +501,12 @@ fn vector_ids() -> Result<BTreeMap<String, bool>, String> {
 }
 
 impl Env {
-    fn load(spec: Spec) -> Result<Env, String> {
+    fn load(spec: Spec) -> Result<Self, String> {
         let root = repo::root();
         let text = |rel: &str| repo::read(&root.join(rel));
         let files = repo::all_files(".").iter().map(|p| repo::rel(p)).collect();
         let records = records::load(&spec)?.into_iter().map(|r| r.path).collect();
-        Ok(Env {
+        Ok(Self {
             files,
             read: Box::new(|p| std::fs::read_to_string(repo::root().join(p)).ok()),
             fn_cache: RefCell::new(BTreeMap::new()),
@@ -686,7 +686,7 @@ struct Doc<'a> {
 }
 
 impl<'a> Doc<'a> {
-    fn new(path: &'a str, text: &'a str) -> Doc<'a> {
+    fn new(path: &'a str, text: &'a str) -> Self {
         let lines: Vec<&str> = text.lines().collect();
         let mut in_fence = Vec::new();
         let mut heads = Vec::new();

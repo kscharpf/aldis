@@ -17,8 +17,8 @@ pub struct aldis_range_t {
 }
 
 impl From<&Range<usize>> for aldis_range_t {
-    fn from(r: &Range<usize>) -> aldis_range_t {
-        aldis_range_t {
+    fn from(r: &Range<usize>) -> Self {
+        Self {
             offset: r.start,
             len: r.len(),
         }

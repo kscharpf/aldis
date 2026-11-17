@@ -60,7 +60,7 @@ impl<'a> PacketRun<'a> {
     ///
     /// Requirements: LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     #[must_use]
-    pub fn new(run: OutRange, area: &'a [u8]) -> Option<PacketRun<'a>> {
+    pub fn new(run: OutRange, area: &'a [u8]) -> Option<Self> {
         run.slice(area).map(|rest| PacketRun { rest })
     }
 }
@@ -111,11 +111,11 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
         protocol: P::Params,
         valid_pvns: ValidPvns,
         max_packet_len: usize,
-    ) -> Result<PacketExtractorConfig<P>> {
+    ) -> Result<Self> {
         if max_packet_len == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
-        Ok(PacketExtractorConfig {
+        Ok(Self {
             protocol,
             valid_pvns,
             max_packet_len,
@@ -128,12 +128,8 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
     /// 132.0 §5.4 Table 5-4; LNK-061) and the delivery of idle packets for diagnostics
     /// (LNK-063).
     #[must_use]
-    pub const fn with_delivery(
-        self,
-        deliver_incomplete: bool,
-        deliver_idle: bool,
-    ) -> PacketExtractorConfig<P> {
-        PacketExtractorConfig {
+    pub const fn with_delivery(self, deliver_incomplete: bool, deliver_idle: bool) -> Self {
+        Self {
             deliver_incomplete,
             deliver_idle,
             ..self
@@ -404,8 +400,8 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     /// # Errors
     /// `CapacityExceeded` (`max_packet_len`) if `M` is below [`MIN_ASSEMBLY`] or below the
     /// Maximum Packet Length (GEN-011).
-    pub fn new(config: PacketExtractorConfig<P>) -> Result<PacketExtractor<P, M, D>> {
-        Ok(PacketExtractor {
+    pub fn new(config: PacketExtractorConfig<P>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: PacketExtractorBuffers::ZERO,
         })
@@ -428,7 +424,7 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-060…LNK-064, LNK-002, LNK-003; docs/04-engines.md §3.2.
     pub fn new_head(config: PacketExtractorConfig<P>) -> Result<PacketExtractorHead<P>> {
-        PacketExtractor::<P, M, D>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(PacketExtractorHead {
             config,
             fill: 0,
@@ -480,7 +476,7 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
         match input {
             ExtractorInput::DataField(f) => self.data_field(f, out),
             ExtractorInput::Reconfigure(config) => {
-                PacketExtractor::<P, M, D>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let mut actions = Actions::new();
                 let octets = self.head.fill;
                 self.head.config = config;

@@ -36,11 +36,11 @@ impl AosChannel {
         physical: AosPhysicalChannelConfig,
         scid: SpacecraftId<10>,
         cycle_in_use: bool,
-    ) -> Result<AosChannel> {
+    ) -> Result<Self> {
         if physical.edition() == AosEdition::Issue4Compatible && scid.get() > 0xFF {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SPACECRAFT_ID))
         } else {
-            Ok(AosChannel {
+            Ok(Self {
                 physical,
                 scid,
                 cycle_in_use,
@@ -103,8 +103,8 @@ impl AosVc {
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn new(config: AosVirtualChannelConfig) -> AosVc {
-        AosVc {
+    pub const fn new(config: AosVirtualChannelConfig) -> Self {
+        Self {
             config,
             ocf: [0; OCF_LEN],
         }
@@ -114,9 +114,9 @@ impl AosVc {
     ///
     /// # Errors
     /// `InvalidConfig` (`ocf_flag`) if the configuration has no `VC_OCF`.
-    pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<AosVc> {
+    pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<Self> {
         if self.config.ocf() {
-            Ok(AosVc { ocf, ..self })
+            Ok(Self { ocf, ..self })
         } else {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::OCF_FLAG))
         }
@@ -183,7 +183,7 @@ impl MuxProtocol for Aos {
 
     // VCID 63 is no VC of the codec's configuration (`AosVirtualChannelConfig::new`), so the
     // OID VC cannot be listed; each VC belongs to the master channel of the physical channel.
-    fn check_channel(channel: &AosChannel, vcs: &[Option<VcConfig<Aos>>]) -> Result<()> {
+    fn check_channel(channel: &AosChannel, vcs: &[Option<VcConfig<Self>>]) -> Result<()> {
         if vcs
             .iter()
             .flatten()
@@ -202,7 +202,7 @@ impl MuxProtocol for Aos {
     fn primary_header(
         channel: &AosChannel,
         _: Option<&AosVc>,
-        f: &FrameFields<Aos>,
+        f: &FrameFields<Self>,
     ) -> Result<AosPrimaryHeader> {
         // The count and, where the cycle is in use, the cycle of the running count (732.0
         // §4.1.2.5.5; LNK-032).

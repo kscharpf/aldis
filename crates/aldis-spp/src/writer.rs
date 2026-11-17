@@ -78,7 +78,7 @@ impl<'b> SpacePacketWriter<'b> {
         fields: PacketFields,
         secondary_len: usize,
         max_user_len: usize,
-    ) -> Result<SpacePacketWriter<'b>> {
+    ) -> Result<Self> {
         let max_data = secondary_len.saturating_add(max_user_len);
         let parts = check_parts(fields, secondary_len, max_data)?;
         let total = config

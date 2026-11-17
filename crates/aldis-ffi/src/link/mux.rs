@@ -271,7 +271,7 @@ pub struct aldis_channel_mux_vc_t {
 
 impl Default for aldis_channel_mux_vc_t {
     fn default() -> Self {
-        aldis_channel_mux_vc_t {
+        Self {
             vc_id: 0,
             priority: 0,
             weight: 1,
@@ -345,7 +345,7 @@ pub struct aldis_channel_mux_config_t {
 
 impl Default for aldis_channel_mux_config_t {
     fn default() -> Self {
-        aldis_channel_mux_config_t {
+        Self {
             protocol: 0,
             scid: 0,
             frame_len: 0,
@@ -777,7 +777,7 @@ impl MxProtocol for Uslp {
         params.security = SecurityScope::Vc(security);
         // "Inclusion of OCF Required" of the master channel is that of every VC (732.1
         // §4.1.5.3).
-        if <Uslp as MuxProtocol>::mc_ocf(channel).is_some() {
+        if <Self as MuxProtocol>::mc_ocf(channel).is_some() {
             params.ocf = OcfUse::Required;
         }
         let config = UslpVcConfig::new(channel.scid, id, params)?;
@@ -891,8 +891,8 @@ fn mx_config<P: MxProtocol>(c: &aldis_channel_mux_config_t) -> Result<ChannelMux
 unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for ChannelMux<P, NV, NF> {
     type Head = ChannelMuxHead<P, NV>;
     type Buffers = ChannelMuxBuffers<NV, NF>;
-    const HEAD_OFFSET: usize = <ChannelMux<P, NV, NF>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <ChannelMux<P, NV, NF>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 
     /// The zeroed Insert Zone slot starts at the idle pattern of the configuration (LNK-034).
     fn finish_place(&mut self) {
@@ -1056,19 +1056,19 @@ impl ChannelMuxState {
             .map(|p| p == want)
         };
         match self {
-            ChannelMuxState::Tm(e) => {
+            Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 mx_run(e, input, data, area)
             }
-            ChannelMuxState::Aos(e) => {
+            Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 mx_run(e, input, data, area)
             }
-            ChannelMuxState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -1079,9 +1079,9 @@ impl ChannelMuxState {
 
     const fn status(&self) -> MuxStatus {
         match self {
-            ChannelMuxState::Tm(e) => *e.status(),
-            ChannelMuxState::Aos(e) => *e.status(),
-            ChannelMuxState::Uslp(e) => *e.status(),
+            Self::Tm(e) => *e.status(),
+            Self::Aos(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 }

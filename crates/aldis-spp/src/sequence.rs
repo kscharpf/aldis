@@ -17,8 +17,8 @@ pub struct SequenceCounter {
 impl SequenceCounter {
     /// A counter whose next count is `start` (133.0 §4.1.3.4.3.4, SPP-011).
     #[must_use]
-    pub const fn new(start: SeqCount) -> SequenceCounter {
-        SequenceCounter { next: start }
+    pub const fn new(start: SeqCount) -> Self {
+        Self { next: start }
     }
 
     /// The count the next packet will take (133.0 §4.1.3.4.3.4, SPP-011).
@@ -61,16 +61,16 @@ pub struct SequenceTracker<const N: usize> {
 }
 
 impl<const N: usize> Default for SequenceTracker<N> {
-    fn default() -> SequenceTracker<N> {
-        SequenceTracker::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl<const N: usize> SequenceTracker<N> {
     /// An empty tracker (133.0 §4.3.2.2; SPP-011, GEN-011).
     #[must_use]
-    pub fn new() -> SequenceTracker<N> {
-        SequenceTracker {
+    pub fn new() -> Self {
+        Self {
             entries: FixedVec::new(),
         }
     }

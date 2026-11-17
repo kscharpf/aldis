@@ -381,8 +381,8 @@ unsafe impl<P: ReassemblerProtocol, const NM: usize, const NS: usize> InPlace
 {
     type Head = MapReassemblerHead<P, NM>;
     type Buffers = MapReassemblerBuffers<NM, NS>;
-    const HEAD_OFFSET: usize = <MapReassembler<P, NM, NS>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <MapReassembler<P, NM, NS>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -421,13 +421,13 @@ impl MapReassemblerState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
-            MapReassemblerState::Tc(e) => {
+            Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 ra_run(e, input, data, area)
             }
-            MapReassemblerState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -438,8 +438,8 @@ impl MapReassemblerState {
 
     const fn status(&self) -> ReassemblerStatus {
         match self {
-            MapReassemblerState::Tc(e) => *e.status(),
-            MapReassemblerState::Uslp(e) => *e.status(),
+            Self::Tc(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 }

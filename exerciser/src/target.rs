@@ -61,8 +61,8 @@ struct Line {
 }
 
 impl Line {
-    const fn new() -> Line {
-        Line {
+    const fn new() -> Self {
+        Self {
             buf: [0; 96],
             len: 0,
         }

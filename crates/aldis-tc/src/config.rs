@@ -45,12 +45,12 @@ impl PhysicalChannelConfig {
     /// # Errors
     /// `InvalidConfig` (`max_frame_len`) above 1024 octets, or below the shortest frame: six
     /// octets, eight with the FECF (232.0 §4.1.1, §4.1.2.7).
-    pub const fn new(max_frame_len: usize, fecf: bool) -> Result<PhysicalChannelConfig> {
+    pub const fn new(max_frame_len: usize, fecf: bool) -> Result<Self> {
         let shortest = MIN_FRAME_LEN.saturating_add(if fecf { FECF_LEN } else { 0 });
         if max_frame_len < shortest || max_frame_len > MAX_FRAME_LEN {
             return Err(bad_max_len());
         }
-        Ok(PhysicalChannelConfig {
+        Ok(Self {
             max_frame_len,
             fecf,
         })
@@ -124,11 +124,11 @@ impl VcConfig {
         vc_id: TcVcId,
         max_frame_len: usize,
         segment_header: SegmentHeaderUse,
-    ) -> Result<VcConfig> {
+    ) -> Result<Self> {
         if max_frame_len < MIN_FRAME_LEN || max_frame_len > MAX_FRAME_LEN {
             return Err(bad_max_len());
         }
-        Ok(VcConfig {
+        Ok(Self {
             spacecraft_id,
             vc_id,
             max_frame_len,
@@ -143,8 +143,8 @@ impl VcConfig {
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,
         physical: &PhysicalChannelConfig,
-    ) -> VcConfig {
-        VcConfig {
+    ) -> Self {
+        Self {
             spacecraft_id,
             vc_id,
             max_frame_len: physical.max_frame_len,
@@ -211,8 +211,8 @@ impl MapConfig {
         vc_id: TcVcId,
         map_id: TcMapId,
         security: SecurityLayout,
-    ) -> MapConfig {
-        MapConfig {
+    ) -> Self {
+        Self {
             spacecraft_id,
             vc_id,
             map_id,
@@ -293,11 +293,11 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         physical: PhysicalChannelConfig,
         vcs: &[VcConfig],
         maps: &[MapConfig],
-    ) -> Result<VcTable<V, M>> {
+    ) -> Result<Self> {
         if vcs.is_empty() {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
         }
-        let mut table = VcTable {
+        let mut table = Self {
             physical,
             vcs: [None; V],
             maps: [None; M],

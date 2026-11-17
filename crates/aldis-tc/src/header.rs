@@ -56,12 +56,12 @@ pub enum SequenceFlags {
 impl SequenceFlags {
     /// The flags in the low two bits of `bits`; the other bits are ignored (232.0 Table 4-2).
     #[must_use]
-    pub const fn from_bits(bits: u8) -> SequenceFlags {
+    pub const fn from_bits(bits: u8) -> Self {
         match bits & 0b11 {
-            0b00 => SequenceFlags::Continuing,
-            0b01 => SequenceFlags::First,
-            0b10 => SequenceFlags::Last,
-            _ => SequenceFlags::Unsegmented,
+            0b00 => Self::Continuing,
+            0b01 => Self::First,
+            0b10 => Self::Last,
+            _ => Self::Unsegmented,
         }
     }
 
@@ -69,10 +69,10 @@ impl SequenceFlags {
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
-            SequenceFlags::Continuing => 0b00,
-            SequenceFlags::First => 0b01,
-            SequenceFlags::Last => 0b10,
-            SequenceFlags::Unsegmented => 0b11,
+            Self::Continuing => 0b00,
+            Self::First => 0b01,
+            Self::Last => 0b10,
+            Self::Unsegmented => 0b11,
         }
     }
 }
@@ -99,9 +99,9 @@ impl SegmentHeader {
     }
 
     /// Parses the Segment Header octet; every value is a Segment Header (232.0 §4.1.3.2.2).
-    pub(crate) fn from_octet(octet: u8) -> Option<SegmentHeader> {
+    pub(crate) fn from_octet(octet: u8) -> Option<Self> {
         let octet = [octet];
-        TcMapId::new(segment::MapId::get_u8(&octet)).map(|map_id| SegmentHeader {
+        TcMapId::new(segment::MapId::get_u8(&octet)).map(|map_id| Self {
             sequence_flags: SequenceFlags::from_bits(segment::Flags::get_u8(&octet)),
             map_id,
         })
@@ -139,11 +139,11 @@ pub(crate) struct RawHeader {
 
 impl RawHeader {
     /// Reads the first five octets; `None` if `bytes` is shorter (232.0 §4.1.2).
-    pub(crate) fn parse(bytes: &[u8]) -> Option<RawHeader> {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
         let h = bytes.first_chunk::<PRIMARY_HEADER_LEN>()?;
         let ids =
             TcSpacecraftId::new(layout::Scid::get_u16(h)).zip(TcVcId::new(layout::Vcid::get_u8(h)));
-        ids.map(|(spacecraft_id, vc_id)| RawHeader {
+        ids.map(|(spacecraft_id, vc_id)| Self {
             version: layout::Version::get_u8(h),
             bypass: layout::Bypass::flag(h),
             control_command: layout::ControlCommand::flag(h),
@@ -264,8 +264,8 @@ impl TcFrameHeader {
         fields: FrameFields,
         frame_len: usize,
         segment_header: Option<SegmentHeader>,
-    ) -> TcFrameHeader {
-        TcFrameHeader {
+    ) -> Self {
+        Self {
             fields,
             frame_len: u16::try_from(frame_len).unwrap_or(u16::MAX),
             segment_header,

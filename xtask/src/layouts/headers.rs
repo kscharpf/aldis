@@ -458,10 +458,10 @@ mod epp {
     impl Len {
         const fn header_len(self) -> HeaderLen {
             match self {
-                Len::One => HeaderLen::One,
-                Len::Two => HeaderLen::Two,
-                Len::Four => HeaderLen::Four,
-                Len::Eight => HeaderLen::Eight,
+                Self::One => HeaderLen::One,
+                Self::Two => HeaderLen::Two,
+                Self::Four => HeaderLen::Four,
+                Self::Eight => HeaderLen::Eight,
             }
         }
     }

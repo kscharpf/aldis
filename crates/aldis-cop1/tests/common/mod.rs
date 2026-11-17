@@ -18,8 +18,8 @@ pub(crate) struct Rig<const Q: usize, const F: usize, const N: usize, P: Fop1For
 }
 
 impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Rig<Q, F, N, P> {
-    pub(crate) fn new(config: Fop1Config<P>) -> Result<Rig<Q, F, N, P>> {
-        Ok(Rig {
+    pub(crate) fn new(config: Fop1Config<P>) -> Result<Self> {
+        Ok(Self {
             fop: Fop1::new(config)?,
             store: Fop1Store::new(),
         })

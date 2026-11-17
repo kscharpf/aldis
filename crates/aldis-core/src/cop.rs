@@ -25,11 +25,11 @@ impl CopFrameKind {
     ///
     /// Requirements: TC-002, USLP-001, COP-001.
     #[must_use]
-    pub const fn from_flags(bypass: bool, control_command: bool) -> Option<CopFrameKind> {
+    pub const fn from_flags(bypass: bool, control_command: bool) -> Option<Self> {
         match (bypass, control_command) {
-            (false, false) => Some(CopFrameKind::Ad),
-            (true, false) => Some(CopFrameKind::Bd),
-            (true, true) => Some(CopFrameKind::Bc),
+            (false, false) => Some(Self::Ad),
+            (true, false) => Some(Self::Bd),
+            (true, true) => Some(Self::Bc),
             (false, true) => None,
         }
     }
@@ -40,7 +40,7 @@ impl CopFrameKind {
     /// Requirements: TC-002, USLP-001, COP-001.
     #[must_use]
     pub const fn bypass_flag(self) -> bool {
-        !matches!(self, CopFrameKind::Ad)
+        !matches!(self, Self::Ad)
     }
 
     /// The Control Command Flag (TC) or Protocol Control Command Flag (USLP): `true` for a
@@ -49,7 +49,7 @@ impl CopFrameKind {
     /// Requirements: TC-002, USLP-001, COP-001.
     #[must_use]
     pub const fn control_command_flag(self) -> bool {
-        matches!(self, CopFrameKind::Bc)
+        matches!(self, Self::Bc)
     }
 }
 

@@ -52,8 +52,8 @@ impl AosEdition {
     #[must_use]
     pub const fn max_scid(self) -> u16 {
         match self {
-            AosEdition::Issue5 => 0x3FF,
-            AosEdition::Issue4Compatible => 0xFF,
+            Self::Issue5 => 0x3FF,
+            Self::Issue4Compatible => 0xFF,
         }
     }
 }
@@ -88,7 +88,7 @@ impl AosPhysicalChannelConfig {
         insert_zone_len: usize,
         fecf: bool,
         edition: AosEdition,
-    ) -> Result<AosPhysicalChannelConfig> {
+    ) -> Result<Self> {
         // The header, one data octet, and the FECF: at most 11 octets, so no overflow.
         let fixed = primary_header_len(fhec)
             .saturating_add(1)
@@ -101,7 +101,7 @@ impl AosPhysicalChannelConfig {
                 len_u64(frame_len),
             ));
         }
-        Ok(AosPhysicalChannelConfig {
+        Ok(Self {
             frame_len,
             fhec,
             insert_zone_len,
@@ -213,7 +213,7 @@ impl AosVirtualChannelConfig {
         scid: SpacecraftId<10>,
         vcid: VcId<6>,
         content: DataFieldContent,
-    ) -> Result<AosVirtualChannelConfig> {
+    ) -> Result<Self> {
         if vcid.get() == OID_VCID.get() {
             return Err(mismatch(
                 ErrorKind::InvalidConfig,
@@ -222,7 +222,7 @@ impl AosVirtualChannelConfig {
                 OID_VCID_U64,
             ));
         }
-        Ok(AosVirtualChannelConfig {
+        Ok(Self {
             scid,
             vcid,
             content,
@@ -233,14 +233,14 @@ impl AosVirtualChannelConfig {
 
     /// The same channel with a `VC_OCF` (732.0 §4.1.5.2–3, Table 5-3).
     #[must_use]
-    pub const fn with_ocf(self) -> AosVirtualChannelConfig {
-        AosVirtualChannelConfig { ocf: true, ..self }
+    pub const fn with_ocf(self) -> Self {
+        Self { ocf: true, ..self }
     }
 
     /// The same channel with a Security Header and Trailer (732.0 §6.3, Table 6-1; API-070).
     #[must_use]
-    pub const fn with_security(self, security: SecurityLayout) -> AosVirtualChannelConfig {
-        AosVirtualChannelConfig { security, ..self }
+    pub const fn with_security(self, security: SecurityLayout) -> Self {
+        Self { security, ..self }
     }
 
     /// Spacecraft ID of the virtual channel's master channel (Table 5-3).
@@ -366,16 +366,13 @@ impl<const N: usize> VcTable<N> {
     ///   (`frame_data_field`) for a Bitstream Data Zone longer than 2 047 octets, each with its
     ///   limit;
     /// - `CapacityExceeded` (`vc_id`) for more than `N` virtual channels (GEN-011).
-    pub fn new(
-        pc: AosPhysicalChannelConfig,
-        vcs: &[AosVirtualChannelConfig],
-    ) -> Result<VcTable<N>> {
+    pub fn new(pc: AosPhysicalChannelConfig, vcs: &[AosVirtualChannelConfig]) -> Result<Self> {
         if vcs.is_empty() {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID));
         }
         let mut slots = [None; N];
         fill(&mut slots, &pc, vcs)?;
-        Ok(VcTable { pc, vcs: slots })
+        Ok(Self { pc, vcs: slots })
     }
 
     /// The physical channel (Table 5-1).

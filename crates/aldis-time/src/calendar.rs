@@ -171,12 +171,12 @@ impl CalendarDate {
     /// # Errors
     /// `OutOfRange` (`day`) unless `day` is 1 to the number of days in that month, with leap
     /// years for February (301.0 Annex A, TIME-030).
-    pub const fn from_month_day(year: Year, month: Month, day: u8) -> Result<CalendarDate> {
+    pub const fn from_month_day(year: Year, month: Month, day: u8) -> Result<Self> {
         let last = days_in_month(year.0, month.0);
         if day == 0 || day > last {
             return Err(out_of_bounds(field::DAY, wide8(day), 1, wide8(last)));
         }
-        Ok(CalendarDate {
+        Ok(Self {
             year,
             day: Day::MonthDay(month, day),
         })
@@ -187,7 +187,7 @@ impl CalendarDate {
     /// # Errors
     /// `OutOfRange` (`day_of_year`) unless it is 1 to 365, or 366 in a leap year (301.0 Annex
     /// A, TIME-030).
-    pub const fn from_day_of_year(year: Year, day_of_year: u16) -> Result<CalendarDate> {
+    pub const fn from_day_of_year(year: Year, day_of_year: u16) -> Result<Self> {
         let last = days_in_year(year.0);
         if day_of_year == 0 || day_of_year > last {
             return Err(out_of_bounds(
@@ -197,7 +197,7 @@ impl CalendarDate {
                 wide16(last),
             ));
         }
-        Ok(CalendarDate {
+        Ok(Self {
             year,
             day: Day::Ordinal(day_of_year),
         })
@@ -205,8 +205,8 @@ impl CalendarDate {
 
     /// The month/day date of a [`civil`] result: `civil` gives a month 1-12 (the range of
     /// `Month`) and a day that exists in that month of the year.
-    pub(crate) const fn from_civil(year: Year, month: u8, day: u8) -> CalendarDate {
-        CalendarDate {
+    pub(crate) const fn from_civil(year: Year, month: u8, day: u8) -> Self {
+        Self {
             year,
             day: Day::MonthDay(Month(month), day),
         }
@@ -238,20 +238,20 @@ impl CalendarDate {
         clippy::cast_possible_truncation,
         reason = "the day of year is at most 366"
     )]
-    pub const fn to_variation(self, variation: CcsVariation) -> CalendarDate {
+    pub const fn to_variation(self, variation: CcsVariation) -> Self {
         match (self.day, variation) {
             (Day::MonthDay(month, day), CcsVariation::DayOfYear) => {
                 let doy = day_number(self.year.0, month.0, day)
                     .wrapping_sub(day_number(self.year.0, 1, 1))
                     .wrapping_add(1);
-                CalendarDate {
+                Self {
                     year: self.year,
                     day: Day::Ordinal(doy as u16),
                 }
             }
             (Day::Ordinal(_), CcsVariation::MonthDay) => {
                 let (_, month, day) = civil(self.day_number());
-                CalendarDate::from_civil(self.year, month, day)
+                Self::from_civil(self.year, month, day)
             }
             (Day::MonthDay(..), CcsVariation::MonthDay)
             | (Day::Ordinal(_), CcsVariation::DayOfYear) => self,

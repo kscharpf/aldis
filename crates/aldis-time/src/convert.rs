@@ -71,7 +71,7 @@ impl UtcInstant {
     /// # Errors
     /// `InvalidConfig` (`agency_epoch`) for an agency-defined epoch without `agency_epoch`
     /// (M1 D3).
-    pub fn from_cds(cds: &Cds, agency_epoch: Option<CalendarDate>) -> Result<UtcInstant> {
+    pub fn from_cds(cds: &Cds, agency_epoch: Option<CalendarDate>) -> Result<Self> {
         let base = epoch_day(cds.format().epoch(), agency_epoch)?;
         let value = cds.value();
         let ms = value.ms_of_day.get();
@@ -88,7 +88,7 @@ impl UtcInstant {
         };
         let narrow = |n: u32| u8::try_from(n).unwrap_or(u8::MAX);
         // Valid by construction: hour < 24, minute < 60, second ≤ 60.
-        Ok(UtcInstant {
+        Ok(Self {
             day: base.wrapping_add(value.day),
             hour: Hour::new(narrow(hour)).unwrap_or_default(),
             minute: Minute::new(narrow(minute)).unwrap_or_default(),
@@ -101,9 +101,9 @@ impl UtcInstant {
 
     /// The instant of a CCS code (301.0 §3.4, TIME-033).
     #[must_use]
-    pub const fn from_ccs(ccs: &Ccs) -> UtcInstant {
+    pub const fn from_ccs(ccs: &Ccs) -> Self {
         let value = ccs.value();
-        UtcInstant {
+        Self {
             day: value.date.day_number(),
             hour: value.hour,
             minute: value.minute,
@@ -116,8 +116,8 @@ impl UtcInstant {
 
     /// The instant of an ASCII code (301.0 §3.5, TIME-033).
     #[must_use]
-    pub const fn from_ascii(ascii: &AsciiTime) -> UtcInstant {
-        UtcInstant {
+    pub const fn from_ascii(ascii: &AsciiTime) -> Self {
+        Self {
             day: ascii.date.day_number(),
             hour: ascii.hour,
             minute: ascii.minute,

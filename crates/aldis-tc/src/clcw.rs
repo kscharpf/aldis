@@ -88,14 +88,14 @@ impl FarmBCounter {
     /// The next count, modulo 4: FARM-1 increments the counter for every valid Type-B frame
     /// (232.0 §4.2.1.9; 232.1 §6.1.6; COP-034).
     #[must_use]
-    pub const fn next(self) -> FarmBCounter {
-        FarmBCounter(self.0.wrapping_add(1) & FarmBCounter::MAX)
+    pub const fn next(self) -> Self {
+        Self(self.0.wrapping_add(1) & Self::MAX)
     }
 }
 
 impl CopInEffect {
     /// COP-1, `01` (232.0 §4.2.1.5.2).
-    pub const COP_1: CopInEffect = CopInEffect(0b01);
+    pub const COP_1: Self = Self(0b01);
 }
 
 /// A Communications Link Control Word (232.0 §4.2.1; TC-030, TC-031).
@@ -173,8 +173,8 @@ impl Clcw {
     /// - `ReservedValue` (`clcw_spare_14_15`, `clcw_spare_23`) for a Reserved Spare that is
     ///   not zero; [`decode_lenient`](Self::decode_lenient) reports
     ///   [`TcAnomaly::ClcwSpareSet`] instead.
-    pub fn decode(octets: [u8; OCF_LEN]) -> Result<Clcw> {
-        Clcw::parse(octets, DecodeMode::Strict).map(|(clcw, _)| clcw)
+    pub fn decode(octets: [u8; OCF_LEN]) -> Result<Self> {
+        Self::parse(octets, DecodeMode::Strict).map(|(clcw, _)| clcw)
     }
 
     /// Decodes the four CLCW octets as [`decode`](Self::decode) does, in lenient mode: a
@@ -183,13 +183,13 @@ impl Clcw {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the Reserved Spares.
-    pub fn decode_lenient(octets: [u8; OCF_LEN]) -> Result<Lenient<Clcw, TcAnomaly>> {
-        Clcw::parse(octets, DecodeMode::Lenient)
+    pub fn decode_lenient(octets: [u8; OCF_LEN]) -> Result<Lenient<Self, TcAnomaly>> {
+        Self::parse(octets, DecodeMode::Lenient)
             .map(|(clcw, anomalies)| Lenient::new(clcw, anomalies))
     }
 
     /// The decode of both modes.
-    fn parse(octets: [u8; OCF_LEN], mode: DecodeMode) -> Result<(Clcw, AnomalySet<TcAnomaly>)> {
+    fn parse(octets: [u8; OCF_LEN], mode: DecodeMode) -> Result<(Self, AnomalySet<TcAnomaly>)> {
         let h = &octets;
         if layout::ControlWordType::flag(h) {
             return Err(fixed(ErrorKind::InvalidField, field::CONTROL_WORD_TYPE, 1));
@@ -216,7 +216,7 @@ impl Clcw {
         }
         TcVcId::new(layout::VcId::get_u8(h))
             .map(|vc_id| {
-                let clcw = Clcw {
+                let clcw = Self {
                     status: ClcwStatus::masked(layout::Status::get_u8(h)),
                     cop_in_effect: CopInEffect::masked(layout::CopInEffect::get_u8(h)),
                     vc_id,
@@ -238,16 +238,16 @@ impl Clcw {
     ///
     /// # Errors
     /// The errors of [`decode`](Self::decode).
-    pub fn decode_report(report: Type1Report) -> Result<Clcw> {
-        Clcw::decode(report.to_octets())
+    pub fn decode_report(report: Type1Report) -> Result<Self> {
+        Self::decode(report.to_octets())
     }
 
     /// Decodes the CLCW of a Type-1 Report as [`decode_lenient`](Self::decode_lenient) does.
     ///
     /// # Errors
     /// The errors of [`decode_lenient`](Self::decode_lenient).
-    pub fn decode_report_lenient(report: Type1Report) -> Result<Lenient<Clcw, TcAnomaly>> {
-        Clcw::decode_lenient(report.to_octets())
+    pub fn decode_report_lenient(report: Type1Report) -> Result<Lenient<Self, TcAnomaly>> {
+        Self::decode_lenient(report.to_octets())
     }
 
     /// The four CLCW octets: Control Word Type `0`, version `00`, spares zero (232.0 §4.2.1;

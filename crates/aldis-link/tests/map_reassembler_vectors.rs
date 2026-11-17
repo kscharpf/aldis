@@ -50,7 +50,7 @@ trait Proto: ReassemblerProtocol<Vc = VcId<6>> {
 }
 
 impl Proto for Tc {
-    fn config(c: &Map<String, Value>) -> MapReassemblerConfig<Tc, M> {
+    fn config(c: &Map<String, Value>) -> MapReassemblerConfig<Self, M> {
         let vc = VcId::<6>::new(small(&c["vc"])).unwrap();
         let maps: Vec<_> = c["maps"]
             .as_array()
@@ -59,8 +59,8 @@ impl Proto for Tc {
             .map(|m| {
                 let id = aldis_tc::TcMapId::new(small(&m["map"])).unwrap();
                 match m["service"].as_str().unwrap() {
-                    "packets" => ReassemblerMap::<Tc>::packets(vc, id, S).unwrap(),
-                    "sdu" => ReassemblerMap::<Tc>::sdu(vc, id, max_sdu_len(m)).unwrap(),
+                    "packets" => ReassemblerMap::<Self>::packets(vc, id, S).unwrap(),
+                    "sdu" => ReassemblerMap::<Self>::sdu(vc, id, max_sdu_len(m)).unwrap(),
                     other => panic!("unknown service {other}"),
                 }
             })
@@ -72,7 +72,7 @@ impl Proto for Tc {
 }
 
 impl Proto for Uslp {
-    fn config(c: &Map<String, Value>) -> MapReassemblerConfig<Uslp, M> {
+    fn config(c: &Map<String, Value>) -> MapReassemblerConfig<Self, M> {
         let maps: Vec<_> = c["maps"]
             .as_array()
             .unwrap()
@@ -81,9 +81,9 @@ impl Proto for Uslp {
                 let vc = VcId::<6>::new(small(&m["vc"])).unwrap();
                 let id = MapId::<4>::new(small(&m["map"])).unwrap();
                 match m["service"].as_str().unwrap() {
-                    "packets" => ReassemblerMap::<Uslp>::packets(vc, id, S).unwrap(),
-                    "sdu" => ReassemblerMap::<Uslp>::sdu(vc, id, max_sdu_len(m)).unwrap(),
-                    "octet_stream" => ReassemblerMap::<Uslp>::octet_stream(vc, id),
+                    "packets" => ReassemblerMap::<Self>::packets(vc, id, S).unwrap(),
+                    "sdu" => ReassemblerMap::<Self>::sdu(vc, id, max_sdu_len(m)).unwrap(),
+                    "octet_stream" => ReassemblerMap::<Self>::octet_stream(vc, id),
                     other => panic!("unknown service {other}"),
                 }
             })

@@ -479,8 +479,8 @@ pub struct aldis_uslp_content_t {
 
 impl Default for aldis_uslp_content_t {
     /// The TFDF Header with rule `000` and UPID 0, and every buffer empty and `NULL`.
-    fn default() -> aldis_uslp_content_t {
-        aldis_uslp_content_t {
+    fn default() -> Self {
+        Self {
             tfdf: aldis_uslp_tfdf_t::default(),
             insert_zone: core::ptr::null(),
             insert_zone_len: 0,

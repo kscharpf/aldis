@@ -32,7 +32,7 @@ impl<'a> SpacePacket<'a> {
     /// - `UnsupportedVersion` if the version is not `000` (SPP-001).
     /// - `InvalidField` (`secondary_header_flag`) for an Idle Packet with the Secondary Header
     ///   Flag set (SPP-004).
-    pub fn decode(bytes: &'a [u8]) -> Result<SpacePacket<'a>> {
+    pub fn decode(bytes: &'a [u8]) -> Result<Self> {
         SpacePacket::decode_in(bytes, DecodeMode::Strict).map(|(packet, _)| packet)
     }
 
@@ -44,7 +44,7 @@ impl<'a> SpacePacket<'a> {
     /// - `LengthMismatch` (`packet_len`, expected = the packet length, found = `bytes.len()`)
     ///   if `bytes` holds octets after the packet.
     /// - Those of [`decode`](Self::decode), which are reported first.
-    pub fn decode_exact(bytes: &'a [u8]) -> Result<SpacePacket<'a>> {
+    pub fn decode_exact(bytes: &'a [u8]) -> Result<Self> {
         let packet = SpacePacket::decode(bytes)?;
         if bytes.len() == packet.len() {
             Ok(packet)
@@ -64,15 +64,12 @@ impl<'a> SpacePacket<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the deviation that is an anomaly.
-    pub fn decode_lenient(bytes: &'a [u8]) -> Result<Lenient<SpacePacket<'a>, SppAnomaly>> {
+    pub fn decode_lenient(bytes: &'a [u8]) -> Result<Lenient<Self, SppAnomaly>> {
         SpacePacket::decode_in(bytes, DecodeMode::Lenient)
             .map(|(packet, anomalies)| Lenient::new(packet, anomalies))
     }
 
-    fn decode_in(
-        bytes: &'a [u8],
-        mode: DecodeMode,
-    ) -> Result<(SpacePacket<'a>, AnomalySet<SppAnomaly>)> {
+    fn decode_in(bytes: &'a [u8], mode: DecodeMode) -> Result<(Self, AnomalySet<SppAnomaly>)> {
         let header = SpacePacketHeader::decode(bytes)?;
         let total = header.packet_len();
         let data = bytes
