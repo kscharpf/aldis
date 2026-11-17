@@ -261,7 +261,7 @@ graph TD
 |---|---|---|
 | `check:clippy`; `check:clippy` | The lint set that denies those constructs, and that every crate passes it with no warning | VER-001, GEN-020 |
 | `record:RS-016` | Exceptions are local `#[expect(…, reason)]` items, read by the reviewer of each pull request | RS-016 |
-| `check:clippy`; `check:clippy` | `unsafe` is forbidden outside `aldis-ffi`, so safe Rust's own guarantees hold there | GEN-070, VER-002 |
+| `check:clippy`; `check:layers` | `unsafe` is forbidden outside `aldis-ffi`, so safe Rust's own guarantees hold there | GEN-070, VER-002 |
 
 ### AC-2.3 Arbitrary inputs do not make a decoder panic
 

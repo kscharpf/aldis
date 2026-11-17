@@ -2,6 +2,8 @@
 //!
 //! Run with `cargo xtask <command>`; see `cargo xtask help`.
 
+#![forbid(unsafe_code)]
+
 mod api;
 mod assurance;
 mod binaries;
@@ -34,6 +36,7 @@ mod spec;
 mod stack;
 mod status;
 mod trace;
+mod unsafe_forbid;
 mod vectors;
 mod verify;
 mod wp_status;
@@ -114,6 +117,10 @@ commands:
                                every marker names one; `list` prints the types (RS-020, VER-023)
   refapp-deps                  refapp/ uses Aldis only through the `aldis` facade and
                                forbids unsafe code (APP-100, APP-105)
+  unsafe-forbid                every crate of the workspace but aldis-ffi has
+                               #![forbid(unsafe_code)] at its library and binary roots, and no
+                               Rust file of such a crate lowers unsafe_code with allow, expect,
+                               or warn (GEN-070, GEN-071, VER-002)
   readme-diagram [--write]     check that the sequence diagram of README.md is the one
                                decoded from refapp/golden/a3-uplink-loss.jsonl and its
                                demo output the one of a fresh run, or rewrite them
@@ -159,7 +166,7 @@ commands:
                                named one and ends `partial`, which is not a pass
   ci                           the quick checks of the verification run, without a build:
                                spec-lint, links, layers, consistency, rs020, loops, coverage-off,
-                               restricted, assurance --strict, refapp-deps, vectors validate,
+                               restricted, assurance --strict, refapp-deps, unsafe-forbid, vectors validate,
                                vectors generated, vectors schema --check, fields, header (needs the pinned
                                cbindgen), sana, trace --scope m0 --strict,
                                trace --scope m1 --strict, trace --scope m2 --strict,
@@ -193,6 +200,7 @@ pub(crate) const CI: &[Step] = &[
     ("restricted", || restricted::run(false)),
     ("assurance --strict", || assurance::run(true)),
     ("refapp-deps", refapp::check),
+    ("unsafe-forbid", unsafe_forbid::check),
     ("vectors validate", vectors::validate),
     ("vectors generated", || vectors::generated(false)),
     ("vectors schema --check", || vectors::schema(true)),
@@ -313,6 +321,7 @@ fn run(args: &[&str]) -> Result<usize, String> {
         ["links"] => links::check(),
         ["layers"] => layers::check(),
         ["refapp-deps"] => refapp::check(),
+        ["unsafe-forbid"] => unsafe_forbid::check(),
         ["readme-diagram"] => readme_diagram::run(false),
         ["readme-diagram", "--write"] => readme_diagram::run(true),
         ["symbols"] => binaries::symbols(),

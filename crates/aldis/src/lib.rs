@@ -33,6 +33,7 @@
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
 //! secondary header (GEN-002).
 #![no_std]
+#![forbid(unsafe_code)]
 
 /// AOS Space Data Link Protocol frames (732.0; AOS-001…AOS-020). Feature `aos`.
 #[cfg(feature = "aos")]

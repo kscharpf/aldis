@@ -750,7 +750,7 @@ const GATE_ONLY: &[(&str, &str)] = &[
     ),
     (
         "layers",
-        "partly: `xtask ci` runs `layers` and `refapp-deps`, not `symbols`",
+        "partly: `xtask ci` runs `layers`, `refapp-deps`, and `unsafe-forbid`, not `symbols`",
     ),
     (
         "refapp",

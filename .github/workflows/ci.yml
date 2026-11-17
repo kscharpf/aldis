@@ -142,6 +142,8 @@ jobs:
       - run: cargo xtask symbols
       # refapp/ uses Aldis only through the facade and forbids unsafe (APP-100, APP-105).
       - run: cargo xtask refapp-deps
+      # Only aldis-ffi may use unsafe code (GEN-070, GEN-071, VER-002).
+      - run: cargo xtask unsafe-forbid
 
   refapp:
     name: refapp (APP-102..APP-107, VER-001, VER-004)
