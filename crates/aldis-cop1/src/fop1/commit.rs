@@ -2,8 +2,6 @@
 //!
 //! The body of [`Fop1::commit`], which keeps its signature and documentation in `fop1.rs`.
 
-use aldis_tc::FrameType;
-
 use super::{
     FduSource, Fop1, Fop1Actions, Fop1Decision, Fop1Format, Fop1Store, Origin, Payload, Waiting,
 };
@@ -46,15 +44,13 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 Origin::FreshBc(_) => None,
             };
             slot.fill(0);
-            let (frame_type, payload) = match (sent.origin, octets) {
-                (Origin::FreshBc(command), _) => (FrameType::Bc, Payload::Control(command)),
-                (_, Some(octets)) => (FrameType::Ad, Payload::Fdu(octets)),
+            let payload = match (sent.origin, octets) {
+                (Origin::FreshBc(command), _) => Payload::Bc(command),
+                (_, Some(octets)) => Payload::Ad(octets),
                 (_, None) => continue,
             };
             // The decision encoded the same frame into the output area, so this cannot fail.
-            self.target
-                .encode(frame_type, sent.sequence_number, payload, slot)
-                .ok();
+            self.target.encode(sent.sequence_number, payload, slot).ok();
         }
         match core.wait {
             None => store.wait_fdu.fill(0),

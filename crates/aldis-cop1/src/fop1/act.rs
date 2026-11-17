@@ -9,7 +9,7 @@ use aldis_core::engine::OutRange;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::Instant;
 use aldis_core::{Error, ErrorKind, Result};
-use aldis_tc::{ControlCommand, FrameType};
+use aldis_tc::ControlCommand;
 
 use super::{
     Base, Context, FduSource, Fop1Decision, Fop1Format, Fop1Output, Handle, Origin, OutArea,
@@ -64,12 +64,9 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
             Fop1Action::TransmitBd => {
                 // §5.2.6: `BD_Out_Flag`, then the request; no master copy, no timer.
                 let handle = ctx.handle.ok_or(Error::new(ErrorKind::InvalidState))?;
-                let range = base.target.encode_at(
-                    FrameType::Bd,
-                    FrameSeqNum::new(0),
-                    Payload::Fdu(ctx.fdu),
-                    out,
-                )?;
+                let range =
+                    base.target
+                        .encode_at(FrameSeqNum::new(0), Payload::Bd(ctx.fdu), out)?;
                 self.core.bd_out = Some(handle);
                 self.actions.push(Fop1Output::Transmit {
                     kind: FrameKind::Bd,
@@ -321,7 +318,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
         let range = {
             let fdu = self.fdu_of(base, source)?;
             base.target
-                .encode_at(FrameType::Ad, sequence_number, Payload::Fdu(fdu), out)?
+                .encode_at(sequence_number, Payload::Ad(fdu), out)?
         };
         self.push_sent(Sent {
             origin: Origin::FreshAd(source),
@@ -359,12 +356,9 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
             BcCommand::SetVr => ControlCommand::SetVr(self.core.v_s),
         };
         let sequence_number = FrameSeqNum::new(0);
-        let range = base.target.encode_at(
-            FrameType::Bc,
-            sequence_number,
-            Payload::Control(command),
-            out,
-        )?;
+        let range = base
+            .target
+            .encode_at(sequence_number, Payload::Bc(command), out)?;
         self.push_sent(Sent {
             origin: Origin::FreshBc(command),
             len: range.len(),
@@ -454,7 +448,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
         sent: &Sent,
         out: &mut OutArea<'_>,
     ) -> Result<OutRange> {
-        let (frame_type, payload) = match sent.origin {
+        let payload = match sent.origin {
             Origin::Base(i) => {
                 let frame = base
                     .store
@@ -464,11 +458,10 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
                     .ok_or(Error::new(ErrorKind::InternalError))?;
                 return out.emit(frame);
             }
-            Origin::FreshAd(source) => (FrameType::Ad, Payload::Fdu(self.fdu_of(base, source)?)),
-            Origin::FreshBc(command) => (FrameType::Bc, Payload::Control(command)),
+            Origin::FreshAd(source) => Payload::Ad(self.fdu_of(base, source)?),
+            Origin::FreshBc(command) => Payload::Bc(command),
         };
-        base.target
-            .encode_at(frame_type, sent.sequence_number, payload, out)
+        base.target.encode_at(sent.sequence_number, payload, out)
     }
 }
 

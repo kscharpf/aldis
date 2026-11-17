@@ -311,11 +311,25 @@ pub struct Fop1Target<P: Fop1Format = TcFormat> {
     protocol: PhantomData<P>,
 }
 
-/// What a frame of a target carries: an FDU, or a Control Command.
+/// A frame of a target to build, by its type and what it carries: the FDU of a Type-AD or a
+/// Type-BD frame, the Control Command of a Type-BC frame (232.0 §4.1.3.3). A pair of a frame
+/// type and a payload that do not belong together has no value (RS-020).
 #[derive(Debug, Clone, Copy)]
 enum Payload<'a> {
-    Fdu(&'a [u8]),
-    Control(ControlCommand),
+    Ad(&'a [u8]),
+    Bd(&'a [u8]),
+    Bc(ControlCommand),
+}
+
+impl Payload<'_> {
+    /// The type of the frame that carries the payload.
+    const fn frame_type(&self) -> FrameType {
+        match self {
+            Payload::Ad(_) => FrameType::Ad,
+            Payload::Bd(_) => FrameType::Bd,
+            Payload::Bc(_) => FrameType::Bc,
+        }
+    }
 }
 
 impl Fop1Target<TcFormat> {
@@ -503,7 +517,6 @@ impl<P: Fop1Format> Fop1Target<P> {
     /// Those of [`encode`](Self::encode); `BufferTooSmall` counts the octets `out` holds in `Needed`.
     fn encode_at(
         &self,
-        frame_type: FrameType,
         sequence_number: FrameSeqNum,
         payload: Payload<'_>,
         out: &mut OutArea<'_>,
@@ -513,14 +526,14 @@ impl<P: Fop1Format> Fop1Target<P> {
             .area
             .get_mut(start..)
             .ok_or(Error::buffer_too_small(start))?;
-        let len = self
-            .encode(frame_type, sequence_number, payload, area)
-            .map_err(|e| match (e.kind(), e.detail()) {
+        let len = self.encode(sequence_number, payload, area).map_err(|e| {
+            match (e.kind(), e.detail()) {
                 (ErrorKind::BufferTooSmall, ErrorDetail::Needed(n)) => {
                     Error::buffer_too_small(start.saturating_add(n))
                 }
                 _ => e,
-            })?;
+            }
+        })?;
         out.used = start.saturating_add(len);
         Ok(OutRange::new(start, len))
     }
@@ -532,24 +545,22 @@ impl<P: Fop1Format> Fop1Target<P> {
     /// (no SDLS), and computes the FECF (RS-023, API-023).
     fn encode(
         &self,
-        frame_type: FrameType,
         sequence_number: FrameSeqNum,
         payload: Payload<'_>,
         out: &mut [u8],
     ) -> Result<usize> {
         let command;
-        let (control, octets) = match payload {
-            Payload::Fdu(user_data) => (false, user_data),
-            Payload::Control(c) => {
+        let octets = match payload {
+            Payload::Ad(user_data) | Payload::Bd(user_data) => user_data,
+            Payload::Bc(c) => {
                 command = c.to_octets();
-                (true, command.as_slice())
+                command.as_slice()
             }
         };
         let mut writer = P::begin(
             &self.channel,
-            frame_type,
+            payload.frame_type(),
             sequence_number,
-            control,
             octets.len(),
             out,
         )?;
