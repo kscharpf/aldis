@@ -11,7 +11,7 @@
 
 use crate::error::{Error, Result, as_u64};
 use crate::field;
-use crate::ids::{MapId, SpacecraftId, VcId};
+use crate::ids::{Apid, MapId, SeqCount, SpacecraftId, VcId};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -262,6 +262,52 @@ impl<const N: usize, const OFFSET: usize, const WIDTH: u8> Field<N, OFFSET, WIDT
         MapId::from_field(Self::get_u8(header))
     }
 
+    /// The Application Process Identifier in an 11-bit field, with no error to return (133.0
+    /// §4.1.3.3.4.1; GEN-051, API-001, RS-020).
+    ///
+    /// A field whose width is not the 11 bits of [`Apid::MAX`] does not compile, so the value
+    /// always fits the type and a decoder needs no fallback.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::Apid;
+    /// // A 12-bit field read as an APID.
+    /// let _: Apid = Field::<2, 4, 12>::apid(&[0, 0]);
+    /// ```
+    #[must_use]
+    pub const fn apid(header: &[u8; N]) -> Apid {
+        const {
+            assert!(
+                WIDTH as u32 == Apid::MAX.count_ones(),
+                "the field is not as wide as the APID"
+            );
+        };
+        Apid::from_field(Self::get_u16(header))
+    }
+
+    /// The Packet Sequence Count (or Packet Name) in a 14-bit field, with no error to return
+    /// (133.0 §4.1.3.4.3.1; GEN-051, API-001, RS-020).
+    ///
+    /// A field whose width is not the 14 bits of [`SeqCount::MAX`] does not compile, so the
+    /// value always fits the type and a decoder needs no fallback.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::SeqCount;
+    /// // A 16-bit field read as a sequence count.
+    /// let _: SeqCount = Field::<2, 0, 16>::seq_count(&[0, 0]);
+    /// ```
+    #[must_use]
+    pub const fn seq_count(header: &[u8; N]) -> SeqCount {
+        const {
+            assert!(
+                WIDTH as u32 == SeqCount::MAX.count_ones(),
+                "the field is not as wide as the sequence count"
+            );
+        };
+        SeqCount::from_field(Self::get_u16(header))
+    }
+
     /// Whether a one-bit field is set (GEN-051).
     #[must_use]
     pub const fn flag(header: &[u8; N]) -> bool {
@@ -402,8 +448,8 @@ octet_int!(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Field, MapId, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set, write_u16,
-        write_u32, write_u64,
+        Apid, Field, MapId, SeqCount, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set,
+        write_u16, write_u32, write_u64,
     };
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
@@ -509,6 +555,35 @@ mod tests {
             Field::<1, 0, 8>::map_id::<8>(&[0xFF]).get(),
             MapId::<8>::MAX
         );
+    }
+
+    #[test]
+    fn apid_and_sequence_count_fields_read_as_their_type() {
+        // req: GEN-051, API-001, RS-020
+        // The Space Packet APID (bits 5-15) and Packet Sequence Count (bits 18-31) of the
+        // primary header (133.0 sections 4.1.3.3.4.1 and 4.1.3.4.3.1).
+        type Id = Field<6, 5, 11>;
+        type Count = Field<6, 18, 14>;
+        let h = [0x07, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF];
+        let apid: Apid = Id::apid(&h);
+        assert_eq!(u64::from(apid.get()), get(&h, 5, 11).unwrap());
+        assert_eq!(apid.get(), Apid::MAX);
+        let count: SeqCount = Count::seq_count(&h);
+        assert_eq!(u64::from(count.get()), get(&h, 18, 14).unwrap());
+        assert_eq!(count.get(), SeqCount::MAX);
+        let h = [0x08, 0x2A, 0x15, 0x55, 0x00, 0x00];
+        assert_eq!(u64::from(Id::apid(&h).get()), get(&h, 5, 11).unwrap());
+        assert_eq!(Id::apid(&h).get(), 0x2A);
+        assert_eq!(
+            u64::from(Count::seq_count(&h).get()),
+            get(&h, 18, 14).unwrap()
+        );
+        assert_eq!(Count::seq_count(&h).get(), 0x1555);
+        // The neighbouring bits do not leak in, and all zeros read as zero.
+        assert_eq!(Id::apid(&[0xF8, 0x00, 0, 0, 0, 0]).get(), 0);
+        assert_eq!(Count::seq_count(&[0, 0, 0xC0, 0x00, 0, 0]).get(), 0);
+        assert_eq!(Id::apid(&[0; 6]).get(), 0);
+        assert_eq!(Count::seq_count(&[0; 6]).get(), 0);
     }
 
     #[test]

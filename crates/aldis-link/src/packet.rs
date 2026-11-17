@@ -4,7 +4,6 @@
 //! `111`, 133.1 §4.1.2); the length of either comes from the length peek of its crate.
 
 use aldis_core::ErrorKind;
-use aldis_core::ids::Apid;
 use aldis_epp::{EncapsulationPacket, Epi};
 use aldis_spp::SpacePacket;
 
@@ -77,9 +76,7 @@ pub(crate) fn length(kind: Kind, prefix: &[u8]) -> Length {
 /// Packet needs its first two octets to tell.
 pub(crate) fn is_idle(kind: Kind, prefix: &[u8]) -> bool {
     match (kind, prefix) {
-        (Kind::Space, [b0, b1, ..]) => {
-            Apid::new(space_header::Apid::get_u16(&[*b0, *b1])).is_some_and(Apid::is_idle)
-        }
+        (Kind::Space, [b0, b1, ..]) => space_header::Apid::apid(&[*b0, *b1]).is_idle(),
         (Kind::Encapsulation, [b0, ..]) => {
             Epi::new(first_octet::Epi::get_u8(&[*b0])).is_some_and(Epi::is_idle)
         }
