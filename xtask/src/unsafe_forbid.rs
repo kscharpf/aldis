@@ -216,7 +216,9 @@ fn manifest_problem(name: &str, manifest: &str) -> Option<String> {
 fn lint_problems(pkg: &Value) -> Vec<String> {
     let name = pkg["name"].as_str().unwrap_or("?");
     let Some(path) = pkg["manifest_path"].as_str() else {
-        return vec![format!("GEN-070 {name}: cargo metadata gives no manifest path")];
+        return vec![format!(
+            "GEN-070 {name}: cargo metadata gives no manifest path"
+        )];
     };
     match std::fs::read_to_string(path) {
         Ok(text) => manifest_problem(name, &text).into_iter().collect(),
