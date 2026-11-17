@@ -391,11 +391,6 @@ pub struct TmPrimaryHeader {
     pub first_header_pointer: FirstHeaderPointer,
 }
 
-/// The value of SCID 0, the fallback of a masked field that always fits (GEN-020).
-const SCID_ZERO: SpacecraftId<10> = SpacecraftId::new(0).expect("0 fits");
-/// The value of VCID 0, the fallback of a masked field that always fits (GEN-020).
-const VCID_ZERO: VcId<3> = VcId::new(0).expect("0 fits");
-
 impl TmPrimaryHeader {
     /// Decodes the Primary Header at the start of `prefix`; octets after it are ignored
     /// (132.0 §4.1.2; TM-002, API-014).
@@ -417,8 +412,8 @@ impl TmPrimaryHeader {
             ));
         }
         Ok(Self {
-            scid: SpacecraftId::new(layout::Scid::get_u16(h)).unwrap_or(SCID_ZERO),
-            vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
+            scid: layout::Scid::spacecraft_id(h),
+            vcid: layout::Vcid::vc_id(h),
             ocf_flag: layout::OcfFlag::flag(h),
             mc_frame_count: layout::McCount::get_u8(h),
             vc_frame_count: layout::VcCount::get_u8(h),

@@ -93,6 +93,26 @@ width_id!(
     8
 );
 
+impl<const BITS: u32> SpacecraftId<BITS> {
+    /// The identifier of a field of exactly `BITS` bits: the mask of the field is the range of
+    /// the type, so no value is out of range and nothing falls back (API-001, API-002, RS-020).
+    /// Used by [`Field::spacecraft_id`](crate::bits::Field::spacecraft_id), which checks the
+    /// width when the code is compiled.
+    pub(crate) const fn from_field(value: u16) -> Self {
+        Self(value & Self::MAX)
+    }
+}
+
+impl<const BITS: u32> VcId<BITS> {
+    /// The identifier of a field of exactly `BITS` bits: the mask of the field is the range of
+    /// the type, so no value is out of range and nothing falls back (API-001, API-002, RS-020).
+    /// Used by [`Field::vc_id`](crate::bits::Field::vc_id), which checks the width when the
+    /// code is compiled.
+    pub(crate) const fn from_field(value: u8) -> Self {
+        Self(value & Self::MAX)
+    }
+}
+
 /// Application Process Identifier, 0–2047 (133.0 §4.1.3.3.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Apid(u16);

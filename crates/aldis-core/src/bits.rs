@@ -11,6 +11,7 @@
 
 use crate::error::{Error, Result, as_u64};
 use crate::field;
+use crate::ids::{SpacecraftId, VcId};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -191,6 +192,53 @@ impl<const N: usize, const OFFSET: usize, const WIDTH: u8> Field<N, OFFSET, WIDT
         Self::get(header) as u32
     }
 
+    /// The Spacecraft Identifier in a field of exactly `BITS` bits, with no error to return
+    /// (GEN-051, API-001, API-002, RS-020).
+    ///
+    /// A field whose width is not `BITS` does not compile, so the value always fits the type and
+    /// a decoder needs no fallback. Where a header splits the identifier over fields or
+    /// widens it, the decoder joins the octets first and reads the joined field.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::SpacecraftId;
+    /// // A 10-bit field read as an 8-bit identifier.
+    /// let _: SpacecraftId<8> = Field::<2, 6, 10>::spacecraft_id(&[0, 0]);
+    /// ```
+    #[must_use]
+    pub const fn spacecraft_id<const BITS: u32>(header: &[u8; N]) -> SpacecraftId<BITS> {
+        const {
+            assert!(
+                WIDTH as u32 == BITS,
+                "the field is not as wide as the identifier"
+            );
+        };
+        SpacecraftId::from_field(Self::get_u16(header))
+    }
+
+    /// The Virtual Channel Identifier in a field of exactly `BITS` bits, with no error to
+    /// return (GEN-051, API-001, API-002, RS-020).
+    ///
+    /// A field whose width is not `BITS` does not compile, so the value always fits the type and
+    /// a decoder needs no fallback.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::VcId;
+    /// // A 6-bit field read as a 3-bit identifier.
+    /// let _: VcId<3> = Field::<1, 2, 6>::vc_id(&[0]);
+    /// ```
+    #[must_use]
+    pub const fn vc_id<const BITS: u32>(header: &[u8; N]) -> VcId<BITS> {
+        const {
+            assert!(
+                WIDTH as u32 == BITS,
+                "the field is not as wide as the identifier"
+            );
+        };
+        VcId::from_field(Self::get_u8(header))
+    }
+
     /// Whether a one-bit field is set (GEN-051).
     #[must_use]
     pub const fn flag(header: &[u8; N]) -> bool {
@@ -330,7 +378,10 @@ octet_int!(
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Field, get, read_u16, read_u32, read_u64, set, write_u16, write_u32, write_u64};
+    use super::{
+        Field, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set, write_u16, write_u32,
+        write_u64,
+    };
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
 
@@ -395,6 +446,25 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(get(&[], 0, 1).unwrap_err().kind(), ErrorKind::OutOfRange);
+    }
+
+    #[test]
+    fn identifier_fields_read_as_their_types() {
+        // req: GEN-051, API-001, API-002, RS-020
+        type Scid = Field<6, 2, 10>;
+        type Vcid = Field<6, 12, 3>;
+        let h = [0x1B, 0xCD, 0xE5, 0x07, 0xFF, 0x81];
+        let scid: SpacecraftId<10> = Scid::spacecraft_id(&h);
+        let vcid: VcId<3> = Vcid::vc_id(&h);
+        assert_eq!(u64::from(scid.get()), get(&h, 2, 10).unwrap());
+        assert_eq!(u64::from(vcid.get()), get(&h, 12, 3).unwrap());
+        // Every value of the width, at the limits.
+        let full = Field::<2, 0, 16>::spacecraft_id::<16>(&[0xFF, 0xFF]);
+        assert_eq!(full.get(), u16::MAX);
+        let all = Field::<2, 6, 10>::spacecraft_id::<10>(&[0xFF, 0xFF]);
+        assert_eq!(all.get(), SpacecraftId::<10>::MAX);
+        assert_eq!(Field::<1, 0, 8>::vc_id::<8>(&[0xFF]).get(), VcId::<8>::MAX);
+        assert_eq!(Field::<1, 0, 3>::vc_id::<3>(&[0xFF]).get(), VcId::<3>::MAX);
     }
 
     #[test]
