@@ -11,7 +11,7 @@ use crate::{Call, Execution, Fop1Directive, GroundNode, OpsEntry};
 use aldis::core::ids::{Apid, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::oid::OidGenerator;
-use aldis::tm::encode_oid;
+use aldis::tm::{McFrameCount, TmFrameFields, VcFrameCount, encode_oid};
 use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, TableId, TableLength};
 
 /// One output of a step, in order.
@@ -101,9 +101,11 @@ impl Rig {
         let mut out = vec![0; 223];
         let n = encode_oid(
             &self.down.channel,
-            VcId::new(7).unwrap(),
-            self.mc,
-            self.mc,
+            &TmFrameFields::oid(
+                VcId::new(7).unwrap(),
+                McFrameCount::new(self.mc),
+                VcFrameCount::new(self.mc),
+            ),
             &[],
             Some(Ocf::decode(ocf.to_be_bytes())),
             &mut OidGenerator::new(),
