@@ -51,7 +51,6 @@ mod sealed {
 ///         _: &(),
 ///         _: aldis_tc::FrameType,
 ///         _: aldis_core::ids::FrameSeqNum,
-///         _: bool,
 ///         _: usize,
 ///         _: &'b mut [u8],
 ///     ) -> aldis_core::Result<aldis_core::writer::FrameWriter<'b, aldis_core::writer::Variable, aldis_tc::TcPlan>> {
@@ -68,8 +67,8 @@ pub trait Fop1Format: FrameFormat + Hash + sealed::Sealed {
 
     /// Starts a frame of `frame_type` with N(S) = `sequence_number` on `channel`, with room for
     /// `data_len` octets of data field: the Frame Data Field of a TC frame, the TFDZ of a USLP
-    /// frame. `control` says the data field is a Control Command (232.0 §4.1.3.3; 732.1 Table
-    /// 4-1) and not an FDU. The caller fills `data_mut` and fixes the length with `unsecured`:
+    /// frame. The data field of a [`FrameType::Bc`] frame is a Control Command (232.0 §4.1.3.3;
+    /// 732.1 Table 4-1), and that of the other types is an FDU. The caller fills `data_mut` and fixes the length with `unsecured`:
     /// FOP-1 frames have no SDLS fields.
     ///
     /// # Errors
@@ -80,7 +79,6 @@ pub trait Fop1Format: FrameFormat + Hash + sealed::Sealed {
         channel: &Self::Channel,
         frame_type: FrameType,
         sequence_number: FrameSeqNum,
-        control: bool,
         data_len: usize,
         out: &'b mut [u8],
     ) -> Result<FrameWriter<'b, Variable, Self::Plan>>;
@@ -136,7 +134,6 @@ impl Fop1Format for TcFormat {
         channel: &TcChannel,
         frame_type: FrameType,
         sequence_number: FrameSeqNum,
-        control: bool,
         data_len: usize,
         out: &'b mut [u8],
     ) -> Result<TcFrameWriter<'b>> {
@@ -146,7 +143,7 @@ impl Fop1Format for TcFormat {
             vc_id: channel.vc_id,
             sequence_number,
         };
-        if control {
+        if frame_type == FrameType::Bc {
             TcPlan::begin_control(out, &channel.table, fields, data_len)
         } else {
             TcPlan::begin(out, &channel.table, fields, None, data_len)
@@ -199,7 +196,6 @@ impl Fop1Format for UslpFormat {
         channel: &UslpChannel,
         frame_type: FrameType,
         sequence_number: FrameSeqNum,
-        control: bool,
         data_len: usize,
         out: &'b mut [u8],
     ) -> Result<UslpFrameWriter<'b>> {
@@ -216,7 +212,7 @@ impl Fop1Format for UslpFormat {
         };
         // A Type-BC frame carries its command as the TFDZ with the UPID "COP-1 Control
         // Commands" (732.1 Table 4-1; USLP-013).
-        let tfdf = if control {
+        let tfdf = if frame_type == FrameType::Bc {
             TfdfHeader {
                 rule: TfdzRule::NoSegmentation,
                 upid: Upid::Cop1ControlCommands,
