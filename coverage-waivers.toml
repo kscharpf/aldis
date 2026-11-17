@@ -23,19 +23,19 @@ justification = "src/view.rs (1), src/truncated.rs (1), src/writer.rs (2) — th
 crate = "aldis-cop1"
 metric = "regions"
 count = 9
-justification = "src/fop1.rs, src/fop1/act.rs, src/fop1/commit.rs — arms and error returns that no input reaches, each an explicit error or a skipped step and not a default (GEN-020): in `Fop1Target::tc`, `VcConfig::new` and `VcTable::new` (after `PhysicalChannelConfig::new` accepted the same length and FECF), the `?` of the `encode` calls (the FDU was checked against `max_fdu_len` by `check_fdu`, and a Control Command always fits); in `encode_at` the arm for an error of `encode` other than BufferTooSmall (which `encode` does not return for a checked input); in `Fop1::apply` (src/fop1/commit.rs, the body of `Fop1::commit`) the `split_first_mut` of a position that is below `Q` by the loop bound, and the arm for a new Type-AD entry whose FDU is missing (its decision encoded the same frame); and `push_sent` in `transmit_bc` (src/fop1/act.rs; the cells that transmit a Type-BC frame run Initialize first, which empties the Sent_Queue). The sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
+justification = "src/fop1.rs, src/fop1/act.rs, src/fop1/commit.rs — arms and error returns that no input reaches, each an explicit error or a skipped step and not a default (GEN-020): in `Fop1Target::tc`, `VcConfig::new` and `VcTable::new` (after `PhysicalChannelConfig::new` accepted the same length and FECF), the `?` of the `encode` calls (the FDU was checked against `max_fdu_len` by `check_fdu`, and a Control Command always fits); in `encode_at` the arm for an error of `encode` other than BufferTooSmall (which `encode` does not return for a checked input); in `Fop1Decision::commit` (src/fop1/commit.rs) the `split_first_mut` of a position that is below `Q` by the loop bound, and the arm for a new Type-AD entry whose FDU is missing (its decision encoded the same frame); and `push_sent` in `transmit_bc` (src/fop1/act.rs; the cells that transmit a Type-BC frame run Initialize first, which empties the Sent_Queue). The sweep test `every_failure_of_a_cell_leaves_the_state_unchanged` reaches every other failure of a cell."
 
 [[waiver]]
 crate = "aldis-cop1"
 metric = "lines"
 count = 3
-justification = "`encode_at` (the arm of `Fop1Target::encode_at` for an error of `encode` other than BufferTooSmall), `Fop1::apply` in src/fop1/commit.rs, the body of `Fop1::commit` (the `else` of `split_first_mut` for a position below `Q`, and the arm for a new Type-AD entry without its FDU): each is a branch that the loop bound or the decision's own earlier encode of the same frame excludes, and that is left as a skip and not a default (GEN-020)."
+justification = "`encode_at` (the arm of `Fop1Target::encode_at` for an error of `encode` other than BufferTooSmall), `Fop1Decision::commit` in src/fop1/commit.rs (the `else` of `split_first_mut` for a position below `Q`, and the arm for a new Type-AD entry without its FDU): each is a branch that the loop bound or the decision's own earlier encode of the same frame excludes, and that is left as a skip and not a default (GEN-020)."
 
 [[waiver]]
 crate = "aldis-cop1"
 metric = "branches"
 count = 1
-justification = "`Fop1::apply` in src/fop1/commit.rs, the body of `Fop1::commit`: the `split_first_mut` of the slice from position `p`, which is below `Q` by the loop bound, has no `None` case."
+justification = "`Fop1Decision::commit` in src/fop1/commit.rs: the `split_first_mut` of the slice from position `p`, which is below `Q` by the loop bound, has no `None` case."
 
 [[waiver]]
 crate = "aldis-link"

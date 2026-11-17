@@ -206,9 +206,9 @@ pub(crate) unsafe fn init_with<S: Storage>(
 /// (CABI-040, GEN-012; OI-91 (b); M6 plan WP-3a).
 ///
 /// The head is everything small, built by value from the configuration. The buffers are the
-/// large octet arrays, never built by value: `place` zeroes them. The engines keep no `repr(C)`
-/// layout constant and no `unsafe` (GEN-070); this trait and its impls are the one place that
-/// knows the layout.
+/// large octet arrays, never built by value: `place` zeroes them. The engines keep no layout
+/// constant but their `offset_of!` offsets (`Fop1` is `repr(C)` for its head and store) and no
+/// `unsafe` (GEN-070); this trait and its impls are the one place that knows the layout.
 ///
 /// # Safety
 /// An impl guarantees all of:
