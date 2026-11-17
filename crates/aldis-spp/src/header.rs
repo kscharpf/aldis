@@ -65,12 +65,12 @@ impl SequenceFlags {
     /// The flags in the low two bits of `bits`; the other bits are ignored (133.0 §4.1.3.4.2,
     /// SPP-013).
     #[must_use]
-    pub const fn from_bits(bits: u8) -> SequenceFlags {
+    pub const fn from_bits(bits: u8) -> Self {
         match bits & 0b11 {
-            0b00 => SequenceFlags::Continuation,
-            0b01 => SequenceFlags::First,
-            0b10 => SequenceFlags::Last,
-            _ => SequenceFlags::Unsegmented,
+            0b00 => Self::Continuation,
+            0b01 => Self::First,
+            0b10 => Self::Last,
+            _ => Self::Unsegmented,
         }
     }
 
@@ -78,10 +78,10 @@ impl SequenceFlags {
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
-            SequenceFlags::Continuation => 0b00,
-            SequenceFlags::First => 0b01,
-            SequenceFlags::Last => 0b10,
-            SequenceFlags::Unsegmented => 0b11,
+            Self::Continuation => 0b00,
+            Self::First => 0b01,
+            Self::Last => 0b10,
+            Self::Unsegmented => 0b11,
         }
     }
 }
@@ -122,7 +122,7 @@ pub struct SpacePacketHeader {
 impl SpacePacketHeader {
     /// Builds a header; `data_len` must be 1–65 536, which the crate's callers guarantee.
     pub(crate) fn new(fields: PacketFields, secondary_header: bool, data_len: usize) -> Self {
-        SpacePacketHeader {
+        Self {
             fields,
             secondary_header,
             data_len: u32::try_from(data_len).unwrap_or(1),
@@ -141,7 +141,7 @@ impl SpacePacketHeader {
     /// # Errors
     /// `Incomplete` (`needed` = 6) if `bytes` is shorter; `UnsupportedVersion` if the Packet
     /// Version Number is not `000` (133.0 §4.1.3.2.2, SPP-001).
-    pub fn decode(bytes: &[u8]) -> Result<SpacePacketHeader> {
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
         let Some(h) = bytes.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
@@ -154,7 +154,7 @@ impl SpacePacketHeader {
                     found: version.into(),
                 }));
         }
-        Ok(SpacePacketHeader {
+        Ok(Self {
             fields: PacketFields {
                 packet_type: if layout::Type::flag(h) {
                     PacketType::Telecommand

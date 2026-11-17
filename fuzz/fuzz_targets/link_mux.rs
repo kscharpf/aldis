@@ -127,7 +127,7 @@ trait FromPointer {
 
 impl FromPointer for TmOffer {
     fn from_pointer(pointer: Option<u16>) -> Self {
-        TmOffer { pointer }
+        Self { pointer }
     }
 }
 
@@ -137,7 +137,7 @@ impl FromPointer for () {
 
 impl FromPointer for UslpOffer {
     fn from_pointer(_: Option<u16>) -> Self {
-        UslpOffer::default()
+        Self::default()
     }
 }
 

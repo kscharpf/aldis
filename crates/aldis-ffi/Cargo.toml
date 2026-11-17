@@ -33,3 +33,4 @@ panic-unreachable = []
 
 [lints]
 workspace = true
+

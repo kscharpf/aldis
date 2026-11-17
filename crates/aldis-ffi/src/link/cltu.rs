@@ -237,8 +237,8 @@ const fn cp_config<P: CltuProtocol>(c: &aldis_cltu_packer_config_t) -> Result<Cl
 unsafe impl<P: CltuProtocol, const NU: usize> InPlace for CltuPacker<P, NU> {
     type Head = CltuPackerHead<P>;
     type Buffers = CltuPackerBuffers<NU>;
-    const HEAD_OFFSET: usize = <CltuPacker<P, NU>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <CltuPacker<P, NU>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -279,13 +279,13 @@ impl CltuPackerState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
-            CltuPackerState::Tc(e) => {
+            Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 cp_run(e, input, data, area)
             }
-            CltuPackerState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -296,8 +296,8 @@ impl CltuPackerState {
 
     const fn status(&self) -> CltuStatus {
         match self {
-            CltuPackerState::Tc(e) => *e.status(),
-            CltuPackerState::Uslp(e) => *e.status(),
+            Self::Tc(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 }

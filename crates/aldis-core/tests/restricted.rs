@@ -115,14 +115,14 @@ trait Raw: Sized {
 }
 
 impl Raw for u8 {
-    fn all() -> impl Iterator<Item = u8> {
-        0..=u8::MAX
+    fn all() -> impl Iterator<Item = Self> {
+        0..=Self::MAX
     }
 }
 
 impl Raw for u16 {
-    fn all() -> impl Iterator<Item = u16> {
-        0..=u16::MAX
+    fn all() -> impl Iterator<Item = Self> {
+        0..=Self::MAX
     }
 }
 

@@ -70,8 +70,8 @@ pub struct FlightNode {
 impl FlightNode {
     /// A flight node in its start-of-run state: every count at 0, payload mode *on* (§2.1).
     #[must_use]
-    pub fn new() -> FlightNode {
-        FlightNode::default()
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// A flight node at frame level (A2 on, §6.1): the downlink unit is the TM frame, one at every
@@ -82,11 +82,11 @@ impl FlightNode {
     /// # Errors
     /// `InvalidConfig` if the scenario values are no valid engine configuration, which the
     /// generated constants rule out.
-    pub fn new_frames() -> Result<FlightNode> {
-        Ok(FlightNode {
+    pub fn new_frames() -> Result<Self> {
+        Ok(Self {
             frames: Some(FrameDownlink::new()?),
             uplink: Some(FrameUplink::new()?),
-            ..FlightNode::default()
+            ..Self::default()
         })
     }
 
@@ -96,11 +96,11 @@ impl FlightNode {
     ///
     /// # Errors
     /// As [`FlightNode::new_frames`].
-    pub fn new_cop1() -> Result<FlightNode> {
-        Ok(FlightNode {
+    pub fn new_cop1() -> Result<Self> {
+        Ok(Self {
             frames: Some(FrameDownlink::new()?),
             uplink: Some(FrameUplink::new_cop1()?),
-            ..FlightNode::default()
+            ..Self::default()
         })
     }
 
@@ -141,7 +141,7 @@ impl FlightNode {
     /// Sends an unsegmented packet of `stream`; a failure is counted, never panics.
     fn send(&mut self, stream: Stream, now: Instant, user_data: &[u8], out: &mut dyn Output) {
         let (sent, refused) = {
-            let mut tap = FlightNode::tap(self.frames.as_mut(), stream, now, out);
+            let mut tap = Self::tap(self.frames.as_mut(), stream, now, out);
             let sent =
                 self.downlink
                     .send(stream, SequenceFlags::Unsegmented, now, user_data, &mut tap);

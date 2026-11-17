@@ -20,19 +20,19 @@ pub struct Crc16(u16);
 
 impl Crc16 {
     /// The all-zero CRC: the syndrome of a frame in which no error is detected (CMN-003).
-    pub const ZERO: Crc16 = Crc16(0);
+    pub const ZERO: Self = Self(0);
 
     /// The CRC-16 as carried on the wire or held in a register, such as the argument of a
     /// command; no check applies (CMN-001).
     #[must_use]
-    pub const fn from_wire(value: u16) -> Crc16 {
-        Crc16(value)
+    pub const fn from_wire(value: u16) -> Self {
+        Self(value)
     }
 
     /// The CRC-16 of two octets, MSB first, as in the FECF (CMN-003).
     #[must_use]
-    pub const fn from_be_bytes(octets: [u8; 2]) -> Crc16 {
-        Crc16(u16::from_be_bytes(octets))
+    pub const fn from_be_bytes(octets: [u8; 2]) -> Self {
+        Self(u16::from_be_bytes(octets))
     }
 
     /// The numeric value.

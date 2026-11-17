@@ -49,27 +49,27 @@ pub enum Upid {
 impl Upid {
     /// The UPID of a 5-bit field value, or `None` above 31 (732.1 §4.1.4.2.3.1; USLP-007).
     #[must_use]
-    pub const fn from_bits(bits: u8) -> Option<Upid> {
+    pub const fn from_bits(bits: u8) -> Option<Self> {
         if bits > 0x1F {
             return None;
         }
-        Some(Upid::from_field(bits))
+        Some(Self::from_field(bits))
     }
 
     /// The UPID of the low five bits of `bits`, the field of a TFDF Header (732.1
     /// §4.1.4.2.3.1; USLP-007).
-    pub(crate) const fn from_field(bits: u8) -> Upid {
+    pub(crate) const fn from_field(bits: u8) -> Self {
         match bits & 0x1F {
-            0b00000 => Upid::Packets,
-            0b00001 => Upid::Cop1ControlCommands,
-            0b00010 => Upid::CopPControlCommands,
-            0b00100 => Upid::OctetStream,
-            0b00101 => Upid::MissionSpecificInformation1,
-            0b00110 => Upid::Proximity1PseudoPacketId1,
-            0b00111 => Upid::Proximity1Spdus,
-            0b01000 => Upid::Proximity1PseudoPacketId2,
-            0b11111 => Upid::OnlyIdleData,
-            other => Upid::Other(UnassignedUpid(other)),
+            0b00000 => Self::Packets,
+            0b00001 => Self::Cop1ControlCommands,
+            0b00010 => Self::CopPControlCommands,
+            0b00100 => Self::OctetStream,
+            0b00101 => Self::MissionSpecificInformation1,
+            0b00110 => Self::Proximity1PseudoPacketId1,
+            0b00111 => Self::Proximity1Spdus,
+            0b01000 => Self::Proximity1PseudoPacketId2,
+            0b11111 => Self::OnlyIdleData,
+            other => Self::Other(UnassignedUpid(other)),
         }
     }
 
@@ -77,16 +77,16 @@ impl Upid {
     #[must_use]
     pub const fn bits(self) -> u8 {
         match self {
-            Upid::Packets => 0b00000,
-            Upid::Cop1ControlCommands => 0b00001,
-            Upid::CopPControlCommands => 0b00010,
-            Upid::OctetStream => 0b00100,
-            Upid::MissionSpecificInformation1 => 0b00101,
-            Upid::Proximity1PseudoPacketId1 => 0b00110,
-            Upid::Proximity1Spdus => 0b00111,
-            Upid::Proximity1PseudoPacketId2 => 0b01000,
-            Upid::OnlyIdleData => 0b11111,
-            Upid::Other(u) => u.get(),
+            Self::Packets => 0b00000,
+            Self::Cop1ControlCommands => 0b00001,
+            Self::CopPControlCommands => 0b00010,
+            Self::OctetStream => 0b00100,
+            Self::MissionSpecificInformation1 => 0b00101,
+            Self::Proximity1PseudoPacketId1 => 0b00110,
+            Self::Proximity1Spdus => 0b00111,
+            Self::Proximity1PseudoPacketId2 => 0b01000,
+            Self::OnlyIdleData => 0b11111,
+            Self::Other(u) => u.get(),
         }
     }
 }

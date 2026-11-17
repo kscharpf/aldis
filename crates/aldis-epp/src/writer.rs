@@ -77,7 +77,7 @@ impl<'b> EncapsulationWriter<'b> {
         fields: EncapsulationFields,
         size: HeaderSize,
         max_data_len: usize,
-    ) -> Result<EncapsulationWriter<'b>> {
+    ) -> Result<Self> {
         config.check_fields(fields)?;
         let header = EncapsulationHeader::for_data(fields, size, max_data_len)?;
         let total = header.header_len().octets().saturating_add(max_data_len);

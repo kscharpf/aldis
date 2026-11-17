@@ -109,7 +109,7 @@ impl<'a> AosFrame<'a> {
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
-    ) -> Result<AosFrame<'a>> {
+    ) -> Result<Self> {
         AosFrame::decode_in(bytes, pc, vcs, DecodeMode::Strict).map(|(frame, _)| frame)
     }
 
@@ -125,7 +125,7 @@ impl<'a> AosFrame<'a> {
         bytes: &'a [u8],
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
-    ) -> Result<Lenient<AosFrame<'a>, AosAnomaly>> {
+    ) -> Result<Lenient<Self, AosAnomaly>> {
         AosFrame::decode_in(bytes, pc, vcs, DecodeMode::Lenient)
             .map(|(frame, anomalies)| Lenient::new(frame, anomalies))
     }
@@ -138,7 +138,7 @@ impl<'a> AosFrame<'a> {
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         mode: DecodeMode,
-    ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
+    ) -> Result<(Self, AnomalySet<AosAnomaly>)> {
         let header = AosFrame::check_header(bytes, pc)?;
         let (content, security, ocf) = if header.is_oid() {
             (DataFieldContent::IdleData, SecurityLayout::NONE, false)
@@ -204,7 +204,7 @@ impl<'a> AosFrame<'a> {
         header: AosPrimaryHeader,
         (content, security, ocf): (DataFieldContent, SecurityLayout, bool),
         mode: DecodeMode,
-    ) -> Result<(AosFrame<'a>, AnomalySet<AosAnomaly>)> {
+    ) -> Result<(Self, AnomalySet<AosAnomaly>)> {
         let layout = frame_layout(pc, security, ocf)
             .map_err(|_| Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD))?;
         let mut deviations = Deviations::new(mode);

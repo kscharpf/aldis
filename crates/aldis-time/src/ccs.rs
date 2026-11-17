@@ -50,15 +50,15 @@ impl CcsFormat {
     ///
     /// # Errors
     /// `OutOfRange` (`subsecond_octets`) above 6.
-    pub const fn new(variation: CcsVariation, subsecond_octets: u8) -> Result<CcsFormat> {
-        if subsecond_octets > CcsFormat::MAX_SUBSECOND_OCTETS {
+    pub const fn new(variation: CcsVariation, subsecond_octets: u8) -> Result<Self> {
+        if subsecond_octets > Self::MAX_SUBSECOND_OCTETS {
             return Err(Error::out_of_range(
                 field::SUBSECOND_OCTETS,
-                wide8(CcsFormat::MAX_SUBSECOND_OCTETS),
+                wide8(Self::MAX_SUBSECOND_OCTETS),
                 wide8(subsecond_octets),
             ));
         }
-        Ok(CcsFormat {
+        Ok(Self {
             variation,
             subsecond: subsecond_octets,
             tail: PFieldTail::EMPTY,
@@ -67,8 +67,8 @@ impl CcsFormat {
 
     /// The same format with undefined P-field octets after octet 1 (301.0 §3.4.2, TIME-005).
     #[must_use]
-    pub const fn with_tail(self, tail: PFieldTail) -> CcsFormat {
-        CcsFormat { tail, ..self }
+    pub const fn with_tail(self, tail: PFieldTail) -> Self {
+        Self { tail, ..self }
     }
 
     /// The calendar variation (301.0 §3.4.2, TIME-030).
@@ -119,13 +119,13 @@ impl CcsFormat {
     /// # Errors
     /// `ReservedValue` (`subsecond_octets`) for resolution code `111` ("not used"), in both
     /// modes, because it sets the T-field length (TIME-030).
-    pub(crate) fn from_pfield(pfield: &PField) -> Result<CcsFormat> {
+    pub(crate) fn from_pfield(pfield: &PField) -> Result<Self> {
         let first = pfield.first();
         let subsecond = first & 0b111;
         if subsecond == 0b111 {
             return Err(Error::new(ErrorKind::ReservedValue).with_field(field::SUBSECOND_OCTETS));
         }
-        Ok(CcsFormat {
+        Ok(Self {
             variation: if first & 0b1000 == 0 {
                 CcsVariation::MonthDay
             } else {
@@ -188,7 +188,7 @@ impl Ccs {
     /// `InvalidField` (`date`) if the date is not expressed in the format's calendar variation;
     /// `OutOfRange` (`subsecond`) if the sub-second value has more digits than the format's
     /// sub-second octets hold.
-    pub const fn new(format: CcsFormat, value: CcsValue) -> Result<Ccs> {
+    pub const fn new(format: CcsFormat, value: CcsValue) -> Result<Self> {
         if !matches!(
             (value.date.variation(), format.variation),
             (CcsVariation::MonthDay, CcsVariation::MonthDay)
@@ -204,13 +204,13 @@ impl Ccs {
                 value.subsecond,
             ));
         }
-        Ok(Ccs { format, value })
+        Ok(Self { format, value })
     }
 
     /// A code whose value the caller already knows fits the format: the date is in the
     /// format's variation and the sub-second value has at most its digits (conversions).
-    pub(crate) const fn from_parts_unchecked(format: CcsFormat, value: CcsValue) -> Ccs {
-        Ccs { format, value }
+    pub(crate) const fn from_parts_unchecked(format: CcsFormat, value: CcsValue) -> Self {
+        Self { format, value }
     }
 
     /// The format (301.0 §3.4, TIME-030, TIME-034).
@@ -282,7 +282,7 @@ impl Ccs {
         t: &[u8],
         mode: DecodeMode,
         anomalies: &mut AnomalySet<TimeAnomaly>,
-    ) -> Result<Ccs> {
+    ) -> Result<Self> {
         let mut octets = t.iter().copied();
         let mut next = || octets.next().unwrap_or(0);
         // Each field is parsed into its type as it is read (TIME-030).
@@ -328,7 +328,7 @@ impl Ccs {
             subsecond = subsecond.wrapping_mul(100).wrapping_add(u64::from(digits));
         }
         // The value has at most 2n digits for n octets, so it always fits the format.
-        Ok(Ccs {
+        Ok(Self {
             format,
             value: CcsValue {
                 date,

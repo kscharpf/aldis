@@ -113,7 +113,7 @@ struct Link {
 }
 
 impl Link {
-    const IDEAL: Link = Link {
+    const IDEAL: Self = Self {
         loss: 0,
         duplicate: 0,
         corrupt: 0,
@@ -132,8 +132,8 @@ struct Channel {
 }
 
 impl Channel {
-    const fn new(link: Link) -> Channel {
-        Channel {
+    const fn new(link: Link) -> Self {
+        Self {
             link,
             items: Vec::new(),
             count: 0,
@@ -258,7 +258,7 @@ struct World {
 }
 
 impl World {
-    fn new(s: Scenario, seed: u64) -> World {
+    fn new(s: Scenario, seed: u64) -> Self {
         let scid = TcSpacecraftId::new(SCID).unwrap();
         let vc = TcVcId::new(VCID).unwrap();
         let target = Fop1Target::tc(
@@ -288,7 +288,7 @@ impl World {
         let physical = PhysicalChannelConfig::new(F, true).unwrap();
         let channel =
             VcConfig::new(scid, vc, F, SegmentHeaderUse::Absent(SecurityLayout::NONE)).unwrap();
-        World {
+        Self {
             s,
             rng: Rng(seed),
             now: 0,

@@ -22,7 +22,7 @@ impl Micros {
     /// The value `us` µs.
     #[must_use]
     pub const fn new(us: u64) -> Self {
-        Micros(us)
+        Self(us)
     }
 
     /// The value in µs.
@@ -33,35 +33,35 @@ impl Micros {
 
     /// The sum, stopping at the largest value.
     #[must_use]
-    pub const fn saturating_add(self, other: Micros) -> Micros {
-        Micros(self.0.saturating_add(other.0))
+    pub const fn saturating_add(self, other: Self) -> Self {
+        Self(self.0.saturating_add(other.0))
     }
 
     /// Whether the value is a multiple of `period`; false for a zero period.
     #[must_use]
-    pub const fn is_multiple_of(self, period: Micros) -> bool {
+    pub const fn is_multiple_of(self, period: Self) -> bool {
         self.0.is_multiple_of(period.0)
     }
 
     /// The first multiple of `period` at or after the value, stopping at the largest value.
     /// A zero `period` gives the value itself.
     #[must_use]
-    pub const fn next_multiple_of(self, period: Micros) -> Micros {
+    pub const fn next_multiple_of(self, period: Self) -> Self {
         if period.0 == 0 {
             return self;
         }
-        Micros(self.0.div_ceil(period.0).saturating_mul(period.0))
+        Self(self.0.div_ceil(period.0).saturating_mul(period.0))
     }
 
     /// `periods` periods of `period` µs, stopping at the largest value.
     #[must_use]
-    pub const fn times(period: Micros, periods: u64) -> Micros {
-        Micros(period.0.saturating_mul(periods))
+    pub const fn times(period: Self, periods: u64) -> Self {
+        Self(period.0.saturating_mul(periods))
     }
 }
 
 impl From<Micros> for u64 {
-    fn from(us: Micros) -> u64 {
+    fn from(us: Micros) -> Self {
         us.0
     }
 }

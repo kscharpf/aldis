@@ -47,8 +47,8 @@ impl TmPhysicalChannelConfig {
     /// `InvalidConfig` (`frame_len`) if a frame cannot hold the Primary Header, one data octet,
     /// and the FECF (132.0 §4.1.1.1; CMN-041), with that minimum, or is longer than
     /// [`MAX_FRAME_LEN`] (OI-51), with that maximum.
-    pub const fn new(frame_len: usize, fecf: bool) -> Result<TmPhysicalChannelConfig> {
-        let min = TmPhysicalChannelConfig::min_frame_len(fecf);
+    pub const fn new(frame_len: usize, fecf: bool) -> Result<Self> {
+        let min = Self::min_frame_len(fecf);
         if frame_len < min {
             return Err(mismatch(
                 ErrorKind::InvalidConfig,
@@ -65,7 +65,7 @@ impl TmPhysicalChannelConfig {
                 len_u64(frame_len),
             ));
         }
-        Ok(TmPhysicalChannelConfig { frame_len, fecf })
+        Ok(Self { frame_len, fecf })
     }
 
     /// The shortest frame: the Primary Header, one data octet, and the FECF if present.
@@ -119,7 +119,7 @@ impl DataFieldContent {
     /// The Synchronization Flag of every frame on such a VC (132.0 §4.1.2.7.3.2–3; TM-011).
     #[must_use]
     pub const fn sync_flag(self) -> bool {
-        matches!(self, DataFieldContent::VcaSdu)
+        matches!(self, Self::VcaSdu)
     }
 }
 
@@ -140,8 +140,8 @@ pub struct TmVirtualChannelConfig {
 impl TmVirtualChannelConfig {
     /// A virtual channel carrying `content`, without `VC_FSH`, `VC_OCF`, or SDLS fields.
     #[must_use]
-    pub const fn new(vcid: VcId<3>, content: DataFieldContent) -> TmVirtualChannelConfig {
-        TmVirtualChannelConfig {
+    pub const fn new(vcid: VcId<3>, content: DataFieldContent) -> Self {
+        Self {
             vcid,
             content,
             fsh: None,
@@ -152,8 +152,8 @@ impl TmVirtualChannelConfig {
 
     /// The same channel with a `VC_FSH` of `len` octets (132.0 §4.1.3.1.4, Table 5-3).
     #[must_use]
-    pub const fn with_fsh(self, len: FshLen) -> TmVirtualChannelConfig {
-        TmVirtualChannelConfig {
+    pub const fn with_fsh(self, len: FshLen) -> Self {
+        Self {
             fsh: Some(len),
             ..self
         }
@@ -161,14 +161,14 @@ impl TmVirtualChannelConfig {
 
     /// The same channel with a `VC_OCF` (132.0 §4.1.5.2, Table 5-3).
     #[must_use]
-    pub const fn with_ocf(self) -> TmVirtualChannelConfig {
-        TmVirtualChannelConfig { ocf: true, ..self }
+    pub const fn with_ocf(self) -> Self {
+        Self { ocf: true, ..self }
     }
 
     /// The same channel with a Security Header and Trailer (132.0 §6.3, Table 6-1; API-070).
     #[must_use]
-    pub const fn with_security(self, security: SecurityLayout) -> TmVirtualChannelConfig {
-        TmVirtualChannelConfig { security, ..self }
+    pub const fn with_security(self, security: SecurityLayout) -> Self {
+        Self { security, ..self }
     }
 
     /// Virtual Channel Identifier (132.0 §4.1.2.3, Table 5-3).
@@ -233,8 +233,8 @@ impl TmMasterChannelConfig {
         scid: SpacecraftId<10>,
         fsh: Option<FshLen>,
         ocf: bool,
-    ) -> TmMasterChannelConfig {
-        TmMasterChannelConfig {
+    ) -> Self {
+        Self {
             pc,
             scid,
             fsh,
@@ -253,7 +253,7 @@ impl TmMasterChannelConfig {
     /// - `frame_data_field` if the headers, SDLS fields, OCF, and FECF leave no data octet in a
     ///   frame of the VC (132.0 §4.1.4.2, §6.3.5.2; CMN-041);
     /// - `vc_id` if the VCID is already configured.
-    pub fn with_vc(mut self, vc: TmVirtualChannelConfig) -> Result<TmMasterChannelConfig> {
+    pub fn with_vc(mut self, vc: TmVirtualChannelConfig) -> Result<Self> {
         if self.fsh.is_some() && vc.fsh.is_some() {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FSH_LEN));
         }
@@ -380,7 +380,7 @@ impl ChannelLookup<SpacecraftId<10>, VcId<3>> for TmMasterChannelConfig {
 
     fn vc(&self, scid: SpacecraftId<10>, vcid: VcId<3>) -> Option<SecurityLayout> {
         if self.has_spacecraft(scid) {
-            TmMasterChannelConfig::vc(self, vcid).map(TmVirtualChannelConfig::security)
+            Self::vc(self, vcid).map(TmVirtualChannelConfig::security)
         } else {
             None
         }

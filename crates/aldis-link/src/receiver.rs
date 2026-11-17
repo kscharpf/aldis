@@ -107,9 +107,9 @@ impl DeliveryService {
     /// delivered.
     const fn scope<V: Copy>(self, vc: V) -> Option<ChannelScope<V>> {
         match self {
-            DeliveryService::None => None,
-            DeliveryService::Vc => Some(ChannelScope::VirtualChannel(vc)),
-            DeliveryService::Mc => Some(ChannelScope::MasterChannel),
+            Self::None => None,
+            Self::Vc => Some(ChannelScope::VirtualChannel(vc)),
+            Self::Mc => Some(ChannelScope::MasterChannel),
         }
     }
 }
@@ -151,11 +151,11 @@ pub enum CallerDiscardReason {
 }
 
 impl From<CallerDiscardReason> for DiscardReason {
-    fn from(reason: CallerDiscardReason) -> DiscardReason {
+    fn from(reason: CallerDiscardReason) -> Self {
         match reason {
-            CallerDiscardReason::CrcMismatch => DiscardReason::CrcMismatch,
-            CallerDiscardReason::HeaderUncorrectable => DiscardReason::HeaderUncorrectable,
-            CallerDiscardReason::Security => DiscardReason::Security,
+            CallerDiscardReason::CrcMismatch => Self::CrcMismatch,
+            CallerDiscardReason::HeaderUncorrectable => Self::HeaderUncorrectable,
+            CallerDiscardReason::Security => Self::Security,
         }
     }
 }
@@ -308,8 +308,8 @@ impl<P: ReceiveProtocol> VcEntry<P> {
     ///
     /// Requirements: LNK-050…LNK-054, LNK-002, LNK-003; docs/04-engines.md §3.1.
     #[must_use]
-    pub const fn new(vc: P::Vc, params: P::VcParams) -> VcEntry<P> {
-        VcEntry { vc, params }
+    pub const fn new(vc: P::Vc, params: P::VcParams) -> Self {
+        Self { vc, params }
     }
 
     /// The VC.
@@ -415,7 +415,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// on the channel, or with the OCF and Secondary Header of a VC, or (TC) more than the 1 024
     /// octets of the Maximum Transfer Frame Length (232.0 Tables 5-1 to 5-3); `InvalidConfig`
     /// (`vc_id`) for a VC given twice or an entry whose VC is not the one its parameters are of; `CapacityExceeded` (`vc_id`) for more than `V` VCs.
-    pub fn new(channel: P::Channel, vcs: &[VcEntry<P>]) -> Result<FrameReceiverConfig<P, V>> {
+    pub fn new(channel: P::Channel, vcs: &[VcEntry<P>]) -> Result<Self> {
         // The channel's constructor has checked that a frame leaves a data field octet.
         let bad_len = Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN);
         let frame_len = P::physical(&channel).frame_len();
@@ -435,7 +435,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
             }
             *slot = Some(*entry);
         }
-        Ok(FrameReceiverConfig {
+        Ok(Self {
             channel,
             vcs: table,
             raw_frames: false,
@@ -447,11 +447,11 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiverConfig<P, V> {
     /// # Errors
     /// `InvalidConfig` (`raw_frames`) to turn it on for a protocol or a channel without an
     /// Insert Zone.
-    pub fn with_raw_frames(self, on: bool) -> Result<FrameReceiverConfig<P, V>> {
+    pub fn with_raw_frames(self, on: bool) -> Result<Self> {
         if on && P::physical(&self.channel).insert_zone_len() == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::RAW_FRAMES));
         }
-        Ok(FrameReceiverConfig {
+        Ok(Self {
             raw_frames: on,
             ..self
         })
@@ -857,9 +857,9 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
     /// A receiver that has seen no frame: the first count of each channel sets its expectation
     /// (LNK-051).
     #[must_use]
-    pub fn new(config: FrameReceiverConfig<P, V>) -> FrameReceiver<P, V> {
-        FrameReceiver {
-            slots: FrameReceiver::<P, V>::slots_of(&config),
+    pub fn new(config: FrameReceiverConfig<P, V>) -> Self {
+        Self {
+            slots: Self::slots_of(&config),
             config,
             mc: None,
             status: ReceiverStatus::default(),
@@ -958,7 +958,7 @@ impl<P: ReceiveProtocol, const V: usize> FrameReceiver<P, V> {
                 Ok(actions)
             }
             ReceiverInput::Reconfigure(config) => {
-                self.slots = FrameReceiver::<P, V>::slots_of(&config);
+                self.slots = Self::slots_of(&config);
                 self.config = config;
                 self.mc = None;
                 Ok(Actions::new())

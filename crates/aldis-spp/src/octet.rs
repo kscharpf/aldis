@@ -34,11 +34,11 @@ impl OctetStringEncoder {
         packet_type: PacketType,
         apid: Apid,
         counter: SequenceCounter,
-    ) -> Result<OctetStringEncoder> {
+    ) -> Result<Self> {
         if apid.is_idle() {
             return Err(invalid(field::APID));
         }
-        Ok(OctetStringEncoder {
+        Ok(Self {
             config: *config,
             packet_type,
             apid,

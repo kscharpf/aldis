@@ -55,13 +55,13 @@ impl CucFormat {
     /// # Errors
     /// `OutOfRange` (`coarse_octets` or `fine_octets`) outside those ranges (301.0 §3.2.2,
     /// TIME-010).
-    pub const fn new(epoch: CucEpoch, coarse_octets: u8, fine_octets: u8) -> Result<CucFormat> {
-        if coarse_octets == 0 || coarse_octets > CucFormat::MAX_COARSE {
+    pub const fn new(epoch: CucEpoch, coarse_octets: u8, fine_octets: u8) -> Result<Self> {
+        if coarse_octets == 0 || coarse_octets > Self::MAX_COARSE {
             // Report the violated bound: 1 for zero, the maximum otherwise (GEN-041).
             let limit = if coarse_octets == 0 {
                 1
             } else {
-                CucFormat::MAX_COARSE
+                Self::MAX_COARSE
             };
             return Err(Error::out_of_range(
                 field::COARSE_OCTETS,
@@ -69,14 +69,14 @@ impl CucFormat {
                 wide8(coarse_octets),
             ));
         }
-        if fine_octets > CucFormat::MAX_FINE {
+        if fine_octets > Self::MAX_FINE {
             return Err(Error::out_of_range(
                 field::FINE_OCTETS,
-                wide8(CucFormat::MAX_FINE),
+                wide8(Self::MAX_FINE),
                 wide8(fine_octets),
             ));
         }
-        Ok(CucFormat {
+        Ok(Self {
             epoch,
             coarse: coarse_octets,
             fine: fine_octets,
@@ -91,11 +91,11 @@ impl CucFormat {
     ///
     /// # Errors
     /// `OutOfRange` (`mission_bits`) above 3.
-    pub const fn with_mission_bits(self, bits: u8) -> Result<CucFormat> {
+    pub const fn with_mission_bits(self, bits: u8) -> Result<Self> {
         if bits > 0b11 {
             return Err(Error::out_of_range(field::MISSION_BITS, 3, wide8(bits)));
         }
-        Ok(CucFormat {
+        Ok(Self {
             mission: bits,
             octet2: true,
             ..self
@@ -105,8 +105,8 @@ impl CucFormat {
     /// The same format with P-field octet 2 present even if the counts do not need it (301.0
     /// §3.2.2, TIME-013).
     #[must_use]
-    pub const fn with_octet2(self) -> CucFormat {
-        CucFormat {
+    pub const fn with_octet2(self) -> Self {
+        Self {
             octet2: true,
             ..self
         }
@@ -118,11 +118,11 @@ impl CucFormat {
     /// # Errors
     /// `InvalidField` (`pfield_tail`) if the tail is longer than 6 octets, which would make the
     /// P-field longer than 8.
-    pub const fn with_tail(self, tail: PFieldTail) -> Result<CucFormat> {
+    pub const fn with_tail(self, tail: PFieldTail) -> Result<Self> {
         if tail.len() > 6 {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::PFIELD_TAIL));
         }
-        Ok(CucFormat {
+        Ok(Self {
             tail,
             octet2: true,
             ..self
@@ -205,7 +205,7 @@ impl CucFormat {
     }
 
     /// The format a CUC P-field describes; the caller has checked the time code ID.
-    pub(crate) fn from_pfield(pfield: &PField) -> CucFormat {
+    pub(crate) fn from_pfield(pfield: &PField) -> Self {
         let first = pfield.first();
         let epoch = match pfield.id() {
             TimeCodeId::CucLevel1 => CucEpoch::Tai1958,
@@ -220,7 +220,7 @@ impl CucFormat {
         let coarse = ((first >> 2) & 0b11).wrapping_add(1);
         let fine = first & 0b11;
         match pfield.rest() {
-            [] => CucFormat {
+            [] => Self {
                 epoch,
                 coarse,
                 fine,
@@ -228,7 +228,7 @@ impl CucFormat {
                 octet2: false,
                 tail: PFieldTail::EMPTY,
             },
-            [octet2, tail @ ..] => CucFormat {
+            [octet2, tail @ ..] => Self {
                 epoch,
                 coarse: coarse.wrapping_add((octet2 >> 5) & 0b11),
                 fine: fine.wrapping_add((octet2 >> 2) & 0b111),
@@ -252,8 +252,8 @@ pub struct CucValue {
 impl CucValue {
     /// A value of `coarse` units and the left-aligned fraction `fine` (301.0 §3.2.1, TIME-011).
     #[must_use]
-    pub const fn new(coarse: u64, fine: u128) -> CucValue {
-        CucValue { coarse, fine }
+    pub const fn new(coarse: u64, fine: u128) -> Self {
+        Self { coarse, fine }
     }
 
     /// Coarse time (301.0 §3.2.1, TIME-011).
@@ -329,7 +329,7 @@ impl Cuc {
     /// `OutOfRange` (`coarse`) if the coarse time needs more octets than the format has; it is
     /// never wrapped (TIME-012). `OutOfRange` (`fine`) if the fraction has bits below the
     /// format's resolution.
-    pub fn new(format: CucFormat, value: CucValue) -> Result<Cuc> {
+    pub fn new(format: CucFormat, value: CucValue) -> Result<Self> {
         check_coarse(&format, value.coarse)?;
         let below = u128::MAX
             .checked_shr(u32::from(format.fine).wrapping_mul(8))
@@ -337,7 +337,7 @@ impl Cuc {
         if value.fine & below != 0 {
             return Err(Error::new(ErrorKind::OutOfRange).with_field(field::FINE));
         }
-        Ok(Cuc { format, value })
+        Ok(Self { format, value })
     }
 
     /// The code for `seconds` and `nanos` in `format`: the fraction is rounded **down** to the
@@ -352,7 +352,7 @@ impl Cuc {
     /// # Errors
     /// `OutOfRange` (`nanoseconds`) if `nanos` ≥ 10⁹; `OutOfRange` (`coarse`) if `seconds` does
     /// not fit the format (TIME-012).
-    pub fn from_seconds_nanos(format: CucFormat, seconds: u64, nanos: u32) -> Result<Cuc> {
+    pub fn from_seconds_nanos(format: CucFormat, seconds: u64, nanos: u32) -> Result<Self> {
         if nanos >= NANOS {
             return Err(range(field::NANOSECONDS, 999_999_999, u64::from(nanos)));
         }
@@ -364,7 +364,7 @@ impl Cuc {
             .checked_div(u128::from(NANOS))
             .unwrap_or(0);
         // The truncated fraction has no bits below the format's resolution.
-        Ok(Cuc {
+        Ok(Self {
             format,
             value: CucValue {
                 coarse: seconds,
@@ -387,14 +387,15 @@ impl Cuc {
     /// `OutOfRange` (`coarse`) if `epoch_offset` plus the seconds of `instant` overflows `u64`
     /// (the limit is the largest offset that does not) or does not fit the format's coarse octets
     /// (TIME-012, TIME-015).
-    pub fn from_instant(format: CucFormat, epoch_offset: u64, instant: Instant) -> Result<Cuc> {
+    pub fn from_instant(format: CucFormat, epoch_offset: u64, instant: Instant) -> Result<Self> {
         let micros = instant.as_micros();
         let seconds = micros / MICROS;
         let sub_micros = micros % MICROS;
         let coarse = epoch_offset
             .checked_add(seconds)
             .ok_or_else(|| range(field::COARSE, u64::MAX.wrapping_sub(seconds), epoch_offset))?;
-        micros_to_nanos(sub_micros).and_then(|nanos| Cuc::from_seconds_nanos(format, coarse, nanos))
+        micros_to_nanos(sub_micros)
+            .and_then(|nanos| Self::from_seconds_nanos(format, coarse, nanos))
     }
 
     /// The `Instant` of this code when the caller's epoch falls at coarse time `epoch_offset`:
@@ -466,7 +467,7 @@ impl Cuc {
     }
 
     /// Decodes a T-field of exactly [`CucFormat::t_len`] octets.
-    pub(crate) fn from_t(format: CucFormat, t: &[u8]) -> Cuc {
+    pub(crate) fn from_t(format: CucFormat, t: &[u8]) -> Self {
         let co = usize::from(format.coarse);
         let coarse = t
             .iter()
@@ -479,7 +480,7 @@ impl Cuc {
         let fine = raw
             .checked_shl(128_u32.wrapping_sub(u32::from(format.fine).wrapping_mul(8)))
             .unwrap_or(0);
-        Cuc {
+        Self {
             format,
             value: CucValue { coarse, fine },
         }

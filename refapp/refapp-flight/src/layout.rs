@@ -27,8 +27,8 @@ impl PayloadMode {
     #[must_use]
     pub const fn octet(self) -> u8 {
         match self {
-            PayloadMode::Off => 0,
-            PayloadMode::On => 1,
+            Self::Off => 0,
+            Self::On => 1,
         }
     }
 }

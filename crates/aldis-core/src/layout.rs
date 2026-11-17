@@ -55,8 +55,8 @@ impl LayoutSpec {
     /// The same spec for a frame whose data field holds `data_len` octets: its frame length is
     /// [`overhead`](Self::overhead) plus `data_len` (CMN-040, issue #154).
     #[must_use]
-    pub const fn with_data_len(self, data_len: usize) -> LayoutSpec {
-        LayoutSpec {
+    pub const fn with_data_len(self, data_len: usize) -> Self {
+        Self {
             frame_len: self.overhead().saturating_add(data_len),
             ..self
         }
@@ -103,7 +103,7 @@ impl FrameLayout {
     /// # Errors
     /// `InvalidConfig` (`field::FRAME_DATA_FIELD`) if the other fields leave no octet for the data field
     /// (CMN-041).
-    pub fn compute(spec: &LayoutSpec) -> Result<FrameLayout> {
+    pub fn compute(spec: &LayoutSpec) -> Result<Self> {
         let trailer_len = spec
             .security
             .trailer_len()
@@ -120,7 +120,7 @@ impl FrameLayout {
             .filter(|&n| n > 0)
             .ok_or(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_DATA_FIELD))?;
         let mut at = 0;
-        Ok(FrameLayout {
+        Ok(Self {
             primary_header: take(&mut at, spec.primary_header_len),
             secondary: take(&mut at, spec.secondary_len),
             security_header: take(&mut at, spec.security.header_len()),
@@ -137,8 +137,8 @@ impl FrameLayout {
     ///
     /// # Errors
     /// `InvalidConfig` (`frame_data_field`) if `data_len` is 0 (CMN-041).
-    pub fn compute_for_data(spec: &LayoutSpec, data_len: usize) -> Result<FrameLayout> {
-        FrameLayout::compute(&spec.with_data_len(data_len))
+    pub fn compute_for_data(spec: &LayoutSpec, data_len: usize) -> Result<Self> {
+        Self::compute(&spec.with_data_len(data_len))
     }
 
     /// The same layout whose data field starts with a header of `header_len` octets (the TFDF
@@ -148,9 +148,9 @@ impl FrameLayout {
     /// # Errors
     /// `InvalidConfig` (`frame_data_field`) unless the header leaves at least one octet of the
     /// data field (CMN-041).
-    pub fn with_data_header(self, header_len: usize) -> Result<FrameLayout> {
+    pub fn with_data_header(self, header_len: usize) -> Result<Self> {
         if header_len < self.data.len() {
-            Ok(FrameLayout {
+            Ok(Self {
                 data_header_len: header_len,
                 ..self
             })
@@ -252,7 +252,7 @@ impl<'a> FramedBytes<'a> {
     ///
     /// # Errors
     /// `LengthMismatch` (`frame_len`) unless `frame` is exactly `layout.frame_len()` octets.
-    pub const fn new(frame: &'a [u8], layout: FrameLayout) -> Result<FramedBytes<'a>> {
+    pub const fn new(frame: &'a [u8], layout: FrameLayout) -> Result<Self> {
         if frame.len() == layout.frame_len() {
             Ok(FramedBytes { frame, layout })
         } else {

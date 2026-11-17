@@ -227,7 +227,7 @@ impl FramedPackets {
     ///
     /// # Errors
     /// If the scenario does not form a configuration.
-    pub fn new(scenario: &Scenario) -> Result<FramedPackets, String> {
+    pub fn new(scenario: &Scenario) -> Result<Self, String> {
         let bad = |e: aldis::core::Error| format!("packet engines of the scenario: {e:?}");
         let config = PacketExtractorConfig::<Tm>::new(
             TmParams,
@@ -241,7 +241,7 @@ impl FramedPackets {
                 "a TC channel without a Segment Header has no MAPs to reassemble".to_owned(),
             );
         }
-        Ok(FramedPackets {
+        Ok(Self {
             realtime: Extractor::new(config).map_err(bad)?,
             payload: Extractor::new(config).map_err(bad)?,
             extract_area: vec![0; EXTRACT_AREA],

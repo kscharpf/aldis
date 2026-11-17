@@ -55,25 +55,25 @@ pub enum ErrorKind {
 
 impl ErrorKind {
     /// Every kind, in code order.
-    pub const ALL: [ErrorKind; 18] = [
-        ErrorKind::BufferTooSmall,
-        ErrorKind::Incomplete,
-        ErrorKind::LengthMismatch,
-        ErrorKind::UnsupportedVersion,
-        ErrorKind::OutOfRange,
-        ErrorKind::InvalidField,
-        ErrorKind::ReservedValue,
-        ErrorKind::CrcMismatch,
-        ErrorKind::HeaderUncorrectable,
-        ErrorKind::UnknownChannel,
-        ErrorKind::InvalidConfig,
-        ErrorKind::WouldBlock,
-        ErrorKind::InvalidState,
-        ErrorKind::Security,
-        ErrorKind::CapacityExceeded,
-        ErrorKind::InvalidHandle,
-        ErrorKind::Malformed,
-        ErrorKind::InternalError,
+    pub const ALL: [Self; 18] = [
+        Self::BufferTooSmall,
+        Self::Incomplete,
+        Self::LengthMismatch,
+        Self::UnsupportedVersion,
+        Self::OutOfRange,
+        Self::InvalidField,
+        Self::ReservedValue,
+        Self::CrcMismatch,
+        Self::HeaderUncorrectable,
+        Self::UnknownChannel,
+        Self::InvalidConfig,
+        Self::WouldBlock,
+        Self::InvalidState,
+        Self::Security,
+        Self::CapacityExceeded,
+        Self::InvalidHandle,
+        Self::Malformed,
+        Self::InternalError,
     ];
 
     /// The stable numeric code (GEN-040).
@@ -88,39 +88,39 @@ impl ErrorKind {
 
     /// The kind for a numeric code, if defined.
     #[must_use]
-    pub fn from_code(code: u16) -> Option<ErrorKind> {
-        ErrorKind::ALL.into_iter().find(|k| k.code() == code)
+    pub fn from_code(code: u16) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.code() == code)
     }
 
     /// The catalogue name, e.g. `"CrcMismatch"`.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            ErrorKind::BufferTooSmall => "BufferTooSmall",
-            ErrorKind::Incomplete => "Incomplete",
-            ErrorKind::LengthMismatch => "LengthMismatch",
-            ErrorKind::UnsupportedVersion => "UnsupportedVersion",
-            ErrorKind::OutOfRange => "OutOfRange",
-            ErrorKind::InvalidField => "InvalidField",
-            ErrorKind::ReservedValue => "ReservedValue",
-            ErrorKind::CrcMismatch => "CrcMismatch",
-            ErrorKind::HeaderUncorrectable => "HeaderUncorrectable",
-            ErrorKind::UnknownChannel => "UnknownChannel",
-            ErrorKind::InvalidConfig => "InvalidConfig",
-            ErrorKind::WouldBlock => "WouldBlock",
-            ErrorKind::InvalidState => "InvalidState",
-            ErrorKind::Security => "Security",
-            ErrorKind::CapacityExceeded => "CapacityExceeded",
-            ErrorKind::InvalidHandle => "InvalidHandle",
-            ErrorKind::Malformed => "Malformed",
-            ErrorKind::InternalError => "InternalError",
+            Self::BufferTooSmall => "BufferTooSmall",
+            Self::Incomplete => "Incomplete",
+            Self::LengthMismatch => "LengthMismatch",
+            Self::UnsupportedVersion => "UnsupportedVersion",
+            Self::OutOfRange => "OutOfRange",
+            Self::InvalidField => "InvalidField",
+            Self::ReservedValue => "ReservedValue",
+            Self::CrcMismatch => "CrcMismatch",
+            Self::HeaderUncorrectable => "HeaderUncorrectable",
+            Self::UnknownChannel => "UnknownChannel",
+            Self::InvalidConfig => "InvalidConfig",
+            Self::WouldBlock => "WouldBlock",
+            Self::InvalidState => "InvalidState",
+            Self::Security => "Security",
+            Self::CapacityExceeded => "CapacityExceeded",
+            Self::InvalidHandle => "InvalidHandle",
+            Self::Malformed => "Malformed",
+            Self::InternalError => "InternalError",
         }
     }
 
     /// The kind with a catalogue name, if defined.
     #[must_use]
-    pub fn from_name(name: &str) -> Option<ErrorKind> {
-        ErrorKind::ALL.into_iter().find(|k| k.name() == name)
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
     }
 }
 
@@ -151,7 +151,7 @@ pub struct FieldId {
 impl FieldId {
     /// The catalogued field `CODE` with its display name. Only the generated module
     /// [`crate::field`] calls it; `CODE` 0 ("no field" in the C ABI) fails to compile.
-    pub(crate) const fn catalogued<const CODE: u16>(name: &'static str) -> FieldId {
+    pub(crate) const fn catalogued<const CODE: u16>(name: &'static str) -> Self {
         // Evaluated at compile time, after the assertion: with `CODE` ≥ 1, `1 + (CODE - 1)` is
         // `CODE`, so the expression adds no run-time branch and no panic path, which
         // `NonZeroU16::new(CODE).unwrap()` would (GEN-020).
@@ -159,7 +159,7 @@ impl FieldId {
             assert!(CODE != 0, "field code 0 means no field (API-082)");
             NonZeroU16::MIN.saturating_add(CODE.wrapping_sub(1))
         };
-        FieldId { code, name }
+        Self { code, name }
     }
 
     /// The field code, shared by all profiles and carried by the C ABI (API-082, CABI-021).
@@ -178,7 +178,7 @@ impl FieldId {
     /// have (API-082, CABI-021): the counterpart of [`ErrorKind::from_code`] for a code that
     /// crossed the C ABI.
     #[must_use]
-    pub fn from_code(code: u16) -> Option<FieldId> {
+    pub fn from_code(code: u16) -> Option<Self> {
         let code = NonZeroU16::new(code)?;
         crate::field::ALL
             .binary_search_by_key(&code, |f| f.code())
@@ -188,7 +188,7 @@ impl FieldId {
 }
 
 impl PartialEq for FieldId {
-    fn eq(&self, other: &FieldId) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.code == other.code
     }
 }
@@ -203,13 +203,13 @@ impl Hash for FieldId {
 
 // Written by hand rather than derived, so that the name never enters the comparison (API-082).
 impl PartialOrd for FieldId {
-    fn partial_cmp(&self, other: &FieldId) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for FieldId {
-    fn cmp(&self, other: &FieldId) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.code.cmp(&other.code)
     }
 }
@@ -314,8 +314,8 @@ pub struct Error {
 impl Error {
     /// An error of `kind` with no field or detail.
     #[must_use]
-    pub const fn new(kind: ErrorKind) -> Error {
-        Error {
+    pub const fn new(kind: ErrorKind) -> Self {
+        Self {
             kind,
             field: None,
             detail: ErrorDetail::None,
@@ -324,20 +324,20 @@ impl Error {
 
     /// `BufferTooSmall` with the number of octets needed (API-022, API-061).
     #[must_use]
-    pub const fn buffer_too_small(needed: usize) -> Error {
-        Error::new(ErrorKind::BufferTooSmall).with_detail(ErrorDetail::Needed(needed))
+    pub const fn buffer_too_small(needed: usize) -> Self {
+        Self::new(ErrorKind::BufferTooSmall).with_detail(ErrorDetail::Needed(needed))
     }
 
     /// `Incomplete` with the number of octets needed (API-013).
     #[must_use]
-    pub const fn incomplete(needed: usize) -> Error {
-        Error::new(ErrorKind::Incomplete).with_detail(ErrorDetail::Needed(needed))
+    pub const fn incomplete(needed: usize) -> Self {
+        Self::new(ErrorKind::Incomplete).with_detail(ErrorDetail::Needed(needed))
     }
 
     /// `OutOfRange` for `field`, with the limit and the value found (GEN-041).
     #[must_use]
-    pub const fn out_of_range(field: FieldId, limit: u64, found: u64) -> Error {
-        Error::new(ErrorKind::OutOfRange)
+    pub const fn out_of_range(field: FieldId, limit: u64, found: u64) -> Self {
+        Self::new(ErrorKind::OutOfRange)
             .with_field(field)
             .with_detail(ErrorDetail::Expected {
                 expected: limit,
@@ -347,8 +347,8 @@ impl Error {
 
     /// The same error, naming `field` (GEN-041, API-082).
     #[must_use]
-    pub const fn with_field(self, field: FieldId) -> Error {
-        Error {
+    pub const fn with_field(self, field: FieldId) -> Self {
+        Self {
             field: Some(field),
             ..self
         }
@@ -356,8 +356,8 @@ impl Error {
 
     /// The same error, with `detail`.
     #[must_use]
-    pub const fn with_detail(self, detail: ErrorDetail) -> Error {
-        Error { detail, ..self }
+    pub const fn with_detail(self, detail: ErrorDetail) -> Self {
+        Self { detail, ..self }
     }
 
     /// The error kind.
@@ -380,8 +380,8 @@ impl Error {
 }
 
 impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
-        Error::new(kind)
+    fn from(kind: ErrorKind) -> Self {
+        Self::new(kind)
     }
 }
 

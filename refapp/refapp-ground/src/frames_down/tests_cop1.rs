@@ -86,9 +86,9 @@ impl Step {
 }
 
 impl Rig {
-    fn new(entries: &[(u64, OpsEntry)]) -> Rig {
+    fn new(entries: &[(u64, OpsEntry)]) -> Self {
         let script: Vec<OpsEntry> = entries.iter().map(|(_, e)| *e).collect();
-        Rig {
+        Self {
             node: GroundNode::new_cop1(&script).unwrap(),
             at: entries.iter().map(|(t, _)| *t).collect(),
             down: FrameDownlink::new().unwrap(),

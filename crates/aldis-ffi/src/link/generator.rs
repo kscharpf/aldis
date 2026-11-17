@@ -275,8 +275,8 @@ unsafe impl<P: PacketProtocol, const ND: usize, const NQ: usize> InPlace
 {
     type Head = PacketGeneratorHead<P>;
     type Buffers = PacketGeneratorBuffers<ND, NQ>;
-    const HEAD_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <PacketGenerator<P, ND, NQ>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine`, in the protocol `P` (API-057).
@@ -320,19 +320,19 @@ impl PacketGeneratorState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
-            PacketGeneratorState::Tm(e) => {
+            Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 pg_run(e, input, data, Ok(TmParams), now, area)
             }
-            PacketGeneratorState::Aos(e) => {
+            Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 pg_run(e, input, data, aos_params(ch), now, area)
             }
-            PacketGeneratorState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -343,17 +343,17 @@ impl PacketGeneratorState {
 
     const fn status(&self) -> GeneratorStatus {
         match self {
-            PacketGeneratorState::Tm(e) => *e.status(),
-            PacketGeneratorState::Aos(e) => *e.status(),
-            PacketGeneratorState::Uslp(e) => *e.status(),
+            Self::Tm(e) => *e.status(),
+            Self::Aos(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 
     fn next_deadline(&self) -> Option<Instant> {
         match self {
-            PacketGeneratorState::Tm(e) => e.next_deadline(),
-            PacketGeneratorState::Aos(e) => e.next_deadline(),
-            PacketGeneratorState::Uslp(e) => e.next_deadline(),
+            Self::Tm(e) => e.next_deadline(),
+            Self::Aos(e) => e.next_deadline(),
+            Self::Uslp(e) => e.next_deadline(),
         }
     }
 }

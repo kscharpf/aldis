@@ -137,8 +137,8 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     ///
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
-    pub const fn packets(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, MapService::Packets, max_sdu_len)
+    pub const fn packets(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<Self> {
+        Self::checked(vc, id, MapService::Packets, max_sdu_len)
     }
 
     /// A MAP of SDUs of at most `max_sdu_len` octets, the maximum `MAP_SDU` length (232.0 Table
@@ -146,16 +146,16 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
     ///
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0.
-    pub const fn sdu(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<ReassemblerMap<P>> {
-        ReassemblerMap::checked(vc, id, MapService::Sdu, max_sdu_len)
+    pub const fn sdu(vc: P::Vc, id: P::Map, max_sdu_len: usize) -> Result<Self> {
+        Self::checked(vc, id, MapService::Sdu, max_sdu_len)
     }
 
     /// An octet-stream MAP: no SDU is assembled, so it has no maximum.
     ///
     /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
     #[must_use]
-    pub const fn octet_stream(vc: P::Vc, id: P::Map) -> ReassemblerMap<P> {
-        ReassemblerMap {
+    pub const fn octet_stream(vc: P::Vc, id: P::Map) -> Self {
+        Self {
             vc,
             id,
             service: MapService::OctetStream,
@@ -168,11 +168,11 @@ impl<P: ReassemblerProtocol> ReassemblerMap<P> {
         id: P::Map,
         service: MapService,
         max_sdu_len: usize,
-    ) -> Result<ReassemblerMap<P>> {
+    ) -> Result<Self> {
         if max_sdu_len == 0 {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_SDU_LEN))
         } else {
-            Ok(ReassemblerMap {
+            Ok(Self {
                 vc,
                 id,
                 service,
@@ -235,10 +235,7 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
     /// `CapacityExceeded` (`map_id`) for more than `M` MAPs.
     ///
     /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
-    pub fn new(
-        channel: P::Channel,
-        maps: &[ReassemblerMap<P>],
-    ) -> Result<MapReassemblerConfig<P, M>> {
+    pub fn new(channel: P::Channel, maps: &[ReassemblerMap<P>]) -> Result<Self> {
         let bad = Error::new(ErrorKind::InvalidConfig).with_field(field::MAP_ID);
         if maps.is_empty() {
             return Err(bad);
@@ -254,7 +251,7 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
             }
             *slot = Some(*map);
         }
-        Ok(MapReassemblerConfig {
+        Ok(Self {
             channel,
             maps: table,
         })
@@ -411,8 +408,8 @@ enum Assembly {
 impl Assembly {
     const fn held(self) -> usize {
         match self {
-            Assembly::Idle => 0,
-            Assembly::Building { len } => len,
+            Self::Idle => 0,
+            Self::Building { len } => len,
         }
     }
 }
@@ -489,8 +486,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     ///
     /// # Errors
     /// `CapacityExceeded` (`max_sdu_len`) if a MAP's maximum SDU length exceeds `S` (LNK-073).
-    pub fn new(config: MapReassemblerConfig<P, M>) -> Result<MapReassembler<P, M, S>> {
-        Ok(MapReassembler {
+    pub fn new(config: MapReassemblerConfig<P, M>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: MapReassemblerBuffers::ZERO,
         })
@@ -514,7 +511,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-070…LNK-073, LNK-002,
     /// LNK-003; docs/04-engines.md §3.3.
     pub fn new_head(config: MapReassemblerConfig<P, M>) -> Result<MapReassemblerHead<P, M>> {
-        MapReassembler::<P, M, S>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(MapReassemblerHead {
             config,
             slots: [Assembly::Idle; M],
@@ -569,7 +566,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         match input {
             ReassemblerInput::Fdu(fdu) => self.fdu(&fdu, out),
             ReassemblerInput::Reconfigure(config) => {
-                MapReassembler::<P, M, S>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let mut actions = Actions::new();
                 let octets = self.head.slots.iter().map(|s| s.held()).sum::<usize>();
                 self.head.config = config;
@@ -982,8 +979,8 @@ mod tc_impl {
         ///
         /// Requirements: LNK-070…LNK-073, LNK-002, LNK-003; docs/04-engines.md §3.3.
         #[must_use]
-        pub const fn with_segment_header() -> TcReassemblerParams {
-            TcReassemblerParams {
+        pub const fn with_segment_header() -> Self {
+            Self {
                 segment_header: true,
             }
         }
@@ -991,8 +988,8 @@ mod tc_impl {
         /// VCs without a Segment Header: every FDU is whole user data of the implicit MAP 0
         /// (232.0 §4.1.3.2.1.3).
         #[must_use]
-        pub const fn without_segment_header() -> TcReassemblerParams {
-            TcReassemblerParams {
+        pub const fn without_segment_header() -> Self {
+            Self {
                 segment_header: false,
             }
         }

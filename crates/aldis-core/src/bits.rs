@@ -26,7 +26,7 @@ impl Span {
         clippy::cast_possible_truncation,
         reason = "`span_bits` is at most 72 (a 64-bit field spans at most 9 octets), so it fits in u32"
     )]
-    fn new(buf_len: usize, bit_offset: usize, width: u8) -> Result<Span> {
+    fn new(buf_len: usize, bit_offset: usize, width: u8) -> Result<Self> {
         if width == 0 {
             return Err(Error::out_of_range(field::WIDTH, 1, 0));
         }
@@ -54,7 +54,7 @@ impl Span {
             .wrapping_sub(lead)
             .wrapping_sub(usize::from(width)) as u32;
         let mask = u64::MAX >> (64_u8.wrapping_sub(width));
-        Ok(Span {
+        Ok(Self {
             first,
             last,
             shift,

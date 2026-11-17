@@ -52,9 +52,9 @@ impl ValidBitCount {
 
     /// The count, or `None` outside 1 to `0x3FFE` (API-001).
     #[must_use]
-    pub const fn new(bits: u16) -> Option<ValidBitCount> {
-        if bits >= ValidBitCount::MIN && bits <= ValidBitCount::MAX {
-            Some(ValidBitCount(bits))
+    pub const fn new(bits: u16) -> Option<Self> {
+        if bits >= Self::MIN && bits <= Self::MAX {
+            Some(Self(bits))
         } else {
             None
         }
@@ -80,12 +80,12 @@ impl TryFrom<u16> for ValidBitCount {
     /// # Errors
     /// `OutOfRange` (`bitstream_data_pointer`) for 0 or above `0x3FFE`, with the bound that was
     /// crossed.
-    fn try_from(bits: u16) -> Result<ValidBitCount> {
-        ValidBitCount::new(bits).ok_or_else(|| {
-            let bound = if bits < ValidBitCount::MIN {
-                ValidBitCount::MIN
+    fn try_from(bits: u16) -> Result<Self> {
+        Self::new(bits).ok_or_else(|| {
+            let bound = if bits < Self::MIN {
+                Self::MIN
             } else {
-                ValidBitCount::MAX
+                Self::MAX
             };
             mismatch(
                 ErrorKind::OutOfRange,
@@ -98,7 +98,7 @@ impl TryFrom<u16> for ValidBitCount {
 }
 
 impl From<ValidBitCount> for u16 {
-    fn from(count: ValidBitCount) -> u16 {
+    fn from(count: ValidBitCount) -> Self {
         count.0
     }
 }
@@ -134,25 +134,25 @@ impl BitstreamPointer {
     ///   with no idle data has the pointer all ones (§4.1.4.3.3.3), with that value;
     /// - `Malformed` (`bitstream_data_pointer`) for an index beyond the zone, or above the
     ///   14-bit field, that is not reserved, with the zone's last bit index (OI-33).
-    pub fn classify(raw: u16, zone_len: usize) -> Result<BitstreamPointer> {
+    pub fn classify(raw: u16, zone_len: usize) -> Result<Self> {
         let last_bit = zone_len.saturating_mul(8).saturating_sub(1);
-        if raw == BitstreamPointer::ALL_VALID_RAW {
-            return Ok(BitstreamPointer::AllValid);
+        if raw == Self::ALL_VALID_RAW {
+            return Ok(Self::AllValid);
         }
-        if raw == BitstreamPointer::ONLY_IDLE_RAW {
-            return Ok(BitstreamPointer::OnlyIdle);
+        if raw == Self::ONLY_IDLE_RAW {
+            return Ok(Self::OnlyIdle);
         }
         let index = usize::from(raw);
         if index == last_bit {
             return Err(mismatch(
                 ErrorKind::InvalidField,
                 field::BITSTREAM_DATA_POINTER,
-                u64::from(BitstreamPointer::ALL_VALID_RAW),
+                u64::from(Self::ALL_VALID_RAW),
                 u64::from(raw),
             ));
         }
         match ValidBitCount::new(raw.saturating_add(1)) {
-            Some(count) if index < last_bit => Ok(BitstreamPointer::ValidBits(count)),
+            Some(count) if index < last_bit => Ok(Self::ValidBits(count)),
             _ => Err(mismatch(
                 ErrorKind::Malformed,
                 field::BITSTREAM_DATA_POINTER,
@@ -166,9 +166,9 @@ impl BitstreamPointer {
     #[must_use]
     pub const fn to_raw(self) -> u16 {
         match self {
-            BitstreamPointer::ValidBits(count) => count.last_bit(),
-            BitstreamPointer::AllValid => BitstreamPointer::ALL_VALID_RAW,
-            BitstreamPointer::OnlyIdle => BitstreamPointer::ONLY_IDLE_RAW,
+            Self::ValidBits(count) => count.last_bit(),
+            Self::AllValid => Self::ALL_VALID_RAW,
+            Self::OnlyIdle => Self::ONLY_IDLE_RAW,
         }
     }
 
@@ -199,7 +199,7 @@ impl<'a> Bpdu<'a> {
     /// - the errors of [`BitstreamPointer::classify`], in both modes;
     /// - in strict mode, `ReservedValue` (`bpdu_spare`) for a Reserved Spare other than `00`;
     ///   lenient mode reports it as [`AosAnomaly::BpduSpareSet`] (§4.1.4.3.2.2).
-    pub fn decode(field: &'a [u8]) -> Result<Bpdu<'a>> {
+    pub fn decode(field: &'a [u8]) -> Result<Self> {
         Bpdu::decode_in(field, DecodeMode::Strict).map(|(bpdu, _)| bpdu)
     }
 
@@ -209,13 +209,13 @@ impl<'a> Bpdu<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the spare error.
-    pub fn decode_lenient(field: &'a [u8]) -> Result<Lenient<Bpdu<'a>, AosAnomaly>> {
+    pub fn decode_lenient(field: &'a [u8]) -> Result<Lenient<Self, AosAnomaly>> {
         Bpdu::decode_in(field, DecodeMode::Lenient)
             .map(|(bpdu, anomalies)| Lenient::new(bpdu, anomalies))
     }
 
     /// The decode of both entry points.
-    fn decode_in(field: &'a [u8], mode: DecodeMode) -> Result<(Bpdu<'a>, AnomalySet<AosAnomaly>)> {
+    fn decode_in(field: &'a [u8], mode: DecodeMode) -> Result<(Self, AnomalySet<AosAnomaly>)> {
         let mut deviations = Deviations::new(mode);
         let bpdu = Bpdu::parse(field, &mut deviations)?;
         let anomalies = deviations.finish()?;
@@ -223,7 +223,7 @@ impl<'a> Bpdu<'a> {
     }
 
     /// Decodes the `B_PDU`, noting its deviations in `deviations`.
-    pub(crate) fn parse(field: &'a [u8], deviations: &mut Deviations) -> Result<Bpdu<'a>> {
+    pub(crate) fn parse(field: &'a [u8], deviations: &mut Deviations) -> Result<Self> {
         let (Some(h), Some(zone)) = (
             field.first_chunk::<BPDU_HEADER_LEN>(),
             field.get(BPDU_HEADER_LEN..).filter(|z| !z.is_empty()),

@@ -76,14 +76,14 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     /// the pointer of the protocol can address the last octet of the zone.
     ///
     /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
-    pub fn new(vc: P::Vc, params: P::Params, field_len: usize) -> Result<AccessGeneratorConfig<P>> {
+    pub fn new(vc: P::Vc, params: P::Params, field_len: usize) -> Result<Self> {
         let zone = field_len.saturating_sub(P::SDU_HEADER_LEN);
         // The queue holds the length of an SDU in 16 bits, so a zone above 65 535 octets could
         // take an SDU it cannot count (LNK-020: unchanged).
         if zone == 0 || zone > P::max_zone_len(&params).min(MAX_SDU) {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FIELD_LEN));
         }
-        Ok(AccessGeneratorConfig {
+        Ok(Self {
             vc,
             params,
             field_len,
@@ -97,12 +97,12 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     /// # Errors
     /// `InvalidConfig` (`max_sdu_len`) for 0, for more than 65 535 octets, and for a protocol
     /// whose SDU is exactly one field (TM, AOS) unless it is the zone.
-    pub const fn with_max_sdu_len(self, max_sdu_len: usize) -> Result<AccessGeneratorConfig<P>> {
+    pub const fn with_max_sdu_len(self, max_sdu_len: usize) -> Result<Self> {
         let zone = self.zone_len();
         if max_sdu_len == 0 || max_sdu_len > MAX_SDU || (!P::SPANNING && max_sdu_len != zone) {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_SDU_LEN))
         } else {
-            Ok(AccessGeneratorConfig {
+            Ok(Self {
                 max_sdu_len,
                 ..self
             })
@@ -112,8 +112,8 @@ impl<P: AccessProtocol> AccessGeneratorConfig<P> {
     /// The same configuration with the octet that fills the zone after the end of an SDU
     /// (LNK-020).
     #[must_use]
-    pub const fn with_idle_pattern(self, idle_pattern: u8) -> AccessGeneratorConfig<P> {
-        AccessGeneratorConfig {
+    pub const fn with_idle_pattern(self, idle_pattern: u8) -> Self {
+        Self {
             idle_pattern,
             ..self
         }
@@ -266,8 +266,8 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     /// `CapacityExceeded` (`max_sdu_len`) if the longest SDU and its length do not fit the queue.
     ///
     /// Requirements: LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
-    pub fn new(config: AccessGeneratorConfig<P>) -> Result<AccessGenerator<P, Q>> {
-        Ok(AccessGenerator {
+    pub fn new(config: AccessGeneratorConfig<P>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: AccessGeneratorBuffers::ZERO,
         })
@@ -290,7 +290,7 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-020, LNK-002, LNK-003; docs/04-engines.md §2.2.
     pub fn new_head(config: AccessGeneratorConfig<P>) -> Result<AccessGeneratorHead<P>> {
-        AccessGenerator::<P, Q>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(AccessGeneratorHead {
             config,
             queue_len: 0,
@@ -343,7 +343,7 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
                 }
             }
             AccessInput::Reconfigure(config) => {
-                AccessGenerator::<P, Q>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let octets = self.head.octets;
                 self.head.config = config;
                 self.head.queue_len = 0;

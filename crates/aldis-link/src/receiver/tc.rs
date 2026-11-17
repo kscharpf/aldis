@@ -32,8 +32,8 @@ impl TcChannel {
     /// The channel of the physical channel `physical`, whose maximum frame length and FECF
     /// are the receiver's (232.0 Table 5-1; LNK-050).
     #[must_use]
-    pub const fn new(physical: PhysicalChannelConfig) -> TcChannel {
-        TcChannel { physical }
+    pub const fn new(physical: PhysicalChannelConfig) -> Self {
+        Self { physical }
     }
 
     /// The managed parameters of the physical channel.
@@ -55,11 +55,11 @@ impl TcVc {
     /// A VC whose frames go to FARM-1.
     ///
     /// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
-    pub const SERVED: TcVc = TcVc { served: true };
+    pub const SERVED: Self = Self { served: true };
     /// A VC the receiver does not serve: its frames are discarded as `NotServed`.
     ///
     /// Requirements: LNK-050, LNK-081; 232.0 §4.4.5–§4.4.7; docs/04-engines.md §3.1.
-    pub const UNSERVED: TcVc = TcVc { served: false };
+    pub const UNSERVED: Self = Self { served: false };
 
     /// Whether the receiver serves the VC.
     ///
@@ -98,7 +98,7 @@ impl ReceiveProtocol for Tc {
     }
 
     fn receive<const V: usize>(
-        cx: &mut FrameContext<'_, Tc, V>,
+        cx: &mut FrameContext<'_, Self, V>,
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         let frame = Self::plain_octets(plain);
@@ -107,7 +107,7 @@ impl ReceiveProtocol for Tc {
         // length of the octets, a property of a `Plain<TcFrame>` (RS-023).
         let h = header::<HEADER_LEN>(frame)?;
         // The VCID is the six bits above the 10-bit Frame Length (232.0 §4.1.2.7).
-        let vc = vc_of::<Tc>(layout::Vcid::get_u8(&h))?;
+        let vc = vc_of::<Self>(layout::Vcid::get_u8(&h))?;
         match cx.params(vc) {
             None => cx.discard(DiscardReason::UnknownChannel, Some(vc), None),
             Some(p) if !p.served => cx.discard(DiscardReason::NotServed, Some(vc), None),

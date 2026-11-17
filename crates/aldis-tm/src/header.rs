@@ -54,13 +54,13 @@ impl SegmentLengthId {
     pub const MAX: u8 = 0b11;
     /// `11`, the value that marks non-use of Source Packet Segments, required with the
     /// Synchronization Flag `0` (132.0 §4.1.2.7.5.2; TM-007).
-    pub const NO_SEGMENTS: SegmentLengthId = SegmentLengthId(0b11);
+    pub const NO_SEGMENTS: Self = Self(0b11);
 
     /// The identifier, or `None` if `value` needs more than 2 bits (API-001).
     #[must_use]
-    pub const fn new(value: u8) -> Option<SegmentLengthId> {
-        if value <= SegmentLengthId::MAX {
-            Some(SegmentLengthId(value))
+    pub const fn new(value: u8) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -76,11 +76,11 @@ impl SegmentLengthId {
 impl TryFrom<u8> for SegmentLengthId {
     type Error = Error;
 
-    fn try_from(value: u8) -> Result<SegmentLengthId> {
-        SegmentLengthId::new(value).ok_or_else(|| {
+    fn try_from(value: u8) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
             Error::out_of_range(
                 field::SEGMENT_LENGTH_ID,
-                u64::from(SegmentLengthId::MAX),
+                u64::from(Self::MAX),
                 u64::from(value),
             )
         })
@@ -88,7 +88,7 @@ impl TryFrom<u8> for SegmentLengthId {
 }
 
 impl From<SegmentLengthId> for u8 {
-    fn from(id: SegmentLengthId) -> u8 {
+    fn from(id: SegmentLengthId) -> Self {
         id.0
     }
 }
@@ -105,18 +105,18 @@ impl FirstHeaderPointer {
     pub const MAX: u16 = 0x7FF;
     /// `00000000000`: the value LNK-082 gives the First Header Pointer of a `VCA_SDU` frame,
     /// whose pointer is undefined (132.0 §4.1.2.7.6.2 note).
-    pub const ZERO: FirstHeaderPointer = FirstHeaderPointer(0);
+    pub const ZERO: Self = Self(0);
     /// `11111111111`: no Packet starts in the data field (132.0 §4.1.2.7.6.4).
-    pub const NO_PACKET_START: FirstHeaderPointer = FirstHeaderPointer(0x7FF);
+    pub const NO_PACKET_START: Self = Self(0x7FF);
     /// `11111111110`: the data field holds only idle data, an OID frame (132.0 §4.1.2.7.6.5,
     /// §4.1.4.6.1).
-    pub const ONLY_IDLE_DATA: FirstHeaderPointer = FirstHeaderPointer(0x7FE);
+    pub const ONLY_IDLE_DATA: Self = Self(0x7FE);
 
     /// The pointer, or `None` if `value` needs more than 11 bits (API-001).
     #[must_use]
-    pub const fn new(value: u16) -> Option<FirstHeaderPointer> {
-        if value <= FirstHeaderPointer::MAX {
-            Some(FirstHeaderPointer(value))
+    pub const fn new(value: u16) -> Option<Self> {
+        if value <= Self::MAX {
+            Some(Self(value))
         } else {
             None
         }
@@ -132,11 +132,11 @@ impl FirstHeaderPointer {
 impl TryFrom<u16> for FirstHeaderPointer {
     type Error = Error;
 
-    fn try_from(value: u16) -> Result<FirstHeaderPointer> {
-        FirstHeaderPointer::new(value).ok_or_else(|| {
+    fn try_from(value: u16) -> Result<Self> {
+        Self::new(value).ok_or_else(|| {
             Error::out_of_range(
                 field::FIRST_HEADER_POINTER,
-                u64::from(FirstHeaderPointer::MAX),
+                u64::from(Self::MAX),
                 u64::from(value),
             )
         })
@@ -144,13 +144,13 @@ impl TryFrom<u16> for FirstHeaderPointer {
 }
 
 impl From<FirstHeaderPointer> for u16 {
-    fn from(fhp: FirstHeaderPointer) -> u16 {
+    fn from(fhp: FirstHeaderPointer) -> Self {
         fhp.0
     }
 }
 
 impl From<PacketPointer> for FirstHeaderPointer {
-    fn from(pointer: PacketPointer) -> FirstHeaderPointer {
+    fn from(pointer: PacketPointer) -> Self {
         pointer.to_raw()
     }
 }
@@ -168,9 +168,9 @@ impl FshLen {
 
     /// The length, or `None` outside 2–64 (API-040).
     #[must_use]
-    pub const fn new(octets: u8) -> Option<FshLen> {
-        if octets >= FshLen::MIN && octets <= FshLen::MAX {
-            Some(FshLen(octets))
+    pub const fn new(octets: u8) -> Option<Self> {
+        if octets >= Self::MIN && octets <= Self::MAX {
+            Some(Self(octets))
         } else {
             None
         }
@@ -205,12 +205,12 @@ impl TryFrom<u8> for FshLen {
 
     /// # Errors
     /// `OutOfRange` (`fsh_len`) outside 2–64, with the bound that was crossed.
-    fn try_from(octets: u8) -> Result<FshLen> {
-        FshLen::new(octets).ok_or_else(|| {
-            let bound = if octets < FshLen::MIN {
-                FshLen::MIN
+    fn try_from(octets: u8) -> Result<Self> {
+        Self::new(octets).ok_or_else(|| {
+            let bound = if octets < Self::MIN {
+                Self::MIN
             } else {
-                FshLen::MAX
+                Self::MAX
             };
             mismatch(
                 ErrorKind::OutOfRange,
@@ -223,7 +223,7 @@ impl TryFrom<u8> for FshLen {
 }
 
 impl From<FshLen> for u8 {
-    fn from(len: FshLen) -> u8 {
+    fn from(len: FshLen) -> Self {
         len.0
     }
 }
@@ -245,9 +245,9 @@ impl PacketOffset {
 
     /// The offset, or `None` above `0x7FD` (API-001).
     #[must_use]
-    pub const fn new(offset: u16) -> Option<PacketOffset> {
-        if offset <= PacketOffset::MAX {
-            Some(PacketOffset(offset))
+    pub const fn new(offset: u16) -> Option<Self> {
+        if offset <= Self::MAX {
+            Some(Self(offset))
         } else {
             None
         }
@@ -265,11 +265,11 @@ impl TryFrom<u16> for PacketOffset {
 
     /// # Errors
     /// `OutOfRange` (`first_header_pointer`) above `0x7FD`, with that bound.
-    fn try_from(offset: u16) -> Result<PacketOffset> {
-        PacketOffset::new(offset).ok_or_else(|| {
+    fn try_from(offset: u16) -> Result<Self> {
+        Self::new(offset).ok_or_else(|| {
             Error::out_of_range(
                 field::FIRST_HEADER_POINTER,
-                u64::from(PacketOffset::MAX),
+                u64::from(Self::MAX),
                 u64::from(offset),
             )
         })
@@ -277,7 +277,7 @@ impl TryFrom<u16> for PacketOffset {
 }
 
 impl From<PacketOffset> for u16 {
-    fn from(offset: PacketOffset) -> u16 {
+    fn from(offset: PacketOffset) -> Self {
         offset.0
     }
 }
@@ -304,12 +304,12 @@ impl PacketPointer {
     /// # Errors
     /// `Malformed` (`first_header_pointer`) for an offset that is not inside the data field
     /// (API-032, OI-33), with the largest valid offset.
-    pub fn classify(raw: FirstHeaderPointer, data_len: usize) -> Result<PacketPointer> {
+    pub fn classify(raw: FirstHeaderPointer, data_len: usize) -> Result<Self> {
         match raw {
-            FirstHeaderPointer::NO_PACKET_START => Ok(PacketPointer::NoPacketStart),
-            FirstHeaderPointer::ONLY_IDLE_DATA => Ok(PacketPointer::OnlyIdleData),
+            FirstHeaderPointer::NO_PACKET_START => Ok(Self::NoPacketStart),
+            FirstHeaderPointer::ONLY_IDLE_DATA => Ok(Self::OnlyIdleData),
             FirstHeaderPointer(n) => match PacketOffset::new(n) {
-                Some(offset) if usize::from(n) < data_len => Ok(PacketPointer::StartsAt(offset)),
+                Some(offset) if usize::from(n) < data_len => Ok(Self::StartsAt(offset)),
                 _ => Err(mismatch(
                     ErrorKind::Malformed,
                     field::FIRST_HEADER_POINTER,
@@ -324,9 +324,9 @@ impl PacketPointer {
     #[must_use]
     pub const fn to_raw(self) -> FirstHeaderPointer {
         match self {
-            PacketPointer::StartsAt(n) => FirstHeaderPointer(n.get()),
-            PacketPointer::NoPacketStart => FirstHeaderPointer::NO_PACKET_START,
-            PacketPointer::OnlyIdleData => FirstHeaderPointer::ONLY_IDLE_DATA,
+            Self::StartsAt(n) => FirstHeaderPointer(n.get()),
+            Self::NoPacketStart => FirstHeaderPointer::NO_PACKET_START,
+            Self::OnlyIdleData => FirstHeaderPointer::ONLY_IDLE_DATA,
         }
     }
 }
@@ -355,7 +355,7 @@ impl DataFieldStatus {
     /// The Synchronization Flag: `false` for Packets, `true` for a `VCA_SDU` (132.0 §4.1.2.7.3.2).
     #[must_use]
     pub const fn sync_flag(&self) -> bool {
-        matches!(self, DataFieldStatus::VcaSdu { .. })
+        matches!(self, Self::VcaSdu { .. })
     }
 }
 
@@ -403,7 +403,7 @@ impl TmPrimaryHeader {
     /// # Errors
     /// `Incomplete` (`needed` = 6) if `prefix` is shorter than the header; `UnsupportedVersion`
     /// (`frame_version`) if the Transfer Frame Version Number is not `00` (TM-002).
-    pub fn decode(prefix: &[u8]) -> Result<TmPrimaryHeader> {
+    pub fn decode(prefix: &[u8]) -> Result<Self> {
         let Some(h) = prefix.first_chunk::<PRIMARY_HEADER_LEN>() else {
             return Err(Error::incomplete(PRIMARY_HEADER_LEN));
         };
@@ -416,7 +416,7 @@ impl TmPrimaryHeader {
                 u64::from(version),
             ));
         }
-        Ok(TmPrimaryHeader {
+        Ok(Self {
             scid: SpacecraftId::new(layout::Scid::get_u16(h)).unwrap_or(SCID_ZERO),
             vcid: VcId::new(layout::Vcid::get_u8(h)).unwrap_or(VCID_ZERO),
             ocf_flag: layout::OcfFlag::flag(h),

@@ -74,7 +74,7 @@ impl Plan {
         segment_header: Option<SegmentHeader>,
         control: bool,
         data_len: usize,
-    ) -> Result<Plan> {
+    ) -> Result<Self> {
         let (scid, vcid) = (fields.spacecraft_id, fields.vc_id);
         if !channels.has_spacecraft(scid) {
             return Err(unknown(field::SPACECRAFT_ID));
@@ -119,7 +119,7 @@ impl Plan {
                 len_u64(total),
             ));
         }
-        Ok(Plan {
+        Ok(Self {
             fields,
             segment_header,
             layout,

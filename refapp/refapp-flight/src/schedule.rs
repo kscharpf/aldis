@@ -15,13 +15,13 @@ pub struct Periodic {
 
 impl Periodic {
     /// Housekeeping: t = k s (§2.1, APP-010).
-    pub const HOUSEKEEPING: Periodic = Periodic {
+    pub const HOUSEKEEPING: Self = Self {
         first: Instant::from_micros(0),
         period: Duration::from_secs(1),
     };
 
     /// Payload: t = 0.5 + 2k s (§2.1, APP-015).
-    pub const PAYLOAD: Periodic = Periodic {
+    pub const PAYLOAD: Self = Self {
         first: Instant::from_micros(500_000),
         period: Duration::from_secs(2),
     };

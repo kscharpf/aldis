@@ -74,7 +74,7 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         field_len: usize,
         valid_pvns: ValidPvns,
         max_packet_len: usize,
-    ) -> Result<PacketGeneratorConfig<P>> {
+    ) -> Result<Self> {
         if max_packet_len == 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
@@ -84,7 +84,7 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         } else {
             IdlePacketKind::Encapsulation
         });
-        PacketGeneratorConfig {
+        Self {
             vc,
             protocol,
             field_len,
@@ -104,13 +104,8 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
     /// # Errors
     /// `InvalidConfig` (`idle_packet_kind`) if the kind's PVN is not in the valid set, or it is
     /// a Space Packet idle packet and the packet zone is shorter than 7 octets (LNK-078).
-    pub fn with_idle(
-        self,
-        policy: IdlePolicy,
-        kind: IdlePacketKind,
-        pattern: u8,
-    ) -> Result<PacketGeneratorConfig<P>> {
-        PacketGeneratorConfig {
+    pub fn with_idle(self, policy: IdlePolicy, kind: IdlePacketKind, pattern: u8) -> Result<Self> {
+        Self {
             idle_policy: policy,
             idle_packet_kind: P::IDLE_KIND.unwrap_or(kind),
             idle_pattern: pattern,
@@ -122,15 +117,15 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
     /// The same configuration with a release deadline: the longest a started field waits to be
     /// completed before it must be released (732.1 §5.4 Table 5-3 and note 4; LNK-012).
     #[must_use]
-    pub const fn with_release_deadline(self, deadline: Duration) -> PacketGeneratorConfig<P> {
-        PacketGeneratorConfig {
+    pub const fn with_release_deadline(self, deadline: Duration) -> Self {
+        Self {
             release_deadline: Some(deadline),
             ..self
         }
     }
 
     /// Checks the relations between the parameters (LNK-078).
-    fn checked(self) -> Result<PacketGeneratorConfig<P>> {
+    fn checked(self) -> Result<Self> {
         let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
         let zone = self.zone_len();
         if zone == 0 || zone > P::max_zone_len(&self.protocol) {
@@ -331,8 +326,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// `CapacityExceeded` (`field_len` or `max_packet_len`) if the configuration needs more
     /// than `D` octets of data field, or a Maximum Packet Length above the octets of the packet zone
     /// and the queue together, which no empty generator could take (GEN-011, LNK-015).
-    pub fn new(config: PacketGeneratorConfig<P>) -> Result<PacketGenerator<P, D, Q>> {
-        Ok(PacketGenerator {
+    pub fn new(config: PacketGeneratorConfig<P>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: PacketGeneratorBuffers::ZERO,
         })
@@ -355,7 +350,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
     pub fn new_head(config: PacketGeneratorConfig<P>) -> Result<PacketGeneratorHead<P>> {
-        PacketGenerator::<P, D, Q>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(PacketGeneratorHead {
             config,
             fill: 0,
@@ -432,7 +427,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             }
             GeneratorInput::Timeout => self.timeout(now),
             GeneratorInput::Reconfigure(config) => {
-                PacketGenerator::<P, D, Q>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let octets = self.head.fill.saturating_add(self.head.queue_len);
                 self.head.config = config;
                 self.reset_field();

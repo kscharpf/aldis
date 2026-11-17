@@ -71,7 +71,7 @@ impl PhysicalChannelConfig {
         frame_len: usize,
         insert_zone_len: usize,
         fecf: bool,
-    ) -> Result<PhysicalChannelConfig> {
+    ) -> Result<Self> {
         if frame_len < MIN_FRAME_LEN || frame_len > MAX_FRAME_LEN {
             return Err(bad(match frame_type {
                 TransferFrameType::Fixed => field::FRAME_LEN,
@@ -81,7 +81,7 @@ impl PhysicalChannelConfig {
         if insert_zone_len > 0 && matches!(frame_type, TransferFrameType::Variable) {
             return Err(bad(field::INSERT_ZONE_LEN));
         }
-        Ok(PhysicalChannelConfig {
+        Ok(Self {
             frame_type,
             frame_len,
             insert_zone_len,
@@ -174,9 +174,9 @@ impl TruncatedFrameLen {
     ///
     /// # Errors
     /// `InvalidConfig` (`truncated_frame_len`) outside 6–32.
-    pub const fn new(octets: usize) -> Result<TruncatedFrameLen> {
+    pub const fn new(octets: usize) -> Result<Self> {
         if matches!(octets, 6..=32) {
-            Ok(TruncatedFrameLen(octets))
+            Ok(Self(octets))
         } else {
             Err(bad(field::TRUNCATED_FRAME_LEN))
         }
@@ -212,8 +212,8 @@ pub struct VcParams {
 impl VcParams {
     /// A VC of `frame_type` with no VCF Count, no OCF, no truncated frames, and no SDLS.
     #[must_use]
-    pub const fn new(frame_type: TransferFrameType) -> VcParams {
-        VcParams {
+    pub const fn new(frame_type: TransferFrameType) -> Self {
+        Self {
             frame_type,
             vcf_count_len_sequence: VcfCountLen::NONE,
             vcf_count_len_expedited: VcfCountLen::NONE,
@@ -247,8 +247,8 @@ impl VcConfig {
         physical: &PhysicalChannelConfig,
         vcf_count_len: VcfCountLen,
         ocf_flag: bool,
-    ) -> VcConfig {
-        VcConfig {
+    ) -> Self {
+        Self {
             spacecraft_id,
             vc_id,
             params: VcParams {
@@ -284,7 +284,7 @@ impl VcConfig {
         spacecraft_id: UslpSpacecraftId,
         vc_id: UslpVcId,
         params: VcParams,
-    ) -> Result<VcConfig> {
+    ) -> Result<Self> {
         let fixed = matches!(params.frame_type, TransferFrameType::Fixed);
         let ocf_ok = match params.ocf {
             OcfUse::Absent => true,
@@ -305,7 +305,7 @@ impl VcConfig {
                 return Err(bad(field::VC_ID));
             }
         }
-        Ok(VcConfig {
+        Ok(Self {
             spacecraft_id,
             vc_id,
             params,
@@ -399,8 +399,8 @@ impl MapConfig {
         vc_id: UslpVcId,
         map_id: UslpMapId,
         security: SecurityLayout,
-    ) -> MapConfig {
-        MapConfig {
+    ) -> Self {
+        Self {
             spacecraft_id,
             vc_id,
             map_id,
@@ -506,11 +506,11 @@ impl<const V: usize, const M: usize> VcTable<V, M> {
         physical: PhysicalChannelConfig,
         vcs: &[VcConfig],
         maps: &[MapConfig],
-    ) -> Result<VcTable<V, M>> {
+    ) -> Result<Self> {
         if vcs.is_empty() {
             return Err(bad(field::VC_ID));
         }
-        let mut table = VcTable {
+        let mut table = Self {
             physical,
             vcs: [None; V],
             maps: [None; M],

@@ -52,10 +52,10 @@ impl Uplink {
     ///
     /// # Errors
     /// As [`new`](Uplink::new).
-    pub(crate) fn new_cop1() -> Result<Uplink, Error> {
-        Ok(Uplink {
+    pub(crate) fn new_cop1() -> Result<Self, Error> {
+        Ok(Self {
             ad: Some(Ad::default()),
-            ..Uplink::new()?
+            ..Self::new()?
         })
     }
 

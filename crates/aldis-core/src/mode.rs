@@ -44,8 +44,8 @@ impl DecodeMode {
         lenient: impl FnOnce() -> Result<Lenient<V, A>>,
     ) -> Result<(V, AnomalySet<A>)> {
         match self {
-            DecodeMode::Strict => strict().map(|view| (view, AnomalySet::empty())),
-            DecodeMode::Lenient => lenient().map(Lenient::into_parts),
+            Self::Strict => strict().map(|view| (view, AnomalySet::empty())),
+            Self::Lenient => lenient().map(Lenient::into_parts),
         }
     }
 }
@@ -63,8 +63,8 @@ pub struct Lenient<V, A: Anomaly> {
 impl<V, A: Anomaly> Lenient<V, A> {
     /// The view `view` that a lenient decode accepted with `anomalies`.
     #[must_use]
-    pub const fn new(view: V, anomalies: AnomalySet<A>) -> Lenient<V, A> {
-        Lenient { view, anomalies }
+    pub const fn new(view: V, anomalies: AnomalySet<A>) -> Self {
+        Self { view, anomalies }
     }
 
     /// The anomalies of the deviations the decode accepted (API-032).
@@ -91,7 +91,7 @@ impl<V, A: Anomaly> Lenient<V, A> {
         self,
         f: impl FnOnce(V) -> core::result::Result<W, E>,
     ) -> core::result::Result<Lenient<W, A>, E> {
-        let Lenient { view, anomalies } = self;
+        let Self { view, anomalies } = self;
         f(view).map(|view| Lenient { view, anomalies })
     }
 

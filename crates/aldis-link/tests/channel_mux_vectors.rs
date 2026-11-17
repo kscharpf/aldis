@@ -135,7 +135,7 @@ fn finish<P: MuxProtocol>(
 }
 
 impl Proto for Tm {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Tm, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Self, V> {
         let physical = TmPhysicalChannelConfig::new(frame_len(c), fecf(c)).unwrap();
         let mut channel = TmChannel::new(
             physical,
@@ -174,7 +174,7 @@ impl Proto for Tm {
                 if let Some(fsh) = fsh {
                     params = params.with_initial_fsh(fsh).unwrap();
                 }
-                vc::<Tm>(v, params)
+                vc::<Self>(v, params)
             })
             .collect();
         finish(c, channel, &vcs)
@@ -191,7 +191,7 @@ impl Proto for Tm {
 }
 
 impl Proto for Aos {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Aos, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Self, V> {
         let physical = AosPhysicalChannelConfig::new(
             frame_len(c),
             c["fhec"].as_bool().unwrap(),
@@ -227,7 +227,7 @@ impl Proto for Aos {
                 if let Some(ocf) = ocf {
                     params = params.with_initial_ocf(ocf).unwrap();
                 }
-                vc::<Aos>(v, params)
+                vc::<Self>(v, params)
             })
             .collect();
         finish(c, channel, &vcs)
@@ -257,7 +257,7 @@ fn qos(name: &str) -> Qos {
 }
 
 impl Proto for Uslp {
-    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Uslp, V> {
+    fn config(c: &Map<String, Value>) -> ChannelMuxConfig<Self, V> {
         let physical = UslpPhysicalChannelConfig::new(
             TransferFrameType::Fixed,
             frame_len(c),
@@ -298,7 +298,7 @@ impl Proto for Uslp {
                     o.get("cop").and_then(Value::as_bool).unwrap_or(false),
                 )
                 .unwrap();
-                vc::<Uslp>(v, params)
+                vc::<Self>(v, params)
             })
             .collect();
         finish(c, channel, &vcs)
