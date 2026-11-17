@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn identifiers_read_at_every_limit() {
-        // req: USLP-001, API-001, API-002, RS-020
+        // req: API-001, API-002, RS-020
         // `None` is a short input only: an all-ones start holds the largest identifiers.
         let start = RawStart::parse(&[0xFF; 4]).unwrap();
         assert_eq!(start.channel.spacecraft_id.get(), UslpSpacecraftId::MAX);
