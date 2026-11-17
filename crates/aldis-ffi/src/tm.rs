@@ -36,10 +36,10 @@ use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{AnomalySet, Error, ErrorDetail, ErrorKind, Result};
 use aldis::tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
-    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader, TmVirtualChannelConfig,
-    UncheckedTmFrame, encode, encode_oid, encode_oid_galois,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, NoSdls,
+    PacketOffset, PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent,
+    TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPrimaryHeader,
+    TmVirtualChannelConfig, UncheckedTmFrame, VcFrameCount, encode, encode_oid, encode_oid_galois,
 };
 
 use crate::abi::{self, Configs, invalid_argument};
@@ -481,7 +481,12 @@ fn fields(f: aldis_tm_fields_t) -> Result<Fields> {
         })
     };
     Ok(Fields {
-        fields: TmFrameFields::new(vcid, f.mc_frame_count, f.vc_frame_count, status),
+        fields: TmFrameFields::new(
+            vcid,
+            McFrameCount::new(f.mc_frame_count),
+            VcFrameCount::new(f.vc_frame_count),
+            status,
+        ),
         offset_beyond,
     })
 }
@@ -511,8 +516,8 @@ const fn header(h: &TmPrimaryHeader) -> aldis_tm_header_t {
         scid: h.scid.get(),
         vcid: h.vcid.get(),
         ocf_flag: h.ocf_flag,
-        mc_frame_count: h.mc_frame_count,
-        vc_frame_count: h.vc_frame_count,
+        mc_frame_count: h.mc_frame_count.get(),
+        vc_frame_count: h.vc_frame_count.get(),
         fsh_flag: h.fsh_flag,
         sync_flag: h.sync_flag,
         packet_order_flag: h.packet_order_flag,
@@ -1058,7 +1063,11 @@ pub unsafe extern "C" fn aldis_tm_encode_oid(
     unsafe {
         abi::call(err, || {
             let mc = master_channel_at(mc, vcs, vc_count)?;
-            let vcid = VcId::try_from(vcid)?;
+            let fields = TmFrameFields::oid(
+                VcId::try_from(vcid)?,
+                McFrameCount::new(mc_frame_count),
+                VcFrameCount::new(vc_frame_count),
+            );
             let c = abi::read(content)?;
             empty(c.data_len)?;
             empty(c.security_header_len)?;
@@ -1071,26 +1080,10 @@ pub unsafe extern "C" fn aldis_tm_encode_oid(
             let out_len = abi::out(out_len)?;
             let mut state = h.load();
             let n = match &mut state {
-                GeneratorState::Fibonacci(g) => encode_oid(
-                    &mc,
-                    vcid,
-                    mc_frame_count,
-                    vc_frame_count,
-                    fsh_data,
-                    ocf,
-                    g,
-                    out,
-                )?,
-                GeneratorState::Galois(g) => encode_oid_galois(
-                    &mc,
-                    vcid,
-                    mc_frame_count,
-                    vc_frame_count,
-                    fsh_data,
-                    ocf,
-                    g,
-                    out,
-                )?,
+                GeneratorState::Fibonacci(g) => encode_oid(&mc, &fields, fsh_data, ocf, g, out)?,
+                GeneratorState::Galois(g) => {
+                    encode_oid_galois(&mc, &fields, fsh_data, ocf, g, out)?
+                }
             };
             h.store(state);
             out_len.write(n);

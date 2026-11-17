@@ -9,11 +9,11 @@ use aldis_core::oid::{OidGenerator, OidGeneratorGalois};
 use aldis_core::security::{FrameCtx, PreFilledSecurity, SecurityLayout};
 use aldis_core::{Anomaly as _, AnomalySet, Check, DecodeMode, Error, ErrorKind};
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent, TmFrameFields,
-    TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan, TmPrimaryHeader,
-    TmVirtualChannelConfig, UncheckedTmFrame, encode, encode_oid as encode_oid_frame,
-    encode_oid_galois, security_layout,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, NoSdls,
+    PacketOffset, PacketPointer, SegmentLengthId, TmAnomaly, TmFrame, TmFrameContent,
+    TmFrameFields, TmFrameWriter, TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan,
+    TmPrimaryHeader, TmVirtualChannelConfig, UncheckedTmFrame, VcFrameCount, encode,
+    encode_oid as encode_oid_frame, encode_oid_galois, security_layout,
 };
 
 use crate::exercise::Tally;
@@ -59,6 +59,10 @@ fn header_group(t: &mut Tally) {
         l.get() == 64 && l.octets() == 64 && l.id_octet() == 0x3F && u8::from(l) == FshLen::MAX
     }));
     t.check(FshLen::MIN == 2);
+    t.check(McFrameCount::from(bb(7_u8)).get() == 7 && u8::from(McFrameCount::new(bb(9))) == 9);
+    t.check(McFrameCount::wrapping(bb(0x1_0000_0102)) == McFrameCount::new(2));
+    t.check(VcFrameCount::from(bb(7_u8)).get() == 7 && u8::from(VcFrameCount::new(bb(9))) == 9);
+    t.check(VcFrameCount::wrapping(bb(0x1_0000_0102)) == VcFrameCount::new(2));
     let header = TmPrimaryHeader::decode(bb(&[0x2A, 0x5B, 0x12, 0x34, 0x99, 0x23]));
     t.check(header.is_ok_and(|h| {
         h.scid.get() == 0x2A5
@@ -136,8 +140,8 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     };
     let fields = TmFrameFields::new(
         vc0,
-        bb(1),
-        bb(2),
+        McFrameCount::new(bb(1)),
+        VcFrameCount::new(bb(2)),
         DataFieldStatus::Packets(PacketPointer::StartsAt(offset)),
     );
     match TmPlan::begin(bb(&mut frame), mc, bb(&fields)) {
@@ -162,8 +166,8 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     }
     match TmFrame::decode_with(bb(&frame), &pc, mc) {
         Ok(f) => {
-            t.check(f.scid() == scid && f.vcid() == vc0 && f.mc_frame_count() == 1);
-            t.check(f.vc_frame_count() == 2 && f.fsh_len() == Some(fsh));
+            t.check(f.scid() == scid && f.vcid() == vc0 && f.mc_frame_count().get() == 1);
+            t.check(f.vc_frame_count().get() == 2 && f.fsh_len() == Some(fsh));
             t.check(f.secondary_header_data() == Some(&[1, 2, 3][..]));
             t.check(f.security_header() == [0xA5, 0xA5] && f.security_trailer() == [0x5A]);
             t.check(f.data_field().len() == 17 && f.ocf().is_none() && f.fecf().is_some());
@@ -191,8 +195,8 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     };
     let vca_fields = TmFrameFields::new(
         vc1,
-        0,
-        0,
+        McFrameCount::default(),
+        VcFrameCount::default(),
         DataFieldStatus::VcaSdu {
             packet_order_flag: bb(false),
             segment_length_id: SegmentLengthId::NO_SEGMENTS,
@@ -201,10 +205,11 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
     );
     t.check(encode(mc, bb(&vca_fields), bb(&content), bb(&mut frame)) == Ok(32));
     let mut oid = OidGenerator::new();
+    let oid_fields = TmFrameFields::oid(vc0, McFrameCount::default(), VcFrameCount::default());
     // An OID frame needs a VC without SDLS (132.0 §6.4.6.2): VC 0 of `mc` has it, the VC of
     // `plain` does not.
     t.check(
-        TmPlan::begin_oid(bb(&mut frame), mc, vc0, 0, 0, &mut oid)
+        TmPlan::begin_oid(bb(&mut frame), mc, &oid_fields, &mut oid)
             .is_err_and(|e| e.kind() == ErrorKind::InvalidField),
     );
     let plain = TmVirtualChannelConfig::new(vc0, DataFieldContent::Packets).with_fsh(bb(fsh));
@@ -214,17 +219,17 @@ fn frames(t: &mut Tally, mc: &TmMasterChannelConfig, vc0: VcId<3>, vc1: VcId<3>,
         return;
     };
     t.check(
-        TmPlan::begin_oid(bb(&mut frame), &oid_mc, vc0, 0, 0, &mut oid)
+        TmPlan::begin_oid(bb(&mut frame), &oid_mc, &oid_fields, &mut oid)
             .and_then(TmFrameWriter::unsecured)
             .is_ok_and(|w| w.finalize().len() == 32),
     );
     t.check(frame.get(10..14) == Some(&[0xFF; 4][..]));
     // The one-shot encoders give the same frame from either form of the generator.
     let (mut fib, mut gal, mut one) = (OidGenerator::new(), OidGeneratorGalois::new(), [0_u8; 32]);
-    t.check(encode_oid_frame(&oid_mc, vc0, 0, 0, &[0; 3], None, &mut fib, &mut one) == Ok(32));
+    t.check(encode_oid_frame(&oid_mc, &oid_fields, &[0; 3], None, &mut fib, &mut one) == Ok(32));
     t.check(one == frame);
     one.fill(0);
-    t.check(encode_oid_galois(&oid_mc, vc0, 0, 0, &[0; 3], None, &mut gal, &mut one) == Ok(32));
+    t.check(encode_oid_galois(&oid_mc, &oid_fields, &[0; 3], None, &mut gal, &mut one) == Ok(32));
     t.check(one == frame);
 }
 
@@ -340,8 +345,8 @@ fn decoded(out: &mut Out, f: &UncheckedTmFrame<'_>, anomalies: AnomalySet<TmAnom
     out.num("scid", f.scid().get());
     out.num("vcid", f.vcid().get());
     out.flag("ocf_flag", h.ocf_flag);
-    out.num("mc_frame_count", f.mc_frame_count());
-    out.num("vc_frame_count", f.vc_frame_count());
+    out.num("mc_frame_count", f.mc_frame_count().get());
+    out.num("vc_frame_count", f.vc_frame_count().get());
     out.flag("fsh_flag", h.fsh_flag);
     out.flag("sync_flag", h.sync_flag);
     out.flag("packet_order_flag", h.packet_order_flag);
@@ -377,8 +382,8 @@ fn decoded(out: &mut Out, f: &UncheckedTmFrame<'_>, anomalies: AnomalySet<TmAnom
 fn encode_case(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut Scratch) -> Run {
     let fields = TmFrameFields::new(
         VcId::<3>::try_from(p.num::<u8>("vcid")?)?,
-        p.num("mc_frame_count")?,
-        p.num("vc_frame_count")?,
+        McFrameCount::new(p.num("mc_frame_count")?),
+        VcFrameCount::new(p.num("vc_frame_count")?),
         status(p.obj("status")?)?,
     );
     let content = TmFrameContent {
@@ -428,14 +433,12 @@ fn encode_oid(p: Map, mc: &TmMasterChannelConfig, out: &mut Out, scratch: &mut S
     for f in p.list("frames")? {
         let f = need(f.obj())?;
         let buf = fresh(&mut scratch.a, mc.pc().frame_len())?;
-        let mut w = TmPlan::begin_oid(
-            bb(buf),
-            mc,
+        let fields = TmFrameFields::oid(
             vcid,
-            f.num("mc_frame_count")?,
-            f.num("vc_frame_count")?,
-            &mut oid,
-        )?;
+            McFrameCount::new(f.num("mc_frame_count")?),
+            VcFrameCount::new(f.num("vc_frame_count")?),
+        );
+        let mut w = TmPlan::begin_oid(bb(buf), mc, &fields, &mut oid)?;
         if let Some(data) = crate::vectors::get(f, "fsh_data_hex")
             && !copy(w.secondary_data_mut(), need(data.bytes())?)
         {

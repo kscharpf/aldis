@@ -15,8 +15,8 @@ use crate::anomaly::TmAnomaly;
 use crate::config::{NoSdls, TmPhysicalChannelConfig, security_layout};
 use crate::field;
 use crate::header::{
-    DataFieldStatus, FSH_VERSION, FshLen, PRIMARY_HEADER_LEN, PacketPointer, SegmentLengthId,
-    TmPrimaryHeader, VERSION, first_octet, fsh, len_u64, mismatch,
+    DataFieldStatus, FSH_VERSION, FshLen, McFrameCount, PRIMARY_HEADER_LEN, PacketPointer,
+    SegmentLengthId, TmPrimaryHeader, VERSION, VcFrameCount, first_octet, fsh, len_u64, mismatch,
 };
 
 /// A decoded TM Transfer Frame borrowing its fields from the input (132.0 §4.1, §6.3; TM-001…
@@ -304,13 +304,13 @@ impl<'a> TmFrame<'a> {
 
     /// Master Channel Frame Count (132.0 §4.1.2.5).
     #[must_use]
-    pub const fn mc_frame_count(&self) -> u8 {
+    pub const fn mc_frame_count(&self) -> McFrameCount {
         self.header.mc_frame_count
     }
 
     /// Virtual Channel Frame Count (132.0 §4.1.2.6).
     #[must_use]
-    pub const fn vc_frame_count(&self) -> u8 {
+    pub const fn vc_frame_count(&self) -> VcFrameCount {
         self.header.vc_frame_count
     }
 
@@ -442,13 +442,13 @@ impl<'a> UncheckedTmFrame<'a> {
 
     /// Master Channel Frame Count (132.0 §4.1.2.5).
     #[must_use]
-    pub const fn mc_frame_count(&self) -> u8 {
+    pub const fn mc_frame_count(&self) -> McFrameCount {
         self.frame.mc_frame_count()
     }
 
     /// Virtual Channel Frame Count (132.0 §4.1.2.6).
     #[must_use]
-    pub const fn vc_frame_count(&self) -> u8 {
+    pub const fn vc_frame_count(&self) -> VcFrameCount {
         self.frame.vc_frame_count()
     }
 
@@ -629,7 +629,7 @@ mod tests {
         let f = TmFrame::decode(&bytes, &pc(16, false)).unwrap();
         assert_eq!(f.scid(), SpacecraftId::new(0x2A5).unwrap());
         assert_eq!(f.vcid(), VcId::new(5).unwrap());
-        assert_eq!((f.mc_frame_count(), f.vc_frame_count()), (1, 2));
+        assert_eq!((f.mc_frame_count().get(), f.vc_frame_count().get()), (1, 2));
         assert_eq!(
             f.data_field_status(),
             DataFieldStatus::Packets(starts_at(0))
@@ -712,7 +712,7 @@ mod tests {
         );
         assert_eq!(u.header(), checked.header());
         assert_eq!((u.scid(), u.vcid()), (checked.scid(), checked.vcid()));
-        assert_eq!((u.mc_frame_count(), u.vc_frame_count()), (7, 8));
+        assert_eq!((u.mc_frame_count().get(), u.vc_frame_count().get()), (7, 8));
         assert_eq!(u.data_field_status(), checked.data_field_status());
         assert_eq!(u.fsh_len(), checked.fsh_len());
         assert_eq!(u.secondary_header_data(), Some(&[0xAA, 0xBB][..]));

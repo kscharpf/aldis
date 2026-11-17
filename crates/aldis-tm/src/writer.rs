@@ -14,8 +14,8 @@ use aldis_core::{Error, ErrorKind, Result};
 use crate::config::TmMasterChannelConfig;
 use crate::field;
 use crate::header::{
-    DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId, TmPrimaryHeader,
-    len_u64, mismatch,
+    DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketPointer, SegmentLengthId,
+    TmPrimaryHeader, VcFrameCount, len_u64, mismatch,
 };
 
 /// The Primary Header fields a caller chooses (132.0 §4.1.2; TM-009).
@@ -27,9 +27,9 @@ pub struct TmFrameFields {
     /// Virtual Channel Identifier, which must be configured (132.0 §4.1.2.3).
     pub vcid: VcId<3>,
     /// Master Channel Frame Count (132.0 §4.1.2.5).
-    pub mc_frame_count: u8,
+    pub mc_frame_count: McFrameCount,
     /// Virtual Channel Frame Count (132.0 §4.1.2.6).
-    pub vc_frame_count: u8,
+    pub vc_frame_count: VcFrameCount,
     /// Synchronization Flag and the fields that depend on it (132.0 §4.1.2.7.3–6).
     pub status: DataFieldStatus,
 }
@@ -39,8 +39,8 @@ impl TmFrameFields {
     #[must_use]
     pub const fn new(
         vcid: VcId<3>,
-        mc_frame_count: u8,
-        vc_frame_count: u8,
+        mc_frame_count: McFrameCount,
+        vc_frame_count: VcFrameCount,
         status: DataFieldStatus,
     ) -> Self {
         Self {
@@ -49,6 +49,23 @@ impl TmFrameFields {
             vc_frame_count,
             status,
         }
+    }
+
+    /// The fields of an Only Idle Data frame of `vcid`: First Header Pointer `0x7FE`, for
+    /// [`TmPlan::begin_oid`], [`encode_oid`], and [`encode_oid_galois`] (132.0 §4.1.4.6;
+    /// TM-010).
+    #[must_use]
+    pub const fn oid(
+        vcid: VcId<3>,
+        mc_frame_count: McFrameCount,
+        vc_frame_count: VcFrameCount,
+    ) -> Self {
+        Self::new(
+            vcid,
+            mc_frame_count,
+            vc_frame_count,
+            DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
+        )
     }
 }
 
@@ -91,6 +108,23 @@ struct Plan {
 }
 
 impl Plan {
+    /// The plan of an Only Idle Data frame: `fields.status` must be that of
+    /// [`TmFrameFields::oid`], then as [`Plan::new`] (132.0 §4.1.4.6; TM-010).
+    fn oid(mc: &TmMasterChannelConfig, fields: &TmFrameFields) -> Result<Self> {
+        match fields.status {
+            DataFieldStatus::Packets(PacketPointer::OnlyIdleData) => Self::new(mc, fields),
+            DataFieldStatus::Packets(pointer) => Err(mismatch(
+                ErrorKind::InvalidField,
+                field::FIRST_HEADER_POINTER,
+                u64::from(FirstHeaderPointer::ONLY_IDLE_DATA.get()),
+                u64::from(pointer.to_raw().get()),
+            )),
+            DataFieldStatus::VcaSdu { .. } => {
+                Err(mismatch(ErrorKind::InvalidField, field::SYNC_FLAG, 0, 1))
+            }
+        }
+    }
+
     /// Checks `fields` against `mc` and derives the header (TM-009, TM-011).
     fn new(mc: &TmMasterChannelConfig, fields: &TmFrameFields) -> Result<Self> {
         let entry = mc
@@ -225,17 +259,20 @@ impl TmPlan {
         start(out, plan)
     }
 
-    /// Starts an Only Idle Data frame on `vcid`: First Header Pointer `0x7FE` and the data field
-    /// filled with the next octets of `oid` (132.0 §4.1.4.6; TM-010, CMN-020, CMN-021). The
-    /// Secondary Header and OCF may still be filled with valid data (132.0 §4.1.4.6.3 note 1).
+    /// Starts an Only Idle Data frame of `fields`, built by [`TmFrameFields::oid`]: First Header
+    /// Pointer `0x7FE` and the data field filled with the next octets of `oid` (132.0 §4.1.4.6;
+    /// TM-010, CMN-020, CMN-021). The Secondary Header and OCF may still be filled with valid
+    /// data (132.0 §4.1.4.6.3 note 1).
     ///
     /// # Errors
-    /// As for [`begin`](Self::begin), which names these two in this order: `InvalidField`
-    /// (`sync_flag`) if the VC carries `VCA_SDUs`, since an OID frame uses a VC that transfers
-    /// Packets (132.0 §4.1.4.6.3); `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero
-    /// Security Header or Trailer length, since the multiplexing function that creates an OID
-    /// frame sets a VCID that does not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out`
-    /// nor `oid` is changed (GEN-042).
+    /// As for [`begin`](Self::begin), which names these in this order: `InvalidField`
+    /// (`sync_flag`) if `fields.status` is a `VCA_SDU`'s, or if the VC carries `VCA_SDUs`, since
+    /// an OID frame uses a VC that transfers Packets (132.0 §4.1.4.6.3); `InvalidField`
+    /// (`first_header_pointer`) if `fields.status` is another packet pointer than Only Idle
+    /// Data; `InvalidField` (`vc_id`) if the VC uses SDLS, a nonzero Security Header or Trailer
+    /// length, since the multiplexing function that creates an OID frame sets a VCID that does
+    /// not use SDLS (132.0 §6.4.6.2; TM-010). On error neither `out` nor `oid` is changed
+    /// (GEN-042).
     ///
     /// The Idle Data cannot be checked on decode: it depends on where `oid` stands in the
     /// sequence, which a stateless decoder does not know (CMN-021), and receivers discard it
@@ -243,13 +280,10 @@ impl TmPlan {
     pub fn begin_oid<'b>(
         out: &'b mut [u8],
         mc: &TmMasterChannelConfig,
-        vcid: VcId<3>,
-        mc_frame_count: u8,
-        vc_frame_count: u8,
+        fields: &TmFrameFields,
         oid: &mut OidGenerator,
     ) -> Result<TmFrameWriter<'b>> {
-        let fields = oid_fields(vcid, mc_frame_count, vc_frame_count);
-        let plan = Plan::new(mc, &fields)?;
+        let plan = Plan::oid(mc, fields)?;
         let mut writer = start(out, plan)?;
         oid.fill(writer.data_field_mut());
         Ok(writer)
@@ -346,17 +380,8 @@ pub fn encode(
     Ok(writer.taken_as_given(TmOneShot(())).finalize().len())
 }
 
-/// The fields of an Only Idle Data frame (132.0 §4.1.4.6; TM-010).
-const fn oid_fields(vcid: VcId<3>, mc_frame_count: u8, vc_frame_count: u8) -> TmFrameFields {
-    TmFrameFields::new(
-        vcid,
-        mc_frame_count,
-        vc_frame_count,
-        DataFieldStatus::Packets(PacketPointer::OnlyIdleData),
-    )
-}
-
-/// Encodes an Only Idle Data frame on `vcid` into the start of `out`; returns its length (132.0
+/// Encodes an Only Idle Data frame of `fields`, built by [`TmFrameFields::oid`], into the start of
+/// `out`; returns its length (132.0
 /// §4.1.4.6; TM-010, TM-012, CMN-020, CMN-021, API-020).
 ///
 /// The data field is filled with the next octets of `oid`.
@@ -370,22 +395,15 @@ const fn oid_fields(vcid: VcId<3>, mc_frame_count: u8, vc_frame_count: u8) -> Tm
 /// (`fsh_len`) for a `secondary_header_data` of another length than the configured one, and
 /// `InvalidField` (`ocf_flag`) for an OCF given where none is configured, or missing where one
 /// is. On error neither `out` nor `oid` is changed (GEN-042).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the frame's identification, its two variable fields, the generator, and the buffer: each is a distinct value of one frame (API-020)"
-)]
 pub fn encode_oid(
     mc: &TmMasterChannelConfig,
-    vcid: VcId<3>,
-    mc_frame_count: u8,
-    vc_frame_count: u8,
+    fields: &TmFrameFields,
     secondary_header_data: &[u8],
     ocf: Option<Ocf>,
     oid: &mut OidGenerator,
     out: &mut [u8],
 ) -> Result<usize> {
-    let fields = oid_fields(vcid, mc_frame_count, vc_frame_count);
-    oid_frame(mc, &fields, secondary_header_data, ocf, out, |data| {
+    oid_frame(mc, fields, secondary_header_data, ocf, out, |data| {
         oid.fill(data);
     })
 }
@@ -399,22 +417,15 @@ pub fn encode_oid(
 ///
 /// # Errors
 /// As for [`encode_oid`]. On error neither `out` nor `oid` is changed (GEN-042).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "as encode_oid: each is a distinct value of one frame (API-020)"
-)]
 pub fn encode_oid_galois(
     mc: &TmMasterChannelConfig,
-    vcid: VcId<3>,
-    mc_frame_count: u8,
-    vc_frame_count: u8,
+    fields: &TmFrameFields,
     secondary_header_data: &[u8],
     ocf: Option<Ocf>,
     oid: &mut OidGeneratorGalois,
     out: &mut [u8],
 ) -> Result<usize> {
-    let fields = oid_fields(vcid, mc_frame_count, vc_frame_count);
-    oid_frame(mc, &fields, secondary_header_data, ocf, out, |data| {
+    oid_frame(mc, fields, secondary_header_data, ocf, out, |data| {
         oid.fill(data);
     })
 }
@@ -429,7 +440,7 @@ fn oid_frame(
     out: &mut [u8],
     fill: impl FnOnce(&mut [u8]),
 ) -> Result<usize> {
-    let plan = Plan::new(mc, fields)?;
+    let plan = Plan::oid(mc, fields)?;
     let expected = plan.layout.secondary().len().saturating_sub(1);
     if secondary_header_data.len() != expected {
         return Err(mismatch(
@@ -473,7 +484,8 @@ mod tests {
     use crate::field;
     use crate::header::tests::starts_at;
     use crate::header::{
-        DataFieldStatus, FirstHeaderPointer, FshLen, PacketPointer, SegmentLengthId,
+        DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, PacketPointer, SegmentLengthId,
+        VcFrameCount,
     };
     use crate::view::TmFrame;
     use aldis_core::crc::syndrome;
@@ -488,6 +500,18 @@ mod tests {
 
     fn vcid(n: u8) -> VcId<3> {
         VcId::new(n).unwrap()
+    }
+
+    fn mcc(n: u8) -> McFrameCount {
+        McFrameCount::new(n)
+    }
+
+    fn vcc(n: u8) -> VcFrameCount {
+        VcFrameCount::new(n)
+    }
+
+    fn oid_fields(vc: u8, mc_count: u8, vc_count: u8) -> TmFrameFields {
+        TmFrameFields::oid(vcid(vc), mcc(mc_count), vcc(vc_count))
     }
 
     /// 32-octet frames with FECF; MC 0x0AB with an `MC_OCF`; VC 0 packets with a 4-octet `VC_FSH` and
@@ -514,7 +538,7 @@ mod tests {
     }
 
     fn packets(vc: u8, pointer: PacketPointer) -> TmFrameFields {
-        TmFrameFields::new(vcid(vc), 7, 9, DataFieldStatus::Packets(pointer))
+        TmFrameFields::new(vcid(vc), mcc(7), vcc(9), DataFieldStatus::Packets(pointer))
     }
 
     #[test]
@@ -524,8 +548,8 @@ mod tests {
         let mut out = [0_u8; 40];
         let sdu = TmFrameFields::new(
             vcid(1),
-            0,
-            0,
+            mcc(0),
+            vcc(0),
             DataFieldStatus::VcaSdu {
                 packet_order_flag: false,
                 segment_length_id: SegmentLengthId::NO_SEGMENTS,
@@ -746,8 +770,8 @@ mod tests {
         );
         let vca = TmFrameFields::new(
             vcid(0),
-            0,
-            0,
+            mcc(0),
+            vcc(0),
             DataFieldStatus::VcaSdu {
                 packet_order_flag: false,
                 segment_length_id: SegmentLengthId::NO_SEGMENTS,
@@ -815,8 +839,8 @@ mod tests {
         let mut out = [0_u8; 32];
         let fields = TmFrameFields::new(
             vcid(1),
-            0xFF,
-            0x80,
+            mcc(0xFF),
+            vcc(0x80),
             DataFieldStatus::VcaSdu {
                 packet_order_flag: true,
                 segment_length_id: SegmentLengthId::new(2).unwrap(),
@@ -971,9 +995,9 @@ mod tests {
         let mut oid = OidGenerator::new();
         let mut first = [0_u8; 32];
         let mut second = [0_u8; 32];
-        let writer = TmPlan::begin_oid(&mut first, &mc, vcid(5), 1, 1, &mut oid).unwrap();
+        let writer = TmPlan::begin_oid(&mut first, &mc, &oid_fields(5, 1, 1), &mut oid).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
-        let writer = TmPlan::begin_oid(&mut second, &mc, vcid(5), 2, 2, &mut oid).unwrap();
+        let writer = TmPlan::begin_oid(&mut second, &mc, &oid_fields(5, 2, 2), &mut oid).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
         let mut reference = OidGenerator::new();
         let mut expected = [0_u8; 32];
@@ -990,7 +1014,7 @@ mod tests {
         // Rejected on a `VCA_SDU` channel without advancing the generator.
         let before = oid.clone();
         let mut third = [0_u8; 32];
-        let e = TmPlan::begin_oid(&mut third, &mc, vcid(1), 3, 3, &mut oid).unwrap_err();
+        let e = TmPlan::begin_oid(&mut third, &mc, &oid_fields(1, 3, 3), &mut oid).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::SYNC_FLAG))
@@ -998,14 +1022,14 @@ mod tests {
         assert_eq!(oid, before);
         // A buffer that is too short is rejected without advancing the generator.
         let mut short = [0_u8; 31];
-        let e = TmPlan::begin_oid(&mut short, &mc, vcid(5), 3, 3, &mut oid).unwrap_err();
+        let e = TmPlan::begin_oid(&mut short, &mc, &oid_fields(5, 3, 3), &mut oid).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!((short, oid.clone()), ([0; 31], before.clone()));
         // Rejected on a channel that uses SDLS (132.0 §6.4.6.2), also when the buffer is short.
         for cap in [32, 4] {
             let mut fourth = [0_u8; 32];
-            let e =
-                TmPlan::begin_oid(&mut fourth[..cap], &mc, vcid(0), 3, 3, &mut oid).unwrap_err();
+            let e = TmPlan::begin_oid(&mut fourth[..cap], &mc, &oid_fields(0, 3, 3), &mut oid)
+                .unwrap_err();
             assert_eq!(
                 (e.kind(), e.field()),
                 (ErrorKind::InvalidField, Some(field::VC_ID))
@@ -1029,6 +1053,60 @@ mod tests {
     }
 
     #[test]
+    fn oid_writers_reject_fields_that_are_not_an_oid_frame() {
+        // req: TM-010, TM-012, GEN-042
+        let mc = mc();
+        let mut oid = OidGenerator::new();
+        let before = oid.clone();
+        let mut out = [0xEE_u8; 32];
+        let kf = |e: super::Error| (e.kind(), e.field(), e.detail());
+        let pointer = packets(5, starts_at(0));
+        let vca = TmFrameFields::new(
+            vcid(5),
+            mcc(0),
+            vcc(0),
+            DataFieldStatus::VcaSdu {
+                packet_order_flag: false,
+                segment_length_id: SegmentLengthId::NO_SEGMENTS,
+                first_header_pointer: FirstHeaderPointer::NO_PACKET_START,
+            },
+        );
+        let pointer_error = (
+            ErrorKind::InvalidField,
+            Some(field::FIRST_HEADER_POINTER),
+            ErrorDetail::Expected {
+                expected: 0x7FE,
+                found: 0,
+            },
+        );
+        let vca_error = (
+            ErrorKind::InvalidField,
+            Some(field::SYNC_FLAG),
+            ErrorDetail::Expected {
+                expected: 0,
+                found: 1,
+            },
+        );
+        let e = TmPlan::begin_oid(&mut out, &mc, &pointer, &mut oid).unwrap_err();
+        assert_eq!(kf(e), pointer_error);
+        let e = TmPlan::begin_oid(&mut out, &mc, &vca, &mut oid).unwrap_err();
+        assert_eq!(kf(e), vca_error);
+        let e = encode_oid(&mc, &pointer, &[1, 2, 3], None, &mut oid, &mut out).unwrap_err();
+        assert_eq!(kf(e), pointer_error);
+        let e = encode_oid_galois(
+            &mc,
+            &vca,
+            &[1, 2, 3],
+            None,
+            &mut OidGeneratorGalois::new(),
+            &mut out,
+        )
+        .unwrap_err();
+        assert_eq!(kf(e), vca_error);
+        assert_eq!((out, oid), ([0xEE; 32], before));
+    }
+
+    #[test]
     fn encode_oid_matches_the_two_phase_frame() {
         // req: TM-012, TM-010, CMN-020, CMN-021, CMN-022, API-020
         let mc = mc();
@@ -1042,9 +1120,7 @@ mod tests {
             ([0xEE_u8; 40], [0xEE_u8; 40], [0_u8; 32]);
         let n = encode_oid(
             &mc,
-            vcid(5),
-            1,
-            2,
+            &oid_fields(5, 1, 2),
             &[1, 2, 3],
             Some(ocf),
             &mut fib,
@@ -1054,9 +1130,7 @@ mod tests {
         assert_eq!(n, 32);
         let n = encode_oid_galois(
             &mc,
-            vcid(5),
-            1,
-            2,
+            &oid_fields(5, 1, 2),
             &[1, 2, 3],
             Some(ocf),
             &mut gal,
@@ -1065,7 +1139,7 @@ mod tests {
         .unwrap();
         assert_eq!(n, 32);
         let mut writer =
-            TmPlan::begin_oid(&mut two_frame, &mc, vcid(5), 1, 2, &mut two_phase).unwrap();
+            TmPlan::begin_oid(&mut two_frame, &mc, &oid_fields(5, 1, 2), &mut two_phase).unwrap();
         writer.secondary_data_mut().copy_from_slice(&[1, 2, 3]);
         writer.set_ocf(ocf).unwrap();
         assert_eq!(writer.unsecured().unwrap().finalize().len(), 32);
@@ -1094,23 +1168,46 @@ mod tests {
         let mut out = [0xEE_u8; 32];
         let kf = |e: super::Error| (e.kind(), e.field());
         // The data and checks of `begin_oid`: a VCA_SDU channel, SDLS, an unknown VC.
-        let e = encode_oid(&mc, vcid(1), 0, 0, &[], ocf, &mut oid, &mut out).unwrap_err();
+        let e = encode_oid(&mc, &oid_fields(1, 0, 0), &[], ocf, &mut oid, &mut out).unwrap_err();
         assert_eq!(kf(e), (ErrorKind::InvalidField, Some(field::SYNC_FLAG)));
-        let e = encode_oid(&mc, vcid(0), 0, 0, &[1, 2, 3], ocf, &mut oid, &mut out).unwrap_err();
+        let e = encode_oid(
+            &mc,
+            &oid_fields(0, 0, 0),
+            &[1, 2, 3],
+            ocf,
+            &mut oid,
+            &mut out,
+        )
+        .unwrap_err();
         assert_eq!(kf(e), (ErrorKind::InvalidField, Some(field::VC_ID)));
-        let e = encode_oid(&mc, vcid(2), 0, 0, &[1, 2, 3], ocf, &mut oid, &mut out).unwrap_err();
+        let e = encode_oid(
+            &mc,
+            &oid_fields(2, 0, 0),
+            &[1, 2, 3],
+            ocf,
+            &mut oid,
+            &mut out,
+        )
+        .unwrap_err();
         assert_eq!(kf(e), (ErrorKind::UnknownChannel, Some(field::VC_ID)));
         // The content: a Secondary Header Data Field of another length, an OCF missing.
-        let e = encode_oid(&mc, vcid(5), 0, 0, &[1, 2], ocf, &mut oid, &mut out).unwrap_err();
+        let e =
+            encode_oid(&mc, &oid_fields(5, 0, 0), &[1, 2], ocf, &mut oid, &mut out).unwrap_err();
         assert_eq!(kf(e), (ErrorKind::LengthMismatch, Some(field::FSH_LEN)));
-        let e = encode_oid(&mc, vcid(5), 0, 0, &[1, 2, 3], None, &mut oid, &mut out).unwrap_err();
+        let e = encode_oid(
+            &mc,
+            &oid_fields(5, 0, 0),
+            &[1, 2, 3],
+            None,
+            &mut oid,
+            &mut out,
+        )
+        .unwrap_err();
         assert_eq!(kf(e), (ErrorKind::InvalidField, Some(field::OCF_FLAG)));
         // A buffer shorter than the frame.
         let e = encode_oid(
             &mc,
-            vcid(5),
-            0,
-            0,
+            &oid_fields(5, 0, 0),
             &[1, 2, 3],
             ocf,
             &mut oid,
@@ -1134,14 +1231,14 @@ mod tests {
             .unwrap();
         let mut oid = OidGenerator::new();
         let mut out = [0xEE_u8; 32];
-        let n = encode_oid(&mc, vcid(5), 1, 2, &[], None, &mut oid, &mut out).unwrap();
+        let n = encode_oid(&mc, &oid_fields(5, 1, 2), &[], None, &mut oid, &mut out).unwrap();
         assert_eq!(n, 32);
         assert_eq!(syndrome(&out).get(), 0);
         let frame = TmFrame::decode_with(&out, mc.pc(), &mc).unwrap();
         assert_eq!(frame.ocf(), None);
         assert_eq!(frame.data_field().len(), 32 - 6 - 2);
         let ocf = Some(Ocf::decode([0x01, 0, 0, 0]));
-        let e = encode_oid(&mc, vcid(5), 1, 2, &[], ocf, &mut oid, &mut out).unwrap_err();
+        let e = encode_oid(&mc, &oid_fields(5, 1, 2), &[], ocf, &mut oid, &mut out).unwrap_err();
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidField, Some(field::OCF_FLAG))
