@@ -21,11 +21,11 @@ impl TableId {
     ///
     /// # Errors
     /// `InvalidField` below [`TableId::MIN`].
-    pub const fn new(id: u8) -> Result<TableId, Error> {
-        if id < TableId::MIN {
+    pub const fn new(id: u8) -> Result<Self, Error> {
+        if id < Self::MIN {
             Err(Error::new(ErrorKind::InvalidField))
         } else {
-            Ok(TableId(id))
+            Ok(Self(id))
         }
     }
 
@@ -51,13 +51,13 @@ impl TableLength {
     ///
     /// # Errors
     /// `InvalidField` below [`TableLength::MIN`], `OutOfRange` above [`TableLength::MAX`].
-    pub const fn new(length: u16) -> Result<TableLength, Error> {
-        if length < TableLength::MIN {
+    pub const fn new(length: u16) -> Result<Self, Error> {
+        if length < Self::MIN {
             Err(Error::new(ErrorKind::InvalidField))
-        } else if length > TableLength::MAX {
+        } else if length > Self::MAX {
             Err(Error::new(ErrorKind::OutOfRange))
         } else {
-            Ok(TableLength(length))
+            Ok(Self(length))
         }
     }
 

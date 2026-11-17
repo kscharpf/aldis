@@ -99,7 +99,7 @@ impl Uplink {
     ///
     /// # Errors
     /// The library's `InvalidConfig` if a scenario value is out of range for the engines.
-    pub(crate) fn new() -> Result<Uplink, Error> {
+    pub(crate) fn new() -> Result<Self, Error> {
         let bad = Error::new(ErrorKind::InvalidConfig);
         let spacecraft =
             SpacecraftId::<10>::new(refapp_scenario::generated::SPACECRAFT_ID).ok_or(bad)?;
@@ -149,7 +149,7 @@ impl Uplink {
             ad_repetitions: cop1::FOP_REPETITIONS_TYPE_A,
             bc_repetitions: cop1::FOP_REPETITIONS_CONTROL,
         })?;
-        Ok(Uplink {
+        Ok(Self {
             segmenter: MapSegmenter::new(config)?,
             fop,
             store: Fop1Store::new(),

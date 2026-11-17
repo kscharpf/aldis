@@ -16,9 +16,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(e) => write!(f, "i/o: {e}"),
-            Error::Contract(m) => write!(f, "step contract: {m}"),
-            Error::Script(m) => write!(f, "script: {m}"),
+            Self::Io(e) => write!(f, "i/o: {e}"),
+            Self::Contract(m) => write!(f, "step contract: {m}"),
+            Self::Script(m) => write!(f, "script: {m}"),
         }
     }
 }
@@ -27,6 +27,6 @@ impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Error::Io(e)
+        Self::Io(e)
     }
 }

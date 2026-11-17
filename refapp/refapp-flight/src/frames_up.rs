@@ -95,8 +95,8 @@ impl DeliveryBuffer {
     /// Places of the buffer (`generated::cop1::FARM_BUFFER_DEPTH`, COP-032).
     const DEPTH: u8 = cop1::FARM_BUFFER_DEPTH;
 
-    const fn empty() -> DeliveryBuffer {
-        DeliveryBuffer { held: 0 }
+    const fn empty() -> Self {
+        Self { held: 0 }
     }
 
     /// The `buffer_available` input of FARM-1: a place is free.
@@ -143,8 +143,8 @@ impl FrameUplink {
     /// # Errors
     /// `InvalidConfig` if a scenario value is not a valid parameter, which the generated
     /// constants rule out.
-    pub fn new() -> Result<FrameUplink> {
-        FrameUplink::build(false)
+    pub fn new() -> Result<Self> {
+        Self::build(false)
     }
 
     /// The chain at the `cop1` level (A3 on): as [`FrameUplink::new`], with the COP-1 events
@@ -152,11 +152,11 @@ impl FrameUplink {
     ///
     /// # Errors
     /// As [`FrameUplink::new`].
-    pub fn new_cop1() -> Result<FrameUplink> {
-        FrameUplink::build(true)
+    pub fn new_cop1() -> Result<Self> {
+        Self::build(true)
     }
 
-    fn build(cop1: bool) -> Result<FrameUplink> {
+    fn build(cop1: bool) -> Result<Self> {
         let bad = Error::new(ErrorKind::InvalidConfig);
         let scid = TcSpacecraftId::new(SPACECRAFT_ID).ok_or(bad)?;
         let vc = TcVcId::new(tc::VCID).ok_or(bad)?;
@@ -200,7 +200,7 @@ impl FrameUplink {
             &[packets(tc::MAP_COMMANDS)?, packets(tc::MAP_TABLE_UPLOAD)?],
         )?;
         let reassembler = MapReassembler::new(reassembler_config)?;
-        Ok(FrameUplink {
+        Ok(Self {
             table,
             vc,
             receiver,

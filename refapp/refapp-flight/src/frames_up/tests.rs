@@ -118,16 +118,16 @@ struct Run {
 }
 
 impl Run {
-    fn new() -> Run {
-        Run {
+    fn new() -> Self {
+        Self {
             node: FlightNode::new_frames().unwrap(),
             rec: Rec::default(),
         }
     }
 
     /// The node at the `cop1` level (A3 on).
-    fn new_cop1() -> Run {
-        Run {
+    fn new_cop1() -> Self {
+        Self {
             node: FlightNode::new_cop1().unwrap(),
             rec: Rec::default(),
         }

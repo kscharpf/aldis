@@ -49,8 +49,8 @@ pub enum GroundError {
 impl fmt::Display for GroundError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GroundError::Script(e) => write!(f, "ops[{}]: {}", e.index, e.error),
-            GroundError::Setup(e) => write!(f, "ground node setup: {e}"),
+            Self::Script(e) => write!(f, "ops[{}]: {}", e.index, e.error),
+            Self::Setup(e) => write!(f, "ground node setup: {e}"),
         }
     }
 }
@@ -74,8 +74,8 @@ impl GroundNode {
     ///
     /// # Errors
     /// [`GroundError::Script`] for the first entry that cannot be encoded.
-    pub fn new(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
-        Ok(GroundNode {
+    pub fn new(script: &[OpsEntry]) -> Result<Self, GroundError> {
+        Ok(Self {
             script: Script::new(script).map_err(GroundError::Script)?,
             telemetry: Telemetry::new(),
             downlink: None,
@@ -90,11 +90,11 @@ impl GroundNode {
     /// # Errors
     /// As [`new`](Self::new), and [`GroundError::Setup`] if a scenario value is out of range for
     /// the engines.
-    pub fn new_frames(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
-        Ok(GroundNode {
+    pub fn new_frames(script: &[OpsEntry]) -> Result<Self, GroundError> {
+        Ok(Self {
             downlink: Some(FrameDownlink::new()?),
             uplink: Some(Uplink::new().map_err(GroundError::Setup)?),
-            ..GroundNode::new(script)?
+            ..Self::new(script)?
         })
     }
 
@@ -105,10 +105,10 @@ impl GroundNode {
     ///
     /// # Errors
     /// As [`new_frames`](Self::new_frames).
-    pub fn new_cop1(script: &[OpsEntry]) -> Result<GroundNode, GroundError> {
-        Ok(GroundNode {
+    pub fn new_cop1(script: &[OpsEntry]) -> Result<Self, GroundError> {
+        Ok(Self {
             uplink: Some(Uplink::new_cop1().map_err(GroundError::Setup)?),
-            ..GroundNode::new_frames(script)?
+            ..Self::new_frames(script)?
         })
     }
 

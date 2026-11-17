@@ -158,8 +158,8 @@ impl FrameDownlink {
     ///
     /// # Errors
     /// The engines' `InvalidConfig` or `CapacityExceeded`, which the scenario's values rule out.
-    pub fn new() -> Result<FrameDownlink> {
-        Ok(FrameDownlink {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
             generators: [
                 generator(
                     VcId::<3>::from_const::<{ tm::VCID_REALTIME }>(),
@@ -304,7 +304,7 @@ impl<'a> Tap<'a> {
         vc: u8,
         at: Instant,
         out: &'a mut dyn Output,
-    ) -> Tap<'a> {
+    ) -> Self {
         Tap {
             frames,
             vc,

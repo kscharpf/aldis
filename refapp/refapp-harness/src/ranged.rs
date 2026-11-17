@@ -18,16 +18,16 @@ pub trait Bounded: Copy + Into<u64> {
 }
 
 impl Bounded for u8 {
-    const LIMIT: u64 = u8::MAX as u64;
+    const LIMIT: u64 = Self::MAX as u64;
 }
 impl Bounded for u16 {
-    const LIMIT: u64 = u16::MAX as u64;
+    const LIMIT: u64 = Self::MAX as u64;
 }
 impl Bounded for u32 {
-    const LIMIT: u64 = u32::MAX as u64;
+    const LIMIT: u64 = Self::MAX as u64;
 }
 impl Bounded for u64 {
-    const LIMIT: u64 = u64::MAX;
+    const LIMIT: Self = Self::MAX;
 }
 
 /// An integer of type `T` in `MIN..=MAX`.
@@ -61,7 +61,7 @@ impl<T: Bounded, const MIN: u64, const MAX: u64> Ranged<T, MIN, MAX> {
         let () = Self::VALID;
         let wide: u64 = value.into();
         if (MIN..=MAX).contains(&wide) {
-            Ok(Ranged(value))
+            Ok(Self(value))
         } else {
             Err(format!("{wide} is outside the range {MIN} to {MAX}"))
         }
