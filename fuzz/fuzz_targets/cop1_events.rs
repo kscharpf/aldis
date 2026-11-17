@@ -292,8 +292,10 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         };
         let row = &FARM1_TABLE[before as usize];
         assert!(
-            (class == 6 && f.state() == before)
-                || events.iter().any(|e| row[*e].next_state == Some(f.state()))
+            (class == 6 && after.state() == before)
+                || events
+                    .iter()
+                    .any(|e| row[*e].next_state == Some(after.state()))
         );
         assert_eq!(after.lockout_flag(), after.state() == Farm1State::Lockout);
         assert_eq!(after.wait_flag(), after.state() == Farm1State::Wait);
