@@ -30,7 +30,7 @@ impl Monotonic {
     /// A clock whose instant 0 is now.
     #[must_use]
     pub fn start() -> Self {
-        Monotonic {
+        Self {
             start: Instant::now(),
         }
     }
@@ -59,7 +59,7 @@ impl Manual {
     /// A clock at instant 0.
     #[must_use]
     pub fn new() -> Self {
-        Manual::default()
+        Self::default()
     }
 }
 

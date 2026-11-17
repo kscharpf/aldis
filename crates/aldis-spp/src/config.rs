@@ -19,14 +19,14 @@ pub struct SppConfig {
 }
 
 impl Default for SppConfig {
-    fn default() -> SppConfig {
-        SppConfig::DEFAULT
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
 impl SppConfig {
     /// The largest packet 133.0 allows, 65 542 octets (133.0 §4.1.2.2, SPP-006).
-    pub const DEFAULT: SppConfig = SppConfig {
+    pub const DEFAULT: Self = Self {
         max_packet_len: MAX_PACKET_LEN,
     };
 
@@ -34,11 +34,11 @@ impl SppConfig {
     ///
     /// # Errors
     /// `InvalidConfig` (`max_packet_len`) outside 7–65 542 (133.0 §4.1.2.2).
-    pub const fn new(max_packet_len: usize) -> Result<SppConfig> {
+    pub const fn new(max_packet_len: usize) -> Result<Self> {
         if max_packet_len < MIN_PACKET_LEN || max_packet_len > MAX_PACKET_LEN {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
-        Ok(SppConfig { max_packet_len })
+        Ok(Self { max_packet_len })
     }
 
     /// Maximum Packet Length in octets (133.0 §5.2 Table 5-1, SPP-006).

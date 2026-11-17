@@ -148,8 +148,8 @@ pub struct AnomalySet<A> {
 impl<A> AnomalySet<A> {
     /// The empty set.
     #[must_use]
-    pub const fn empty() -> AnomalySet<A> {
-        AnomalySet {
+    pub const fn empty() -> Self {
+        Self {
             bits: 0,
             flags: PhantomData,
         }
@@ -187,8 +187,8 @@ fn mask<A: Anomaly>(flag: A) -> u32 {
 impl<A: Anomaly> AnomalySet<A> {
     /// The set holding each of `flags`.
     #[must_use]
-    pub fn from_flags(flags: &[A]) -> AnomalySet<A> {
-        let mut set = AnomalySet::empty();
+    pub fn from_flags(flags: &[A]) -> Self {
+        let mut set = Self::empty();
         for &flag in flags {
             set.insert(flag);
         }
@@ -219,8 +219,8 @@ impl<A: Anomaly> AnomalySet<A> {
 }
 
 impl<A> Default for AnomalySet<A> {
-    fn default() -> AnomalySet<A> {
-        AnomalySet::empty()
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
@@ -314,8 +314,8 @@ mod tests {
             self.0
         }
 
-        fn from_bit(bit: u8) -> Option<Flag> {
-            (bit < CAPACITY).then_some(Flag(bit))
+        fn from_bit(bit: u8) -> Option<Self> {
+            (bit < CAPACITY).then_some(Self(bit))
         }
     }
 
@@ -330,8 +330,8 @@ mod tests {
             self.0
         }
 
-        fn from_bit(bit: u8) -> Option<Even> {
-            bit.is_multiple_of(2).then_some(Even(bit))
+        fn from_bit(bit: u8) -> Option<Self> {
+            bit.is_multiple_of(2).then_some(Self(bit))
         }
     }
 
@@ -346,7 +346,7 @@ mod tests {
             self.0
         }
 
-        fn from_bit(_: u8) -> Option<Unknown> {
+        fn from_bit(_: u8) -> Option<Self> {
             None
         }
     }

@@ -52,15 +52,15 @@ pub enum Role {
 impl Role {
     const fn node(self) -> NodeId {
         match self {
-            Role::Flight => NodeId::Flight,
-            Role::Ground => NodeId::Ground,
+            Self::Flight => NodeId::Flight,
+            Self::Ground => NodeId::Ground,
         }
     }
 
     const fn tx_dir(self) -> Dir {
         match self {
-            Role::Flight => Dir::Down,
-            Role::Ground => Dir::Up,
+            Self::Flight => Dir::Down,
+            Self::Ground => Dir::Up,
         }
     }
 }

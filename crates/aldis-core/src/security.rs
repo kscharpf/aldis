@@ -25,7 +25,7 @@ pub struct SecurityLayout {
 
 impl SecurityLayout {
     /// No Security Header or Trailer.
-    pub const NONE: SecurityLayout = SecurityLayout {
+    pub const NONE: Self = Self {
         header_len: 0,
         trailer_len: 0,
     };
@@ -35,7 +35,7 @@ impl SecurityLayout {
     pub const MAX_TRAILER_LEN: usize = 0xFFFF;
     /// Fixed layout for SDLS on USLP truncated frames: 6-octet header, 16-octet trailer
     /// (732.1 Annex D1.2.3; API-075).
-    pub const USLP_TRUNCATED: SecurityLayout = SecurityLayout {
+    pub const USLP_TRUNCATED: Self = Self {
         header_len: 6,
         trailer_len: 16,
     };
@@ -44,16 +44,16 @@ impl SecurityLayout {
     ///
     /// # Errors
     /// `InvalidConfig` if the header exceeds 64 octets or the trailer exceeds 65 535 octets.
-    pub const fn new(header_len: usize, trailer_len: usize) -> Result<SecurityLayout> {
-        let Some(header_len) = usize_to_u8(header_len, SecurityLayout::MAX_HEADER_LEN) else {
+    pub const fn new(header_len: usize, trailer_len: usize) -> Result<Self> {
+        let Some(header_len) = usize_to_u8(header_len, Self::MAX_HEADER_LEN) else {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
         };
-        let Some(trailer_len) = usize_to_u16(trailer_len, SecurityLayout::MAX_TRAILER_LEN) else {
+        let Some(trailer_len) = usize_to_u16(trailer_len, Self::MAX_TRAILER_LEN) else {
             return Err(
                 Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_TRAILER_LEN)
             );
         };
-        Ok(SecurityLayout {
+        Ok(Self {
             header_len,
             trailer_len,
         })
@@ -142,10 +142,10 @@ impl FrameCtx {
     #[must_use]
     pub const fn protocol(&self) -> Protocol {
         match self {
-            FrameCtx::Tm { .. } => Protocol::Tm,
-            FrameCtx::Tc { .. } => Protocol::Tc,
-            FrameCtx::Aos { .. } => Protocol::Aos,
-            FrameCtx::Uslp { .. } => Protocol::Uslp,
+            Self::Tm { .. } => Protocol::Tm,
+            Self::Tc { .. } => Protocol::Tc,
+            Self::Aos { .. } => Protocol::Aos,
+            Self::Uslp { .. } => Protocol::Uslp,
         }
     }
 
@@ -153,10 +153,8 @@ impl FrameCtx {
     #[must_use]
     pub const fn scid(&self) -> u16 {
         match self {
-            FrameCtx::Tm { scid, .. } | FrameCtx::Tc { scid, .. } | FrameCtx::Aos { scid, .. } => {
-                scid.get()
-            }
-            FrameCtx::Uslp { scid, .. } => scid.get(),
+            Self::Tm { scid, .. } | Self::Tc { scid, .. } | Self::Aos { scid, .. } => scid.get(),
+            Self::Uslp { scid, .. } => scid.get(),
         }
     }
 
@@ -164,10 +162,8 @@ impl FrameCtx {
     #[must_use]
     pub const fn vcid(&self) -> u8 {
         match self {
-            FrameCtx::Tm { vcid, .. } => vcid.get(),
-            FrameCtx::Tc { vcid, .. }
-            | FrameCtx::Aos { vcid, .. }
-            | FrameCtx::Uslp { vcid, .. } => vcid.get(),
+            Self::Tm { vcid, .. } => vcid.get(),
+            Self::Tc { vcid, .. } | Self::Aos { vcid, .. } | Self::Uslp { vcid, .. } => vcid.get(),
         }
     }
 
@@ -175,16 +171,16 @@ impl FrameCtx {
     #[must_use]
     pub const fn map_id(&self) -> Option<u8> {
         match self {
-            FrameCtx::Tc {
+            Self::Tc {
                 map_id: Some(map), ..
             } => Some(map.get()),
-            FrameCtx::Uslp {
+            Self::Uslp {
                 map_id: Some(map), ..
             } => Some(map.get()),
-            FrameCtx::Tm { .. }
-            | FrameCtx::Aos { .. }
-            | FrameCtx::Tc { map_id: None, .. }
-            | FrameCtx::Uslp { map_id: None, .. } => None,
+            Self::Tm { .. }
+            | Self::Aos { .. }
+            | Self::Tc { map_id: None, .. }
+            | Self::Uslp { map_id: None, .. } => None,
         }
     }
 }
@@ -214,7 +210,7 @@ impl SecuredFields {
         if !ordered || header.end != data.start || data.end != trailer.start {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
         }
-        Ok(SecuredFields {
+        Ok(Self {
             header,
             data,
             trailer,
@@ -232,10 +228,10 @@ impl SecuredFields {
         header_len: usize,
         data_len: usize,
         trailer_len: usize,
-    ) -> SecuredFields {
+    ) -> Self {
         let header_end = start.saturating_add(header_len);
         let data_end = header_end.saturating_add(data_len);
-        SecuredFields {
+        Self {
             header: start..header_end,
             data: header_end..data_end,
             trailer: data_end..data_end.saturating_add(trailer_len),
@@ -245,8 +241,8 @@ impl SecuredFields {
     /// The secured fields of a computed frame layout, which are adjacent by construction
     /// (CMN-040, API-070).
     #[must_use]
-    pub fn from_layout(layout: &FrameLayout) -> SecuredFields {
-        SecuredFields {
+    pub fn from_layout(layout: &FrameLayout) -> Self {
+        Self {
             header: layout.security_header(),
             data: layout.data(),
             trailer: layout.security_trailer(),
@@ -390,8 +386,8 @@ impl SecurityHook for FixedPatternSecurity {
 
     fn protect(&mut self, _: &FrameCtx, frame: &mut [u8], fields: &SecuredFields) -> Result<()> {
         for (range, pattern) in [
-            (fields.header(), FixedPatternSecurity::HEADER_PATTERN),
-            (fields.trailer(), FixedPatternSecurity::TRAILER_PATTERN),
+            (fields.header(), Self::HEADER_PATTERN),
+            (fields.trailer(), Self::TRAILER_PATTERN),
         ] {
             frame
                 .get_mut(range)
@@ -412,8 +408,7 @@ impl SecurityHook for FixedPatternSecurity {
                 .get(range)
                 .is_some_and(|s| s.iter().all(|&b| b == pattern))
         };
-        if ok(fields.header(), FixedPatternSecurity::HEADER_PATTERN)
-            && ok(fields.trailer(), FixedPatternSecurity::TRAILER_PATTERN)
+        if ok(fields.header(), Self::HEADER_PATTERN) && ok(fields.trailer(), Self::TRAILER_PATTERN)
         {
             Ok(fields.data())
         } else {

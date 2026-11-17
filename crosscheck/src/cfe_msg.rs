@@ -106,9 +106,9 @@ pub enum CfeError {
 impl core::fmt::Display for CfeError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            CfeError::BadArgument => f.write_str("CFE_MSG_BAD_ARGUMENT"),
-            CfeError::WrongMsgType => f.write_str("CFE_MSG_WRONG_MSG_TYPE"),
-            CfeError::Other(status) => write!(f, "cFE status {status:#010x}"),
+            Self::BadArgument => f.write_str("CFE_MSG_BAD_ARGUMENT"),
+            Self::WrongMsgType => f.write_str("CFE_MSG_WRONG_MSG_TYPE"),
+            Self::Other(status) => write!(f, "cFE status {status:#010x}"),
         }
     }
 }

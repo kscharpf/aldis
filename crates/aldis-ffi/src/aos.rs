@@ -292,8 +292,8 @@ pub struct aldis_aos_content_t {
 
 impl Default for aldis_aos_content_t {
     /// Every buffer empty and `NULL`.
-    fn default() -> aldis_aos_content_t {
-        aldis_aos_content_t {
+    fn default() -> Self {
+        Self {
             insert_zone: core::ptr::null(),
             insert_zone_len: 0,
             security_header: core::ptr::null(),

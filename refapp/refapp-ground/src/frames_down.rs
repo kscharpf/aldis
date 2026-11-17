@@ -100,11 +100,11 @@ impl FrameDownlink {
     ///
     /// # Errors
     /// [`GroundError::Setup`] if the constants do not form a configuration.
-    pub(crate) fn new() -> Result<FrameDownlink, GroundError> {
-        FrameDownlink::build().map_err(GroundError::Setup)
+    pub(crate) fn new() -> Result<Self, GroundError> {
+        Self::build().map_err(GroundError::Setup)
     }
 
-    fn build() -> Result<FrameDownlink, Error> {
+    fn build() -> Result<Self, Error> {
         let frame_len = usize::from(tm::FRAME_LENGTH);
         let invalid = || Error::new(ErrorKind::InvalidConfig);
         let scid = SpacecraftId::new(SPACECRAFT_ID).ok_or_else(invalid)?;
@@ -145,7 +145,7 @@ impl FrameDownlink {
             &[entry(realtime), entry(payload), entry(idle)],
         )?);
         let ocf_word = tm::OCF_INITIAL;
-        Ok(FrameDownlink {
+        Ok(Self {
             area: vec![0; receiver.config().area_len()],
             channel,
             receiver,
@@ -286,14 +286,14 @@ impl FrameDownlink {
 }
 
 impl Extraction {
-    fn new() -> Result<Extraction, Error> {
+    fn new() -> Result<Self, Error> {
         let config = PacketExtractorConfig::<Tm>::new(
             TmParams,
             ValidPvns::from_versions(&[tm::PACKET_VERSION])?,
             usize::from(tm::MAX_PACKET_LENGTH),
         )?
         .with_delivery(tm::DELIVER_INCOMPLETE_PACKETS, tm::DELIVER_IDLE_PACKETS);
-        Ok(Extraction {
+        Ok(Self {
             realtime: Extractor::new(config)?,
             payload: Extractor::new(config)?,
             area: vec![0; EXTRACT_AREA],

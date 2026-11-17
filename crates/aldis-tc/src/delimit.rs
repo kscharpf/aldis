@@ -121,7 +121,7 @@ impl<'a> FrameDelimiter<'a> {
     /// A delimiter over the octets of one clean data unit (232.0 §4.4.9.2.3), where `max_fill`
     /// is the longest fill the coding sublayer appends (TC-020, OI-47).
     #[must_use]
-    pub const fn new(unit: &'a [u8], max_fill: usize) -> FrameDelimiter<'a> {
+    pub const fn new(unit: &'a [u8], max_fill: usize) -> Self {
         FrameDelimiter {
             rest: unit,
             max_fill,

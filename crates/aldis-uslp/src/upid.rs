@@ -24,11 +24,11 @@ impl UnassignedUpid {
     /// `value` if it is a 5-bit value the registry does not assign; `None` above 31 or for an
     /// assigned value (USLP-007).
     #[must_use]
-    pub const fn new(value: u8) -> Option<UnassignedUpid> {
+    pub const fn new(value: u8) -> Option<Self> {
         if value > 0x1F || table::is_assigned(value) {
             None
         } else {
-            Some(UnassignedUpid(value))
+            Some(Self(value))
         }
     }
 

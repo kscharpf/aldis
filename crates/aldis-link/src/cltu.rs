@@ -70,15 +70,15 @@ impl Repetitions {
     /// One transfer: no systematic retransmission.
     ///
     /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
-    pub const ONE: Repetitions = Repetitions(NonZeroU16::MIN);
+    pub const ONE: Self = Self(NonZeroU16::MIN);
 
     /// `n` transfers, or `None` for 0.
     ///
     /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     #[must_use]
-    pub const fn new(n: u16) -> Option<Repetitions> {
+    pub const fn new(n: u16) -> Option<Self> {
         match NonZeroU16::new(n) {
-            Some(n) => Some(Repetitions(n)),
+            Some(n) => Some(Self(n)),
             None => None,
         }
     }
@@ -113,13 +113,13 @@ impl<P: CltuProtocol> CltuPackerConfig<P> {
     /// # Errors
     /// `InvalidConfig` (`max_frames_per_unit`) for 0 frames (LNK-078), (`max_unit_len`) for 0
     /// octets.
-    pub const fn new(max_frames: usize, max_unit_len: usize) -> Result<CltuPackerConfig<P>> {
+    pub const fn new(max_frames: usize, max_unit_len: usize) -> Result<Self> {
         if max_frames == 0 {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_FRAMES_PER_UNIT))
         } else if max_unit_len == 0 {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_UNIT_LEN))
         } else {
-            Ok(CltuPackerConfig {
+            Ok(Self {
                 max_frames,
                 max_unit_len,
                 protocol: PhantomData,
@@ -276,8 +276,8 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     /// `CapacityExceeded` (`max_unit_len`) if the Maximum Length of Data Unit exceeds `U`.
     ///
     /// Requirements: LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
-    pub fn new(config: CltuPackerConfig<P>) -> Result<CltuPacker<P, U>> {
-        Ok(CltuPacker {
+    pub fn new(config: CltuPackerConfig<P>) -> Result<Self> {
+        Ok(Self {
             head: Self::new_head(config)?,
             bufs: CltuPackerBuffers::ZERO,
         })
@@ -300,7 +300,7 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
     ///
     /// Requirements: CABI-040 (in-place construction, M4 plan WP-7), LNK-044, LNK-002, LNK-003, LNK-078; docs/04-engines.md §2.3.
     pub fn new_head(config: CltuPackerConfig<P>) -> Result<CltuPackerHead<P>> {
-        CltuPacker::<P, U>::check_capacity(&config)?;
+        Self::check_capacity(&config)?;
         Ok(CltuPackerHead {
             config,
             len: 0,
@@ -357,7 +357,7 @@ impl<P: CltuProtocol, const U: usize> CltuPacker<P, U> {
                 }
             }
             CltuInput::Reconfigure(config) => {
-                CltuPacker::<P, U>::check_capacity(&config)?;
+                Self::check_capacity(&config)?;
                 let octets = self.head.len;
                 self.head.config = config;
                 self.head.unit = Unit::Empty;

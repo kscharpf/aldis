@@ -148,12 +148,12 @@ impl Farm1Window {
     /// # Errors
     /// `InvalidConfig` naming `farm_sliding_window_w` for a W outside 2..=254 or odd
     /// (API-040).
-    pub fn retransmission_allowed(w: u16) -> Result<Farm1Window> {
+    pub fn retransmission_allowed(w: u16) -> Result<Self> {
         if !(2..=254).contains(&w) || w & 1 == 1 {
             return Err(bad_window(field::FARM_SLIDING_WINDOW_W));
         }
         let half = w / 2;
-        Ok(Farm1Window { pw: half, nw: half })
+        Ok(Self { pw: half, nw: half })
     }
 
     /// The window of COP-1 operated with Type-AD frame retransmission not allowed
@@ -164,7 +164,7 @@ impl Farm1Window {
     /// `InvalidConfig` naming `farm_sliding_window_w` for a W outside 1..=256,
     /// `farm_positive_window_pw` for a PW outside 1..=W, and `farm_negative_window_nw` when
     /// W − PW exceeds 127, the largest NW of Table 7-2 (API-040).
-    pub fn retransmission_not_allowed(w: u16, pw: u16) -> Result<Farm1Window> {
+    pub fn retransmission_not_allowed(w: u16, pw: u16) -> Result<Self> {
         if !(1..=256).contains(&w) {
             return Err(bad_window(field::FARM_SLIDING_WINDOW_W));
         }
@@ -175,7 +175,7 @@ impl Farm1Window {
         if nw > MAX_NW {
             return Err(bad_window(field::FARM_NEGATIVE_WINDOW_NW));
         }
-        Ok(Farm1Window { pw, nw })
+        Ok(Self { pw, nw })
     }
 
     /// The Sliding Window Width W = PW + NW (232.1 §6.1.8.2; COP-030).
@@ -254,7 +254,7 @@ impl<'a> Farm1Frame<'a> {
     /// A Type-BC frame whose Control Command the decoder did not recognise, which only lenient
     /// decoding passes, has `command: None`.
     #[must_use]
-    pub const fn from_tc(checked: &Checked<TcFrame<'a>>) -> Farm1Frame<'a> {
+    pub const fn from_tc(checked: &Checked<TcFrame<'a>>) -> Self {
         let frame = checked.as_frame();
         match frame.frame_type() {
             FrameType::Ad => Farm1Frame::Ad {
@@ -308,7 +308,7 @@ impl<'a> Farm1Input<'a> {
     ///
     /// Taking the VCID from the checked frame keeps it from being supplied by hand.
     #[must_use]
-    pub const fn from_tc(checked: &Checked<TcFrame<'a>>, buffer_available: bool) -> Farm1Input<'a> {
+    pub const fn from_tc(checked: &Checked<TcFrame<'a>>, buffer_available: bool) -> Self {
         Farm1Input::Frame {
             vc_id: checked.as_frame().vc_id(),
             frame: Farm1Frame::from_tc(checked),
@@ -392,8 +392,8 @@ impl Farm1 {
     /// A FARM-1 in State S1 (Open) with the Retransmit Flag and the FARM-B Counter at 0, expecting
     /// `v_r` as the next N(S) (232.1 §6.1; COP-002, COP-030, OI-58).
     #[must_use]
-    pub fn new(config: Farm1Config, v_r: FrameSeqNum) -> Farm1 {
-        Farm1 {
+    pub fn new(config: Farm1Config, v_r: FrameSeqNum) -> Self {
+        Self {
             config,
             state: Farm1State::Open,
             retransmit: false,
@@ -515,7 +515,7 @@ impl Farm1 {
         input: Farm1Input<'_>,
         _now: Instant,
         out: &mut [u8],
-    ) -> Result<(Farm1, Farm1Actions)> {
+    ) -> Result<(Self, Farm1Actions)> {
         let idle = Context {
             kind: FduKind::Ad,
             sequence_number: self.v_r,
@@ -568,7 +568,7 @@ impl Farm1 {
                 no_rf_available,
                 no_bit_lock,
             } => Ok((
-                Farm1 {
+                Self {
                     no_rf_available,
                     no_bit_lock,
                     ..*self
@@ -584,7 +584,7 @@ impl Farm1 {
         event: Farm1Event,
         ctx: &Context<'_>,
         out: &mut [u8],
-    ) -> Result<(Farm1, Farm1Actions)> {
+    ) -> Result<(Self, Farm1Actions)> {
         let mut actions = Actions::new();
         let next = self.run(event, ctx, out, &mut actions)?;
         Ok((next, actions))
@@ -601,7 +601,7 @@ impl Farm1 {
         ctx: &Context<'_>,
         out: &mut [u8],
         actions: &mut Farm1Actions,
-    ) -> Result<Farm1> {
+    ) -> Result<Self> {
         let cell = cell(self.state, event);
         let Some(next) = cell.next_state else {
             return Err(Error::new(ErrorKind::InvalidState));

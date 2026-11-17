@@ -204,11 +204,7 @@ impl<
     /// truncated frame lengths delimit truncated frames (732.1 §4.3.11.2.1; USLP-015), where
     /// `max_fill` is the longest fill the coding sublayer appends (OI-47).
     #[must_use]
-    pub const fn new(
-        unit: &'a [u8],
-        channels: &'c L,
-        max_fill: usize,
-    ) -> FrameDelimiter<'a, 'c, L> {
+    pub const fn new(unit: &'a [u8], channels: &'c L, max_fill: usize) -> Self {
         FrameDelimiter {
             rest: unit,
             channels,

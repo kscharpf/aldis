@@ -58,8 +58,8 @@ impl GeneratorState {
     /// Fills `buf` with the next `buf.len()` octets of the sequence (CMN-023).
     fn fill(&mut self, buf: &mut [u8]) {
         match self {
-            GeneratorState::Fibonacci(g) => g.fill(buf),
-            GeneratorState::Galois(g) => g.fill(buf),
+            Self::Fibonacci(g) => g.fill(buf),
+            Self::Galois(g) => g.fill(buf),
         }
     }
 }

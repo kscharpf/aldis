@@ -283,7 +283,7 @@ struct Items {
     uses: Vec<(Vis, Vec<String>)>,
     mods: Vec<ModDecl>,
     /// `macro_rules!` definitions: name and the items of each arm's body.
-    macros: Vec<(String, Items)>,
+    macros: Vec<(String, Self)>,
 }
 
 /// Index of the bracket that closes the one at `open`.

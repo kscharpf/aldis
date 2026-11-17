@@ -41,8 +41,8 @@ pub struct Rejection<R> {
 impl<R> Rejection<R> {
     /// A rejection for `reason`, with the error the check reports for it.
     #[must_use]
-    pub const fn new(reason: R, error: Error) -> Rejection<R> {
-        Rejection { reason, error }
+    pub const fn new(reason: R, error: Error) -> Self {
+        Self { reason, error }
     }
 
     /// The error of the failed check, with the field it names (GEN-041).
@@ -61,13 +61,13 @@ impl<R: Copy> Rejection<R> {
 }
 
 impl From<Error> for Rejection<()> {
-    fn from(error: Error) -> Rejection<()> {
-        Rejection::new((), error)
+    fn from(error: Error) -> Self {
+        Self::new((), error)
     }
 }
 
 impl<R> From<Rejection<R>> for Error {
-    fn from(r: Rejection<R>) -> Error {
+    fn from(r: Rejection<R>) -> Self {
         r.error
     }
 }
@@ -325,7 +325,7 @@ mod tests {
             bytes: &'a [u8],
             lookup: &L,
             mode: DecodeMode,
-        ) -> Result<(Demo, AnomalySet<DemoAnomaly>, u8), Rejection<Why>>
+        ) -> Result<(Self, AnomalySet<DemoAnomaly>, u8), Rejection<Why>>
         where
             L: ChannelLookup<u8, u8, Vc = u8>
                 + MapLookup<u8, u8, u8, Map = u8>
@@ -349,7 +349,7 @@ mod tests {
             if mode == DecodeMode::Lenient && octet % 2 == 1 {
                 anomalies.insert(DemoAnomaly::Odd);
             }
-            Ok((Demo(octet), anomalies, *limit))
+            Ok((Self(octet), anomalies, *limit))
         }
 
         fn octets(&self) -> &'a [u8] {

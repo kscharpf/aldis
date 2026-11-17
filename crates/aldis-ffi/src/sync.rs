@@ -339,8 +339,8 @@ pub unsafe extern "C" fn aldis_sync_randomize(
 unsafe impl<const NF: usize, const NC: usize, const NA: usize> InPlace for AsmSearch<NF, NC, NA> {
     type Head = AsmSearchHead;
     type Buffers = AsmSearchBuffers<NF>;
-    const HEAD_OFFSET: usize = <AsmSearch<NF, NC, NA>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <AsmSearch<NF, NC, NA>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// One step of `engine` (API-057).

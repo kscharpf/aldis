@@ -29,9 +29,9 @@ pub enum DatagramKind {
 impl DatagramKind {
     const fn as_str(self) -> &'static str {
         match self {
-            DatagramKind::Sent => "sent",
-            DatagramKind::Received => "received",
-            DatagramKind::Dropped => "dropped",
+            Self::Sent => "sent",
+            Self::Received => "received",
+            Self::Dropped => "dropped",
         }
     }
 }
@@ -189,7 +189,7 @@ impl<W: Write> RunLog<W> {
     /// If the header cannot be written.
     pub fn new(mut out: W, header: &Header) -> Result<Self, Error> {
         out.write_all(header.to_line().as_bytes())?;
-        Ok(RunLog { out })
+        Ok(Self { out })
     }
 
     /// The writer, flushed.

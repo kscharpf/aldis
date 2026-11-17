@@ -44,9 +44,9 @@ impl PacketOffset {
 
     /// The offset, or `None` above `0xFFFD` (API-001).
     #[must_use]
-    pub const fn new(offset: u16) -> Option<PacketOffset> {
-        if offset <= PacketOffset::MAX {
-            Some(PacketOffset(offset))
+    pub const fn new(offset: u16) -> Option<Self> {
+        if offset <= Self::MAX {
+            Some(Self(offset))
         } else {
             None
         }
@@ -64,12 +64,12 @@ impl TryFrom<u16> for PacketOffset {
 
     /// # Errors
     /// `OutOfRange` (`first_header_pointer`) above `0xFFFD`, with that bound.
-    fn try_from(offset: u16) -> Result<PacketOffset> {
-        PacketOffset::new(offset).ok_or_else(|| {
+    fn try_from(offset: u16) -> Result<Self> {
+        Self::new(offset).ok_or_else(|| {
             mismatch(
                 ErrorKind::OutOfRange,
                 field::FIRST_HEADER_POINTER,
-                u64::from(PacketOffset::MAX),
+                u64::from(Self::MAX),
                 u64::from(offset),
             )
         })
@@ -77,7 +77,7 @@ impl TryFrom<u16> for PacketOffset {
 }
 
 impl From<PacketOffset> for u16 {
-    fn from(offset: PacketOffset) -> u16 {
+    fn from(offset: PacketOffset) -> Self {
         offset.0
     }
 }
@@ -113,14 +113,14 @@ impl PacketPointer {
     /// (AOS-003).
     #[must_use]
     pub const fn only_idle_data_raw(edition: AosEdition) -> u16 {
-        PacketPointer::no_packet_start_raw(edition).saturating_sub(1)
+        Self::no_packet_start_raw(edition).saturating_sub(1)
     }
 
     /// The largest packet offset the edition's pointer can hold, below its two reserved values:
     /// `0xFFFD` or `0x7FD`.
     #[must_use]
     pub const fn max_offset(edition: AosEdition) -> u16 {
-        PacketPointer::no_packet_start_raw(edition).saturating_sub(2)
+        Self::no_packet_start_raw(edition).saturating_sub(2)
     }
 
     /// The pointer for the raw field of `edition` and a Packet Zone of `zone_len` octets
@@ -134,16 +134,16 @@ impl PacketPointer {
     /// `Malformed` (`first_header_pointer`) for a value that is not reserved and is not an
     /// offset inside both the Packet Zone and the edition's [`max_offset`](Self::max_offset),
     /// with the zone's last offset, as for an offset outside the zone (API-032, OI-33).
-    pub fn classify(raw: u16, zone_len: usize, edition: AosEdition) -> Result<PacketPointer> {
-        let max = PacketPointer::max_offset(edition);
-        if raw == PacketPointer::no_packet_start_raw(edition) {
-            Ok(PacketPointer::NoPacketStart)
-        } else if raw == PacketPointer::only_idle_data_raw(edition) {
-            Ok(PacketPointer::OnlyIdleData)
+    pub fn classify(raw: u16, zone_len: usize, edition: AosEdition) -> Result<Self> {
+        let max = Self::max_offset(edition);
+        if raw == Self::no_packet_start_raw(edition) {
+            Ok(Self::NoPacketStart)
+        } else if raw == Self::only_idle_data_raw(edition) {
+            Ok(Self::OnlyIdleData)
         } else {
             match PacketOffset::new(raw) {
                 Some(offset) if raw <= max && usize::from(raw) < zone_len => {
-                    Ok(PacketPointer::StartsAt(offset))
+                    Ok(Self::StartsAt(offset))
                 }
                 _ => Err(mismatch(
                     ErrorKind::Malformed,
@@ -161,12 +161,10 @@ impl PacketPointer {
     #[must_use]
     pub const fn to_raw(self, edition: AosEdition) -> Option<u16> {
         match self {
-            PacketPointer::StartsAt(n) if n.get() <= PacketPointer::max_offset(edition) => {
-                Some(n.get())
-            }
-            PacketPointer::StartsAt(_) => None,
-            PacketPointer::NoPacketStart => Some(PacketPointer::no_packet_start_raw(edition)),
-            PacketPointer::OnlyIdleData => Some(PacketPointer::only_idle_data_raw(edition)),
+            Self::StartsAt(n) if n.get() <= Self::max_offset(edition) => Some(n.get()),
+            Self::StartsAt(_) => None,
+            Self::NoPacketStart => Some(Self::no_packet_start_raw(edition)),
+            Self::OnlyIdleData => Some(Self::only_idle_data_raw(edition)),
         }
     }
 
@@ -202,7 +200,7 @@ impl<'a> Mpdu<'a> {
     ///   reserved, in both modes (AOS-017);
     /// - in strict mode, `ReservedValue` (`mpdu_spare`) for an Issue 4 Reserved Spare other
     ///   than `00000`; lenient mode reports it as [`AosAnomaly::Issue4SpareSet`] (AOS-003).
-    pub fn decode(field: &'a [u8], edition: AosEdition) -> Result<Mpdu<'a>> {
+    pub fn decode(field: &'a [u8], edition: AosEdition) -> Result<Self> {
         Mpdu::decode_in(field, edition, DecodeMode::Strict).map(|(mpdu, _)| mpdu)
     }
 
@@ -215,7 +213,7 @@ impl<'a> Mpdu<'a> {
     pub fn decode_lenient(
         field: &'a [u8],
         edition: AosEdition,
-    ) -> Result<Lenient<Mpdu<'a>, AosAnomaly>> {
+    ) -> Result<Lenient<Self, AosAnomaly>> {
         Mpdu::decode_in(field, edition, DecodeMode::Lenient)
             .map(|(mpdu, anomalies)| Lenient::new(mpdu, anomalies))
     }
@@ -225,7 +223,7 @@ impl<'a> Mpdu<'a> {
         field: &'a [u8],
         edition: AosEdition,
         mode: DecodeMode,
-    ) -> Result<(Mpdu<'a>, AnomalySet<AosAnomaly>)> {
+    ) -> Result<(Self, AnomalySet<AosAnomaly>)> {
         let mut deviations = Deviations::new(mode);
         let mpdu = Mpdu::parse(field, edition, &mut deviations)?;
         let anomalies = deviations.finish()?;
@@ -237,7 +235,7 @@ impl<'a> Mpdu<'a> {
         field: &'a [u8],
         edition: AosEdition,
         deviations: &mut Deviations,
-    ) -> Result<Mpdu<'a>> {
+    ) -> Result<Self> {
         let (Some(h), Some(zone)) = (
             field.first_chunk::<MPDU_HEADER_LEN>(),
             field.get(MPDU_HEADER_LEN..).filter(|z| !z.is_empty()),

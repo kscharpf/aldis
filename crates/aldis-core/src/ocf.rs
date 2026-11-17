@@ -59,7 +59,7 @@ pub struct Type1Report([u8; OCF_LEN]);
 impl Type1Report {
     /// The report, or `None` if the Type Flag of `octets` is `1` (CMN-010).
     #[must_use]
-    pub const fn new(octets: [u8; OCF_LEN]) -> Option<Type1Report> {
+    pub const fn new(octets: [u8; OCF_LEN]) -> Option<Self> {
         match Ocf::decode(octets) {
             Ocf::Clcw(report) => Some(report),
             Ocf::ProjectSpecific(_) | Ocf::SdlsFsr(_) => None,
@@ -78,7 +78,7 @@ impl TryFrom<[u8; OCF_LEN]> for Type1Report {
 
     /// # Errors
     /// `InvalidField` naming [`field::OCF_TYPE_FLAG`] if the Type Flag is `1`.
-    fn try_from(octets: [u8; OCF_LEN]) -> Result<Type1Report> {
+    fn try_from(octets: [u8; OCF_LEN]) -> Result<Self> {
         match Ocf::decode(octets) {
             Ocf::Clcw(report) => Ok(report),
             Ocf::ProjectSpecific(_) | Ocf::SdlsFsr(_) => Err(wrong_bit(field::OCF_TYPE_FLAG, 0, 1)),
@@ -102,7 +102,7 @@ pub struct ProjectSpecificReport([u8; OCF_LEN]);
 impl ProjectSpecificReport {
     /// The report, or `None` unless bits 0–1 of `octets` are `10` (CMN-010).
     #[must_use]
-    pub const fn new(octets: [u8; OCF_LEN]) -> Option<ProjectSpecificReport> {
+    pub const fn new(octets: [u8; OCF_LEN]) -> Option<Self> {
         match Ocf::decode(octets) {
             Ocf::ProjectSpecific(report) => Some(report),
             Ocf::Clcw(_) | Ocf::SdlsFsr(_) => None,
@@ -122,7 +122,7 @@ impl TryFrom<[u8; OCF_LEN]> for ProjectSpecificReport {
     /// # Errors
     /// `InvalidField` naming [`field::OCF_TYPE_FLAG`] if the Type Flag is `0`, or
     /// [`field::OCF_REPORT_USE`] if bit 1 is `1`.
-    fn try_from(octets: [u8; OCF_LEN]) -> Result<ProjectSpecificReport> {
+    fn try_from(octets: [u8; OCF_LEN]) -> Result<Self> {
         match Ocf::decode(octets) {
             Ocf::ProjectSpecific(report) => Ok(report),
             Ocf::Clcw(_) => Err(wrong_bit(field::OCF_TYPE_FLAG, 1, 0)),
@@ -148,7 +148,7 @@ pub struct FsrReport([u8; OCF_LEN]);
 impl FsrReport {
     /// The report, or `None` unless bits 0–1 of `octets` are `11` (CMN-010).
     #[must_use]
-    pub const fn new(octets: [u8; OCF_LEN]) -> Option<FsrReport> {
+    pub const fn new(octets: [u8; OCF_LEN]) -> Option<Self> {
         match Ocf::decode(octets) {
             Ocf::SdlsFsr(report) => Some(report),
             Ocf::Clcw(_) | Ocf::ProjectSpecific(_) => None,
@@ -168,7 +168,7 @@ impl TryFrom<[u8; OCF_LEN]> for FsrReport {
     /// # Errors
     /// `InvalidField` naming [`field::OCF_TYPE_FLAG`] if the Type Flag is `0`, or
     /// [`field::OCF_REPORT_USE`] if bit 1 is `0`.
-    fn try_from(octets: [u8; OCF_LEN]) -> Result<FsrReport> {
+    fn try_from(octets: [u8; OCF_LEN]) -> Result<Self> {
         match Ocf::decode(octets) {
             Ocf::SdlsFsr(report) => Ok(report),
             Ocf::Clcw(_) => Err(wrong_bit(field::OCF_TYPE_FLAG, 1, 0)),
@@ -211,11 +211,11 @@ pub enum Ocf {
 impl Ocf {
     /// Classifies four OCF octets by bits 0–1 (CMN-010). Every value is an OCF.
     #[must_use]
-    pub const fn decode(octets: [u8; OCF_LEN]) -> Ocf {
+    pub const fn decode(octets: [u8; OCF_LEN]) -> Self {
         match (bit(octets, TYPE_FLAG), bit(octets, REPORT_USE)) {
-            (0, _) => Ocf::Clcw(Type1Report(octets)),
-            (_, 0) => Ocf::ProjectSpecific(ProjectSpecificReport(octets)),
-            _ => Ocf::SdlsFsr(FsrReport(octets)),
+            (0, _) => Self::Clcw(Type1Report(octets)),
+            (_, 0) => Self::ProjectSpecific(ProjectSpecificReport(octets)),
+            _ => Self::SdlsFsr(FsrReport(octets)),
         }
     }
 
@@ -223,16 +223,16 @@ impl Ocf {
     #[must_use]
     pub const fn to_octets(self) -> [u8; OCF_LEN] {
         match self {
-            Ocf::Clcw(r) => r.to_octets(),
-            Ocf::ProjectSpecific(r) => r.to_octets(),
-            Ocf::SdlsFsr(r) => r.to_octets(),
+            Self::Clcw(r) => r.to_octets(),
+            Self::ProjectSpecific(r) => r.to_octets(),
+            Self::SdlsFsr(r) => r.to_octets(),
         }
     }
 }
 
 impl From<[u8; OCF_LEN]> for Ocf {
-    fn from(octets: [u8; OCF_LEN]) -> Ocf {
-        Ocf::decode(octets)
+    fn from(octets: [u8; OCF_LEN]) -> Self {
+        Self::decode(octets)
     }
 }
 
@@ -243,20 +243,20 @@ impl From<Ocf> for [u8; OCF_LEN] {
 }
 
 impl From<Type1Report> for Ocf {
-    fn from(report: Type1Report) -> Ocf {
-        Ocf::Clcw(report)
+    fn from(report: Type1Report) -> Self {
+        Self::Clcw(report)
     }
 }
 
 impl From<ProjectSpecificReport> for Ocf {
-    fn from(report: ProjectSpecificReport) -> Ocf {
-        Ocf::ProjectSpecific(report)
+    fn from(report: ProjectSpecificReport) -> Self {
+        Self::ProjectSpecific(report)
     }
 }
 
 impl From<FsrReport> for Ocf {
-    fn from(report: FsrReport) -> Ocf {
-        Ocf::SdlsFsr(report)
+    fn from(report: FsrReport) -> Self {
+        Self::SdlsFsr(report)
     }
 }
 

@@ -17,8 +17,8 @@ pub struct FixedVec<T: Copy + Default, const N: usize> {
 impl<T: Copy + Default, const N: usize> FixedVec<T, N> {
     /// An empty vector.
     #[must_use]
-    pub fn new() -> FixedVec<T, N> {
-        FixedVec {
+    pub fn new() -> Self {
+        Self {
             items: [T::default(); N],
             len: 0,
         }
@@ -96,8 +96,8 @@ impl<T: Copy + Default + PartialEq, const N: usize> PartialEq for FixedVec<T, N>
 impl<T: Copy + Default + Eq, const N: usize> Eq for FixedVec<T, N> {}
 
 impl<T: Copy + Default, const N: usize> Default for FixedVec<T, N> {
-    fn default() -> FixedVec<T, N> {
-        FixedVec::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

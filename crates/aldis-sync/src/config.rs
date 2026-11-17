@@ -25,8 +25,8 @@ impl SyncProtocol {
     #[must_use]
     pub const fn max_frame_len(self) -> usize {
         match self {
-            SyncProtocol::Tm => 2048,
-            SyncProtocol::Aos | SyncProtocol::Uslp => 65536,
+            Self::Tm => 2048,
+            Self::Aos | Self::Uslp => 65536,
         }
     }
 }
@@ -41,18 +41,18 @@ pub struct AsmErrors(u8);
 
 impl AsmErrors {
     /// No bit error: the exact marker (SYNC-007).
-    pub const NONE: AsmErrors = AsmErrors(0);
+    pub const NONE: Self = Self(0);
 
     /// `count` bit errors.
     ///
     /// # Errors
     /// `InvalidConfig` naming `asm_errors` when `count` is above 15 (SYNC-016).
-    pub const fn new(count: u32) -> Result<AsmErrors> {
+    pub const fn new(count: u32) -> Result<Self> {
         if count > MAX_ASM_ERRORS {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::ASM_ERRORS));
         }
         // `count` is at most 15 here, so the low octet holds it.
-        Ok(AsmErrors(count.to_le_bytes()[0]))
+        Ok(Self(count.to_le_bytes()[0]))
     }
 
     /// The number of bit errors, 0 to 15 (SYNC-016).
@@ -85,11 +85,11 @@ impl SyncConfig {
         protocol: SyncProtocol,
         frame_len: usize,
         asm_errors: AsmErrors,
-    ) -> Result<SyncConfig> {
+    ) -> Result<Self> {
         if frame_len == 0 || frame_len > protocol.max_frame_len() {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::FRAME_LEN));
         }
-        Ok(SyncConfig {
+        Ok(Self {
             protocol,
             frame_len,
             asm_errors,

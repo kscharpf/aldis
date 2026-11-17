@@ -347,7 +347,7 @@ impl Fop1Target<TcFormat> {
         spacecraft_id: TcSpacecraftId,
         vc_id: TcVcId,
         physical: PhysicalChannelConfig,
-    ) -> Result<Fop1Target<TcFormat>> {
+    ) -> Result<Self> {
         let max_frame_len = physical.max_frame_len();
         let vc = VcConfig::new(
             spacecraft_id,
@@ -356,7 +356,7 @@ impl Fop1Target<TcFormat> {
             SegmentHeaderUse::Absent(SecurityLayout::NONE),
         )?;
         let table = VcTable::new(physical, &[vc], &[])?;
-        Ok(Fop1Target::new(
+        Ok(Self::new(
             TcChannel {
                 table,
                 spacecraft_id,
@@ -413,7 +413,7 @@ impl Fop1Target<UslpFormat> {
         vc: UslpVcConfig,
         map: MapConfig,
         tfdf: TfdfHeader,
-    ) -> Result<Fop1Target<UslpFormat>> {
+    ) -> Result<Self> {
         let variable = |t| matches!(t, TransferFrameType::Variable);
         if !variable(physical.frame_type()) || !variable(vc.frame_type()) {
             return Err(bad_config(field::TRANSFER_FRAME_TYPE));
@@ -459,7 +459,7 @@ impl Fop1Target<UslpFormat> {
             return Err(bad_config(field::MAX_FRAME_LEN));
         }
         let table = UslpVcTable::new(physical, &[vc], &[map])?;
-        Ok(Fop1Target::new(
+        Ok(Self::new(
             UslpChannel {
                 table,
                 spacecraft_id: vc.spacecraft_id(),
@@ -481,8 +481,8 @@ impl<P: Fop1Format> Fop1Target<P> {
         clcw_vc_id: u8,
         max_frame_len: usize,
         max_fdu_len: usize,
-    ) -> Fop1Target<P> {
-        Fop1Target {
+    ) -> Self {
+        Self {
             channel,
             clcw_vc_id,
             max_frame_len,
@@ -825,8 +825,8 @@ pub struct Fop1Store<const Q: usize, const F: usize> {
 impl<const Q: usize, const F: usize> Fop1Store<Q, F> {
     /// An empty store: every octet zero (232.1 §5.1; COP-001, GEN-011).
     #[must_use]
-    pub const fn new() -> Fop1Store<Q, F> {
-        Fop1Store {
+    pub const fn new() -> Self {
+        Self {
             frames: [[0; F]; Q],
             wait_fdu: [0; F],
         }
@@ -834,8 +834,8 @@ impl<const Q: usize, const F: usize> Fop1Store<Q, F> {
 }
 
 impl<const Q: usize, const F: usize> Default for Fop1Store<Q, F> {
-    fn default() -> Fop1Store<Q, F> {
-        Fop1Store::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -895,9 +895,9 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// `InvalidConfig` naming `sliding_window_k` for a K outside 1..=min(255, `Q`) (COP-015),
     /// `t1_initial` for a `T1_Initial` of 0, and `max_frame_len` for a target whose frames do
     /// not fit `F` octets (API-040).
-    pub fn new(config: Fop1Config<P>) -> Result<Fop1<Q, F, N, P>> {
+    pub fn new(config: Fop1Config<P>) -> Result<Self> {
         let (target, core) = Self::start(config)?;
-        Ok(Fop1 { target, core })
+        Ok(Self { target, core })
     }
 
     /// The target and the small state of a new engine, once `config` is checked.
@@ -1138,7 +1138,7 @@ impl<'a, const Q: usize, const F: usize, const N: usize, P: Fop1Format>
     Fop1Decision<'a, Q, F, N, P>
 {
     /// The decision that changes nothing: the small state `core`, no action.
-    fn start(core: &Core<Q>, fdu: &'a [u8]) -> Fop1Decision<'a, Q, F, N, P> {
+    fn start(core: &Core<Q>, fdu: &'a [u8]) -> Self {
         Fop1Decision {
             core: core.clone(),
             actions: Actions::new(),
@@ -1207,7 +1207,7 @@ struct OutArea<'o> {
 
 impl<'o> OutArea<'o> {
     /// An output area with nothing written.
-    const fn new(area: &'o mut [u8]) -> OutArea<'o> {
+    const fn new(area: &'o mut [u8]) -> Self {
         OutArea { area, used: 0 }
     }
 

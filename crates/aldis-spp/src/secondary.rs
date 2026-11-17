@@ -64,13 +64,9 @@ impl TimeHeaderLayout {
     /// # Errors
     /// `InvalidConfig` (`time_code`) for a code other than CUC or CDS: 133.0 §4.1.4.2.2.2
     /// allows only the "segmented binary or unsegmented binary" codes of 301.0 (OI-30).
-    pub const fn new(
-        format: TimeFormat,
-        pfield: bool,
-        ancillary_len: usize,
-    ) -> Result<TimeHeaderLayout> {
+    pub const fn new(format: TimeFormat, pfield: bool, ancillary_len: usize) -> Result<Self> {
         match format {
-            TimeFormat::Cuc(_) | TimeFormat::Cds(_) => Ok(TimeHeaderLayout {
+            TimeFormat::Cuc(_) | TimeFormat::Cds(_) => Ok(Self {
                 format,
                 pfield,
                 ancillary_len,
@@ -190,15 +186,15 @@ impl SecondaryHeaderLayout {
         data: &[u8],
         mode: DecodeMode,
     ) -> Result<(SplitPacket<'_>, Found)> {
-        let present = !matches!(self, SecondaryHeaderLayout::Absent);
+        let present = !matches!(self, Self::Absent);
         if flag != present {
             return Err(invalid(field::SECONDARY_HEADER_FLAG));
         }
         let (len, time_len) = match self {
-            SecondaryHeaderLayout::Absent => (0, 0),
-            SecondaryHeaderLayout::Opaque(len) => (len.get(), 0),
+            Self::Absent => (0, 0),
+            Self::Opaque(len) => (len.get(), 0),
             #[cfg(feature = "time")]
-            SecondaryHeaderLayout::Time(time) => {
+            Self::Time(time) => {
                 let (decoded, found) = time.decode(data, mode)?;
                 let time_len = decoded.len();
                 let (secondary_header, user_data) = data

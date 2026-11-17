@@ -60,7 +60,7 @@ pub struct Fraction {
 
 impl Fraction {
     /// No fractional digits: the code has no period (301.0 §3.5.1, TIME-031).
-    pub const NONE: Fraction = Fraction {
+    pub const NONE: Self = Self {
         digits: 0,
         value: 0,
     };
@@ -68,9 +68,9 @@ impl Fraction {
     /// A fraction of `digits` digits (0–12) whose value `value` is below 10^`digits`, or `None`
     /// (301.0 §3.5.1, TIME-031).
     #[must_use]
-    pub const fn new(value: u64, digits: u8) -> Option<Fraction> {
+    pub const fn new(value: u64, digits: u8) -> Option<Self> {
         if digits <= MAX_FRACTION_DIGITS && value < pow10(digits) {
-            Some(Fraction { digits, value })
+            Some(Self { digits, value })
         } else {
             None
         }
@@ -97,9 +97,9 @@ impl Fraction {
 
     /// The fraction with `format`'s digits for `picos` (below 10¹²), truncated toward zero
     /// (TIME-033). Taking the format, not a digit count, keeps the count at most 12 (RS-020).
-    pub(crate) fn from_picos(picos: u64, format: AsciiFormat) -> Fraction {
+    pub(crate) fn from_picos(picos: u64, format: AsciiFormat) -> Self {
         let digits = format.fraction_digits;
-        Fraction {
+        Self {
             digits,
             value: picos
                 .checked_div(pow10(MAX_FRACTION_DIGITS.wrapping_sub(digits)))
@@ -116,7 +116,7 @@ pub struct AsciiOptions {
 
 impl AsciiOptions {
     /// Up to 12 fractional digits (301.0 §3.5.1, TIME-031).
-    pub const DEFAULT: AsciiOptions = AsciiOptions {
+    pub const DEFAULT: Self = Self {
         max_fraction_digits: MAX_FRACTION_DIGITS,
     };
 
@@ -125,7 +125,7 @@ impl AsciiOptions {
     ///
     /// # Errors
     /// `OutOfRange` (`max_fraction_digits`) above 12.
-    pub const fn new(max_fraction_digits: u8) -> Result<AsciiOptions> {
+    pub const fn new(max_fraction_digits: u8) -> Result<Self> {
         if max_fraction_digits > MAX_FRACTION_DIGITS {
             return Err(Error::out_of_range(
                 field::MAX_FRACTION_DIGITS,
@@ -133,7 +133,7 @@ impl AsciiOptions {
                 wide8(max_fraction_digits),
             ));
         }
-        Ok(AsciiOptions {
+        Ok(Self {
             max_fraction_digits,
         })
     }
@@ -146,8 +146,8 @@ impl AsciiOptions {
 }
 
 impl Default for AsciiOptions {
-    fn default() -> AsciiOptions {
-        AsciiOptions::DEFAULT
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
@@ -166,11 +166,7 @@ impl AsciiFormat {
     ///
     /// # Errors
     /// `OutOfRange` (`fraction_digits`) above 12.
-    pub const fn new(
-        variation: CcsVariation,
-        fraction_digits: u8,
-        utc: bool,
-    ) -> Result<AsciiFormat> {
+    pub const fn new(variation: CcsVariation, fraction_digits: u8, utc: bool) -> Result<Self> {
         if fraction_digits > MAX_FRACTION_DIGITS {
             return Err(Error::out_of_range(
                 field::FRACTION_DIGITS,
@@ -178,7 +174,7 @@ impl AsciiFormat {
                 wide8(fraction_digits),
             ));
         }
-        Ok(AsciiFormat {
+        Ok(Self {
             variation,
             fraction_digits,
             utc,
@@ -324,7 +320,7 @@ impl AsciiTime {
     /// `Malformed` for a separator, length, or trailing-octet problem; `InvalidField` naming a
     /// subfield that holds a non-digit; `OutOfRange` naming a value outside its range, or
     /// `fraction` for more digits than `options` allow.
-    pub fn parse(text: &[u8], options: &AsciiOptions) -> Result<AsciiTime> {
+    pub fn parse(text: &[u8], options: &AsciiOptions) -> Result<Self> {
         let code_a = text.get(4) == Some(&b'-') && text.get(7) == Some(&b'-');
         let (date, rest) = if code_a {
             let [y0, y1, y2, y3, b'-', m0, m1, b'-', d0, d1, b'T', rest @ ..] = text else {
@@ -373,7 +369,7 @@ impl AsciiTime {
             }
             (None, doy) => CalendarDate::from_day_of_year(year, doy.unwrap_or(0))?,
         };
-        Ok(AsciiTime {
+        Ok(Self {
             date,
             hour: Hour::try_from(small(hour))?,
             minute: Minute::try_from(small(minute))?,
@@ -466,13 +462,13 @@ impl Part {
     /// The field that errors about this subfield name (API-082).
     const fn field(self) -> FieldId {
         match self {
-            Part::Year => field::YEAR,
-            Part::Month => field::MONTH,
-            Part::Day => field::DAY,
-            Part::DayOfYear => field::DAY_OF_YEAR,
-            Part::Hour => field::HOUR,
-            Part::Minute => field::MINUTE,
-            Part::Second => field::SECOND,
+            Self::Year => field::YEAR,
+            Self::Month => field::MONTH,
+            Self::Day => field::DAY,
+            Self::DayOfYear => field::DAY_OF_YEAR,
+            Self::Hour => field::HOUR,
+            Self::Minute => field::MINUTE,
+            Self::Second => field::SECOND,
         }
     }
 }
@@ -683,7 +679,7 @@ impl AsciiSubset {
     /// `Malformed` for a shape §5.1 does not allow, including `Z` without a time part (OI-29);
     /// `InvalidField` naming a subfield that holds a non-digit; `OutOfRange` naming a value
     /// outside its range, or `fraction` for more digits than `options` allow.
-    pub fn parse(text: &[u8], options: &AsciiOptions) -> Result<AsciiSubset> {
+    pub fn parse(text: &[u8], options: &AsciiOptions) -> Result<Self> {
         let (text, utc) = match text {
             [body @ .., b'Z'] => (body, true),
             _ => (text, false),
@@ -731,7 +727,7 @@ impl AsciiSubset {
                 fraction = Some(fraction_digits(digits, options.max_fraction_digits)?);
             }
         }
-        AsciiSubset::checked(raw, variation, fraction, utc)
+        Self::checked(raw, variation, fraction, utc)
     }
 
     /// Range checks, using the widest case where context is missing (§5.1).
@@ -740,7 +736,7 @@ impl AsciiSubset {
         variation: Option<CcsVariation>,
         fraction: Option<Fraction>,
         utc: bool,
-    ) -> Result<AsciiSubset> {
+    ) -> Result<Self> {
         let year = raw.year.map(Year::try_from).transpose()?;
         let month = raw.month.map(|m| Month::try_from(small(m))).transpose()?;
         let day = match raw.day {
@@ -777,7 +773,7 @@ impl AsciiSubset {
             }
             None => None,
         };
-        Ok(AsciiSubset {
+        Ok(Self {
             variation,
             year,
             month,

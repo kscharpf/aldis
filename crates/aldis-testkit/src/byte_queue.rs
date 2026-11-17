@@ -49,9 +49,9 @@ impl<const N: usize> ByteQueue<N> {
 
     /// An empty queue.
     #[must_use]
-    pub const fn new() -> ByteQueue<N> {
+    pub const fn new() -> Self {
         let () = Self::CAPACITY_FITS_PREFIX;
-        ByteQueue {
+        Self {
             ring: [0; N],
             head: 0,
             used: 0,
@@ -178,8 +178,8 @@ impl<const N: usize> ByteQueue<N> {
 }
 
 impl<const N: usize> Default for ByteQueue<N> {
-    fn default() -> ByteQueue<N> {
-        ByteQueue::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

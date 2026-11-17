@@ -34,10 +34,10 @@ impl Stream {
     #[must_use]
     pub const fn apid(self) -> Apid {
         match self {
-            Stream::Housekeeping => Apid::from_const::<{ apid::HOUSEKEEPING }>(),
-            Stream::Events => Apid::from_const::<{ apid::EVENTS }>(),
-            Stream::Payload => Apid::from_const::<{ apid::PAYLOAD }>(),
-            Stream::Dump => Apid::from_const::<{ apid::DUMP }>(),
+            Self::Housekeeping => Apid::from_const::<{ apid::HOUSEKEEPING }>(),
+            Self::Events => Apid::from_const::<{ apid::EVENTS }>(),
+            Self::Payload => Apid::from_const::<{ apid::PAYLOAD }>(),
+            Self::Dump => Apid::from_const::<{ apid::DUMP }>(),
         }
     }
 
@@ -45,8 +45,8 @@ impl Stream {
     #[must_use]
     pub const fn explicit_pfield(self) -> bool {
         match self {
-            Stream::Events => true,
-            Stream::Housekeeping | Stream::Payload | Stream::Dump => false,
+            Self::Events => true,
+            Self::Housekeeping | Self::Payload | Self::Dump => false,
         }
     }
 }
@@ -119,8 +119,8 @@ pub struct Downlink {
 impl Downlink {
     /// A downlink with every count at 0.
     #[must_use]
-    pub fn new() -> Downlink {
-        Downlink::default()
+    pub fn new() -> Self {
+        Self::default()
     }
 
     const fn counter(&mut self, stream: Stream) -> &mut SequenceCounter {

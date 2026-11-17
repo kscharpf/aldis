@@ -23,10 +23,10 @@ impl ControlCommand {
     /// The Control Command that `octets` holds exactly, or `None` for a reserved pattern,
     /// including a known pattern with octets missing or added (232.0 §4.1.3.3; TC-005).
     #[must_use]
-    pub const fn parse(octets: &[u8]) -> Option<ControlCommand> {
+    pub const fn parse(octets: &[u8]) -> Option<Self> {
         match octets {
-            [0] => Some(ControlCommand::Unlock),
-            [SET_VR, 0, vr] => Some(ControlCommand::SetVr(FrameSeqNum::new(*vr))),
+            [0] => Some(Self::Unlock),
+            [SET_VR, 0, vr] => Some(Self::SetVr(FrameSeqNum::new(*vr))),
             _ => None,
         }
     }
@@ -36,11 +36,11 @@ impl ControlCommand {
     #[must_use]
     pub const fn to_octets(self) -> ControlOctets {
         match self {
-            ControlCommand::Unlock => ControlOctets {
+            Self::Unlock => ControlOctets {
                 octets: [0; 3],
                 len: 1,
             },
-            ControlCommand::SetVr(vr) => ControlOctets {
+            Self::SetVr(vr) => ControlOctets {
                 octets: [SET_VR, 0, vr.get()],
                 len: 3,
             },

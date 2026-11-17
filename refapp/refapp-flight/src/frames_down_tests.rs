@@ -69,8 +69,8 @@ struct Run {
 }
 
 impl Run {
-    fn new() -> Run {
-        Run {
+    fn new() -> Self {
+        Self {
             node: FlightNode::new_frames().unwrap(),
             rec: Rec::default(),
         }

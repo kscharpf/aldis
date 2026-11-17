@@ -263,8 +263,8 @@ fn bg_status(engine: &BitstreamGeneratorState) -> aldis_bitstream_generator_stat
 unsafe impl<P: BitstreamProtocol, const NQ: usize> InPlace for BitstreamGenerator<P, NQ> {
     type Head = BitstreamGeneratorHead<P>;
     type Buffers = BitstreamGeneratorBuffers<NQ>;
-    const HEAD_OFFSET: usize = <BitstreamGenerator<P, NQ>>::HEAD_OFFSET;
-    const BUFFERS_OFFSET: usize = <BitstreamGenerator<P, NQ>>::BUFFERS_OFFSET;
+    const HEAD_OFFSET: usize = <Self>::HEAD_OFFSET;
+    const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
 /// Places a `BitstreamGenerator` with an empty queue in `storage` (LNK-021; CABI-031,

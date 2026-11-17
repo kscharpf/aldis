@@ -41,8 +41,8 @@ impl TmChannel {
         physical: TmPhysicalChannelConfig,
         scid: SpacecraftId<10>,
         oid_vc: VcId<3>,
-    ) -> TmChannel {
-        TmChannel {
+    ) -> Self {
+        Self {
             physical,
             scid,
             oid_vc,
@@ -73,8 +73,8 @@ impl TmVc {
     ///
     /// Requirements: LNK-030…LNK-036, LNK-076, LNK-082; docs/04-engines.md §2.4.
     #[must_use]
-    pub const fn new(config: TmVirtualChannelConfig) -> TmVc {
-        TmVc {
+    pub const fn new(config: TmVirtualChannelConfig) -> Self {
+        Self {
             config,
             ocf: [0; OCF_LEN],
             fsh: match config.fsh() {
@@ -88,9 +88,9 @@ impl TmVc {
     ///
     /// # Errors
     /// `InvalidConfig` (`ocf_flag`) if the configuration has no `VC_OCF`.
-    pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<TmVc> {
+    pub const fn with_initial_ocf(self, ocf: [u8; OCF_LEN]) -> Result<Self> {
         if self.config.ocf() {
-            Ok(TmVc { ocf, ..self })
+            Ok(Self { ocf, ..self })
         } else {
             Err(Error::new(ErrorKind::InvalidConfig).with_field(field::OCF_FLAG))
         }
@@ -101,9 +101,9 @@ impl TmVc {
     /// # Errors
     /// `InvalidConfig` (`fsh_len`) unless the configuration has a `VC_FSH` of the length of
     /// `fsh`.
-    pub fn with_initial_fsh(self, fsh: Fsh) -> Result<TmVc> {
+    pub fn with_initial_fsh(self, fsh: Fsh) -> Result<Self> {
         if self.config.fsh().map(FshLen::octets) == Some(fsh.total_len()) {
-            Ok(TmVc {
+            Ok(Self {
                 fsh: Some(fsh),
                 ..self
             })
@@ -194,7 +194,7 @@ impl MuxProtocol for Tm {
         })
     }
 
-    fn check_channel(channel: &TmChannel, vcs: &[Option<VcConfig<Tm>>]) -> Result<()> {
+    fn check_channel(channel: &TmChannel, vcs: &[Option<VcConfig<Self>>]) -> Result<()> {
         let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
         let oid = vcs
             .iter()
@@ -213,7 +213,7 @@ impl MuxProtocol for Tm {
     fn primary_header(
         channel: &TmChannel,
         vc: Option<&TmVc>,
-        f: &FrameFields<Tm>,
+        f: &FrameFields<Self>,
     ) -> Result<TmPrimaryHeader> {
         let [.., mc] = f.mc_count.to_be_bytes();
         let [.., count] = f.vc_count.to_be_bytes();

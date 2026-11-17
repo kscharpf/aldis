@@ -169,7 +169,7 @@ impl ClcwWord {
     /// If the strict CLCW decoder rejects its octets.
     pub fn new(word: u32) -> Result<Self, String> {
         aldis::tc::Clcw::decode(word.to_be_bytes())
-            .map(|_| ClcwWord(word))
+            .map(|_| Self(word))
             .map_err(|e| format!("{word:#010x} is not a CLCW: {e:?}"))
     }
 
@@ -275,8 +275,8 @@ impl Level {
     #[must_use]
     pub const fn has_frames(self) -> bool {
         match self {
-            Level::Packets => false,
-            Level::Frames | Level::Cop1 => true,
+            Self::Packets => false,
+            Self::Frames | Self::Cop1 => true,
         }
     }
 }
@@ -356,7 +356,7 @@ impl OpsEntry {
     pub fn to_node(&self) -> Result<refapp_ground::OpsEntry, String> {
         use refapp_ground as node;
         Ok(match *self {
-            OpsEntry::Command {
+            Self::Command {
                 execution,
                 call,
                 extra_octets,
@@ -385,7 +385,7 @@ impl OpsEntry {
                 },
                 extra_octets: extra_octets.unwrap_or(0),
             },
-            OpsEntry::TableUpload {
+            Self::TableUpload {
                 table_id, length, ..
             } => node::OpsEntry::TableUpload {
                 table_id: TableId::new(table_id.get())
@@ -393,7 +393,7 @@ impl OpsEntry {
                 length: TableLength::new(length.get())
                     .map_err(|e| format!("table length: {:?}", e.kind()))?,
             },
-            OpsEntry::Fop1Directive { directive, .. } => node::OpsEntry::Fop1Directive(directive),
+            Self::Fop1Directive { directive, .. } => node::OpsEntry::Fop1Directive(directive),
         })
     }
 
@@ -401,9 +401,9 @@ impl OpsEntry {
     #[must_use]
     pub const fn at_us(&self) -> Micros {
         match self {
-            OpsEntry::Command { at_us, .. }
-            | OpsEntry::TableUpload { at_us, .. }
-            | OpsEntry::Fop1Directive { at_us, .. } => *at_us,
+            Self::Command { at_us, .. }
+            | Self::TableUpload { at_us, .. }
+            | Self::Fop1Directive { at_us, .. } => *at_us,
         }
     }
 }
@@ -458,10 +458,10 @@ impl Call {
     #[must_use]
     pub const fn packet_length(&self, extra: u8) -> u64 {
         let base: u64 = match self {
-            Call::Noop {} | Call::Unknown { .. } => 14,
-            Call::DumpMemory { .. } => 20,
-            Call::ActivateTable { .. } => 17,
-            Call::SetPayloadMode { .. } => 15,
+            Self::Noop {} | Self::Unknown { .. } => 14,
+            Self::DumpMemory { .. } => 20,
+            Self::ActivateTable { .. } => 17,
+            Self::SetPayloadMode { .. } => 15,
         };
         base + extra as u64
     }
@@ -578,9 +578,9 @@ impl Scenario {
     /// If the text does not match the model, or breaks a rule the schema cannot express. The
     /// entries of the scripts are checked first, so an error in an `ops` or `faults` entry is
     /// reported, by its entry, before an error elsewhere.
-    pub fn parse(text: &str) -> Result<Scenario, String> {
+    pub fn parse(text: &str) -> Result<Self, String> {
         check_entries(text)?;
-        let s: Scenario = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
+        let s: Self = serde_json::from_str(text).map_err(|e| format!("scenario.json: {e}"))?;
         s.check()?;
         Ok(s)
     }
@@ -589,8 +589,8 @@ impl Scenario {
     ///
     /// # Errors
     /// As [`Scenario::parse`].
-    pub fn load() -> Result<Scenario, String> {
-        Scenario::parse(SCENARIO_JSON)
+    pub fn load() -> Result<Self, String> {
+        Self::parse(SCENARIO_JSON)
     }
 
     /// The case with the given ID.
@@ -771,7 +771,7 @@ const TABLE_PACKET_OVERHEAD: u64 = 9;
 
 impl Uplink {
     fn new(s: &Scenario) -> Self {
-        Uplink {
+        Self {
             slot_us: s.link.uplink_slot_us.get(),
             delay_us: s.link.one_way_delay_us,
             // The Segment Header, when the VC has one, takes one octet of the frame data unit

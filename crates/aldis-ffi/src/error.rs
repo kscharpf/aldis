@@ -51,19 +51,19 @@ impl From<Error> for aldis_error_detail_t {
         clippy::wildcard_enum_match_arm,
         reason = "`ErrorDetail` is `#[non_exhaustive]`: a detail a later version adds falls back to the base (GEN-081)"
     )]
-    fn from(e: Error) -> aldis_error_detail_t {
-        let base = aldis_error_detail_t {
+    fn from(e: Error) -> Self {
+        let base = Self {
             kind: u32::from(e.kind().code()),
             field: e.field().map_or(0, |f| f.code().get()),
-            ..aldis_error_detail_t::default()
+            ..Self::default()
         };
         match e.detail() {
-            ErrorDetail::Needed(n) => aldis_error_detail_t {
+            ErrorDetail::Needed(n) => Self {
                 detail: ALDIS_DETAIL_NEEDED,
                 needed: u64::try_from(n).unwrap_or(u64::MAX),
                 ..base
             },
-            ErrorDetail::Expected { expected, found } => aldis_error_detail_t {
+            ErrorDetail::Expected { expected, found } => Self {
                 detail: ALDIS_DETAIL_EXPECTED,
                 expected,
                 found,

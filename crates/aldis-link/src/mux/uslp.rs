@@ -51,11 +51,11 @@ impl UslpChannel {
         source_or_destination: SourceOrDestination,
         oid_vcf_len: VcfCountLen,
         mc_ocf: Option<[u8; OCF_LEN]>,
-    ) -> Result<UslpChannel> {
+    ) -> Result<Self> {
         if physical.variable_length() {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSFER_FRAME_TYPE));
         }
-        Ok(UslpChannel {
+        Ok(Self {
             physical,
             scid,
             source_or_destination,
@@ -110,8 +110,8 @@ impl UslpVc {
     ///   build;
     /// - (`security_header_len`) for SDLS lengths set per MAP, which the mux has no MAP
     ///   configuration for.
-    pub const fn new(config: UslpVcConfig, map: MapId<4>, qos: Qos, cop: bool) -> Result<UslpVc> {
-        if let Err(e) = UslpVc::check_count_len(cop, config.vcf_count_len(false)) {
+    pub const fn new(config: UslpVcConfig, map: MapId<4>, qos: Qos, cop: bool) -> Result<Self> {
+        if let Err(e) = Self::check_count_len(cop, config.vcf_count_len(false)) {
             return Err(e);
         }
         if !matches!(config.frame_type(), TransferFrameType::Fixed) {
@@ -120,7 +120,7 @@ impl UslpVc {
         let SecurityScope::Vc(security) = config.security() else {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
         };
-        Ok(UslpVc {
+        Ok(Self {
             config,
             security,
             map,
@@ -291,14 +291,14 @@ impl MuxProtocol for Uslp {
         })
     }
 
-    fn check_channel(channel: &UslpChannel, vcs: &[Option<VcConfig<Uslp>>]) -> Result<()> {
+    fn check_channel(channel: &UslpChannel, vcs: &[Option<VcConfig<Self>>]) -> Result<()> {
         // The frame length is at most `MAX_FRAME_LEN`, which the physical channel's
         // constructor checks.
         let bad = |f| Error::new(ErrorKind::InvalidConfig).with_field(f);
         if vcs.iter().flatten().any(|v| v.id() == aldis_uslp::OID_VCID) {
             return Err(bad(field::VC_ID));
         }
-        let spacecraft = |v: &VcConfig<Uslp>| v.params.config.spacecraft_id() != channel.scid;
+        let spacecraft = |v: &VcConfig<Self>| v.params.config.spacecraft_id() != channel.scid;
         if vcs.iter().flatten().any(spacecraft) {
             return Err(bad(field::SPACECRAFT_ID));
         }
@@ -307,7 +307,7 @@ impl MuxProtocol for Uslp {
         // from `MC_OCF` (`vc_ocf` is `None` for USLP), so a VC that requires one is refused
         // without an `MC_OCF`, and a VC that does not is refused beside one, so that the
         // codec configuration describes the frames the mux builds.
-        let ocf = |v: &VcConfig<Uslp>| {
+        let ocf = |v: &VcConfig<Self>| {
             (v.params.config.ocf() == OcfUse::Required) != channel.mc_ocf.is_some()
         };
         if vcs.iter().flatten().any(ocf) {
@@ -323,7 +323,7 @@ impl MuxProtocol for Uslp {
     fn primary_header(
         channel: &UslpChannel,
         vc: Option<&UslpVc>,
-        f: &FrameFields<Uslp>,
+        f: &FrameFields<Self>,
     ) -> Result<UslpPrimaryHeader> {
         let bypass = f.kind.bypass_flag();
         let count_len = vc.map_or(channel.oid_vcf_len, |v| v.count_len(bypass));

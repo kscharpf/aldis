@@ -24,8 +24,8 @@ impl NodeId {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            NodeId::Flight => "flight",
-            NodeId::Ground => "ground",
+            Self::Flight => "flight",
+            Self::Ground => "ground",
         }
     }
 }
@@ -44,8 +44,8 @@ impl Dir {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Dir::Down => "down",
-            Dir::Up => "up",
+            Self::Down => "down",
+            Self::Up => "up",
         }
     }
 }
@@ -70,11 +70,11 @@ impl FaultKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            FaultKind::Drop => "drop",
-            FaultKind::Duplicate => "duplicate",
-            FaultKind::Delay => "delay",
-            FaultKind::Flip => "flip",
-            FaultKind::Truncate => "truncate",
+            Self::Drop => "drop",
+            Self::Duplicate => "duplicate",
+            Self::Delay => "delay",
+            Self::Flip => "flip",
+            Self::Truncate => "truncate",
         }
     }
 
@@ -82,18 +82,18 @@ impl FaultKind {
     #[must_use]
     pub const fn arity(self) -> usize {
         match self {
-            FaultKind::Drop | FaultKind::Duplicate => 0,
-            FaultKind::Delay | FaultKind::Truncate => 1,
-            FaultKind::Flip => 2,
+            Self::Drop | Self::Duplicate => 0,
+            Self::Delay | Self::Truncate => 1,
+            Self::Flip => 2,
         }
     }
 
-    const ALL: [FaultKind; 5] = [
-        FaultKind::Drop,
-        FaultKind::Duplicate,
-        FaultKind::Delay,
-        FaultKind::Flip,
-        FaultKind::Truncate,
+    const ALL: [Self; 5] = [
+        Self::Drop,
+        Self::Duplicate,
+        Self::Delay,
+        Self::Flip,
+        Self::Truncate,
     ];
 }
 
@@ -261,12 +261,12 @@ impl Record {
     #[must_use]
     pub const fn t_us(&self) -> Micros {
         match self {
-            Record::PacketOut { t_us, .. }
-            | Record::Fault { t_us, .. }
-            | Record::UnitSent { t_us, .. }
-            | Record::UnitDelivered { t_us, .. }
-            | Record::PacketIn { t_us, .. }
-            | Record::AppEvent { t_us, .. } => *t_us,
+            Self::PacketOut { t_us, .. }
+            | Self::Fault { t_us, .. }
+            | Self::UnitSent { t_us, .. }
+            | Self::UnitDelivered { t_us, .. }
+            | Self::PacketIn { t_us, .. }
+            | Self::AppEvent { t_us, .. } => *t_us,
         }
     }
 
@@ -276,14 +276,14 @@ impl Record {
     /// If an application event code is not in the vocabulary (APP-083).
     pub fn to_line(&self) -> Result<String, String> {
         let v = match self {
-            Record::PacketOut {
+            Self::PacketOut {
                 t_us,
                 node,
                 apid,
                 octets,
             } => json!({ "t_us": t_us, "kind": "packet_out", "node": node.as_str(),
                          "apid": apid, "hex": hex(octets) }),
-            Record::Fault {
+            Self::Fault {
                 t_us,
                 dir,
                 index,
@@ -291,28 +291,28 @@ impl Record {
                 args,
             } => json!({ "t_us": t_us, "kind": "fault", "dir": dir.as_str(), "index": index,
                          "fault": fault.as_str(), "args": args }),
-            Record::UnitSent {
+            Self::UnitSent {
                 t_us,
                 dir,
                 index,
                 octets,
             } => json!({ "t_us": t_us, "kind": "unit_sent", "dir": dir.as_str(), "index": index,
                          "hex": hex(octets) }),
-            Record::UnitDelivered {
+            Self::UnitDelivered {
                 t_us,
                 dir,
                 index,
                 copy,
             } => json!({ "t_us": t_us, "kind": "unit_delivered", "dir": dir.as_str(),
                          "index": index, "copy": copy }),
-            Record::PacketIn {
+            Self::PacketIn {
                 t_us,
                 node,
                 apid,
                 octets,
             } => json!({ "t_us": t_us, "kind": "packet_in", "node": node.as_str(),
                          "apid": apid, "hex": hex(octets) }),
-            Record::AppEvent {
+            Self::AppEvent {
                 t_us,
                 node,
                 code,

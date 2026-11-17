@@ -67,19 +67,19 @@ impl DiscardReason {
     #[must_use]
     pub const fn code(self) -> u8 {
         match self {
-            DiscardReason::UnexpectedVersion => 1,
-            DiscardReason::UnexpectedSpacecraft => 2,
-            DiscardReason::ReservedFlags => 3,
-            DiscardReason::ReservedSpare => 4,
-            DiscardReason::InvalidVcid => 5,
-            DiscardReason::FrameTooLong => 6,
-            DiscardReason::FrameTooShort => 7,
-            DiscardReason::LengthMismatch => 8,
-            DiscardReason::FecfMismatch => 9,
-            DiscardReason::ReservedControlCommand => 11,
-            DiscardReason::Fill => 20,
-            DiscardReason::TruncatedFrame { .. } => 21,
-            DiscardReason::LeftoverFill => 22,
+            Self::UnexpectedVersion => 1,
+            Self::UnexpectedSpacecraft => 2,
+            Self::ReservedFlags => 3,
+            Self::ReservedSpare => 4,
+            Self::InvalidVcid => 5,
+            Self::FrameTooLong => 6,
+            Self::FrameTooShort => 7,
+            Self::LengthMismatch => 8,
+            Self::FecfMismatch => 9,
+            Self::ReservedControlCommand => 11,
+            Self::Fill => 20,
+            Self::TruncatedFrame { .. } => 21,
+            Self::LeftoverFill => 22,
         }
     }
 
@@ -87,19 +87,17 @@ impl DiscardReason {
     #[must_use]
     pub const fn validation_reason(self) -> Option<Reason> {
         match self {
-            DiscardReason::UnexpectedVersion => Some(Reason::UnexpectedVersion),
-            DiscardReason::UnexpectedSpacecraft => Some(Reason::UnexpectedSpacecraft),
-            DiscardReason::ReservedFlags => Some(Reason::ReservedFlags),
-            DiscardReason::ReservedSpare => Some(Reason::ReservedSpare),
-            DiscardReason::InvalidVcid => Some(Reason::InvalidVcid),
-            DiscardReason::FrameTooLong => Some(Reason::FrameTooLong),
-            DiscardReason::FrameTooShort => Some(Reason::FrameTooShort),
-            DiscardReason::LengthMismatch => Some(Reason::LengthMismatch),
-            DiscardReason::FecfMismatch => Some(Reason::FecfMismatch),
-            DiscardReason::ReservedControlCommand => Some(Reason::ReservedControlCommand),
-            DiscardReason::TruncatedFrame { .. }
-            | DiscardReason::Fill
-            | DiscardReason::LeftoverFill => None,
+            Self::UnexpectedVersion => Some(Reason::UnexpectedVersion),
+            Self::UnexpectedSpacecraft => Some(Reason::UnexpectedSpacecraft),
+            Self::ReservedFlags => Some(Reason::ReservedFlags),
+            Self::ReservedSpare => Some(Reason::ReservedSpare),
+            Self::InvalidVcid => Some(Reason::InvalidVcid),
+            Self::FrameTooLong => Some(Reason::FrameTooLong),
+            Self::FrameTooShort => Some(Reason::FrameTooShort),
+            Self::LengthMismatch => Some(Reason::LengthMismatch),
+            Self::FecfMismatch => Some(Reason::FecfMismatch),
+            Self::ReservedControlCommand => Some(Reason::ReservedControlCommand),
+            Self::TruncatedFrame { .. } | Self::Fill | Self::LeftoverFill => None,
         }
     }
 }
@@ -107,16 +105,16 @@ impl DiscardReason {
 impl From<Reason> for DiscardReason {
     fn from(r: Reason) -> Self {
         match r {
-            Reason::UnexpectedVersion => DiscardReason::UnexpectedVersion,
-            Reason::UnexpectedSpacecraft => DiscardReason::UnexpectedSpacecraft,
-            Reason::ReservedFlags => DiscardReason::ReservedFlags,
-            Reason::ReservedSpare => DiscardReason::ReservedSpare,
-            Reason::InvalidVcid => DiscardReason::InvalidVcid,
-            Reason::FrameTooLong => DiscardReason::FrameTooLong,
-            Reason::FrameTooShort => DiscardReason::FrameTooShort,
-            Reason::LengthMismatch => DiscardReason::LengthMismatch,
-            Reason::FecfMismatch => DiscardReason::FecfMismatch,
-            Reason::ReservedControlCommand => DiscardReason::ReservedControlCommand,
+            Reason::UnexpectedVersion => Self::UnexpectedVersion,
+            Reason::UnexpectedSpacecraft => Self::UnexpectedSpacecraft,
+            Reason::ReservedFlags => Self::ReservedFlags,
+            Reason::ReservedSpare => Self::ReservedSpare,
+            Reason::InvalidVcid => Self::InvalidVcid,
+            Reason::FrameTooLong => Self::FrameTooLong,
+            Reason::FrameTooShort => Self::FrameTooShort,
+            Reason::LengthMismatch => Self::LengthMismatch,
+            Reason::FecfMismatch => Self::FecfMismatch,
+            Reason::ReservedControlCommand => Self::ReservedControlCommand,
         }
     }
 }

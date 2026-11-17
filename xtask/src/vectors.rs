@@ -804,7 +804,7 @@ mod tests {
     struct TempRepo(PathBuf);
 
     impl TempRepo {
-        fn new(name: &str) -> TempRepo {
+        fn new(name: &str) -> Self {
             static NEXT: AtomicUsize = AtomicUsize::new(0);
             let dir = std::env::temp_dir().join(format!(
                 "aldis-xtask-{name}-{}-{}",
@@ -813,7 +813,7 @@ mod tests {
             ));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
-            let repo = TempRepo(dir);
+            let repo = Self(dir);
             // `init -b` needs git 2.28; the nightly big-endian job runs the tests in a `cross`
             // image with an older git.
             repo.git(&["init", "-q"]);

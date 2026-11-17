@@ -54,7 +54,7 @@ impl Dump {
     ///
     /// # Errors
     /// The segmenter's or the packet APID's error, which the scenario's values rule out.
-    pub fn start(region: DumpRegion, first: Instant) -> Result<Dump, Error> {
+    pub fn start(region: DumpRegion, first: Instant) -> Result<Self, Error> {
         let mut sdu = [0_u8; SDU_MAX_LEN];
         let [a3, a2, a1, a0] = region.address().to_be_bytes();
         let [l1, l0] = region.length().to_be_bytes();
@@ -68,7 +68,7 @@ impl Dump {
         let sdu_len = SDU_HEADER_LEN.saturating_add(usize::from(region.length()));
         let whole = sdu.get(..sdu_len).ok_or(Error::buffer_too_small(sdu_len))?;
         let progress = Downlink::segmenter(whole, SEGMENT_OCTETS)?;
-        Ok(Dump {
+        Ok(Self {
             region,
             sdu,
             sdu_len,

@@ -53,11 +53,11 @@ impl Reject {
     #[must_use]
     pub const fn reason(self) -> u16 {
         match self {
-            Reject::UnknownFunction => 1,
-            Reject::TimeTagPast => 2,
-            Reject::Malformed => 3,
-            Reject::QueueFull => 4,
-            Reject::DumpInProgress => 5,
+            Self::UnknownFunction => 1,
+            Self::TimeTagPast => 2,
+            Self::Malformed => 3,
+            Self::QueueFull => 4,
+            Self::DumpInProgress => 5,
         }
     }
 }
@@ -74,13 +74,13 @@ impl DumpRegion {
     /// The region, or `None` for a length outside 1…1 024 or one that runs past the end of the
     /// address space.
     #[must_use]
-    pub fn new(address: u32, length: u16) -> Option<DumpRegion> {
+    pub fn new(address: u32, length: u16) -> Option<Self> {
         let last = u32::from(length).checked_sub(1)?;
         if length > DUMP_MAX_LENGTH {
             return None;
         }
         address.checked_add(last)?;
-        Some(DumpRegion { address, length })
+        Some(Self { address, length })
     }
 
     /// First address.

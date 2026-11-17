@@ -48,10 +48,10 @@ impl PduHeader {
     const fn fits(self, content: DataFieldContent) -> bool {
         matches!(
             (self, content),
-            (PduHeader::Mpdu(_), DataFieldContent::Mpdu)
-                | (PduHeader::Bpdu(_), DataFieldContent::Bpdu)
+            (Self::Mpdu(_), DataFieldContent::Mpdu)
+                | (Self::Bpdu(_), DataFieldContent::Bpdu)
                 | (
-                    PduHeader::None,
+                    Self::None,
                     DataFieldContent::VcaSdu | DataFieldContent::IdleData
                 )
         )
@@ -89,8 +89,8 @@ impl AosFrameFields {
         vcid: VcId<6>,
         vc_frame_count: VcFrameCount,
         pdu: PduHeader,
-    ) -> AosFrameFields {
-        AosFrameFields {
+    ) -> Self {
+        Self {
             scid,
             vcid,
             vc_frame_count,
@@ -103,8 +103,8 @@ impl AosFrameFields {
     /// A realtime OID frame of `scid`: VCID 63, no data unit header (732.0 §4.1.4.1.5;
     /// AOS-016).
     #[must_use]
-    pub const fn oid(scid: SpacecraftId<10>, vc_frame_count: VcFrameCount) -> AosFrameFields {
-        AosFrameFields::new(scid, OID_VCID, vc_frame_count, PduHeader::None)
+    pub const fn oid(scid: SpacecraftId<10>, vc_frame_count: VcFrameCount) -> Self {
+        Self::new(scid, OID_VCID, vc_frame_count, PduHeader::None)
     }
 }
 
@@ -128,7 +128,7 @@ pub struct AosFrameContent<'d> {
 impl<'d> AosFrameContent<'d> {
     /// A frame holding `zone` and no other variable field.
     #[must_use]
-    pub const fn new(zone: &'d [u8]) -> AosFrameContent<'d> {
+    pub const fn new(zone: &'d [u8]) -> Self {
         AosFrameContent {
             insert_zone: &[],
             security_header: &[],
@@ -153,7 +153,7 @@ impl Plan {
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
-    ) -> Result<Plan> {
+    ) -> Result<Self> {
         if fields.vcid == OID_VCID {
             return Err(mismatch(ErrorKind::InvalidField, field::VC_ID, 62, 63));
         }
@@ -180,7 +180,7 @@ impl Plan {
             PduHeader::Bpdu(pointer) => Some(bpdu_header(pointer, zone)?),
             PduHeader::None => None,
         };
-        Plan::finish(pc, fields, layout, pdu)
+        Self::finish(pc, fields, layout, pdu)
     }
 
     /// The plan of an OID frame of `fields.scid` (732.0 §4.1.4.1.5; AOS-016).
@@ -188,7 +188,7 @@ impl Plan {
         pc: &AosPhysicalChannelConfig,
         vcs: &L,
         fields: &AosFrameFields,
-    ) -> Result<Plan> {
+    ) -> Result<Self> {
         if fields.vcid != OID_VCID {
             return Err(mismatch(
                 ErrorKind::InvalidField,
@@ -206,7 +206,7 @@ impl Plan {
         // The physical channel always leaves an OID frame a data octet (its constructor), so
         // the layout is never an error; `and_then` keeps that branch out of this crate's code.
         frame_layout(pc, SecurityLayout::NONE, false)
-            .and_then(|layout| Plan::finish(pc, fields, layout, None))
+            .and_then(|layout| Self::finish(pc, fields, layout, None))
     }
 
     /// The SCID check against the edition, and the header (AOS-002).
@@ -215,7 +215,7 @@ impl Plan {
         fields: &AosFrameFields,
         layout: FrameLayout,
         pdu: Option<[u8; 2]>,
-    ) -> Result<Plan> {
+    ) -> Result<Self> {
         let max = pc.edition().max_scid();
         if fields.scid.get() > max {
             return Err(Error::out_of_range(
@@ -224,7 +224,7 @@ impl Plan {
                 u64::from(fields.scid.get()),
             ));
         }
-        Ok(Plan {
+        Ok(Self {
             header: AosPrimaryHeader::for_writer(
                 pc,
                 fields.scid,

@@ -62,8 +62,8 @@ struct Link<P: Fop1Format> {
 }
 
 impl<P: Fop1Format> Link<P> {
-    fn active(target: Fop1Target<P>) -> Link<P> {
-        let mut link = Link {
+    fn active(target: Fop1Target<P>) -> Self {
+        let mut link = Self {
             fop: Fop1::new(Fop1Config {
                 target,
                 t1_initial: Duration::from_micros(1_000),

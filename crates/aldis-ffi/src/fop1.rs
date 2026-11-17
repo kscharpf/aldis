@@ -444,8 +444,8 @@ pub struct aldis_fop1_actions_t {
 }
 
 impl Default for aldis_fop1_actions_t {
-    fn default() -> aldis_fop1_actions_t {
-        aldis_fop1_actions_t {
+    fn default() -> Self {
+        Self {
             count: 0,
             items: [aldis_fop1_action_t::default(); ALDIS_FOP1_MAX_ACTIONS],
         }

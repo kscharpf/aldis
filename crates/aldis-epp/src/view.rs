@@ -43,7 +43,7 @@ impl<'a> EncapsulationPacket<'a> {
     ///   the protocol (EPP-004, EPP-005, EPP-012).
     /// - `ReservedValue` for a non-zero Protocol ID Extension with EPI ≠ `110` (EPP-006) or a
     ///   non-zero CCSDS Defined Field (EPP-007).
-    pub fn decode(bytes: &'a [u8]) -> Result<EncapsulationPacket<'a>> {
+    pub fn decode(bytes: &'a [u8]) -> Result<Self> {
         EncapsulationPacket::decode_in(bytes, DecodeMode::Strict).map(|(packet, _)| packet)
     }
 
@@ -53,15 +53,12 @@ impl<'a> EncapsulationPacket<'a> {
     ///
     /// # Errors
     /// As for [`decode`](Self::decode), except the deviations that are anomalies.
-    pub fn decode_lenient(bytes: &'a [u8]) -> Result<Lenient<EncapsulationPacket<'a>, EppAnomaly>> {
+    pub fn decode_lenient(bytes: &'a [u8]) -> Result<Lenient<Self, EppAnomaly>> {
         EncapsulationPacket::decode_in(bytes, DecodeMode::Lenient)
             .map(|(packet, anomalies)| Lenient::new(packet, anomalies))
     }
 
-    fn decode_in(
-        bytes: &'a [u8],
-        mode: DecodeMode,
-    ) -> Result<(EncapsulationPacket<'a>, AnomalySet<EppAnomaly>)> {
+    fn decode_in(bytes: &'a [u8], mode: DecodeMode) -> Result<(Self, AnomalySet<EppAnomaly>)> {
         let header = EncapsulationHeader::parse(bytes)?;
         let total = usize::try_from(header.packet_len()).unwrap_or(usize::MAX);
         let data = bytes

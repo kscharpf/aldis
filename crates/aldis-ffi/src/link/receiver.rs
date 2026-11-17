@@ -454,7 +454,10 @@ impl RxProtocol for Tm {
         Ok(TmVc::new(config, served))
     }
 
-    fn plain<'a>(config: &FrameReceiverConfig<Tm, V>, octets: &'a [u8]) -> Result<Self::Plain<'a>> {
+    fn plain<'a>(
+        config: &FrameReceiverConfig<Self, V>,
+        octets: &'a [u8],
+    ) -> Result<Self::Plain<'a>> {
         TmFrame::decode(octets, config.channel().physical())?.into_plain(NoSecurity)
     }
 }
@@ -502,7 +505,7 @@ impl RxProtocol for Aos {
     }
 
     fn plain<'a>(
-        config: &FrameReceiverConfig<Aos, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
     ) -> Result<Self::Plain<'a>> {
         AosFrame::decode(octets, config.channel().physical(), &NoAosVcs)?.into_plain(NoSecurity)
@@ -557,7 +560,10 @@ impl RxProtocol for Tc {
         })
     }
 
-    fn plain<'a>(config: &FrameReceiverConfig<Tc, V>, octets: &'a [u8]) -> Result<Self::Plain<'a>> {
+    fn plain<'a>(
+        config: &FrameReceiverConfig<Self, V>,
+        octets: &'a [u8],
+    ) -> Result<Self::Plain<'a>> {
         // TC frames vary in length: the codec takes the length of the frame it is given.
         let channels = NoTcChannels(TcPhysical::new(octets.len(), config.fecf())?);
         TcFrame::decode(octets, &channels)?.into_plain(NoSecurity)
@@ -634,7 +640,7 @@ impl RxProtocol for Uslp {
     }
 
     fn plain<'a>(
-        config: &FrameReceiverConfig<Uslp, V>,
+        config: &FrameReceiverConfig<Self, V>,
         octets: &'a [u8],
     ) -> Result<Self::Plain<'a>> {
         // The codec takes the length of the frame it is given; the receiver refuses a frame of
@@ -871,19 +877,19 @@ impl FrameReceiverState {
             parse::<aldis_link_protocol>(input.config.protocol).map(|p| p == want)
         };
         match self {
-            FrameReceiverState::Tm(e) => {
+            Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 rx_run(e, input, data, area)
             }
-            FrameReceiverState::Tc(e) => {
+            Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 rx_run(e, input, data, area)
             }
-            FrameReceiverState::Aos(e) => {
+            Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
@@ -893,7 +899,7 @@ impl FrameReceiverState {
                 }
                 rx_run(e, input, data, area)
             }
-            FrameReceiverState::Uslp(e) => {
+            Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
@@ -904,10 +910,10 @@ impl FrameReceiverState {
 
     const fn status(&self) -> ReceiverStatus {
         match self {
-            FrameReceiverState::Tm(e) => *e.status(),
-            FrameReceiverState::Tc(e) => *e.status(),
-            FrameReceiverState::Aos(e) => *e.status(),
-            FrameReceiverState::Uslp(e) => *e.status(),
+            Self::Tm(e) => *e.status(),
+            Self::Tc(e) => *e.status(),
+            Self::Aos(e) => *e.status(),
+            Self::Uslp(e) => *e.status(),
         }
     }
 }

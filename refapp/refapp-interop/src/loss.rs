@@ -16,7 +16,7 @@ impl LossScript {
     /// A script that drops the units `entries`.
     #[must_use]
     pub const fn new(entries: Vec<(Dir, u64)>) -> Self {
-        LossScript { entries }
+        Self { entries }
     }
 
     /// The script of a case's fault script: its `drop` entries, in script order (§6.5).
@@ -46,7 +46,7 @@ impl LossScript {
                 }
             }
         }
-        Ok(LossScript { entries })
+        Ok(Self { entries })
     }
 
     /// The script of a list of drops written `dir:index`, separated by commas, `dir` being `up` or
@@ -75,7 +75,7 @@ impl LossScript {
                 .map_err(|e| Error::Script(format!("drop `{item}`: {e}")))?;
             entries.push((dir, index));
         }
-        Ok(LossScript { entries })
+        Ok(Self { entries })
     }
 
     /// Whether the unit `index` in direction `dir` is dropped.

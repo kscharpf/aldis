@@ -35,8 +35,8 @@ impl UslpChannel {
     /// # Errors
     /// `InvalidConfig` (`frame_len`) if a frame of that length would have no data field octet
     /// after the header, the Insert Zone and the FECF (CMN-041).
-    pub fn new(physical: UslpPhysicalChannelConfig, ocf: DeliveryService) -> Result<UslpChannel> {
-        let channel = UslpChannel { physical, ocf };
+    pub fn new(physical: UslpPhysicalChannelConfig, ocf: DeliveryService) -> Result<Self> {
+        let channel = Self { physical, ocf };
         if <Uslp as ReceiveProtocol>::fits(physical.frame_len(), &channel, None) {
             Ok(channel)
         } else {
@@ -84,8 +84,8 @@ impl MapSet {
     ///
     /// Requirements: LNK-050…LNK-053, LNK-079…LNK-081; 732.1 §4.3.5–§4.3.11; docs/04-engines.md §3.1.
     #[must_use]
-    pub fn new(maps: &[MapId<4>]) -> MapSet {
-        MapSet(maps.iter().fold(0u16, |set, map| {
+    pub fn new(maps: &[MapId<4>]) -> Self {
+        Self(maps.iter().fold(0u16, |set, map| {
             set | 1u16.wrapping_shl(u32::from(map.get()))
         }))
     }
@@ -112,8 +112,8 @@ impl UslpVc {
     /// decide the sequence (732.1 §4.3.7.2), so the receiver does not count its frames
     /// (LNK-051). With `served` false the receiver does not provide its service: `NotServed`.
     #[must_use]
-    pub const fn new(maps: MapSet, cop: bool, served: bool) -> UslpVc {
-        UslpVc { maps, cop, served }
+    pub const fn new(maps: MapSet, cop: bool, served: bool) -> Self {
+        Self { maps, cop, served }
     }
 
     /// The MAPs of the VC.
@@ -186,7 +186,7 @@ impl ReceiveProtocol for Uslp {
     }
 
     fn receive<const V: usize>(
-        cx: &mut FrameContext<'_, Uslp, V>,
+        cx: &mut FrameContext<'_, Self, V>,
         plain: &Self::Plain<'_>,
     ) -> Result<()> {
         // The codec has checked that the Frame Length field (one less than the length of the

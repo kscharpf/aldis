@@ -21,7 +21,7 @@ impl<'a> Delivered<'a> {
     /// reads a `Delivered` only through [`iter`](Self::iter), [`len`](Self::len) and
     /// [`is_empty`](Self::is_empty).
     #[must_use]
-    pub const fn new(units: &'a [LinkUnit<'a>]) -> Delivered<'a> {
+    pub const fn new(units: &'a [LinkUnit<'a>]) -> Self {
         Delivered(units)
     }
 
