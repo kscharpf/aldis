@@ -32,6 +32,7 @@
 //! `no_std`, no allocation, no `unsafe`, and no panics on any input (GEN-010, GEN-020,
 //! GEN-070).
 #![no_std]
+#![forbid(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 

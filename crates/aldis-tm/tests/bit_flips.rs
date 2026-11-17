@@ -24,9 +24,9 @@ use aldis_testkit::bitflip::{
     sampled_pairs,
 };
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FshLen, PacketOffset, PacketPointer, TmFrame,
+    DataFieldContent, DataFieldStatus, FshLen, McFrameCount, PacketOffset, PacketPointer, TmFrame,
     TmFrameContent, TmFrameFields, TmMasterChannelConfig, TmPhysicalChannelConfig,
-    TmVirtualChannelConfig, encode,
+    TmVirtualChannelConfig, VcFrameCount, encode,
 };
 
 /// The longest TM Transfer Frame: 2 048 octets (131.0 §11.3, set by the 11-bit First Header
@@ -62,7 +62,12 @@ fn frame(len: usize, extras: bool, seed: u32) -> Frame {
         seed.wrapping_add(1),
     );
     let pointer = PacketPointer::StartsAt(PacketOffset::new(0).unwrap());
-    let fields = TmFrameFields::new(vcid, 0xA5, 0x5A, DataFieldStatus::Packets(pointer));
+    let fields = TmFrameFields::new(
+        vcid,
+        McFrameCount::new(0xA5),
+        VcFrameCount::new(0x5A),
+        DataFieldStatus::Packets(pointer),
+    );
     let content = TmFrameContent {
         secondary_header_data: &fsh,
         security_header: &[],

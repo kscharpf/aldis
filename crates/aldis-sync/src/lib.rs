@@ -17,6 +17,7 @@
 //!
 //! **Status:** implemented (M5 WP-3); the C ABI is `aldis_sync_*` of `aldis-ffi` (M5 WP-4).
 #![no_std]
+#![forbid(unsafe_code)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 

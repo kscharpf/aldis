@@ -66,24 +66,6 @@ reason = "output: the length in octets of the SDU the Reassembler has completed 
 item = "aldis_spp::segment::Discarded.octets"
 reason = "output: the octets of the partial SDU the Reassembler discarded; any usize up to the buffer is meaningful (SPP-013)"
 
-# aldis-tm
-
-[[exemption]]
-item = "aldis_tm::header::TmPrimaryHeader.mc_frame_count"
-reason = "full width: the 8-bit Master Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.5)"
-
-[[exemption]]
-item = "aldis_tm::header::TmPrimaryHeader.vc_frame_count"
-reason = "full width: the 8-bit Virtual Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.6)"
-
-[[exemption]]
-item = "aldis_tm::writer::TmFrameFields.mc_frame_count"
-reason = "full width: the 8-bit Master Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.5)"
-
-[[exemption]]
-item = "aldis_tm::writer::TmFrameFields.vc_frame_count"
-reason = "full width: the 8-bit Virtual Channel Frame Count, modulo 256; every u8 is a count (132.0 §4.1.2.6)"
-
 # aldis-tc
 
 [[exemption]]

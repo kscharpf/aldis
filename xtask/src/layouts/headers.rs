@@ -237,7 +237,9 @@ mod tm {
 
     use aldis_core::field;
     use aldis_core::ids::{SpacecraftId, VcId};
-    use aldis_tm::header::{FirstHeaderPointer, FshLen, SegmentLengthId, TmPrimaryHeader};
+    use aldis_tm::header::{
+        FirstHeaderPointer, FshLen, McFrameCount, SegmentLengthId, TmPrimaryHeader, VcFrameCount,
+    };
     use aldis_tm::{TmFrame, TmPhysicalChannelConfig};
 
     use super::{Field, Header, encoded, flag, named, rejected};
@@ -276,8 +278,8 @@ mod tm {
             scid: SpacecraftId::new(u16::try_from(p.scid).ok()?)?,
             vcid: VcId::new(u8::try_from(p.vcid).ok()?)?,
             ocf_flag: flag(p.ocf)?,
-            mc_frame_count: u8::try_from(p.mc).ok()?,
-            vc_frame_count: u8::try_from(p.vc).ok()?,
+            mc_frame_count: McFrameCount::new(u8::try_from(p.mc).ok()?),
+            vc_frame_count: VcFrameCount::new(u8::try_from(p.vc).ok()?),
             fsh_flag: flag(p.fsh)?,
             sync_flag: flag(p.sync)?,
             packet_order_flag: flag(p.order)?,

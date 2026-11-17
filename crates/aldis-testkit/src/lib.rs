@@ -14,6 +14,8 @@
 //! .assert_passed();
 //! ```
 
+#![forbid(unsafe_code)]
+
 pub mod bitflip;
 pub mod byte_queue;
 pub mod hex;

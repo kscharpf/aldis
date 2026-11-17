@@ -16,9 +16,10 @@ use aldis_core::{AnomalySet, Check, DecodeMode, Error, FieldId};
 use aldis_testkit::{CodecCase, Mode, Outcome, hex, run_codec_file};
 use aldis_tm::TmAnomaly;
 use aldis_tm::{
-    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, NoSdls, PacketOffset,
-    PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields, TmMasterChannelConfig,
-    TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig, UncheckedTmFrame, encode,
+    DataFieldContent, DataFieldStatus, FirstHeaderPointer, FshLen, McFrameCount, NoSdls,
+    PacketOffset, PacketPointer, SegmentLengthId, TmFrame, TmFrameContent, TmFrameFields,
+    TmMasterChannelConfig, TmPhysicalChannelConfig, TmPlan, TmVirtualChannelConfig,
+    UncheckedTmFrame, VcFrameCount, encode,
 };
 use serde_json::{Map, Value, json};
 
@@ -151,8 +152,8 @@ fn decoded(f: &UncheckedTmFrame<'_>, anomalies: AnomalySet<TmAnomaly>) -> Value 
         "scid": f.scid().get(),
         "vcid": f.vcid().get(),
         "ocf_flag": h.ocf_flag,
-        "mc_frame_count": f.mc_frame_count(),
-        "vc_frame_count": f.vc_frame_count(),
+        "mc_frame_count": f.mc_frame_count().get(),
+        "vc_frame_count": f.vc_frame_count().get(),
         "fsh_flag": h.fsh_flag,
         "sync_flag": h.sync_flag,
         "packet_order_flag": h.packet_order_flag,
@@ -178,8 +179,8 @@ fn encode_case(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Er
     let p = case.params.as_ref().unwrap();
     let fields = TmFrameFields::new(
         VcId::try_from(uint::<u8>(get(p, case, "vcid")))?,
-        uint(get(p, case, "mc_frame_count")),
-        uint(get(p, case, "vc_frame_count")),
+        McFrameCount::new(uint(get(p, case, "mc_frame_count"))),
+        VcFrameCount::new(uint(get(p, case, "vc_frame_count"))),
         status(case, get(p, case, "status").as_object().unwrap())?,
     );
     let (fsh_data, sh, data, st) = (
@@ -230,14 +231,12 @@ fn encode_oid(case: &CodecCase, mc: &TmMasterChannelConfig) -> Result<Value, Err
     for f in get(p, case, "frames").as_array().unwrap() {
         let f = f.as_object().unwrap();
         let mut out = vec![0_u8; mc.pc().frame_len()];
-        let mut w = TmPlan::begin_oid(
-            &mut out,
-            mc,
+        let fields = TmFrameFields::oid(
             vcid,
-            uint(get(f, case, "mc_frame_count")),
-            uint(get(f, case, "vc_frame_count")),
-            &mut oid,
-        )?;
+            McFrameCount::new(uint(get(f, case, "mc_frame_count"))),
+            VcFrameCount::new(uint(get(f, case, "vc_frame_count"))),
+        );
+        let mut w = TmPlan::begin_oid(&mut out, mc, &fields, &mut oid)?;
         if let Some(data) = f.get("fsh_data_hex") {
             w.secondary_data_mut().copy_from_slice(&octets(data));
         }
