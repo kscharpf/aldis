@@ -829,6 +829,14 @@ fn a_fop1_step_checks_every_argument() {
                 ALDIS_FOP1_NOTICE_REJECT
             )
         );
+        // A K of 0 is not a `NonZeroU8`: the same E40 reject, no error (req: COP-015).
+        let zero_k = aldis_fop1_input_t {
+            directive: ALDIS_FOP1_DIRECTIVE_SET_K,
+            value: 0,
+            ..fop1_input(ALDIS_FOP1_INPUT_DIRECTIVE)
+        };
+        assert_eq!(call(&raw mut *s, &raw const zero_k, &mut out), 0);
+        assert_eq!(actions.items[0].status, ALDIS_FOP1_NOTICE_REJECT);
         let unparsed = fop1_input(ALDIS_FOP1_INPUT_INVALID_DIRECTIVE);
         assert_eq!(call(&raw mut *s, &raw const unparsed, &mut out), 0);
         assert_eq!(actions.items[0].status, ALDIS_FOP1_NOTICE_REJECT);
