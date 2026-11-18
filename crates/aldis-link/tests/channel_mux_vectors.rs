@@ -321,10 +321,18 @@ impl Proto for Uslp {
     }
 }
 
-fn scope(v: &Value) -> Scope {
+/// The scope of an input; a VCID the protocol cannot hold names no VC the engine has, so the
+/// step is `UnknownChannel` (LNK-033), which `early` takes.
+fn scope<P: Proto>(v: &Value, early: &mut Option<Error>) -> Scope<P::Vc> {
     match v["scope"].as_str().unwrap() {
         "mc" => Scope::Mc,
-        "vc" => Scope::Vc(small(&v["vc"])),
+        "vc" => P::Vc::try_from(small(&v["vc"])).map_or_else(
+            |_| {
+                *early = Some(Error::new(ErrorKind::UnknownChannel));
+                Scope::Mc
+            },
+            Scope::Vc,
+        ),
         other => panic!("unknown scope {other}"),
     }
 }
@@ -405,7 +413,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
             }
             "opportunity" => MuxInput::Opportunity,
             "set_ocf" => MuxInput::SetOcf {
-                scope: scope(v),
+                scope: scope::<P>(v, &mut early),
                 ocf: hex::decode(v["ocf_hex"].as_str().unwrap())
                     .unwrap()
                     .try_into()
@@ -414,7 +422,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
             "set_fsh" => {
                 data = hex::decode(v["data_hex"].as_str().unwrap()).unwrap();
                 MuxInput::SetFsh {
-                    scope: scope(v),
+                    scope: scope::<P>(v, &mut early),
                     data: &data,
                 }
             }

@@ -182,7 +182,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         kinds(
             &mut mux,
             MuxInput::SetOcf {
-                scope: Scope::Vc(bb(1)),
+                scope: Scope::Vc(v1),
                 ocf: [1; 4],
             },
             &mut out,
@@ -193,7 +193,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         kinds(
             &mut mux,
             MuxInput::SetFsh {
-                scope: Scope::Vc(bb(1)),
+                scope: Scope::Vc(v1),
                 data: &fsh_new,
             },
             &mut out,
@@ -315,7 +315,7 @@ fn aos(t: &mut Tally) {
     t.check(
         mux.step(
             MuxInput::SetOcf {
-                scope: Scope::Vc(1),
+                scope: Scope::Vc(vc),
                 ocf: [bb(2); 4],
             },
             &mut out,

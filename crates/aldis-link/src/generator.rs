@@ -156,15 +156,6 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         self.vc
     }
 
-    /// The parameters of the protocol the generator serves (the AOS edition, the USLP UPID, MAP,
-    /// and `QoS`), for [`PacketProtocol::raw_pointer`].
-    ///
-    /// Requirements: LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
-    #[must_use]
-    pub const fn protocol(&self) -> &P::Params {
-        &self.protocol
-    }
-
     /// The octets of the data field, header included.
     ///
     /// Requirements: LNK-010…LNK-015, LNK-002, LNK-003; docs/04-engines.md §2.1.
@@ -634,7 +625,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         for (d, s) in held.iter_mut().zip(&self.bufs.zone) {
             *d = *s;
         }
-        P::write_header(&self.head.config.protocol, pointer, header)?;
+        P::write_header(&self.head.config.protocol, pointer, header);
         Ok((self.data_field(pointer), spill_len))
     }
 
@@ -706,7 +697,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             }
             IdleField::Pattern => zone.fill(self.head.config.idle_pattern),
         }
-        P::write_header(&self.head.config.protocol, pointer, header)?;
+        P::write_header(&self.head.config.protocol, pointer, header);
         Ok(self.data_field(pointer))
     }
 

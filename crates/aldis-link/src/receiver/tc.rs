@@ -74,6 +74,7 @@ impl ReceiveProtocol for Tc {
     type Channel = TcChannel;
     type VcParams = TcVc;
     type Plain<'a> = aldis_core::Plain<aldis_tc::TcFrame<'a>>;
+    type HeaderPointer = ();
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.octets()

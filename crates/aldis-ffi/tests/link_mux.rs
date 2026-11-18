@@ -1186,3 +1186,35 @@ fn the_vc_relations_of_the_codec_sets_report_the_same_field_and_order_as_before(
     let mut d = detail();
     assert_eq!(init(&mut s, &c, &mut d), 0);
 }
+
+#[test]
+fn an_offer_pointer_wider_than_eleven_bits_is_refused_and_counted() {
+    // req: CABI-022, LNK-002, LNK-076, API-001, API-058
+    let mut s = storage();
+    let mut d = detail();
+    let mut actions = aldis_channel_mux_actions_t::default();
+    let mut out = [0xEE_u8; 64];
+    assert_eq!(init(&mut s, &tm_config(), &mut d), 0);
+    let field = [0x11_u8; 16];
+    let mut offer = input(ALDIS_CHANNEL_MUX_INPUT_OFFER);
+    offer.vc_id = 1;
+    offer.data = field.as_ptr();
+    offer.data_len = field.len();
+    offer.pointer_present = 1;
+    // 0x800 needs 12 bits (132.0 §4.1.2.7.6): `OutOfRange`, counted as refused, nothing held.
+    for wide in [0x800_u16, 0xFFFF] {
+        offer.pointer = wide;
+        assert_eq!(
+            step(&mut s, &offer, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(d.field, ALDIS_FIELD_FIRST_HEADER_POINTER);
+    }
+    let after = status(&mut s);
+    assert_eq!((after.offers, after.refused, after.would_block), (0, 2, 0));
+    // The widest pointer is taken, so the refusals changed nothing.
+    offer.pointer = 0x7FF;
+    assert_eq!(step(&mut s, &offer, &mut out, &mut actions, &mut d), 0);
+    let after = status(&mut s);
+    assert_eq!((after.offers, after.refused), (1, 2));
+}

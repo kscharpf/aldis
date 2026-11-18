@@ -177,13 +177,13 @@ where
                 scope: if u.arbitrary()? {
                     Scope::Mc
                 } else {
-                    Scope::Vc(u.int_in_range(0..=9)?)
+                    Scope::Vc(P::Vc::try_from(u.int_in_range(0..=7)?).unwrap())
                 },
                 ocf,
             },
             7 => MuxInput::SetInsert(&field_octets[..field_octets.len().min(4)]),
             8 => MuxInput::SetFsh {
-                scope: Scope::Vc(u.int_in_range(0..=9)?),
+                scope: Scope::Vc(P::Vc::try_from(u.int_in_range(0..=7)?).unwrap()),
                 data: &field_octets[..field_octets.len().min(4)],
             },
             _ => {

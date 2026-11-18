@@ -564,11 +564,9 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
         edition: AosEdition::Issue4Compatible,
     };
     let uslp = UslpParams::new(Upid::Packets, MapId::<4>::new(3).unwrap(), Qos::Expedited).unwrap();
-    let tm = |p| Tm::raw_pointer(&TmParams, Tm::encode_pointer(&TmParams, p).unwrap()).unwrap();
-    let aos =
-        |params, p| Aos::raw_pointer(params, Aos::encode_pointer(params, p).unwrap()).unwrap();
-    let uslp_raw =
-        |params, p| Uslp::raw_pointer(params, Uslp::encode_pointer(params, p).unwrap()).unwrap();
+    let tm = |p| Tm::raw_pointer(Tm::encode_pointer(&TmParams, p).unwrap());
+    let aos = |params, p| Aos::raw_pointer(Aos::encode_pointer(params, p).unwrap());
+    let uslp_raw = |params, p| Uslp::raw_pointer(Uslp::encode_pointer(params, p).unwrap());
     assert_eq!(
         Tm::encode_pointer(&TmParams, NoStart).unwrap(),
         FirstHeaderPointer::NO_PACKET_START
@@ -583,22 +581,27 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
     assert!(Tm::encode_pointer(&TmParams, StartsAt(0x7FE)).is_err());
     assert!(Tm::encode_pointer(&TmParams, StartsAt(usize::MAX)).is_err());
     assert_eq!(
-        Aos::encode_pointer(&aos5, NoStart).unwrap(),
+        Aos::encode_pointer(&aos5, NoStart).unwrap().pointer(),
         PacketPointer::NoPacketStart
+    );
+    assert_eq!(
+        Aos::encode_pointer(&aos5, StartsAt(9)).unwrap().pointer(),
+        PacketPointer::StartsAt(aldis_aos::PacketOffset::new(9).unwrap())
     );
     assert_eq!(aos(&aos5, NoStart), 0xFFFF);
     assert_eq!(aos(&aos5, OnlyIdle), 0xFFFE);
     assert_eq!(aos(&aos4, NoStart), 0x7FF);
     assert_eq!(aos(&aos4, OnlyIdle), 0x7FE);
     assert_eq!(aos(&aos4, StartsAt(9)), 9);
-    // A pointer of one edition does not fit the field of the other (732.0 §4.1.4.2.2).
-    let wide = Aos::encode_pointer(&aos5, StartsAt(0x7FE)).unwrap();
+    // An offset of one edition's field is refused when the pointer is built for the other
+    // (732.0 §4.1.4.2.2), so no pointer holds a value its edition cannot carry.
     assert_eq!(aos(&aos5, StartsAt(0x7FE)), 0x7FE);
     assert_eq!(
-        Aos::raw_pointer(&aos4, wide).unwrap_err().kind(),
+        Aos::encode_pointer(&aos4, StartsAt(0x7FE))
+            .unwrap_err()
+            .kind(),
         ErrorKind::OutOfRange
     );
-    assert!(Aos::write_header(&aos4, wide, &mut [0; 2]).is_err());
     assert!(Aos::encode_pointer(&aos4, StartsAt(0x7FE)).is_err());
     assert!(Aos::encode_pointer(&aos5, StartsAt(usize::MAX)).is_err());
     assert_eq!(
@@ -630,13 +633,12 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
         &uslp,
         Uslp::encode_pointer(&uslp, StartsAt(4)).unwrap(),
         &mut h,
-    )
-    .unwrap();
+    );
     assert_eq!(h, [0x00, 0x00, 0x04]);
     let mut h = [0u8; 2];
-    Aos::write_header(&aos4, Aos::encode_pointer(&aos4, OnlyIdle).unwrap(), &mut h).unwrap();
+    Aos::write_header(&aos4, Aos::encode_pointer(&aos4, OnlyIdle).unwrap(), &mut h);
     assert_eq!(h, [0x07, 0xFE]);
-    Tm::write_header(&TmParams, FirstHeaderPointer::ZERO, &mut []).unwrap();
+    Tm::write_header(&TmParams, FirstHeaderPointer::ZERO, &mut []);
 }
 
 #[test]

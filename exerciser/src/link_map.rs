@@ -548,8 +548,8 @@ fn uslp(t: &mut Tally) {
             && a.get(0)
                 == Some(&ReassemblerOutput::Event {
                     event: ReassemblyEvent::GapDiscard,
-                    vc: 1,
-                    map: 1,
+                    vc,
+                    map: m1,
                 })
     }));
     let fixed = tfdf(0b001, &[0, 1, 9, 8, 7]);

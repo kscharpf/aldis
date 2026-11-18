@@ -903,10 +903,16 @@ unsafe impl<P: MuxProtocol, const NV: usize, const NF: usize> InPlace for Channe
 }
 
 /// The scope of an input that names one (LNK-033).
-fn scope(input: &aldis_channel_mux_input_t) -> Result<Scope> {
+///
+/// # Errors
+/// `UnknownChannel` for a VCID that the protocol's identifier cannot hold, which names no VC the
+/// engine has (LNK-033).
+fn scope<P: MxProtocol>(input: &aldis_channel_mux_input_t) -> Result<Scope<P::Vc>> {
     Ok(match parse::<aldis_link_scope>(input.scope)? {
         aldis_link_scope::ALDIS_LINK_SCOPE_MASTER_CHANNEL => Scope::Mc,
-        aldis_link_scope::ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL => Scope::Vc(input.vc_id),
+        aldis_link_scope::ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL => Scope::Vc(
+            P::Vc::try_from(input.vc_id).map_err(|_| Error::new(ErrorKind::UnknownChannel))?,
+        ),
     })
 }
 
@@ -1012,14 +1018,14 @@ fn mx_run<P: MxProtocol>(
         }
         aldis_channel_mux_input::ALDIS_CHANNEL_MUX_INPUT_SET_OCF => engine.step(
             MuxInput::SetOcf {
-                scope: scope(input)?,
+                scope: scope::<P>(input)?,
                 ocf: ocf_octets(input.ocf),
             },
             area,
         )?,
         aldis_channel_mux_input::ALDIS_CHANNEL_MUX_INPUT_SET_FSH => engine.step(
             MuxInput::SetFsh {
-                scope: scope(input)?,
+                scope: scope::<P>(input)?,
                 data,
             },
             area,

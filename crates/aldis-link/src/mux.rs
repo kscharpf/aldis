@@ -147,11 +147,12 @@ impl Fsh {
 
 /// The master channel or a VC, as the owner of a slot (LNK-033, LNK-076).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Scope {
+pub enum Scope<V> {
     /// The master channel (`MC_OCF`, `MC_FSH`).
     Mc,
-    /// The Virtual Channel with this VCID (`VC_OCF`, `VC_FSH`).
-    Vc(u8),
+    /// The Virtual Channel with this VCID (`VC_OCF`, `VC_FSH`); `V` is the protocol's
+    /// [`Vc`](Protocol::Vc).
+    Vc(V),
 }
 
 /// The block that COP-1 gives with a field (LNK-032, LNK-076; 732.1 §4.1.2.12.5, §4.2.7.4
@@ -252,14 +253,14 @@ pub enum MuxInput<'a, P: MuxProtocol, const V: usize> {
     /// Replace the OCF slot of the MC or a VC (LNK-033).
     SetOcf {
         /// Whose slot.
-        scope: Scope,
+        scope: Scope<P::Vc>,
         /// The four octets of the OCF.
         ocf: [u8; OCF_LEN],
     },
     /// Replace the Secondary Header slot of the MC or a VC (TM, LNK-033).
     SetFsh {
         /// Whose slot.
-        scope: Scope,
+        scope: Scope<P::Vc>,
         /// The data octets, of the configured length.
         data: &'a [u8],
     },
@@ -1089,20 +1090,20 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// The position of the VC of `scope` (`None` for the MC).
-    fn scope_pos(&self, scope: Scope) -> Result<Option<usize>> {
+    fn scope_pos(&self, scope: Scope<P::Vc>) -> Result<Option<usize>> {
         match scope {
             Scope::Mc => Ok(None),
             Scope::Vc(id) => self
                 .head
                 .config
-                .find(id)
+                .find(id.into())
                 .map(|(pos, _)| Some(pos))
                 .ok_or(Error::new(ErrorKind::UnknownChannel)),
         }
     }
 
     /// `SetOcf` (LNK-033).
-    fn set_ocf(&mut self, scope: Scope, ocf: [u8; OCF_LEN]) -> Result<()> {
+    fn set_ocf(&mut self, scope: Scope<P::Vc>, ocf: [u8; OCF_LEN]) -> Result<()> {
         let slot = match self.scope_pos(scope)? {
             None => Some(&mut self.head.mc_ocf),
             Some(pos) => self.head.vc_ocf.get_mut(pos),
@@ -1117,7 +1118,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// `SetFsh` (LNK-033).
-    fn set_fsh(&mut self, scope: Scope, data: &[u8]) -> Result<()> {
+    fn set_fsh(&mut self, scope: Scope<P::Vc>, data: &[u8]) -> Result<()> {
         let slot = match self.scope_pos(scope)? {
             None => Some(&mut self.head.mc_fsh),
             Some(pos) => self.head.vc_fsh.get_mut(pos),

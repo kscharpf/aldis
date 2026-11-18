@@ -731,7 +731,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     let mut tm = TmMux::new(tm_config(MuxPolicy::FixedPriority)).unwrap();
     let invalid = |f| named(ErrorKind::InvalidField, f);
     // No MC_OCF, no VC_OCF, no Secondary Header, no Insert Zone configured.
-    for scope in [Scope::Mc, Scope::Vc(1)] {
+    for scope in [Scope::Mc, Scope::Vc(VcId::<3>::from_const::<1>())] {
         assert_eq!(
             failure(tm.step(MuxInput::SetOcf { scope, ocf: [0; 4] }, &mut out)),
             invalid(field::OCF_FLAG)
@@ -748,7 +748,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     assert_eq!(
         kind_of(tm.step(
             MuxInput::SetOcf {
-                scope: Scope::Vc(5),
+                scope: Scope::Vc(VcId::<3>::from_const::<5>()),
                 ocf: [0; 4]
             },
             &mut out
@@ -758,7 +758,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     assert_eq!(
         kind_of(tm.step(
             MuxInput::SetFsh {
-                scope: Scope::Vc(5),
+                scope: Scope::Vc(VcId::<3>::from_const::<5>()),
                 data: &[1]
             },
             &mut out
@@ -804,7 +804,7 @@ fn a_slot_update_the_configuration_cannot_take_is_refused() {
     assert_eq!(
         failure(aos.step(
             MuxInput::SetOcf {
-                scope: Scope::Vc(1),
+                scope: Scope::Vc(VcId::<6>::from_const::<1>()),
                 ocf: [0; 4]
             },
             &mut out
@@ -1002,7 +1002,7 @@ proptest! {
                     continue;
                 }
                 Op::Opportunity => MuxInput::Opportunity,
-                Op::SetOcf(vc) => MuxInput::SetOcf { scope: Scope::Vc(vc), ocf: [vc; 4] },
+                Op::SetOcf(vc) => MuxInput::SetOcf { scope: Scope::Vc(VcId::<3>::new(vc).unwrap()), ocf: [vc; 4] },
                 Op::SetInsert => MuxInput::SetInsert(&[1]),
             };
             match mux.step(input, &mut out) {

@@ -168,26 +168,16 @@ pub trait PacketProtocol: Protocol {
 
     /// The First Header Pointer of the frame header that carries a field with `pointer`, as the
     /// `FrameReceiver` hands it to the extractor with the data field: TM's, none where the
-    /// pointer is in the data field (AOS, USLP).
+    /// pointer is in the data field (AOS, USLP) (132.0 §4.1.2.7.6; LNK-060).
     fn header_pointer(pointer: Self::FieldPointer) -> Option<Self::HeaderPointer>;
 
-    /// The raw pointer field of `pointer`, for a caller that carries it in its own format.
-    ///
-    /// # Errors
-    /// `OutOfRange` (`first_header_pointer`) for an AOS offset that the edition's field cannot
-    /// hold (a pointer of [`encode_pointer`](Self::encode_pointer) never is).
-    fn raw_pointer(params: &Self::Params, pointer: Self::FieldPointer) -> Result<u16>;
+    /// The raw pointer field of `pointer`, for a caller that carries it in its own format (132.0
+    /// §4.1.2.7.6; 732.0 §4.1.4.2.2; 732.1 §4.1.4.2.4.3–4; LNK-011, LNK-076).
+    fn raw_pointer(pointer: Self::FieldPointer) -> u16;
 
     /// Writes the data field header for `pointer` into `header`, which holds
     /// [`PACKET_HEADER_LEN`](FrameFormat::PACKET_HEADER_LEN) octets; writes nothing for TM.
-    ///
-    /// # Errors
-    /// As [`raw_pointer`](Self::raw_pointer); nothing is written.
-    fn write_header(
-        params: &Self::Params,
-        pointer: Self::FieldPointer,
-        header: &mut [u8],
-    ) -> Result<()>;
+    fn write_header(params: &Self::Params, pointer: Self::FieldPointer, header: &mut [u8]);
 
     /// Reads a data field: the pointer and the packet zone (LNK-060, LNK-064). `header_pointer`
     /// is the First Header Pointer of the frame header (TM, required); AOS and USLP carry the
@@ -252,13 +242,11 @@ mod tm_impl {
             Some(pointer)
         }
 
-        fn raw_pointer(_: &TmParams, pointer: FirstHeaderPointer) -> Result<u16> {
-            Ok(pointer.get())
+        fn raw_pointer(pointer: FirstHeaderPointer) -> u16 {
+            pointer.get()
         }
 
-        fn write_header(_: &TmParams, _: FirstHeaderPointer, _: &mut [u8]) -> Result<()> {
-            Ok(())
-        }
+        fn write_header(_: &TmParams, _: FirstHeaderPointer, _: &mut [u8]) {}
 
         fn parse<'a>(
             _: &TmParams,
@@ -304,10 +292,39 @@ mod aos_impl {
         pub edition: AosEdition,
     }
 
+    /// The pointer of an `M_PDU` that a generator gives out (732.0 §4.1.4.2.2).
+    ///
+    /// It is checked against the edition of its VC when it is built, so that its raw field value
+    /// fits the edition's pointer field (732.0 §4.1.4.2.1.4; AOS-003, LNK-011, RS-020). Only
+    /// [`PacketProtocol::encode_pointer`] builds one.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct AosPointer {
+        pointer: PacketPointer,
+        raw: u16,
+    }
+
+    impl AosPointer {
+        /// The classified pointer, in the codec's type.
+        ///
+        /// Requirements: LNK-011, AOS-003; docs/04-engines.md §2.1.
+        #[must_use]
+        pub const fn pointer(self) -> PacketPointer {
+            self.pointer
+        }
+
+        /// The raw pointer field, in the width of the edition of the VC.
+        ///
+        /// Requirements: LNK-011, AOS-003; docs/04-engines.md §2.1.
+        #[must_use]
+        pub const fn raw(self) -> u16 {
+            self.raw
+        }
+    }
+
     impl PacketProtocol for Aos {
         type Params = AosParams;
         type HeaderPointer = ();
-        type FieldPointer = PacketPointer;
+        type FieldPointer = AosPointer;
         const DELIMITS_IDLE_EIP: bool = false;
         const IDLE_KIND: Option<IdlePacketKind> = None;
         const IDLE_FIELD: IdleField = IdleField::Pattern;
@@ -316,57 +333,47 @@ mod aos_impl {
             usize::from(PacketPointer::max_offset(params.edition)).saturating_add(1)
         }
 
-        fn encode_pointer(params: &AosParams, pointer: Pointer) -> Result<PacketPointer> {
-            match pointer {
-                Pointer::StartsAt(n) => u16::try_from(n)
-                    .ok()
-                    .filter(|&n| n <= PacketPointer::max_offset(params.edition))
-                    .and_then(PacketOffset::new)
-                    .map(PacketPointer::StartsAt)
-                    .ok_or(Error::out_of_range(
-                        field::FIRST_HEADER_POINTER,
-                        u64::from(PacketPointer::max_offset(params.edition)),
-                        u64::try_from(n).unwrap_or(u64::MAX),
-                    )),
-                Pointer::NoStart => Ok(PacketPointer::NoPacketStart),
-                Pointer::OnlyIdle => Ok(PacketPointer::OnlyIdleData),
-            }
+        fn encode_pointer(params: &AosParams, pointer: Pointer) -> Result<AosPointer> {
+            let edition = params.edition;
+            let (pointer, raw) = match pointer {
+                Pointer::StartsAt(n) => {
+                    let offset = u16::try_from(n)
+                        .ok()
+                        .filter(|&n| n <= PacketPointer::max_offset(edition))
+                        .and_then(PacketOffset::new)
+                        .ok_or(Error::out_of_range(
+                            field::FIRST_HEADER_POINTER,
+                            u64::from(PacketPointer::max_offset(edition)),
+                            u64::try_from(n).unwrap_or(u64::MAX),
+                        ))?;
+                    (PacketPointer::StartsAt(offset), offset.get())
+                }
+                Pointer::NoStart => (
+                    PacketPointer::NoPacketStart,
+                    PacketPointer::no_packet_start_raw(edition),
+                ),
+                Pointer::OnlyIdle => (
+                    PacketPointer::OnlyIdleData,
+                    PacketPointer::only_idle_data_raw(edition),
+                ),
+            };
+            Ok(AosPointer { pointer, raw })
         }
 
-        fn header_pointer(_: PacketPointer) -> Option<()> {
+        fn header_pointer(_: AosPointer) -> Option<()> {
             None
         }
 
-        fn raw_pointer(params: &AosParams, pointer: PacketPointer) -> Result<u16> {
-            let max = PacketPointer::max_offset(params.edition);
-            match pointer {
-                PacketPointer::StartsAt(n) if n.get() <= max => Ok(n.get()),
-                PacketPointer::StartsAt(n) => Err(Error::out_of_range(
-                    field::FIRST_HEADER_POINTER,
-                    u64::from(max),
-                    u64::from(n.get()),
-                )),
-                PacketPointer::NoPacketStart => {
-                    Ok(PacketPointer::no_packet_start_raw(params.edition))
-                }
-                PacketPointer::OnlyIdleData => {
-                    Ok(PacketPointer::only_idle_data_raw(params.edition))
-                }
-            }
+        fn raw_pointer(pointer: AosPointer) -> u16 {
+            pointer.raw()
         }
 
-        fn write_header(
-            params: &AosParams,
-            pointer: PacketPointer,
-            header: &mut [u8],
-        ) -> Result<()> {
+        fn write_header(_: &AosParams, pointer: AosPointer, header: &mut [u8]) {
             // The Issue 4 pointer has 11 bits in the low bits of the two octets, and the 5 spare
             // bits above it are zero (732.0-B-4 §4.1.4.2.1.4), which the raw value already is.
-            let raw = Self::raw_pointer(params, pointer)?;
-            for (d, s) in header.iter_mut().zip(raw.to_be_bytes()) {
+            for (d, s) in header.iter_mut().zip(pointer.raw().to_be_bytes()) {
                 *d = s;
             }
-            Ok(())
         }
 
         fn parse<'a>(
@@ -393,7 +400,7 @@ mod aos_impl {
 }
 
 #[cfg(feature = "aos")]
-pub use aos_impl::AosParams;
+pub use aos_impl::{AosParams, AosPointer};
 
 #[cfg(feature = "uslp")]
 mod uslp_impl {
@@ -483,15 +490,11 @@ mod uslp_impl {
             None
         }
 
-        fn raw_pointer(_: &UslpParams, pointer: FirstHeaderPointer) -> Result<u16> {
-            Ok(pointer.raw())
+        fn raw_pointer(pointer: FirstHeaderPointer) -> u16 {
+            pointer.raw()
         }
 
-        fn write_header(
-            params: &UslpParams,
-            pointer: FirstHeaderPointer,
-            header: &mut [u8],
-        ) -> Result<()> {
+        fn write_header(params: &UslpParams, pointer: FirstHeaderPointer, header: &mut [u8]) {
             let h = TfdfHeader {
                 rule: TfdzRule::PacketsSpanningFrames(pointer),
                 upid: params.upid,
@@ -499,7 +502,6 @@ mod uslp_impl {
             for (d, s) in header.iter_mut().zip(h.octets()) {
                 *d = s;
             }
-            Ok(())
         }
 
         // The UPID of the field is not compared with the configured one: the UPID names the

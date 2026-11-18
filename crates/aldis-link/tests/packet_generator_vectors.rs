@@ -62,7 +62,7 @@ fn config<P: Proto>(c: &Map<String, Value>) -> PacketGeneratorConfig<P> {
     config
 }
 
-fn output<P: Proto>(o: &GeneratorOutput<P>, params: &P::Params, area: &[u8]) -> Value {
+fn output<P: Proto>(o: &GeneratorOutput<P>, area: &[u8]) -> Value {
     match o {
         GeneratorOutput::DataField(f) => {
             let mut v = Map::new();
@@ -71,10 +71,7 @@ fn output<P: Proto>(o: &GeneratorOutput<P>, params: &P::Params, area: &[u8]) -> 
                 "field_hex".to_owned(),
                 json!(hex::encode(f.field.slice(area).unwrap())),
             );
-            v.insert(
-                "fhp".to_owned(),
-                json!(P::raw_pointer(params, f.pointer).unwrap()),
-            );
+            v.insert("fhp".to_owned(), json!(P::raw_pointer(f.pointer)));
             if let Some(route) = f.route {
                 v.insert("map".to_owned(), json!(route.map.get()));
                 v.insert(
@@ -115,10 +112,7 @@ fn run_scenarios<P: Proto, const Q: usize>(
             other => panic!("unknown input {other}"),
         };
         let got: Vec<Value> = match engine.step(input, now, &mut area) {
-            Ok(actions) => actions
-                .iter()
-                .map(|o| output(o, engine.config().protocol(), &area))
-                .collect(),
+            Ok(actions) => actions.iter().map(|o| output(o, &area)).collect(),
             Err(e) => {
                 let mut v = Map::new();
                 v.insert("error".to_owned(), json!(e.kind().name()));

@@ -323,11 +323,7 @@ fn extractor_refusals<P: PacketProtocol>(
 
 /// The pointer values and the data field headers of `P` (docs/04-engines.md §2.1).
 fn pointers<P: PacketProtocol>(t: &mut Tally, params: P::Params, none: u16, idle: Option<u16>) {
-    let raw = |pointer: Pointer| {
-        P::encode_pointer(&params, pointer)
-            .ok()
-            .and_then(|p| P::raw_pointer(&params, p).ok())
-    };
+    let raw = |pointer: Pointer| P::encode_pointer(&params, pointer).ok().map(P::raw_pointer);
     t.check(raw(Pointer::NoStart) == Some(none));
     t.check(raw(Pointer::OnlyIdle) == idle);
     t.check(raw(Pointer::StartsAt(bb(3))) == Some(3));
@@ -336,7 +332,7 @@ fn pointers<P: PacketProtocol>(t: &mut Tally, params: P::Params, none: u16, idle
     let three = P::encode_pointer(&params, Pointer::StartsAt(bb(3))).ok();
     let mut header = [0u8; 3];
     if let (Some(h), Some(three)) = (header.get_mut(..P::PACKET_HEADER_LEN), three) {
-        t.check(P::write_header(&params, three, h).is_ok());
+        P::write_header(&params, three, h);
     }
     let mut field = [0u8; 8];
     let zone = field.get_mut(P::PACKET_HEADER_LEN..).unwrap_or_default();

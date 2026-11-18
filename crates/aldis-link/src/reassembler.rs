@@ -63,12 +63,7 @@ use crate::protocol::Protocol;
 pub const MAP_REASSEMBLER_MAX_ACTIONS: usize = 2;
 
 /// The actions of one input of a `MapReassembler` (LNK-074).
-pub type ReassemblerActions = Actions<ReassemblerOutput, MAP_REASSEMBLER_MAX_ACTIONS>;
-
-/// The raw identifier.
-fn raw<I: Into<u8>>(id: I) -> u8 {
-    id.into()
-}
+pub type ReassemblerActions<P> = Actions<ReassemblerOutput<P>, MAP_REASSEMBLER_MAX_ACTIONS>;
 
 /// How an FDU relates to its SDU, whichever rule or flags said so (232.0 Table 4-2; 732.1
 /// Table 4-3).
@@ -249,7 +244,7 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
         }
         let mut table = [None; M];
         for (i, (slot, map)) in table.iter_mut().zip(maps).enumerate() {
-            let same = |m: &ReassemblerMap<P>| raw(m.vc) == raw(map.vc) && raw(m.id) == raw(map.id);
+            let same = |m: &ReassemblerMap<P>| m.vc == map.vc && m.id == map.id;
             if maps.iter().take(i).any(same) {
                 return Err(bad);
             }
@@ -277,10 +272,10 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
     }
 
     /// The index of the MAP `id` of the VC `vc`.
-    fn find(&self, vc: u8, id: u8) -> Option<usize> {
+    fn find(&self, vc: P::Vc, id: P::Map) -> Option<usize> {
         self.maps
             .iter()
-            .position(|m| m.is_some_and(|m| raw(m.vc) == vc && raw(m.id) == id))
+            .position(|m| m.is_some_and(|m| m.vc == vc && m.id == id))
     }
 }
 
@@ -326,22 +321,22 @@ pub enum ReassemblyEvent {
 
 /// An action of the `MapReassembler` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReassemblerOutput {
+pub enum ReassemblerOutput<P: ReassemblerProtocol> {
     /// A reassembly event (LNK-070).
     Event {
         /// What happened.
         event: ReassemblyEvent,
         /// The VC of the FDU.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP the event concerns.
-        map: u8,
+        map: P::Map,
     },
     /// An SDU, whole, in the output area (LNK-070).
     Sdu {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the SDU is in the output area.
         sdu: OutRange,
     },
@@ -350,9 +345,9 @@ pub enum ReassemblerOutput {
     /// length of each come from its own header (API-061).
     Packets {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the run is in the output area.
         run: OutRange,
         /// How many packets it holds.
@@ -361,9 +356,9 @@ pub enum ReassemblerOutput {
     /// Octets of a stream, as they arrived (LNK-072).
     StreamData {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the octets are in the output area.
         data: OutRange,
         /// A gap was flagged on the field that carried them.
@@ -419,12 +414,12 @@ impl Assembly {
 }
 
 /// The output area and the actions of one input.
-struct Cx<'a> {
+struct Cx<'a, P: ReassemblerProtocol> {
     out: &'a mut [u8],
-    actions: ReassemblerActions,
+    actions: ReassemblerActions<P>,
 }
 
-impl Cx<'_> {
+impl<P: ReassemblerProtocol> Cx<'_, P> {
     /// Copies `head` then `tail` to the start of the output area; returns their range.
     fn write(&mut self, head: &[u8], tail: &[u8]) -> Result<OutRange> {
         let total = head.len().saturating_add(tail.len());
@@ -566,7 +561,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         &mut self,
         input: ReassemblerInput<'_, P, M>,
         out: &mut [u8],
-    ) -> Result<ReassemblerActions> {
+    ) -> Result<ReassemblerActions<P>> {
         match input {
             ReassemblerInput::Fdu(fdu) => self.fdu(&fdu, out),
             ReassemblerInput::Reconfigure(config) => {
@@ -586,7 +581,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// `Fdu` (LNK-070…LNK-072).
-    fn fdu(&mut self, input: &FduIn<'_, P>, out: &mut [u8]) -> Result<ReassemblerActions> {
+    fn fdu(&mut self, input: &FduIn<'_, P>, out: &mut [u8]) -> Result<ReassemblerActions<P>> {
         let parsed = match P::parse(&self.head.config.channel, &input.meta, input.data) {
             Ok(parsed) => parsed,
             Err(e) => {
@@ -594,8 +589,8 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                 return Err(e);
             }
         };
-        let vc = raw(input.vc);
-        let found = self.head.config.find(vc, raw(parsed.map));
+        let vc = input.vc;
+        let found = self.head.config.find(vc, parsed.map);
         if let Some(index) = found
             && let Err(e) = self.check(index, &parsed, out.len())
         {
@@ -609,10 +604,10 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         };
         self.head.status.fdus_in.incr();
         if parsed.gap {
-            self.gap_discard(vc, raw(parsed.map), found, &mut cx)?;
+            self.gap_discard(vc, parsed.map, found, &mut cx)?;
         }
         match found {
-            None => self.event(ReassemblyEvent::UnknownMap, vc, raw(parsed.map), &mut cx)?,
+            None => self.event(ReassemblyEvent::UnknownMap, vc, parsed.map, &mut cx)?,
             Some(index) => self.apply(index, vc, &parsed, &mut cx)?,
         }
         Ok(cx.actions)
@@ -687,21 +682,21 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// of the field if an SDU of it was in progress, else the first MAP that had one (LNK-070).
     fn gap_discard(
         &mut self,
-        vc: u8,
-        map: u8,
+        vc: P::Vc,
+        map: P::Map,
         found: Option<usize>,
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         let field_had = found.is_some_and(|i| self.held(i) > 0);
         let mut total = 0_usize;
         let mut first = None;
         for (slot, entry) in self.head.slots.iter_mut().zip(self.head.config.maps.iter()) {
             let Some(entry) = entry else { continue };
-            if raw(entry.vc) != vc || slot.held() == 0 {
+            if entry.vc != vc || slot.held() == 0 {
                 continue;
             }
             total = total.saturating_add(slot.held());
-            first.get_or_insert(raw(entry.id));
+            first.get_or_insert(entry.id);
             *slot = Assembly::Idle;
         }
         let Some(first) = first else { return Ok(()) };
@@ -712,7 +707,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// Counts and returns an event.
-    fn event(&mut self, event: ReassemblyEvent, vc: u8, map: u8, cx: &mut Cx<'_>) -> Result<()> {
+    fn event(
+        &mut self,
+        event: ReassemblyEvent,
+        vc: P::Vc,
+        map: P::Map,
+        cx: &mut Cx<'_, P>,
+    ) -> Result<()> {
         match event {
             ReassemblyEvent::GapDiscard => self.head.status.gap_discards.incr(),
             ReassemblyEvent::SequenceViolation => self.head.status.sequence_violations.incr(),
@@ -742,9 +743,9 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     fn apply(
         &mut self,
         index: usize,
-        vc: u8,
+        vc: P::Vc,
         parsed: &Parsed<'_, P>,
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         let map = self
             .head
@@ -754,7 +755,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             .copied()
             .flatten()
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let id = raw(parsed.map);
+        let id = parsed.map;
         // Only an octet stream (and an idle TFDF) has no maximum, and uses none.
         let max = match (parsed.unit, map.max_sdu_len()) {
             (Unit::Stream(_) | Unit::Idle, _) => 0,
@@ -858,11 +859,11 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     fn deliver(
         &mut self,
         service: MapService,
-        vc: u8,
-        map: u8,
+        vc: P::Vc,
+        map: P::Map,
         head: &[u8],
         tail: &[u8],
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         Self::deliver_from(&mut self.head.status, service, (vc, map), head, tail, cx)
     }
@@ -870,10 +871,10 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     fn deliver_from(
         status: &mut ReassemblerStatus,
         service: MapService,
-        (vc, map): (u8, u8),
+        (vc, map): (P::Vc, P::Map),
         head: &[u8],
         tail: &[u8],
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         let range = cx.write(head, tail)?;
         match service {

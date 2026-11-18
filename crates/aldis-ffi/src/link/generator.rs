@@ -303,7 +303,7 @@ fn pg_run<P: PacketProtocol>(
         }
     };
     let list = engine.step(input, now, area)?;
-    pg_actions(&list, engine.config().protocol())
+    Ok(pg_actions(&list))
 }
 
 impl PacketGeneratorState {
@@ -359,33 +359,26 @@ impl PacketGeneratorState {
     }
 }
 
-/// The C form of the actions of one step; `params` are those of the engine, which give the raw
-/// pointer of a field (LNK-011).
-fn pg_actions<P: PacketProtocol>(
-    list: &GeneratorActions<P>,
-    params: &P::Params,
-) -> Result<aldis_packet_generator_actions_t> {
+/// The C form of the actions of one step (LNK-011).
+fn pg_actions<P: PacketProtocol>(list: &GeneratorActions<P>) -> aldis_packet_generator_actions_t {
     let mut result = aldis_packet_generator_actions_t::default();
     for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-        *slot = pg_action(output, params)?;
+        *slot = pg_action(output);
     }
     // `list` holds at most `PACKET_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
     result.count = list.len();
-    Ok(result)
+    result
 }
 
-fn pg_action<P: PacketProtocol>(
-    output: &GeneratorOutput<P>,
-    params: &P::Params,
-) -> Result<aldis_packet_generator_action_t> {
-    Ok(match output {
+fn pg_action<P: PacketProtocol>(output: &GeneratorOutput<P>) -> aldis_packet_generator_action_t {
+    match output {
         GeneratorOutput::DataField(f) => {
             let route = RouteFields::from(f.route);
             aldis_packet_generator_action_t {
                 kind: ALDIS_PACKET_GENERATOR_ACTION_DATA_FIELD,
                 vc_id: f.vc.into(),
                 field: range(f.field),
-                pointer: P::raw_pointer(params, f.pointer)?,
+                pointer: P::raw_pointer(f.pointer),
                 route_present: route.present,
                 map_id: route.map_id,
                 qos: route.qos,
@@ -397,7 +390,7 @@ fn pg_action<P: PacketProtocol>(
             octets: *octets,
             ..aldis_packet_generator_action_t::default()
         },
-    })
+    }
 }
 
 /// Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
