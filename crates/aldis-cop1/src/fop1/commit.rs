@@ -3,7 +3,7 @@
 //! [`Fop1Decision::commit`], the one method of the decision that writes the engine, its head and
 //! its store.
 
-use super::{Draft, FduSource, Fop1Actions, Fop1Decision, Fop1Format, Origin, Payload, Waiting};
+use super::{FduSource, Fop1Actions, Fop1Decision, Fop1Format, Origin, Payload, Waiting};
 
 impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
     Fop1Decision<'_, '_, Q, F, N, P>
@@ -15,20 +15,14 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
     /// decision holds keeps the engine as `decide` left it. It takes no engine and no store: the
     /// decision commits to the engine that made it, and to that engine's own store (RS-021).
     pub fn commit(self) -> Fop1Actions<N> {
-        let Fop1Decision {
-            engine,
-            draft:
-                Draft {
-                    mut core,
-                    actions,
-                    fdu,
-                    ..
-                },
-        } = self;
+        // The draft stays where `decide` built it: its fields are read and written in place, not
+        // moved into locals of this frame (VER-011).
+        let Fop1Decision { engine, mut draft } = self;
+        let fdu = draft.fdu;
         let store = &mut engine.store;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
-        for (p, sent) in core.sent.iter().enumerate() {
+        for (p, sent) in draft.core.sent.iter().enumerate() {
             let (_, rest) = store.frames.split_at_mut(p);
             let Some((slot, later)) = rest.split_first_mut() else {
                 continue;
@@ -62,7 +56,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
                 .encode(sent.sequence_number, payload, slot)
                 .ok();
         }
-        match core.wait {
+        match draft.core.wait {
             None => store.wait_fdu.fill(0),
             Some(Waiting { fresh: true, .. }) => {
                 store.wait_fdu.fill(0);
@@ -74,15 +68,15 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
         }
         // At rest, an entry's octets are at its own position and the `Wait_Queue` octets are in
         // place.
-        for (p, sent) in core.sent.iter_mut().enumerate() {
+        for (p, sent) in draft.core.sent.iter_mut().enumerate() {
             if let Some(sent) = sent {
                 sent.origin = Origin::Base(p);
             }
         }
-        if let Some(waiting) = &mut core.wait {
+        if let Some(waiting) = &mut draft.core.wait {
             waiting.fresh = false;
         }
-        engine.head.core = core;
-        actions
+        engine.head.core = draft.core;
+        draft.actions
     }
 }

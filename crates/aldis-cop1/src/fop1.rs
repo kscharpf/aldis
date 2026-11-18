@@ -1281,14 +1281,13 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
         now: Instant,
         out: &mut [u8],
     ) -> Result<Fop1Decision<'e, 'a, Q, F, N, P>> {
-        let draft = match self.classify(input, now)? {
-            Some((event, ctx)) => self.decide_cell(event, &ctx, out)?,
-            None => Draft::start(&self.head.core, &[]),
-        };
-        Ok(Fop1Decision {
-            engine: self,
-            draft,
-        })
+        let classified = self.classify(input, now)?;
+        let fdu = classified.as_ref().map_or(&[][..], |(_, ctx)| ctx.fdu);
+        let mut decision = Fop1Decision::start(self, fdu);
+        if let Some((event, ctx)) = &classified {
+            decision.run(*event, ctx, out)?;
+        }
+        Ok(decision)
     }
 
     /// Decides the cell of `event` in the current state with the parameters of `input` (the
@@ -1331,27 +1330,32 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             Fop1Input::TransmitDone { .. } => ctx.handle = self.head.core.bd_out,
             Fop1Input::InvalidClcw | Fop1Input::Timeout => {}
         }
-        let draft = self.decide_cell(event, &ctx, out)?;
-        Ok(Fop1Decision {
-            engine: self,
-            draft,
-        })
+        let mut decision = Fop1Decision::start(self, ctx.fdu);
+        decision.run(event, &ctx, out)?;
+        Ok(decision)
+    }
+}
+
+impl<'e, 'a, const Q: usize, const F: usize, const N: usize, P: Fop1Format>
+    Fop1Decision<'e, 'a, Q, F, N, P>
+{
+    /// The decision that changes nothing: the engine's small state, no action. `decide` builds
+    /// the one decision it returns here and runs the cell on it where it is, with no draft built
+    /// elsewhere and moved in, which would take another frame of a decision's size (VER-011).
+    fn start(engine: &'e mut Fop1<Q, F, N, P>, fdu: &'a [u8]) -> Self {
+        Fop1Decision {
+            draft: Draft::start(&engine.head.core, fdu),
+            engine,
+        }
     }
 
-    /// The decision of `event` (API-057, API-058).
-    fn decide_cell<'a>(
-        &self,
-        event: Fop1Event,
-        ctx: &Context<'a>,
-        out: &mut [u8],
-    ) -> Result<Draft<'a, Q, F, N, P>> {
+    /// Runs the cell of `event` on the draft, reading the engine's target and store.
+    fn run(&mut self, event: Fop1Event, ctx: &Context<'_>, out: &mut [u8]) -> Result<()> {
         let base = Base {
-            target: &self.head.target,
-            store: &self.store,
+            target: &self.engine.head.target,
+            store: &self.engine.store,
         };
-        let mut draft = Draft::start(&self.head.core, ctx.fdu);
-        draft.run(&base, event, ctx, out)?;
-        Ok(draft)
+        self.draft.run(&base, event, ctx, out)
     }
 }
 
