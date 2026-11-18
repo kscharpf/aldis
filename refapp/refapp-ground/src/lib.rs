@@ -8,7 +8,7 @@
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
 //! | [`frames_down`] | Downlink frames: strict TM decoding, `FrameReceiver`, `PacketExtractor`, CLCW (to FOP-1 at `cop1`), frame events | APP-036, APP-138, APP-144 |
-//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 (`RequestBd` at `frames`; at `cop1` `RequestAd`, CLCW, `Timeout`, directives, held transmit requests, events 200 to 203), TC frame | APP-040…APP-043, APP-044, APP-071, APP-090, APP-133, APP-143…APP-145, APP-148, APP-149; LNK-040…LNK-043; COP-010; TC-008 |
+//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 (`RequestBd` at `frames`; at `cop1` `RequestAd`, CLCW, `Timeout`, directives, held transmit requests (read from FOP-1, no copy), events 200 to 203), TC frame | APP-040…APP-043, APP-044, APP-071, APP-090, APP-133, APP-143…APP-145, APP-148, APP-149; LNK-040…LNK-043; COP-010; TC-008 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
