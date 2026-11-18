@@ -5,6 +5,7 @@
     reason = "test arithmetic on small literals"
 )]
 
+use super::super::{AD_REPETITIONS, BC_REPETITIONS, WINDOW};
 use super::Uplink;
 use crate::ops::Fop1Directive;
 use aldis::cop1::{Fop1, Fop1Config, Fop1Target, FrameKind, HeldKind, TimeoutType};
@@ -59,9 +60,9 @@ fn uplink_with_short_fop1() -> Uplink {
         t1_initial: Duration::from_micros(cop1::T1_INITIAL_US),
         transmission_limit: NonZeroU8::new(cop1::TRANSMISSION_LIMIT).unwrap(),
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: cop1::K,
-        ad_repetitions: cop1::FOP_REPETITIONS_TYPE_A,
-        bc_repetitions: cop1::FOP_REPETITIONS_CONTROL,
+        sliding_window_k: WINDOW,
+        ad_repetitions: AD_REPETITIONS,
+        bc_repetitions: BC_REPETITIONS,
     })
     .unwrap();
     uplink
