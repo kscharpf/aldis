@@ -22,6 +22,9 @@ use crate::error::{Error, Result};
 /// The codec implements it for the type that holds those parameters after its constructor has
 /// checked them, so an engine takes the set and keeps no copy of the frame length or the FECF
 /// (M6 plan WP-2c, RS-020).
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait PhysicalChannel: Copy + Debug + Eq {
     /// The Transfer Frame Length in octets: the length of every frame of a fixed-length channel,
     /// the maximum of one whose frames vary in length.
@@ -42,6 +45,9 @@ pub trait PhysicalChannel: Copy + Debug + Eq {
 ///
 /// The marker type that implements it carries no data; the managed parameters that vary a length
 /// are the [`HeaderExtension`](Self::HeaderExtension) the caller passes in.
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait FrameFormat: Copy + Debug + Eq + 'static {
     /// The managed parameter that adds octets to the Primary Header: nothing for TM and TC, the
     /// presence of the FHEC for AOS, the VCF Count Length for USLP.

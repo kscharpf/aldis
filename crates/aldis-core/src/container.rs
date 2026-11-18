@@ -4,6 +4,9 @@
 //! (`core::mem::size_of`). Nothing allocates, and no operation panics: a full container
 //! rejects the item. Engines use these containers for input-side storage only (API-052,
 //! API-060) and report `WouldBlock` when an input would overflow it; they hold no output.
+//!
+//! Codec-facing tier (GEN-082): the module exists for the Aldis codec and engine crates, and a
+//! minor release may change any item of it incompatibly.
 
 use crate::error::{Error, ErrorKind, Result};
 

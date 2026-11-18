@@ -85,6 +85,9 @@ impl<'a> Cut<'a> {
 }
 
 /// The protocol side of a [`FrameStream`] (TC-020, USLP-014).
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait Delimiter {
     /// The frame the stream yields.
     type Frame<'a>: CheckBytes<
@@ -147,6 +150,9 @@ pub trait Delimiter {
 }
 
 /// A frame of a stream item: its octets (TC-020, USLP-014).
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait StreamFrame<'a> {
     /// The octets of the frame.
     fn octets(&self) -> &'a [u8];

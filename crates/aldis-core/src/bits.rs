@@ -8,6 +8,9 @@
 //! A field is addressed by its bit offset from the start of the buffer and its width in bits
 //! (1–64). Every function is total: out-of-range arguments return [`ErrorKind::OutOfRange`](crate::error::ErrorKind::OutOfRange)
 //! and never panic (GEN-020).
+//!
+//! Codec-facing tier (GEN-082): the module exists for the Aldis codec crates, and a minor release
+//! may change any item of it incompatibly. An integrator uses the codec types instead.
 
 use crate::error::{Error, Result, as_u64};
 use crate::field;
