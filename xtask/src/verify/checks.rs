@@ -798,7 +798,8 @@ cargo test --locked --workspace --all-features --target s390x-unknown-linux-gnu
 const LAYERS: &str = "\
 cargo xtask layers
 cargo xtask symbols
-# refapp/ uses Aldis only through the facade and forbids unsafe (APP-100, APP-105).
+# refapp/ uses Aldis only through the facade, names no item of the codec-facing tier of
+# aldis-core, and forbids unsafe (APP-100, APP-105, GEN-082).
 cargo xtask refapp-deps
 # Only aldis-ffi may use unsafe code: every other crate forbids it at its roots and lowers
 # the lint nowhere, and every manifest keeps the workspace table or its own deny or forbid
