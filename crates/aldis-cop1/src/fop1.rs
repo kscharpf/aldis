@@ -1290,7 +1290,10 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             .iter()
             .enumerate()
             .find_map(|(p, s)| s.as_ref().filter(|s| in_flight(s)).map(|s| (p, s)))?;
-        self.store.frames.get(position)?.get(..sent.len)
+        self.store
+            .frames
+            .get(position)
+            .and_then(|frame| frame.get(..sent.len))
     }
 
     /// The instant at which [`Fop1Input::Timeout`] is to be fed, or `None` while the timer
