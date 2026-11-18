@@ -50,11 +50,11 @@ reason = "relation: a length in octets with no range beyond usize; FrameLayout::
 
 [[exemption]]
 item = "aldis_time::calendar::Day::MonthDay.1"
-reason = "relation: the day of month, whose only bound is its fit to the month and year; CalendarDate::from_month_day checks the relation (TIME-030), and a Day is reachable only from a CalendarDate (#668)"
+reason = "output: the day of month of a date, reported by CalendarDate::day, which CalendarDate::from_month_day checked against the month and year (TIME-030); no function takes a Day back (#668)"
 
 [[exemption]]
 item = "aldis_time::calendar::Day::Ordinal.0"
-reason = "relation: the day of year, whose only bound is its fit to the year; CalendarDate::from_day_of_year checks the relation (TIME-030), and a Day is reachable only from a CalendarDate (#668)"
+reason = "output: the day of year of a date, reported by CalendarDate::day, which CalendarDate::from_day_of_year checked against the year (TIME-030); no function takes a Day back (#668)"
 
 [[exemption]]
 item = "aldis_time::ccs::CcsValue.subsecond"

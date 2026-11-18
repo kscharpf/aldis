@@ -149,8 +149,9 @@ reduced!(Second, u8, 60);
 /// How a [`CalendarDate`] names its day (301.0 §3.4.1.1–2; TIME-030).
 ///
 /// A closed enum, one variant per calendar variation of 301.0 §3.4.1 (GEN-081): a `match` on
-/// [`CalendarDate::day`] names both and needs no `None` case. There is no constructor: a `Day`
-/// comes only from a [`CalendarDate`], which checks the day against the month and year
+/// [`CalendarDate::day`] names both and needs no `None` case. A `Day` is what
+/// [`CalendarDate::day`] reports, and no function takes one back. A `Day` built by hand is not
+/// checked: only a [`CalendarDate`] checks the day against the month and year
 /// ([`from_month_day`](CalendarDate::from_month_day),
 /// [`from_day_of_year`](CalendarDate::from_day_of_year)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
