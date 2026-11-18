@@ -512,7 +512,7 @@ fn a_bc_frame_leaves_and_a_held_ad_frame_the_purge_took_does_not() {
     // Frame 1 is held after the Retransmit flag, and at 1.75 s the directives return a BC
     // frame as well: the BC frame leaves first (§4.5.1). The Alert of Terminate purged the
     // `Sent_Queue` (232.1 §5.1.7), so FOP-1 holds no frame 1 any more: the next slot gives
-    // its `TransmitDone` and outputs nothing, with no `uplink_refused`.
+    // its `TransmitDone` and outputs nothing, with no `uplink_refused` (APP-144, §4.5.1 step 4(b)).
     let flag = rig.step(1_635_000, &[clcw(1, true, false)]);
     assert_eq!(flag.units().len(), 0);
     let first = rig.step(1_750_000, &[]);

@@ -7,7 +7,7 @@
 
 use super::Uplink;
 use crate::ops::Fop1Directive;
-use aldis::cop1::{Fop1, Fop1Config, Fop1Target, FrameKind, TimeoutType};
+use aldis::cop1::{Fop1, Fop1Config, Fop1Target, FrameKind, HeldKind, TimeoutType};
 use aldis::core::ErrorKind;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::time::{Duration, Instant};
@@ -127,14 +127,14 @@ fn a_frame_held_across_a_slot_leaves_with_the_bytes_the_engine_holds() {
     uplink.clcw(0x0100_0000 + 1 + 0x0800, at(800), &mut out);
     assert_eq!(out.frames.len(), 3);
     assert!(!uplink.fop.out_flag_ready(FrameKind::Ad));
-    let held = uplink.fop.held_frame(FrameKind::Ad).unwrap().to_vec();
+    let held = uplink.fop.held_frame(HeldKind::Ad).unwrap().to_vec();
     assert_eq!(held[4], 1);
     assert_eq!(held, out.frames[1]);
     // The slot outputs exactly those bytes, as its last output; the next one, frame 2.
     uplink.slot_ad(at(1_000), &mut out);
     assert_eq!(out.frames.len(), 4);
     assert_eq!(out.frames[3], held);
-    let next = uplink.fop.held_frame(FrameKind::Ad).unwrap().to_vec();
+    let next = uplink.fop.held_frame(HeldKind::Ad).unwrap().to_vec();
     assert_eq!(next[4], 2);
     uplink.slot_ad(at(1_250), &mut out);
     assert_eq!(out.frames.len(), 5);

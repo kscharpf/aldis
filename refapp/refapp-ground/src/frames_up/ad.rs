@@ -11,12 +11,12 @@
 //! slot, where the node outputs it and gives `TransmitDone`. The node keeps no copy of the
 //! frame: FOP-1 holds the master copy on its `Sent_Queue` (232.1 §5.1.7) and the node reads it
 //! with `Fop1::held_frame` at the slot (#505; COP-011, API-056). Where the engine holds none (the
-//! master copy was acknowledged or purged since), the request still gets its `TransmitDone` and
-//! no frame leaves.
+//! master copy was acknowledged by a CLCW or purged by an Alert, Initialize, or Terminate since),
+//! the request still gets its `TransmitDone` and no frame leaves (APP-144, §4.5.1 step 4(b)).
 
 use aldis::cop1::{
     Alert, AlertReason, DirectiveNotification, DirectiveNotify, Fop1Event, Fop1Input, Fop1Output,
-    Fop1State, FrameKind, TransferNotification, TransferNotify,
+    Fop1State, FrameKind, HeldKind, TransferNotification, TransferNotify,
 };
 use aldis::core::time::Instant;
 use aldis::core::{Error, ErrorKind};
@@ -146,7 +146,7 @@ impl Uplink {
                 out.unit(frame);
             }
             let done = Fop1Input::TransmitDone {
-                kind,
+                kind: FrameKind::from(kind),
                 accepted: true,
             };
             self.drive(done, now, out);
@@ -156,15 +156,15 @@ impl Uplink {
     /// The kind of the transmit request that goes in this slot: Type-BC before Type-AD, the one
     /// whose Out flag is `Not_Ready` (232.1 §5.1.6; API-056). With `held_frame`, the only reads
     /// of the engine's held requests: the kinds Type-AD and Type-BC are named here.
-    fn outstanding(&self) -> Option<FrameKind> {
-        [FrameKind::Bc, FrameKind::Ad]
+    fn outstanding(&self) -> Option<HeldKind> {
+        [HeldKind::Bc, HeldKind::Ad]
             .into_iter()
-            .find(|&kind| !self.fop.out_flag_ready(kind))
+            .find(|&kind| !self.fop.out_flag_ready(FrameKind::from(kind)))
     }
 
     /// The frame FOP-1 holds for the request of `kind`, `None` if its master copy left the
     /// `Sent_Queue` (232.1 §5.1.7; COP-011, API-056).
-    fn held_frame(&self, kind: FrameKind) -> Option<&[u8]> {
+    fn held_frame(&self, kind: HeldKind) -> Option<&[u8]> {
         self.fop.held_frame(kind)
     }
 
