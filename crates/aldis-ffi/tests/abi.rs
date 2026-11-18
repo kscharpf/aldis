@@ -861,6 +861,70 @@ fn the_detail_is_written_whole() {
 }
 
 #[test]
+fn a_date_fills_the_fields_of_its_variation_and_zeroes_the_others() {
+    // req: TIME-030, CABI-010, CABI-011
+    let options = aldis_time_ascii_options_t {
+        max_fraction_digits: 12,
+    };
+    let parse = |text: &[u8]| {
+        let mut t = aldis_time_ascii_t::default();
+        // SAFETY: every pointer is to a live local or slice.
+        let status = unsafe {
+            aldis_time_ascii_parse(
+                text.as_ptr(),
+                text.len(),
+                &raw const options,
+                &raw mut t,
+                null_mut(),
+            )
+        };
+        assert_eq!(status, 0);
+        t
+    };
+    let a = parse(b"2024-02-29T12:34:56Z");
+    assert_eq!(
+        (a.variation, a.year, a.month, a.day, a.day_of_year),
+        (ALDIS_TIME_MONTH_DAY, 2024, 2, 29, 0)
+    );
+    let b = parse(b"2024-060T12:34:56Z");
+    assert_eq!(
+        (b.variation, b.year, b.month, b.day, b.day_of_year),
+        (ALDIS_TIME_DAY_OF_YEAR, 2024, 0, 0, 60)
+    );
+
+    // A CCS code: P-field 0x50 (month-day) or 0x58 (day of year), BCD fields, no subsecond.
+    let decode = |bytes: &[u8]| {
+        // Poisoned, so a field the call leaves alone shows.
+        let mut d = aldis_time_decoded_t::default();
+        d.value.month = 0xFF;
+        d.value.day_of_month = 0xFF;
+        d.value.day_of_year = 0xFFFF;
+        // SAFETY: every pointer is to a live local or slice.
+        let status = unsafe {
+            aldis_time_decode(
+                bytes.as_ptr(),
+                bytes.len(),
+                ALDIS_MODE_STRICT,
+                &raw mut d,
+                null_mut(),
+            )
+        };
+        assert_eq!(status, 0);
+        d.value
+    };
+    let v = decode(&[0x50, 0x20, 0x24, 0x02, 0x29, 0x12, 0x34, 0x56]);
+    assert_eq!(
+        (v.variation, v.year, v.month, v.day_of_month, v.day_of_year),
+        (ALDIS_TIME_MONTH_DAY, 2024, 2, 29, 0)
+    );
+    let v = decode(&[0x58, 0x20, 0x24, 0x00, 0x60, 0x12, 0x34, 0x56]);
+    assert_eq!(
+        (v.variation, v.year, v.month, v.day_of_month, v.day_of_year),
+        (ALDIS_TIME_DAY_OF_YEAR, 2024, 0, 0, 60)
+    );
+}
+
+#[test]
 fn the_library_reports_its_abi_version() {
     // req: CABI-060
     let v = aldis_abi_version();
