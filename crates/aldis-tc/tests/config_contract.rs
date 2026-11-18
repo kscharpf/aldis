@@ -72,8 +72,8 @@ fn configurations_are_plain_data_built_in_const_context() {
     );
     // The constructors validate: a maximum below the minimum frame is an error, not a value.
     assert!(PhysicalChannelConfig::new(1, true).is_err());
-    // The table is validated at run time (its checks loop over the entries), so it is not a
-    // `const`; it is plain data all the same, and equal tables are equal values.
+    // `VcTable::new` is a `const fn`, so a table can be built in a `const`; this test builds it at
+    // run time to check that it is plain data, and that equal tables are equal values.
     let t = VcTable::<1, 1>::new(PC, &[VC], &[MAP]).unwrap();
     assert_eq!(t.clone(), t);
 }

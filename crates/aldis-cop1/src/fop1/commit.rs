@@ -15,8 +15,8 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
     /// decision holds keeps the engine as `decide` left it. It takes no engine and no store: the
     /// decision commits to the engine that made it, and to that engine's own store (RS-021).
     pub fn commit(self) -> Fop1Actions<N> {
-        // The draft stays where `decide` built it: its fields are read and written in place, not
-        // moved into locals of this frame (VER-011).
+        // The draft is bound whole and its fields are read and written through that binding,
+        // not destructured into separate locals (VER-011).
         let Fop1Decision { engine, mut draft } = self;
         let fdu = draft.fdu;
         let store = &mut engine.store;
