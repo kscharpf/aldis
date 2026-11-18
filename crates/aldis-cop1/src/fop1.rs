@@ -617,12 +617,12 @@ pub struct Fop1Config<P: Fop1Format = TcFormat> {
     /// The FOP Sliding Window Width K: 1..=min(255, `Q`) (232.1 §5.1.12, §7.2 Table 7-1; COP-015).
     /// 0 is unrepresentable; [`Fop1::new`] checks the upper bound, which depends on `Q`.
     pub sliding_window_k: NonZeroU8,
-    /// The Repetitions value of Type-AD frames, at least 1 (232.0 §2.4.2, Table 5-3 item
-    /// TC-106; 231.0 Annex A3), passed through on their Transmit actions and never acted on
+    /// The Repetitions value of Type-AD frames, at least 1 (232.0 §2.4.2, Table 5-3,
+    /// 231.0 Annex A3), passed through on their Transmit actions and never acted on
     /// (232.1 §5.1.9.3 note 1; COP-016). 1 requests no systematic retransmission.
     pub ad_repetitions: NonZeroU8,
-    /// The Repetitions value of Type-BC frames, at least 1 (232.0 §2.4.2, Table 5-3 item
-    /// TC-107; 231.0 Annex A3; COP-016).
+    /// The Repetitions value of Type-BC frames, at least 1 (232.0 §2.4.2, Table 5-3,
+    /// 231.0 Annex A3; COP-016).
     pub bc_repetitions: NonZeroU8,
 }
 
