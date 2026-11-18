@@ -143,7 +143,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
                 self.core.suspend_state = SuspendState::NotSuspended;
             }
             Fop1Action::SetOutFlagReady(kind) => match kind {
-                FrameKind::Ad => self.core.ad_out_ready = true,
+                FrameKind::Ad => self.core.ad_out = None,
                 FrameKind::Bc => self.core.bc_out_ready = true,
                 FrameKind::Bd => self.core.bd_out = None,
             },
@@ -262,7 +262,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
         now: Instant,
         out: &mut OutArea<'_>,
     ) -> Result<()> {
-        if !self.core.ad_out_ready {
+        if self.core.ad_out.is_some() {
             return Ok(());
         }
         let repetitions = self.core.ad_repetitions;
@@ -276,7 +276,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
             sent.to_be_retransmitted = false;
             let snapshot = *sent;
             let range = self.emit_sent(base, &snapshot, out)?;
-            self.core.ad_out_ready = false;
+            self.core.ad_out = Some(snapshot.sequence_number);
             self.actions.push(Fop1Output::Transmit {
                 kind: FrameKind::Ad,
                 sequence_number: snapshot.sequence_number,
@@ -329,7 +329,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
         })?;
         self.core.v_s = self.core.v_s.next();
         self.start_timer(now);
-        self.core.ad_out_ready = false;
+        self.core.ad_out = Some(sequence_number);
         self.actions.push(Fop1Output::Transmit {
             kind: FrameKind::Ad,
             sequence_number,

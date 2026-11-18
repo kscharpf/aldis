@@ -398,7 +398,11 @@ fn any_core() -> Core<Q> {
         nn_r: FrameSeqNum::new(kani::any()),
         sent,
         wait,
-        ad_out_ready: kani::any(),
+        ad_out: if kani::any() {
+            Some(FrameSeqNum::new(kani::any()))
+        } else {
+            None
+        },
         bc_out_ready: kani::any(),
         bd_out: if kani::any() { Some(kani::any()) } else { None },
         pending_initiate: if kani::any() { Some(kani::any()) } else { None },
