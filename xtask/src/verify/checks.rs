@@ -799,7 +799,7 @@ const LAYERS: &str = "\
 cargo xtask layers
 cargo xtask symbols
 # refapp/ uses Aldis only through the facade, names no item of the codec-facing tier of
-# aldis-core, and forbids unsafe (APP-100, APP-105, GEN-082).
+# aldis-core (GEN-082), and forbids unsafe (APP-100, APP-105, APP-168).
 cargo xtask refapp-deps
 # Only aldis-ffi may use unsafe code: every other crate forbids it at its roots and lowers
 # the lint nowhere, and every manifest keeps the workspace table or its own deny or forbid

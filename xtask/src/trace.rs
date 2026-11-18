@@ -53,7 +53,7 @@ pub const CHECK_REQUIREMENTS: [(&str, &str); 16] = [
     ("header", "CABI-001…CABI-003, CABI-030, CABI-072, VER-050"),
     (
         "layers",
-        "GEN-001…GEN-004, GEN-070, GEN-082, VER-002, VER-031",
+        "GEN-001…GEN-004, GEN-070, VER-002, VER-031, APP-168",
     ),
     ("no-std-", "GEN-005"),
     ("features", "GEN-008"),

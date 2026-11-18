@@ -115,9 +115,9 @@ commands:
   restricted [list]            every restricted type of a codec crate (a checked constructor)
                                has a property test with a `// restricted: <Type>` marker, and
                                every marker names one; `list` prints the types (RS-020, VER-023)
-  refapp-deps                  refapp/ uses Aldis only through the `aldis` facade, names no item
-                               of the codec-facing tier of aldis-core, and forbids unsafe
-                               code (APP-100, APP-105, GEN-082)
+  refapp-deps                  refapp/ uses Aldis only through the `aldis` facade, uses no codec-
+                               facing item of aldis-core (GEN-082), and forbids unsafe
+                               code (APP-100, APP-105, APP-168)
   unsafe-forbid                every crate of the workspace but aldis-ffi has
                                #![forbid(unsafe_code)] at its library and binary roots, and no
                                Rust file of such a crate lowers unsafe_code with allow, expect,
