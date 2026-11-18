@@ -49,6 +49,14 @@ reason = "relation: a length in octets with no range beyond usize; FrameLayout::
 # aldis-time
 
 [[exemption]]
+item = "aldis_time::calendar::Day::MonthDay.1"
+reason = "output: the day of month of a date, reported by CalendarDate::day, which CalendarDate::from_month_day checked against the month and year (TIME-030); no function takes a Day back (#668)"
+
+[[exemption]]
+item = "aldis_time::calendar::Day::Ordinal.0"
+reason = "output: the day of year of a date, reported by CalendarDate::day, which CalendarDate::from_day_of_year checked against the year (TIME-030); no function takes a Day back (#668)"
+
+[[exemption]]
 item = "aldis_time::ccs::CcsValue.subsecond"
 reason = "relation: the sub-second digits, whose range is set by the format's number of sub-second octets; Ccs::new checks the fit (TIME-030); kept by the RS-020 audit of issue #22"
 

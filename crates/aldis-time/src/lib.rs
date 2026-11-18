@@ -8,7 +8,7 @@
 //! | [`code`] | `decode_with_pfield`, `decode_implicit` (each with a `_lenient` twin), `TimeCode`, `TimeFormat`, agency-defined codes | 301.0 §3.1, §3.6 | TIME-001…TIME-003, TIME-005…TIME-007 |
 //! | [`cuc`] | CCSDS Unsegmented Code, nanosecond and `Instant` conversions | 301.0 §3.2 | TIME-010…TIME-016 |
 //! | [`cds`] | CCSDS Day Segmented Code | 301.0 §3.3, Annex A | TIME-020…TIME-022 |
-//! | [`calendar`] | Range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`; `CalendarDate` | 301.0 §3.4.1, §3.5.1, Annex A | TIME-030, TIME-035 |
+//! | [`calendar`] | Range-checked `Year`, `Month`, `Hour`, `Minute`, `Second`; `CalendarDate`, `Day` | 301.0 §3.4.1, §3.5.1, Annex A | TIME-030, TIME-035 |
 //! | [`ccs`] | CCSDS Calendar Segmented Code | 301.0 §3.4, Annex A | TIME-030, TIME-034 |
 //! | [`ascii`] | ASCII time codes A and B and their subsets: `AsciiTime`, `AsciiSubset`, `AsciiFormat`, `Fraction` | 301.0 §3.5 | TIME-031, TIME-032 |
 //! | [`convert`] | `UtcInstant`: conversions between CDS, CCS, and ASCII | 301.0 §3.3–3.5 | TIME-033 |
@@ -50,7 +50,7 @@ pub use anomaly::TimeAnomaly;
 pub use ascii::{
     AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, Fraction, MAX_ASCII_LEN, MAX_FRACTION_DIGITS,
 };
-pub use calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+pub use calendar::{CalendarDate, Day, Hour, Minute, Month, Second, Year};
 pub use ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
 pub use cds::{
     Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis,
