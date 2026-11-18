@@ -178,7 +178,7 @@ Found by A3 and disposed of at the exit (each target named; the exit pull reques
 | #497 | A2 WP-3b, split from #394 | Whether FARM-1's `Deliver` or the receiver output carries the Segment Header | Deferred to v1.1, its own track-R plan (a public API change; accepted by the maintainer, 2026-11-11) |
 | #498 | Third review of #496 | Two doc lines in `crates/` over 100 columns | Fixed by #519 (track R), merged before the exit |
 | #504 | A3 WP-4 | `Fop1Event`, `Fop1State`, `AlertReason` have no Blue Book number accessor | Open PR #515 awaits a maintainer answer |
-| #505 | A3 WP-4 | A caller that holds a transmit request until a slot copies the frame and keeps its own Out-flag bookkeeping | Resolved in v1.0 by [#664](https://github.com/kscharpf/aldis/pull/664); refapp adoption in a track-A PR (APP-101). It was deferred to v1.1 on 2026-11-11; the maintainer moved it to v1.0 on 2026-11-17, with #254 |
+| #505 | A3 WP-4 | A caller that holds a transmit request until a slot copies the frame and keeps its own Out-flag bookkeeping | Resolved in v1.0 by [#666](https://github.com/kscharpf/aldis/pull/666); refapp adoption in a track-A PR (APP-101). It was deferred to v1.1 on 2026-11-11; the maintainer moved it to v1.0 on 2026-11-17, with #254 |
 | #508 | Review of #506 | `Fop1Directive` defined twice, in `refapp-harness` and `refapp-ground` | Fixed in the exit pull request: the ground node owns the type, the scenario file parses into it; closed on merge |
 
 `next_deadline` of `Fop1` needed no workaround in the cases run (#505); whether it covers APP-074 with several engines stays a question for A5.
