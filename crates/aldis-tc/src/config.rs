@@ -742,7 +742,7 @@ pub(crate) mod tests {
 
     #[test]
     fn an_entry_is_a_duplicate_only_of_the_same_spacecraft_virtual_channel_and_map() {
-        // req: GEN-060, API-040, TC-024
+        // req: GEN-060, API-040
         let pc = PhysicalChannelConfig::new(1024, true).unwrap();
         let vc = |sc: u16, n: u8| {
             VcConfig::new(scid(sc), vcid(n), 1024, SegmentHeaderUse::Present).unwrap()
