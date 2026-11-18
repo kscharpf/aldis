@@ -743,6 +743,11 @@ pub enum Fop1Input<'a> {
 pub enum Fop1Output {
     /// A Transmit Request for Frame to the Lower Procedures: the frame is in the output area
     /// (232.1 §5.2.4 to §5.2.6; COP-010, COP-011, COP-016).
+    ///
+    /// At most one Transmit request per kind is outstanding: the Out flag of the kind is
+    /// `Not_Ready` from the request until its [`Fop1Input::TransmitDone`] (232.1 §5.1.6). For a
+    /// Type-AD or Type-BC request, [`Fop1::held_frame`] returns the frame the engine holds, so a
+    /// caller that waits for a link slot need not copy it; a Type-BD frame is not retained.
     Transmit {
         /// Type-AD, Type-BC, or Type-BD.
         kind: FrameKind,
@@ -794,7 +799,9 @@ struct Core<const Q: usize> {
     nn_r: FrameSeqNum,
     sent: [Option<Sent>; Q],
     wait: Option<Waiting>,
-    ad_out_ready: bool,
+    /// `AD_Out_Flag` (232.1 §5.1.6): `None` is Ready, `Some(n)` is `Not_Ready` with the Type-AD
+    /// frame N(S) = `n` in flight. At most one is, and no Type-AD frame is added while one is.
+    ad_out: Option<FrameSeqNum>,
     bc_out_ready: bool,
     bd_out: Option<Handle>,
     pending_initiate: Option<Handle>,
@@ -1045,7 +1052,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Head<Q, 
             nn_r: FrameSeqNum::new(0),
             sent: [None; Q],
             wait: None,
-            ad_out_ready: true,
+            ad_out: None,
             bc_out_ready: true,
             bd_out: None,
             pending_initiate: None,
@@ -1243,10 +1250,47 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     #[must_use]
     pub const fn out_flag_ready(&self, kind: FrameKind) -> bool {
         match kind {
-            FrameKind::Ad => self.head.core.ad_out_ready,
+            FrameKind::Ad => self.head.core.ad_out.is_none(),
             FrameKind::Bc => self.head.core.bc_out_ready,
             FrameKind::Bd => self.head.core.bd_out.is_none(),
         }
+    }
+
+    /// The frame the engine holds for the outstanding Transmit request of `kind`: the master
+    /// copy on the `Sent_Queue`, trimmed to the frame's length (232.1 §5.1.6, §5.1.7; COP-011,
+    /// API-056).
+    ///
+    /// A caller that holds a [`Fop1Output::Transmit`] request until a link slot reads the frame
+    /// here instead of copying it from the output area. There is a frame while the Out flag of
+    /// `kind` is `Not_Ready` ([`out_flag_ready`](Self::out_flag_ready) is `false`) and the master
+    /// copy is still on the queue: the frame of the request, or the retransmitted master copy.
+    /// The frame is byte-identical to the one in the output area.
+    ///
+    /// It is `None`:
+    /// - for [`FrameKind::Ad`] and [`FrameKind::Bc`] while the Out flag is Ready, that is, no
+    ///   request of the kind is outstanding;
+    /// - for a Type-AD or Type-BC request whose master copy a purge of the `Sent_Queue` has since
+    ///   removed (an Alert, or Initialize): the engine retains no copy, and the caller still
+    ///   answers the request with [`Fop1Input::TransmitDone`];
+    /// - for [`FrameKind::Bd`] always: 232.1 does not retain a Type-BD frame, so the frame of a
+    ///   Type-BD request is only in the output area.
+    ///
+    /// An input changes the answer, as it changes the `Sent_Queue`: read the frame before the
+    /// next input, which the borrow of this reader enforces (RS-021).
+    #[must_use]
+    pub fn held_frame(&self, kind: FrameKind) -> Option<&[u8]> {
+        let core = &self.head.core;
+        let in_flight = |sent: &Sent| match (kind, sent.kind) {
+            (FrameKind::Ad, SentKind::Ad(_)) => core.ad_out == Some(sent.sequence_number),
+            (FrameKind::Bc, SentKind::Bc) => !core.bc_out_ready,
+            (FrameKind::Ad | FrameKind::Bc | FrameKind::Bd, _) => false,
+        };
+        let (position, sent) = core
+            .sent
+            .iter()
+            .enumerate()
+            .find_map(|(p, s)| s.as_ref().filter(|s| in_flight(s)).map(|s| (p, s)))?;
+        self.store.frames.get(position)?.get(..sent.len)
     }
 
     /// The instant at which [`Fop1Input::Timeout`] is to be fed, or `None` while the timer
@@ -2507,7 +2551,7 @@ mod tests {
         // A Sent_Queue full beyond what K admits: a broken invariant (InternalError).
         let mut jammed = a2.clone();
         jammed.head.core.sent.fill(Some(ad));
-        jammed.head.core.ad_out_ready = true;
+        jammed.head.core.ad_out = None;
         jammed.head.core.nn_r = jammed.head.core.v_s;
         let mut suspended = fresh();
         suspended.head.core.suspend_state = SuspendState::RetransmitWithWait;
