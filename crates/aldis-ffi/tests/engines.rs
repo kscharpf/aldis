@@ -246,6 +246,8 @@ fn configurations_are_checked_once() {
             (fop(|c| c.transmission_limit = 0), ALDIS_ERR_INVALID_CONFIG),
             (fop(|c| c.timeout_type = 2), ALDIS_ERR_INVALID_FIELD),
             (fop(|c| c.sliding_window_k = 0), ALDIS_ERR_INVALID_CONFIG),
+            (fop(|c| c.ad_repetitions = 0), ALDIS_ERR_INVALID_CONFIG),
+            (fop(|c| c.bc_repetitions = 0), ALDIS_ERR_INVALID_CONFIG),
             (fop(|c| c.sliding_window_k = 17), ALDIS_ERR_INVALID_CONFIG),
         ] {
             assert_eq!(

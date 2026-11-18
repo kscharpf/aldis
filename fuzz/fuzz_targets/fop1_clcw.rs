@@ -20,7 +20,7 @@ use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
 use aldis_tc::{Clcw, TcSpacecraftId, TcVcId};
 use core::num::NonZeroU8;
-use libfuzzer_sys::arbitrary::{Result, Unstructured};
+use libfuzzer_sys::arbitrary::{Error, Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
 const Q: usize = 8;
@@ -75,9 +75,9 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         } else {
             TimeoutType::Tt0
         },
-        sliding_window_k: u.int_in_range(1..=4)?,
-        ad_repetitions: 1,
-        bc_repetitions: 1,
+        sliding_window_k: NonZeroU8::new(u.int_in_range(1..=4)?).ok_or(Error::IncorrectFormat)?,
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     })
     .unwrap();
     let mut now = 0_u64;

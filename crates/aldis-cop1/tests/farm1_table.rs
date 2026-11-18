@@ -457,7 +457,9 @@ fn test_notify_types() {
     let d7 = Directive::SetVs {
         v_s: FrameSeqNum::new(100),
     };
-    let d8 = Directive::SetSlidingWindowWidth { width: 10 };
+    let d8 = Directive::SetSlidingWindowWidth {
+        width: NonZeroU8::MIN.saturating_add(9),
+    };
     let d9 = Directive::SetT1Initial {
         duration: Duration::from_millis(500),
     };
@@ -486,7 +488,12 @@ fn test_notify_types() {
             v_s: FrameSeqNum::new(100)
         }
     );
-    assert_eq!(d8, Directive::SetSlidingWindowWidth { width: 10 });
+    assert_eq!(
+        d8,
+        Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::MIN.saturating_add(9),
+        }
+    );
     assert_eq!(
         d9,
         Directive::SetT1Initial {

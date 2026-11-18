@@ -23,7 +23,7 @@ use aldis::cop1::{
 };
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::{Duration, Instant};
-use aldis::core::{Error, ErrorKind, Result, field};
+use aldis::core::{Error, ErrorKind, FieldId, Result, field};
 use aldis::tc::{Clcw, PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 
 use crate::abi::{self, Out, flag};
@@ -667,7 +667,16 @@ fn action(output: &Fop1Output) -> aldis_fop1_action_t {
     }
 }
 
+/// `value` as a `NonZeroU8`, or `InvalidConfig` naming `parameter` for 0 (232.1 §7.2 Table 7-1;
+/// COP-015, COP-016).
+fn nonzero(value: u8, parameter: FieldId) -> Result<NonZeroU8> {
+    NonZeroU8::new(value).ok_or_else(|| Error::new(ErrorKind::InvalidConfig).with_field(parameter))
+}
+
 /// The engine configuration of `cfg` (232.1 §7.2; COP-010, COP-015).
+///
+/// A K of 0, a Repetitions value of 0 (231.0 Annex A3: at least 1), and a `Transmission_Limit` of 0
+/// are `InvalidConfig`.
 fn config(cfg: &aldis_fop1_config_t) -> Result<Fop1Config> {
     let scid = TcSpacecraftId::try_from(cfg.scid)?;
     let vc_id = TcVcId::try_from(cfg.vc_id)?;
@@ -680,13 +689,11 @@ fn config(cfg: &aldis_fop1_config_t) -> Result<Fop1Config> {
     Ok(Fop1Config {
         target,
         t1_initial: Duration::from_micros(cfg.t1_initial_us),
-        transmission_limit: NonZeroU8::new(cfg.transmission_limit).ok_or_else(|| {
-            Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSMISSION_LIMIT)
-        })?,
+        transmission_limit: nonzero(cfg.transmission_limit, field::TRANSMISSION_LIMIT)?,
         timeout_type,
-        sliding_window_k: cfg.sliding_window_k,
-        ad_repetitions: cfg.ad_repetitions,
-        bc_repetitions: cfg.bc_repetitions,
+        sliding_window_k: nonzero(cfg.sliding_window_k, field::SLIDING_WINDOW_K)?,
+        ad_repetitions: nonzero(cfg.ad_repetitions, field::AD_REPETITIONS)?,
+        bc_repetitions: nonzero(cfg.bc_repetitions, field::BC_REPETITIONS)?,
     })
 }
 
@@ -714,9 +721,9 @@ fn directive(kind: aldis_fop1_directive, value: u64) -> Option<Directive> {
         aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_VS => Directive::SetVs {
             v_s: FrameSeqNum::new(octet?),
         },
-        aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_K => {
-            Directive::SetSlidingWindowWidth { width: octet? }
-        }
+        aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_K => Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::new(octet?)?,
+        },
         aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_T1_INITIAL => Directive::SetT1Initial {
             duration: Duration::from_micros(value),
         },
@@ -975,7 +982,7 @@ pub unsafe extern "C" fn aldis_fop1_status(
                 state: state_number(engine.state()),
                 v_s: engine.v_s().get(),
                 nn_r: engine.nn_r().get(),
-                sliding_window_k: engine.sliding_window_k(),
+                sliding_window_k: engine.sliding_window_k().get(),
                 transmission_limit: engine.transmission_limit().get(),
                 transmission_count: engine.transmission_count(),
                 suspend_state: suspend_number(engine.suspend_state()),

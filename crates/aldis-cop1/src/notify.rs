@@ -55,10 +55,11 @@ pub enum Directive {
     },
     /// Set Sliding Window Width K (CCSDS 232.1-B-2 Table 4-1, Event E36).
     SetSlidingWindowWidth {
-        /// Sliding window width K: 1..=min(255, `Sent_Queue` capacity), else the directive is
-        /// invalid, event E40 (COP-015). A plain `u8`, because the upper bound depends on the
-        /// `Sent_Queue` capacity of the engine that receives the directive.
-        width: u8,
+        /// Sliding window width K: 1..=min(255, `Sent_Queue` capacity) (232.1 §5.1.12, §7.2
+        /// Table 7-1; COP-015). 0 is unrepresentable; a K above the `Sent_Queue` capacity of the
+        /// engine that receives the directive is invalid, event E40, because the bound depends on
+        /// that capacity.
+        width: NonZeroU8,
     },
     /// Set `T1_Initial` timeout duration (CCSDS 232.1-B-2 Table 4-1, Event E37).
     SetT1Initial {
