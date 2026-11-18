@@ -62,6 +62,9 @@ impl Length for Variable {}
 
 /// The layout half of the plan of one frame that a codec supplies to [`FrameWriter`]: what the
 /// caller sees while it fills the frame (RS-023). The finishing half is [`FinishPlan`].
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait FramePlan: Debug {
     /// The field an error names when [`FrameWriter::set_ocf`] finds no OCF in the frame: the
     /// `ocf_flag` of TM, the `ocf` of AOS.
@@ -158,6 +161,9 @@ pub trait FramePlan: Debug {
 /// let w = FrameWriter::reserve_fixed(&mut out, layout, Unsealed).unwrap();
 /// let _ = w.unsecured();
 /// ```
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait FinishPlan: FramePlan {
     /// The proof, which only the plan's crate can build, that the caller is a one-shot encoder:
     /// [`FrameWriter::taken_as_given`] takes it and so cannot be called from outside the codec
@@ -171,6 +177,9 @@ pub trait FinishPlan: FramePlan {
 
 /// The plan of a [`Variable`] frame: it writes the header again when the length is fixed
 /// (RS-023, API-023).
+///
+/// Codec-facing tier (GEN-082): only an Aldis crate implements it, and a minor release may add a
+/// required item; implementing it outside the Aldis crates is not supported.
 pub trait VariablePlan: FinishPlan {
     /// Writes the Primary Header, and whatever else depends on the frame length (the USLP OCF at
     /// the end of the frame), for a frame of `total` octets: its final form when `finished`, the

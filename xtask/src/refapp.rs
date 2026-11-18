@@ -5,12 +5,170 @@
 //!          `aldis-*` crate (also not `aldis-testkit`), no `test-hooks` feature, also not as
 //!          dev-dependencies.
 //! APP-105  `#![forbid(unsafe_code)]` at the root of every library and binary target.
+//! APP-168  Only the integrator-facing items of `aldis-core`: no `.rs` file names an item of its
+//!          codec-facing tier (GEN-082), the modules `bits` and `container`, and the traits
+//!          `FrameFormat`, `PhysicalChannel`, `FramePlan`, `FinishPlan`, `VariablePlan`,
+//!          `Delimiter`, and `StreamFrame`.
 
+use std::collections::BTreeSet;
 use std::process::Command;
 
 use serde_json::Value;
 
 use crate::repo;
+use crate::rs020::{Tok, tokens};
+
+/// The modules of the codec-facing tier of `aldis-core` (GEN-082).
+const TIER_MODULES: [&str; 2] = ["bits", "container"];
+
+/// The traits of the codec-facing tier of `aldis-core` (GEN-082).
+const TIER_TRAITS: [&str; 7] = [
+    "FrameFormat",
+    "PhysicalChannel",
+    "FramePlan",
+    "FinishPlan",
+    "VariablePlan",
+    "Delimiter",
+    "StreamFrame",
+];
+
+/// The path segments after which a tier item names the `aldis-core` one: the facade, the crate,
+/// and `core`, which a `use aldis::core::{self, ..}` makes a local name.
+const TIER_ROOTS: [&str; 3] = ["aldis", "aldis_core", "core"];
+
+fn is_tier_item(seg: &str) -> bool {
+    TIER_MODULES.contains(&seg) || TIER_TRAITS.contains(&seg)
+}
+
+/// The tier item a path names: a segment after a root of [`TIER_ROOTS`] that is a tier module or
+/// trait, or the `*` of a glob that imports the modules or traits of the crate.
+fn tier_item_of(path: &[String]) -> Option<&str> {
+    for (i, seg) in path.iter().enumerate() {
+        if TIER_ROOTS.contains(&seg.as_str())
+            && let Some(hit) = path[i + 1..].iter().find(|s| is_tier_item(s))
+        {
+            return Some(hit);
+        }
+    }
+    let (last, head) = path.split_last()?;
+    let head: Vec<&str> = head.iter().map(String::as_str).collect();
+    let glob = last == "*"
+        && matches!(
+            head.as_slice(),
+            ["aldis", "core"]
+                | ["aldis_core"]
+                | [
+                    "aldis",
+                    "core" | "aldis_core",
+                    "format" | "stream" | "writer"
+                ]
+                | ["aldis_core", "format" | "stream" | "writer"]
+        );
+    glob.then_some("*")
+}
+
+/// The paths of the use tree that starts at `pos`, with the prefix `prefix` (`a::{b, c::d}` gives
+/// `a::b` and `a::c::d`); `as` renames are dropped. `pos` ends after the tree.
+fn use_tree(t: &[Tok], pos: &mut usize, prefix: &[String], out: &mut Vec<Vec<String>>) {
+    let mut path = prefix.to_vec();
+    loop {
+        match t.get(*pos).map(|x| x.text.as_str()) {
+            Some("::") => *pos += 1,
+            Some("{") => {
+                *pos += 1;
+                loop {
+                    use_tree(t, pos, &path, out);
+                    match t.get(*pos).map(|x| x.text.as_str()) {
+                        Some(",") => *pos += 1,
+                        Some("}") => {
+                            *pos += 1;
+                            return;
+                        }
+                        _ => return,
+                    }
+                }
+            }
+            Some("as") => {
+                *pos += 2;
+                out.push(path);
+                return;
+            }
+            Some("," | "}" | ";") | None => {
+                out.push(path);
+                return;
+            }
+            Some(seg) => {
+                path.push(seg.to_owned());
+                *pos += 1;
+            }
+        }
+    }
+}
+
+fn ident_start(t: &Tok) -> bool {
+    t.text
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '_')
+}
+
+/// Problems with the source of one `refapp/` file (APP-168): a `use` of a tier item, a path in the
+/// code that names one (also one that starts with `::`), and any identifier that is the name of a
+/// tier trait. A textual scan of the tokens,
+/// as `rs020` does: comments and literals are not code, and a renaming of the crate
+/// (`use aldis::core as c;`) is not followed.
+fn tier_problems(file: &str, src: &str) -> Vec<String> {
+    let t = tokens(src);
+    let mut found: BTreeSet<(usize, String)> = BTreeSet::new();
+    for tok in t.iter().filter(|x| TIER_TRAITS.contains(&x.text.as_str())) {
+        found.insert((tok.line, tok.text.clone()));
+    }
+    let mut i = 0;
+    while i < t.len() {
+        let tok = &t[i];
+        let follows_use = t
+            .get(i + 1)
+            .is_some_and(|n| n.text == "::" || n.text == "{" || ident_start(n));
+        if tok.text == "use" && follows_use {
+            let mut paths = Vec::new();
+            let mut pos = i + 1;
+            use_tree(&t, &mut pos, &[], &mut paths);
+            for p in &paths {
+                if let Some(item) = tier_item_of(p) {
+                    found.insert((tok.line, item.to_owned()));
+                }
+            }
+            i = pos.max(i + 1);
+            continue;
+        }
+        // A token after `::` goes on a chain that started earlier, unless the `::` is a leading one.
+        let after_path = i >= 2 && t[i - 1].text == "::" && ident_start(&t[i - 2]);
+        if ident_start(tok) && !after_path {
+            let mut chain = vec![tok.text.clone()];
+            let mut j = i + 1;
+            while t.get(j).is_some_and(|c| c.text == "::") && t.get(j + 1).is_some_and(ident_start)
+            {
+                chain.push(t[j + 1].text.clone());
+                j += 2;
+            }
+            if let Some(item) = tier_item_of(&chain) {
+                found.insert((tok.line, item.to_owned()));
+            }
+            i = j;
+            continue;
+        }
+        i += 1;
+    }
+    found
+        .into_iter()
+        .map(|(line, item)| {
+            format!(
+                "APP-168 {file}:{line}: names `{item}`, an item of the codec-facing tier of aldis-core; \
+                 refapp/ uses the integrator-facing items only"
+            )
+        })
+        .collect()
+}
 
 /// Problems with one package's dependencies (APP-100).
 fn dependency_problems(pkg: &Value) -> Vec<String> {
@@ -72,6 +230,17 @@ fn unsafe_problems(pkg: &Value) -> Vec<String> {
     problems
 }
 
+/// Problems with every `.rs` file under `refapp/` (APP-168); returns them and the file count.
+fn tier_problems_of_files() -> Result<(Vec<String>, usize), String> {
+    let files = repo::files("refapp", &["rs"]);
+    let mut problems = Vec::new();
+    for f in &files {
+        let src = repo::read(f)?;
+        problems.extend(tier_problems(&repo::rel(f), &src));
+    }
+    Ok((problems, files.len()))
+}
+
 /// `xtask fix`: regenerates the scenario schema and constants of `refapp/` (APP-107) with
 /// `gen-scenario`; returns 0, or an error when the generator cannot run or fails.
 pub fn gen_scenario() -> Result<usize, String> {
@@ -123,11 +292,13 @@ pub fn check() -> Result<usize, String> {
         problems.extend(dependency_problems(p));
         problems.extend(unsafe_problems(p));
     }
+    let (tier, files) = tier_problems_of_files()?;
+    problems.extend(tier);
     for p in &problems {
         println!("error: {p}");
     }
     println!(
-        "refapp-deps: {} refapp/ crate(s), {} violation(s)",
+        "refapp-deps: {} refapp/ crate(s), {files} .rs file(s), {} violation(s)",
         packages.len(),
         problems.len()
     );
@@ -136,8 +307,50 @@ pub fn check() -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::dependency_problems;
+    use super::{dependency_problems, tier_problems};
     use serde_json::json;
+
+    #[test]
+    fn codec_facing_tier_is_refused() {
+        // req: APP-168
+        let ok = "\
+use aldis::core::{Error, ErrorKind, Result, counter, crc::crc16};
+use aldis::core::ids::{Apid, SeqCount};
+use crate::bits::pack;
+// aldis::core::bits is a comment, and \"aldis::core::container\" a string
+fn f() -> core::option::Option<u8> { let _ = aldis::core::time::Instant::ZERO; None }
+";
+        assert_eq!(tier_problems("a.rs", ok), Vec::<String>::new());
+
+        let bad = "\
+use aldis::core::bits::read_u16;
+use aldis::core::{counter, container::FixedVec};
+use aldis_core::format::FrameFormat as Format;
+use aldis::core::*;
+use aldis::core::{self};
+impl aldis::core::stream::Delimiter for Mine {}
+impl<'a> StreamFrame<'a> for Mine {}
+fn g() { let _ = aldis::core::bits::read_bit(&[0], 0); let _ = core::container::FixedVec::<u8, 1>::new(); }
+use aldis::core::format;
+fn h<T: format::FrameFormat>() {}
+fn k() { let _ = ::aldis::core::bits::read_bit(&[0], 0); }
+";
+        let problems = tier_problems("b.rs", bad);
+        let lines: Vec<usize> = problems
+            .iter()
+            .map(|p| {
+                p.split(':')
+                    .nth(1)
+                    .and_then(|l| l.parse().ok())
+                    .unwrap_or(0)
+            })
+            .collect();
+        assert_eq!(lines, [1, 2, 3, 4, 6, 7, 8, 8, 10, 11], "{problems:#?}");
+        assert!(
+            problems[0].contains("APP-168 b.rs:1: names `bits`"),
+            "{problems:#?}"
+        );
+    }
 
     #[test]
     fn facade_only() {
