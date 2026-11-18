@@ -10,17 +10,12 @@
 //! harness may make, and none panics (GEN-020).
 #![no_main]
 
-#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
-mod common;
-
-use common::Rig;
-
 // req: COP-040, COP-041, COP-010, COP-030, COP-035, GEN-020, VER-022
 
 use aldis_cop1::{
     Directive, DirectiveNotification, DirectiveNotify, Farm1, Farm1Config, Farm1Input, Farm1Output,
-    Farm1Window, FduKind, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
-    TimeoutType, TransferNotification, fop1_max_actions,
+    Farm1Window, FduKind, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target,
+    FrameKind, TimeoutType, TransferNotification, fop1_max_actions,
 };
 use aldis_core::DecodeMode;
 use aldis_core::ids::FrameSeqNum;
@@ -49,7 +44,7 @@ const fn fdu(index: u8) -> [u8; FDU_LEN] {
 /// Feeds `input` to the FOP-1, then the Transmit Responses its frames cause (the lower layer
 /// accepts every frame); the frames go to `forward`, the confirmations and the Suspend to the caller.
 fn ground(
-    f: &mut Rig<Q, F, N>,
+    f: &mut Fop1<Q, F, N>,
     input: Fop1Input<'_>,
     now: u64,
     forward: &mut Vec<(bool, Vec<u8>)>,
@@ -68,7 +63,7 @@ fn ground(
         let decision = f
             .decide(input, Instant::from_micros(now), &mut area)
             .unwrap();
-        for a in f.commit(decision).iter() {
+        for a in decision.commit().iter() {
             match a {
                 Fop1Output::Transmit { kind, frame, .. } => {
                     forward.push((*kind == FrameKind::Bc, frame.slice(&area).unwrap().to_vec()));
@@ -96,7 +91,7 @@ fn ground(
 fn run(u: &mut Unstructured<'_>) -> Result<()> {
     let scid = TcSpacecraftId::new(SCID).unwrap();
     let vc = TcVcId::new(VCID).unwrap();
-    let mut g = Rig::<Q, F, N>::new(Fop1Config {
+    let mut g = Fop1::<Q, F, N>::new(Fop1Config {
         target: Fop1Target::tc(
             scid,
             vc,

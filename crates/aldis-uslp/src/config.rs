@@ -474,7 +474,7 @@ fn check_room(
 /// without an entry (Table 5-2 note 2): [`ChannelLookup::vc`] gives it a fixed-length VC with the
 /// defaults of [`VcParams::new`]. An entry for VCID 63 sets its other parameters, and
 /// [`vcs`](Self::vcs) lists only entries.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VcTable<const V: usize, const M: usize> {
     physical: PhysicalChannelConfig,
     vcs: [Option<VcConfig>; V],

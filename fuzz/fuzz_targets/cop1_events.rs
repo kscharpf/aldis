@@ -4,21 +4,15 @@
 //! the step is a pure function (the same state and input give the same result, also for an
 //! error), and the engines hold their own bounds (the `Sent_Queue` capacity, the action bound,
 //! the flags of FARM-1 as functions of its state; COP-006, COP-017, OI-64). A refused step
-//! returns no engine, so the caller's engine is untouched by construction (API-058). No input
-//! panics (GEN-020).
+//! changes nothing (API-058). No input panics (GEN-020).
 #![no_main]
-
-#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
-mod common;
-
-use common::Rig;
 
 // req: COP-041, COP-001, COP-002, COP-005, COP-006, COP-017, API-058, GEN-020, VER-022
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1Config, Fop1Decision, Fop1Input,
-    Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
+    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output,
+    Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -109,7 +103,7 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         aldis_tc::PhysicalChannelConfig::new(F, u.arbitrary()?).unwrap(),
     )
     .unwrap();
-    let mut f = Rig::<Q, F, N>::new(Fop1Config {
+    let mut f = Fop1::<Q, F, N>::new(Fop1Config {
         target,
         t1_initial: Duration::from_micros(u.int_in_range(1..=2_000)?),
         transmission_limit: NonZeroU8::new(u.int_in_range(1..=5)?).unwrap(),
@@ -165,30 +159,32 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         let before = f.state();
         let mut area = [0_u8; F];
         let mut again = [0_u8; F];
-        let first = f.decide(input, at, &mut area);
-        // The decision is a pure function of the state, the input, and the time.
+        // The decision is a pure function of the state, the input, and the time: decide, copy
+        // the actions out, drop the decision, and decide again.
+        let first = f
+            .decide(input, at, &mut area)
+            .map(|d| d.actions().iter().copied().collect::<Vec<_>>());
         assert_eq!(
-            first.as_ref().map(Fop1Decision::actions),
-            f.decide(input, at, &mut again)
-                .as_ref()
-                .map(Fop1Decision::actions)
+            first,
+            f.decide(input, at, &mut again).map(|d| d
+                .actions()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>())
         );
-        let Ok(decision) = first else {
+        if first.is_err() {
             continue;
-        };
-        let mut after = f.clone();
-        let actions = after.commit(decision);
+        }
+        let actions = f.decide(input, at, &mut again).unwrap().commit();
         assert_eq!(area, again);
         assert!(actions.len() <= N);
         let events = fop1_events(class);
         let row = &FOP1_TABLE[before as usize];
         assert!(
-            (class == 2 && after.state() == before)
-                || events
-                    .iter()
-                    .any(|e| row[*e].next_state == Some(after.state()))
+            (class == 2 && f.state() == before)
+                || events.iter().any(|e| row[*e].next_state == Some(f.state()))
         );
-        assert!(after.sent_queue_len() <= Q);
+        assert!(f.sent_queue_len() <= Q);
         for a in actions.iter() {
             match a {
                 Fop1Output::Alert(alert) if before == Fop1State::Initial => {
@@ -204,7 +200,6 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
                 _ => {}
             }
         }
-        f = after;
     }
     Ok(())
 }

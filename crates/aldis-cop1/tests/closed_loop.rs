@@ -30,11 +30,8 @@
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
-#[path = "common/mod.rs"]
-mod common;
-
 use aldis_cop1::{
-    Alert, Directive, Farm1, Farm1Config, Farm1Input, Farm1Output, Farm1Window, FduKind,
+    Alert, Directive, Farm1, Farm1Config, Farm1Input, Farm1Output, Farm1Window, FduKind, Fop1,
     Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, SuspendState, TimeoutType,
     TransferNotification, fop1_max_actions,
 };
@@ -57,12 +54,10 @@ const REGRESSIONS: &str = concat!(
 );
 
 /// A `Sent_Queue` of 16 frames of at most 64 octets.
-use common::Rig;
-
 const Q: usize = 16;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Ground = Rig<Q, F, N>;
+type Ground = Fop1<Q, F, N>;
 
 const SCID: u16 = 0x155;
 const VCID: u8 = 3;
@@ -333,11 +328,11 @@ impl World {
 
     fn ground_once(&mut self, input: Fop1Input<'_>, responses: &mut Vec<FrameKind>) {
         let now = self.instant();
-        let decision = self
+        let actions = self
             .ground
             .decide(input, now, &mut self.out)
-            .unwrap_or_else(|e| panic!("{}: FOP-1 refused {input:?}: {e:?}", self.s.name));
-        let actions = self.ground.commit(decision);
+            .unwrap_or_else(|e| panic!("{}: FOP-1 refused {input:?}: {e:?}", self.s.name))
+            .commit();
         // The head frame is never transmitted more often than the limit (232.1 §5.1.10.2).
         assert!(
             self.ground.transmission_count() <= self.ground.transmission_limit().get(),
