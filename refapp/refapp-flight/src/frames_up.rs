@@ -383,7 +383,7 @@ impl FrameUplink {
                         // USLP's event; a TC reassembler never raises it.
                         ReassemblyEvent::GapDiscard => continue,
                     };
-                    out.app_event(code, &[u64::from(*map)]);
+                    out.app_event(code, &[u64::from(map.get())]);
                 }
                 ReassemblerOutput::Packets { run, count, .. } => {
                     deliver_run(run.slice(&area), *count, out, deliver);

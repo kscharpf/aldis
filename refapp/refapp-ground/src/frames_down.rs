@@ -310,7 +310,7 @@ impl Extraction {
     fn run(
         &mut self,
         vcid: u8,
-        field: FieldIn<'_>,
+        field: FieldIn<'_, Tm>,
         telemetry: &mut Telemetry,
         out: &mut dyn Output,
     ) -> Result<(), Error> {
