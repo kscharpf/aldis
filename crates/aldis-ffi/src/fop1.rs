@@ -370,10 +370,11 @@ pub struct aldis_fop1_config_t {
     pub timeout_type: u32,
     /// The FOP Sliding Window Width K, 1 to `ALDIS_FOP1_SENT_QUEUE_FRAMES` (232.1 §5.1.12).
     pub sliding_window_k: u8,
-    /// The systematic retransmission value of Type-AD frames, passed through on `TRANSMIT`
-    /// actions (232.1 §5.1.9.3 note 1; COP-016).
+    /// The Repetitions value of Type-AD frames, at least 1 (232.0 §2.4.2; 231.0 Annex A3),
+    /// passed through on `TRANSMIT` actions (232.1 §5.1.9.3 note 1; COP-016).
     pub ad_repetitions: u8,
-    /// The systematic retransmission value of Type-BC frames (COP-016).
+    /// The Repetitions value of Type-BC frames, at least 1 (232.0 §2.4.2; 231.0 Annex A3;
+    /// COP-016).
     pub bc_repetitions: u8,
 }
 
@@ -802,8 +803,8 @@ const fn suspend_number(s: SuspendState) -> u8 {
 /// `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0 or
 /// 1, or a `timeout_type` with no constant; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`);
 /// `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`, `sliding_window_k`, `t1_initial`,
-/// `transmission_limit`) for a value outside its range or a frame length above
-/// `ALDIS_FOP1_MAX_FRAME_OCTETS`.
+/// `transmission_limit`, `ad_repetitions`, `bc_repetitions`) for a value outside its range or a
+/// frame length above `ALDIS_FOP1_MAX_FRAME_OCTETS`.
 ///
 /// # Safety
 /// `storage` is valid for writes of one `aldis_fop1_t` and outlives its use; `cfg` is valid for a
