@@ -497,8 +497,8 @@ fn set_vs_after_a_terminate_sets_the_sequence_number_of_the_next_frame() {
 }
 
 #[test]
-fn a_bc_frame_leaves_before_a_held_ad_frame() {
-    // req: APP-071, APP-144, COP-010
+fn a_bc_frame_leaves_and_a_held_ad_frame_the_purge_took_does_not() {
+    // req: APP-071, APP-144, COP-010, COP-011
     let mut rig = Rig::new(&[
         (0, directive(Fop1Directive::InitiateAdWithoutClcw)),
         (1_000_000, noop()),
@@ -510,15 +510,16 @@ fn a_bc_frame_leaves_before_a_held_ad_frame() {
     rig.step(0, &[]);
     rig.slots(1_000_000, 1_500_000);
     // Frame 1 is held after the Retransmit flag, and at 1.75 s the directives return a BC
-    // frame as well: one frame leaves per slot, the BC frame first (§4.5.1).
+    // frame as well: the BC frame leaves first (§4.5.1). The Alert of Terminate purged the
+    // `Sent_Queue` (232.1 §5.1.7), so FOP-1 holds no frame 1 any more: the next slot gives
+    // its `TransmitDone` and outputs nothing, with no `uplink_refused`.
     let flag = rig.step(1_635_000, &[clcw(1, true, false)]);
     assert_eq!(flag.units().len(), 0);
     let first = rig.step(1_750_000, &[]);
     assert_eq!(first.units().len(), 1);
     assert_eq!(kind_and_ns(first.units()[0]).0, BC);
     let second = rig.step(2_000_000, &[]);
-    assert_eq!(second.units().len(), 1);
-    assert_eq!(kind_and_ns(second.units()[0]).0, AD);
+    assert_eq!(second.units().len(), 0);
     assert_eq!(rig.node.uplink_refused(), 0);
 }
 
