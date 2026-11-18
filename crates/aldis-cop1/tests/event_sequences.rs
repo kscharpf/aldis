@@ -204,7 +204,7 @@ proptest! {
         tt1 in any::<bool>(),
         ops in prop::collection::vec(fop_op(), 0..60),
     ) {
-        // req: COP-041, COP-001, COP-005, COP-006, COP-011, COP-017, API-058, GEN-020, VER-023
+        // req: COP-041, COP-001, COP-005, COP-006, COP-011, COP-017, API-056, API-058, GEN-020, VER-023
         let mut f = engine(k, limit, tt1);
         let mut now = 0u64;
         for (advance, op) in &ops {
@@ -291,6 +291,20 @@ proptest! {
             for a in actions.iter() {
                 if let Fop1Output::Transmit { frame, .. } = a {
                     prop_assert!(frame.slice(&area).is_some_and(|b| !b.is_empty() && b.len() <= F));
+                }
+            }
+            // The frame held for a request (#505): none for Type-BD or while the Out flag is
+            // Ready; a request that ends the step with its copy still queued is held, and
+            // byte-identical to the frame in the output area.
+            prop_assert!(after.held_frame(FrameKind::Bd).is_none());
+            for k in [FrameKind::Ad, FrameKind::Bc] {
+                prop_assert!(!after.out_flag_ready(k) || after.held_frame(k).is_none());
+            }
+            if !actions.iter().any(|a| matches!(a, Fop1Output::Alert(_))) {
+                for a in actions.iter() {
+                    if let Fop1Output::Transmit { kind: k @ (FrameKind::Ad | FrameKind::Bc), frame, .. } = a {
+                        prop_assert_eq!(after.held_frame(*k), frame.slice(&area));
+                    }
                 }
             }
             f = after;
