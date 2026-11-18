@@ -193,7 +193,11 @@ fn tc(t: &mut Tally) {
         };
         for o in actions.iter() {
             if let SegmenterOutput::Fdu(f) = o {
-                t.check(f.handle == handle && f.vc == 1 && f.qos == Qos::SequenceControlled);
+                t.check(
+                    f.handle == handle
+                        && Into::<u8>::into(f.vc) == 1
+                        && f.qos == Qos::SequenceControlled,
+                );
                 t.check(matches!(
                     f.framing,
                     Framing::Whole | Framing::First | Framing::Continuing | Framing::Last
@@ -480,7 +484,7 @@ fn uslp(t: &mut Tally) {
                 t.check(false);
                 continue;
             };
-            let Some(map) = f.map.and_then(MapId::<4>::new) else {
+            let Some(map) = f.map else {
                 t.check(false);
                 continue;
             };
@@ -544,8 +548,8 @@ fn uslp(t: &mut Tally) {
             && a.get(0)
                 == Some(&ReassemblerOutput::Event {
                     event: ReassemblyEvent::GapDiscard,
-                    vc: 1,
-                    map: 1,
+                    vc,
+                    map: m1,
                 })
     }));
     let fixed = tfdf(0b001, &[0, 1, 9, 8, 7]);

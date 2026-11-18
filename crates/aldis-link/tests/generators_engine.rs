@@ -9,6 +9,7 @@
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"
 )]
 
+use aldis_aos::{BitstreamPointer, ValidBitCount};
 use aldis_core::ErrorKind;
 use aldis_core::field;
 use aldis_core::ids::{MapId, VcId};
@@ -118,7 +119,10 @@ fn an_access_configuration_the_blue_books_forbid_is_refused() {
     );
 }
 
-fn field_of(a: &aldis_link::access::AccessActions, out: &[u8]) -> Option<Vec<u8>> {
+fn field_of<P: aldis_link::access::AccessProtocol>(
+    a: &aldis_link::access::AccessActions<P>,
+    out: &[u8],
+) -> Option<Vec<u8>> {
     match a.get(0) {
         Some(AccessOutput::DataField(f)) => Some(f.field.slice(out).unwrap().to_vec()),
         _ => None,
@@ -318,11 +322,20 @@ fn bits_the_generator_cannot_take_are_refused_and_change_nothing() {
         panic!("no field")
     };
     // 16 bits of a 32-bit zone: the pointer is the last valid bit.
-    assert_eq!((f.vc, f.pointer, f.field.len()), (3, 15, 6));
+    assert_eq!(
+        (f.vc.get(), f.pointer, f.field.len()),
+        (
+            3,
+            BitstreamPointer::ValidBits(ValidBitCount::new(16).unwrap()),
+            6
+        )
+    );
     assert_eq!(out, [0x00, 0x0F, 0xFF, 0xFF, 0x00, 0x00]);
     // An idle B_PDU, then a Reconfigure of nothing queued.
     let a = g.step(BitstreamInput::Release, &mut out).unwrap();
-    assert!(matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer == 0x3FFE));
+    assert!(
+        matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer == BitstreamPointer::OnlyIdle)
+    );
     assert_eq!(g.status().idle_fields.get(), 1);
     assert!(
         g.step(BitstreamInput::Reconfigure(bit_config(6, 0)), &mut out)
@@ -341,12 +354,12 @@ fn bits_the_generator_cannot_take_are_refused_and_change_nothing() {
 }
 
 /// The valid bits of a released `B_PDU`.
-fn valid_bits(field: &[u8], pointer: u16) -> Vec<bool> {
+fn valid_bits(field: &[u8], pointer: BitstreamPointer) -> Vec<bool> {
     let zone = &field[2..];
     let n = match pointer {
-        0x3FFF => zone.len() * 8,
-        0x3FFE => 0,
-        p => usize::from(p) + 1,
+        BitstreamPointer::AllValid => zone.len() * 8,
+        BitstreamPointer::OnlyIdle => 0,
+        BitstreamPointer::ValidBits(count) => usize::from(count.get()),
     };
     (0..n)
         .map(|i| zone[i / 8] & (0x80 >> (i % 8)) != 0)
@@ -381,4 +394,66 @@ proptest! {
         }
         prop_assert_eq!(got, sent);
     }
+}
+
+#[test]
+fn the_pointer_of_a_field_is_the_codecs_type_and_out_of_range_offsets_are_refused() {
+    // req: LNK-020, LNK-021, RS-020, API-001
+    use aldis_link::access::AccessProtocol;
+    use aldis_link::bitstream::BitstreamProtocol;
+    use aldis_uslp::{LastValidOctet, TfdzOffset};
+
+    // Last Valid Octet Pointer (732.1 §4.1.4.2.4.5-6): TM and AOS have none.
+    assert_eq!(<Tm as AccessProtocol>::pointer(Some(3)).unwrap(), None);
+    assert_eq!(<Aos as AccessProtocol>::pointer(None).unwrap(), None);
+    assert_eq!(
+        <Uslp as AccessProtocol>::pointer(None).unwrap(),
+        Some(LastValidOctet::SduContinues)
+    );
+    assert_eq!(
+        <Uslp as AccessProtocol>::pointer(Some(5)).unwrap(),
+        Some(LastValidOctet::At(TfdzOffset::new(5).unwrap()))
+    );
+    assert_eq!(
+        named(<Uslp as AccessProtocol>::pointer(Some(0xFFFF))),
+        (ErrorKind::OutOfRange, Some(field::FHP_LVO_POINTER.name()))
+    );
+    assert_eq!(
+        kind(<Uslp as AccessProtocol>::pointer(Some(usize::MAX))),
+        ErrorKind::OutOfRange
+    );
+
+    // Bitstream Data Pointer (732.0 §4.1.4.3.3).
+    assert_eq!(
+        <Aos as BitstreamProtocol>::pointer(8, 8).unwrap(),
+        BitstreamPointer::AllValid
+    );
+    assert_eq!(
+        <Aos as BitstreamProtocol>::pointer(0, 8).unwrap(),
+        BitstreamPointer::OnlyIdle
+    );
+    assert_eq!(
+        <Aos as BitstreamProtocol>::pointer(3, 8).unwrap(),
+        BitstreamPointer::ValidBits(ValidBitCount::new(3).unwrap())
+    );
+    assert_eq!(
+        named(<Aos as BitstreamProtocol>::pointer(0x4000, 0x10000)),
+        (
+            ErrorKind::OutOfRange,
+            Some(field::BITSTREAM_DATA_POINTER.name())
+        )
+    );
+    assert_eq!(
+        kind(<Aos as BitstreamProtocol>::pointer(
+            usize::MAX - 1,
+            usize::MAX
+        )),
+        ErrorKind::OutOfRange
+    );
+    let mut header = [0xEE; 2];
+    <Aos as BitstreamProtocol>::write_header(
+        BitstreamPointer::ValidBits(ValidBitCount::new(16).unwrap()),
+        &mut header,
+    );
+    assert_eq!(header, [0x00, 0x0F]);
 }

@@ -85,12 +85,15 @@ enum Got {
     Discarded(usize),
 }
 
-fn convert(a: &aldis_link::reassembler::ReassemblerActions, area: &[u8]) -> Vec<Got> {
+fn convert<P: aldis_link::reassembler::ReassemblerProtocol>(
+    a: &aldis_link::reassembler::ReassemblerActions<P>,
+    area: &[u8],
+) -> Vec<Got> {
     a.iter()
         .map(|o| match *o {
-            ReassemblerOutput::Event { event, vc, map } => Got::Event(event, vc, map),
+            ReassemblerOutput::Event { event, vc, map } => Got::Event(event, vc.into(), map.into()),
             ReassemblerOutput::Sdu { vc, map, sdu } => {
-                Got::Sdu(vc, map, sdu.slice(area).unwrap().to_vec())
+                Got::Sdu(vc.into(), map.into(), sdu.slice(area).unwrap().to_vec())
             }
             ReassemblerOutput::Packets {
                 vc,
@@ -103,14 +106,19 @@ fn convert(a: &aldis_link::reassembler::ReassemblerActions, area: &[u8]) -> Vec<
                     .map(<[u8]>::to_vec)
                     .collect();
                 assert_eq!(p.len(), count);
-                Got::Packets(vc, map, p)
+                Got::Packets(vc.into(), map.into(), p)
             }
             ReassemblerOutput::StreamData {
                 vc,
                 map,
                 data,
                 after_gap,
-            } => Got::Stream(vc, map, data.slice(area).unwrap().to_vec(), after_gap),
+            } => Got::Stream(
+                vc.into(),
+                map.into(),
+                data.slice(area).unwrap().to_vec(),
+                after_gap,
+            ),
             ReassemblerOutput::Discarded { octets } => Got::Discarded(octets),
         })
         .collect()

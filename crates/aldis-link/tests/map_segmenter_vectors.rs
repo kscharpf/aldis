@@ -165,7 +165,7 @@ impl Proto for Uslp {
     }
 }
 
-fn output<P: Proto>(o: &SegmenterOutput, area: &[u8], header: bool) -> Value {
+fn output<P: Proto>(o: &SegmenterOutput<P>, area: &[u8], header: bool) -> Value {
     match o {
         SegmenterOutput::Fdu(f) => {
             let octets = f.fdu.slice(area).unwrap();
@@ -180,7 +180,7 @@ fn output<P: Proto>(o: &SegmenterOutput, area: &[u8], header: bool) -> Value {
             );
             v.insert("fdu_hex".to_owned(), json!(hex::encode(octets)));
             if let Some(map) = f.map {
-                v.insert("map".to_owned(), json!(map));
+                v.insert("map".to_owned(), json!(Into::<u8>::into(map)));
             }
             if header {
                 P::describe(f.framing, octets[0], &mut v);

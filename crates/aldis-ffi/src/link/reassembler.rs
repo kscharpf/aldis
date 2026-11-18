@@ -391,7 +391,7 @@ fn ra_run<P: RaProtocol>(
     input: &aldis_map_reassembler_input_t,
     data: &[u8],
     area: &mut [u8],
-) -> Result<ReassemblerActions> {
+) -> Result<aldis_map_reassembler_actions_t> {
     let input = match parse::<aldis_map_reassembler_input>(input.kind)? {
         aldis_map_reassembler_input::ALDIS_MAP_REASSEMBLER_INPUT_FDU => {
             ReassemblerInput::Fdu(FduIn {
@@ -404,7 +404,8 @@ fn ra_run<P: RaProtocol>(
             ReassemblerInput::Reconfigure(ra_config::<P>(&input.config)?)
         }
     };
-    engine.step(input, area)
+    let list = engine.step(input, area)?;
+    Ok(ra_actions(&list))
 }
 
 impl MapReassemblerState {
@@ -414,7 +415,7 @@ impl MapReassemblerState {
         input: &aldis_map_reassembler_input_t,
         data: &[u8],
         area: &mut [u8],
-    ) -> Result<ReassemblerActions> {
+    ) -> Result<aldis_map_reassembler_actions_t> {
         let reconfigure = parse::<aldis_map_reassembler_input>(input.kind)?
             == aldis_map_reassembler_input::ALDIS_MAP_REASSEMBLER_INPUT_RECONFIGURE;
         let ch = &input.config.channel;
@@ -453,20 +454,31 @@ const fn event_code(event: ReassemblyEvent) -> u32 {
     }
 }
 
-fn ra_action(output: &ReassemblerOutput) -> aldis_map_reassembler_action_t {
+/// The C form of the actions of one step.
+fn ra_actions<P: RaProtocol>(list: &ReassemblerActions<P>) -> aldis_map_reassembler_actions_t {
+    let mut result = aldis_map_reassembler_actions_t::default();
+    for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+        *slot = ra_action(output);
+    }
+    // `list` holds at most `MAP_REASSEMBLER_MAX_ACTIONS` actions, the length of `items`.
+    result.count = list.len();
+    result
+}
+
+fn ra_action<P: RaProtocol>(output: &ReassemblerOutput<P>) -> aldis_map_reassembler_action_t {
     let none = aldis_map_reassembler_action_t::default();
     match *output {
         ReassemblerOutput::Event { event, vc, map } => aldis_map_reassembler_action_t {
             kind: ALDIS_MAP_REASSEMBLER_ACTION_EVENT,
             event: event_code(event),
-            vc_id: vc,
-            map_id: map,
+            vc_id: vc.into(),
+            map_id: map.into(),
             ..none
         },
         ReassemblerOutput::Sdu { vc, map, sdu } => aldis_map_reassembler_action_t {
             kind: ALDIS_MAP_REASSEMBLER_ACTION_SDU,
-            vc_id: vc,
-            map_id: map,
+            vc_id: vc.into(),
+            map_id: map.into(),
             data: range(sdu),
             ..none
         },
@@ -477,8 +489,8 @@ fn ra_action(output: &ReassemblerOutput) -> aldis_map_reassembler_action_t {
             count,
         } => aldis_map_reassembler_action_t {
             kind: ALDIS_MAP_REASSEMBLER_ACTION_PACKETS,
-            vc_id: vc,
-            map_id: map,
+            vc_id: vc.into(),
+            map_id: map.into(),
             data: range(run),
             count,
             ..none
@@ -490,8 +502,8 @@ fn ra_action(output: &ReassemblerOutput) -> aldis_map_reassembler_action_t {
             after_gap,
         } => aldis_map_reassembler_action_t {
             kind: ALDIS_MAP_REASSEMBLER_ACTION_STREAM_DATA,
-            vc_id: vc,
-            map_id: map,
+            vc_id: vc.into(),
+            map_id: map.into(),
             data: range(data),
             after_gap: u8::from(after_gap),
             ..none
@@ -576,14 +588,7 @@ impl handle::Step for aldis_map_reassembler_t {
         area: &mut [u8],
         actions: Out<'_, aldis_map_reassembler_actions_t>,
     ) -> Result<()> {
-        let list = state.step(input, data, area)?;
-        let mut result = aldis_map_reassembler_actions_t::default();
-        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-            *slot = ra_action(output);
-        }
-        // `list` holds at most `MAP_REASSEMBLER_MAX_ACTIONS` actions, the length of `items`.
-        result.count = list.len();
-        actions.write(result);
+        actions.write(state.step(input, data, area)?);
         Ok(())
     }
 }

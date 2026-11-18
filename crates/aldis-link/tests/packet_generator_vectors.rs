@@ -62,16 +62,16 @@ fn config<P: Proto>(c: &Map<String, Value>) -> PacketGeneratorConfig<P> {
     config
 }
 
-fn output(o: &GeneratorOutput, area: &[u8]) -> Value {
+fn output<P: Proto>(o: &GeneratorOutput<P>, area: &[u8]) -> Value {
     match o {
         GeneratorOutput::DataField(f) => {
             let mut v = Map::new();
-            v.insert("vc".to_owned(), json!(f.vc));
+            v.insert("vc".to_owned(), json!(Into::<u8>::into(f.vc)));
             v.insert(
                 "field_hex".to_owned(),
                 json!(hex::encode(f.field.slice(area).unwrap())),
             );
-            v.insert("fhp".to_owned(), json!(f.pointer));
+            v.insert("fhp".to_owned(), json!(P::raw_pointer(f.pointer)));
             if let Some(route) = f.route {
                 v.insert("map".to_owned(), json!(route.map.get()));
                 v.insert(

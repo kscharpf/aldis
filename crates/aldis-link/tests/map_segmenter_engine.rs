@@ -142,11 +142,14 @@ fn submit_sdu<P: aldis_link::segmenter::SegmenterProtocol, const M: usize, const
     .map(|_| ())
 }
 
+/// An FDU and its octets.
+type Fdu<P> = (SegmentedFdu<P>, Vec<u8>);
+
 fn next<P: aldis_link::segmenter::SegmenterProtocol, const M: usize, const Q: usize>(
     s: &mut MapSegmenter<P, M, Q>,
     qos: Qos,
     at: u64,
-) -> Result<Option<(SegmentedFdu, Vec<u8>)>, aldis_core::Error> {
+) -> Result<Option<Fdu<P>>, aldis_core::Error> {
     let mut out = [0_u8; 64];
     let a = s.step(
         SegmenterInput::NextFdu { handle: 7, qos },
@@ -528,7 +531,10 @@ fn next_fdu_needs_the_whole_area_and_changes_nothing_without_it() {
     assert_eq!(kind_of(&r).0, ErrorKind::BufferTooSmall);
     let (f, octets) = next(&mut s, SC, 0).unwrap().unwrap();
     assert_eq!((f.framing, octets.len()), (Framing::First, 16));
-    assert_eq!((f.handle, f.vc, f.map, f.qos), (7, 1, Some(1), SC));
+    assert_eq!(
+        (f.handle, u8::from(f.vc), f.map.map(u8::from), f.qos),
+        (7, 1, Some(1), SC)
+    );
     assert_eq!(octets[0], 0x41);
 }
 
@@ -539,7 +545,7 @@ fn no_action_exceeds_the_bound() {
     let mut s = TcSeg::new(tc_config()).unwrap();
     let mut out = [0_u8; 64];
     let mut most = 0;
-    let mut count = |a: Result<aldis_link::segmenter::SegmenterActions, aldis_core::Error>| {
+    let mut count = |a: Result<aldis_link::segmenter::SegmenterActions<Tc>, aldis_core::Error>| {
         most = most.max(a.unwrap().len());
     };
     count(s.step(
@@ -723,7 +729,7 @@ fn a_released_timeout_is_harmless() {
     s.step(SegmenterInput::Timeout, at(600), &mut out).unwrap();
     assert_eq!(s.next_deadline(), None);
     let (f, octets) = next(&mut s, SC, 600).unwrap().unwrap();
-    assert_eq!((f.framing, f.map), (Framing::Stream, Some(4)));
+    assert_eq!((f.framing, f.map.map(u8::from)), (Framing::Stream, Some(4)));
     assert_eq!(octets, [0x64, 1, 2, 3, 4]);
     s.step(SegmenterInput::Timeout, at(900), &mut out).unwrap();
     assert_eq!(s.next_deadline(), None);
@@ -749,16 +755,16 @@ fn a_stream_that_waits_does_not_hold_the_sdus_behind_it_and_does_not_interrupt_o
     submit_sdu(&mut s, 2, &[7; 14]).unwrap();
     // The SDU goes first although it came later: the stream TFDZ is not ready.
     let (f, _) = next(&mut s, SC, 1).unwrap().unwrap();
-    assert_eq!((f.map, f.framing), (Some(2), Framing::First));
+    assert_eq!((f.map.map(u8::from), f.framing), (Some(2), Framing::First));
     // The deadline passes while the SDU is in progress; the SDU is not interrupted.
     s.step(SegmenterInput::Timeout, at(500), &mut out).unwrap();
     assert_eq!(s.next_deadline(), None);
     let (f, _) = next(&mut s, SC, 501).unwrap().unwrap();
-    assert_eq!((f.map, f.framing), (Some(2), Framing::Last));
+    assert_eq!((f.map.map(u8::from), f.framing), (Some(2), Framing::Last));
     // Now the due TFDZ.
     let (f, octets) = next(&mut s, SC, 502).unwrap().unwrap();
     assert_eq!(
-        (f.map, f.framing, octets),
+        (f.map.map(u8::from), f.framing, octets),
         (Some(4), Framing::Stream, vec![0x64, 1, 2])
     );
     assert!(next(&mut s, SC, 503).unwrap().is_none());
@@ -799,12 +805,15 @@ fn two_streams_report_the_earlier_deadline_and_octets_join_their_entry() {
     s.step(SegmenterInput::Timeout, at(150), &mut out).unwrap();
     assert_eq!(s.next_deadline(), Some(at(300)));
     let (f, octets) = next(&mut s, SC, 150).unwrap().unwrap();
-    assert_eq!((f.map, octets), (Some(2), vec![0x64, 2]));
+    assert_eq!((f.map.map(u8::from), octets), (Some(2), vec![0x64, 2]));
     // Fill MAP 1's TFDZ (5 octets): full, so no deadline and ready.
     put(&mut s, &mut out, 1, &[4, 5, 6, 7], 160);
     assert_eq!(s.next_deadline(), None);
     let (f, octets) = next(&mut s, SC, 170).unwrap().unwrap();
-    assert_eq!((f.map, octets), (Some(1), vec![0x64, 1, 3, 4, 5, 6]));
+    assert_eq!(
+        (f.map.map(u8::from), octets),
+        (Some(1), vec![0x64, 1, 3, 4, 5, 6])
+    );
     // The octet that did not fit starts the next TFDZ at the request.
     assert_eq!(s.next_deadline(), Some(at(470)));
     assert_eq!(s.status().fdus_out.get(), 2);
@@ -998,7 +1007,7 @@ fn a_tc_vc_without_a_segment_header_is_limited_by_the_data_field_and_never_segme
     let Some(SegmenterOutput::Fdu(f)) = a.get(0) else {
         panic!("{a:?}")
     };
-    assert_eq!((f.map, f.framing), (None, Framing::Whole));
+    assert_eq!((f.map.map(u8::from), f.framing), (None, Framing::Whole));
     assert_eq!(f.fdu.slice(&out).unwrap(), &[3; 1017][..]);
     let a = s
         .step(SegmenterInput::NextFdu { handle: 2, qos: SC }, T0, &mut out)
