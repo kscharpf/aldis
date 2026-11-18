@@ -11,6 +11,8 @@
 //! output area and fails with `BufferTooSmall` when the area is shorter. The other inputs write
 //! nothing.
 
+use core::fmt::Debug;
+
 use aldis_core::engine::{Actions, OutRange};
 use aldis_core::{Error, ErrorKind, Result, field};
 
@@ -21,14 +23,6 @@ use crate::protocol::Protocol;
 /// `DataField`, `Reconfigure` at most one `Discarded` (LNK-074, docs/04-engines.md §4).
 pub const BITSTREAM_GENERATOR_MAX_ACTIONS: usize = 1;
 
-/// The Bitstream Data Pointer of a zone that holds only valid bits: all ones (732.0
-/// §4.1.4.3.3.3).
-const ALL_VALID: u16 = 0x3FFF;
-
-/// The Bitstream Data Pointer of a zone that holds no valid bit: all ones minus one (732.0
-/// §4.1.4.3.3.4).
-const ONLY_IDLE: u16 = 0x3FFE;
-
 /// A frame protocol whose VCs carry Bitstream data: AOS (LNK-001, LNK-021).
 pub trait BitstreamProtocol: Protocol {
     /// The octets of the `B_PDU` header (732.0 §4.1.4.3.1).
@@ -36,6 +30,21 @@ pub trait BitstreamProtocol: Protocol {
     /// The longest Bitstream Data Zone in octets: the longest whose every bit index lies below
     /// the two reserved pointer values (732.0 §4.1.4.3.3.4 note; AOS-018, OI-53).
     const MAX_ZONE_LEN: usize;
+    /// The Bitstream Data Pointer of the protocol, in the codec's type (732.0 §4.1.4.3.3).
+    type Pointer: Copy + Debug + Eq;
+
+    /// The pointer of a zone of `zone_bits` bits whose first `valid_bits` bits are user data:
+    /// all valid for a full zone, only idle data for no valid bit, else the index of the last
+    /// valid bit (732.0 §4.1.4.3.3.2–4; LNK-021).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`bitstream_data_pointer`) for a count of valid bits that the pointer cannot
+    /// hold, which a zone of at most [`MAX_ZONE_LEN`](Self::MAX_ZONE_LEN) octets never has.
+    fn pointer(valid_bits: usize, zone_bits: usize) -> Result<Self::Pointer>;
+
+    /// Writes the `B_PDU` header for `pointer` into `header`, [`HEADER_LEN`](Self::HEADER_LEN)
+    /// octets, the Reserved Spare `00` (732.0 §4.1.4.3.1; GEN-052).
+    fn write_header(pointer: Self::Pointer, header: &mut [u8]);
 }
 
 /// The configuration of a `BitstreamGenerator` (LNK-021, LNK-078).
@@ -115,20 +124,20 @@ pub enum BitstreamInput<'a, P: BitstreamProtocol> {
 
 /// A `B_PDU` the generator gives out, for the multiplexer's `Offer` (LNK-076, API-054).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BitstreamField {
+pub struct BitstreamField<P: BitstreamProtocol> {
     /// The VCID of the generator.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// Where the `B_PDU` is in the output area.
     pub field: OutRange,
-    /// The raw Bitstream Data Pointer, which the field also holds.
-    pub pointer: u16,
+    /// The Bitstream Data Pointer, which the field also holds.
+    pub pointer: P::Pointer,
 }
 
 /// An action of the `BitstreamGenerator` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BitstreamOutput {
+pub enum BitstreamOutput<P: BitstreamProtocol> {
     /// A `B_PDU`, in the output area (LNK-021).
-    DataField(BitstreamField),
+    DataField(BitstreamField<P>),
     /// `Reconfigure` discarded the queued bits, counted in whole octets (LNK-003).
     Discarded {
         /// The octets that held the bits.
@@ -137,7 +146,7 @@ pub enum BitstreamOutput {
 }
 
 /// The actions of one input of the `BitstreamGenerator` (LNK-074).
-pub type BitstreamActions = Actions<BitstreamOutput, BITSTREAM_GENERATOR_MAX_ACTIONS>;
+pub type BitstreamActions<P> = Actions<BitstreamOutput<P>, BITSTREAM_GENERATOR_MAX_ACTIONS>;
 
 /// The read-only status of a `BitstreamGenerator`, for housekeeping telemetry (API-056, LNK-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -299,7 +308,7 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
         &mut self,
         input: BitstreamInput<'_, P>,
         out: &mut [u8],
-    ) -> Result<BitstreamActions> {
+    ) -> Result<BitstreamActions<P>> {
         let mut actions = BitstreamActions::new();
         match input {
             BitstreamInput::SubmitBits { bits, bit_len } => self.submit(bits, bit_len)?,
@@ -346,7 +355,7 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
     }
 
     /// `Release` (LNK-021).
-    fn release(&mut self, out: &mut [u8]) -> Result<BitstreamField> {
+    fn release(&mut self, out: &mut [u8]) -> Result<BitstreamField<P>> {
         let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
@@ -356,22 +365,11 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
             .ok_or(Error::new(ErrorKind::InternalError))?;
         let zone_bits = self.head.config.zone_bits();
         let take = self.head.bits.min(zone_bits);
-        let pointer = if self.head.bits >= zone_bits {
-            ALL_VALID
-        } else if self.head.bits == 0 {
+        let pointer = P::pointer(self.head.bits, zone_bits)?;
+        if self.head.bits == 0 {
             self.head.status.idle_fields.incr();
-            ONLY_IDLE
-        } else {
-            // The index of the last valid bit; it is below the zone, which has fewer than
-            // `0x3FFE` bits (`MAX_ZONE_LEN`).
-            let [.., hi, lo] = take.saturating_sub(1).to_be_bytes();
-            u16::from_be_bytes([hi, lo])
-        };
-        // The two bits of the header's first octet before the pointer are spare, zero.
-        let [hi, lo] = pointer.to_be_bytes();
-        for (d, s) in header.iter_mut().zip([hi & 0x3F, lo]) {
-            *d = s;
         }
+        P::write_header(pointer, header);
         let idle = self.head.config.idle_pattern;
         for i in 0..zone_bits {
             let value = if i < take {
@@ -384,7 +382,7 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
         self.consume(take);
         self.head.status.fields_out.incr();
         Ok(BitstreamField {
-            vc: self.head.config.vc.into(),
+            vc: self.head.config.vc,
             field: OutRange::new(0, field_len),
             pointer,
         })
@@ -408,11 +406,39 @@ impl<P: BitstreamProtocol, const Q: usize> BitstreamGenerator<P, Q> {
 
 #[cfg(feature = "aos")]
 mod aos_impl {
+    use aldis_aos::{BitstreamPointer, ValidBitCount};
+    use aldis_core::{Error, Result, field};
+
     use super::BitstreamProtocol;
     use crate::protocol::Aos;
 
     impl BitstreamProtocol for Aos {
         const HEADER_LEN: usize = aldis_aos::bpdu::BPDU_HEADER_LEN;
         const MAX_ZONE_LEN: usize = aldis_aos::bpdu::MAX_BITSTREAM_ZONE_LEN;
+        type Pointer = BitstreamPointer;
+
+        fn pointer(valid_bits: usize, zone_bits: usize) -> Result<BitstreamPointer> {
+            if valid_bits >= zone_bits {
+                Ok(BitstreamPointer::AllValid)
+            } else if valid_bits == 0 {
+                Ok(BitstreamPointer::OnlyIdle)
+            } else {
+                u16::try_from(valid_bits)
+                    .ok()
+                    .and_then(ValidBitCount::new)
+                    .map(BitstreamPointer::ValidBits)
+                    .ok_or(Error::out_of_range(
+                        field::BITSTREAM_DATA_POINTER,
+                        u64::from(ValidBitCount::MAX),
+                        u64::try_from(valid_bits).unwrap_or(u64::MAX),
+                    ))
+            }
+        }
+
+        fn write_header(pointer: BitstreamPointer, header: &mut [u8]) {
+            for (d, s) in header.iter_mut().zip(pointer.header_octets()) {
+                *d = s;
+            }
+        }
     }
 }

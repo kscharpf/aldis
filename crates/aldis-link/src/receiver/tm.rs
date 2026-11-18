@@ -4,7 +4,9 @@
 use aldis_core::FrameFormat;
 use aldis_core::ids::VcId;
 use aldis_core::{Error, ErrorKind, Result, field};
-use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
+use aldis_tm::{
+    DataFieldContent, FirstHeaderPointer, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 
 use super::{
     ChannelScope, DeliveryService, DiscardReason, FrameContext, ReceiveProtocol, ReceiverOutput,
@@ -14,8 +16,6 @@ use crate::protocol::Tm;
 
 /// The octets of the TM Primary Header (132.0 §4.1.2).
 const PRIMARY_HEADER_LEN: usize = Tm::PRIMARY_HEADER_LEN;
-/// The First Header Pointer of an OID frame, "only idle data" (132.0 §4.1.4.6.3).
-const OID_POINTER: u16 = 0x7FE;
 
 /// The fields the receiver reads of the TM Primary Header and the first octet of the Secondary
 /// Header, by bit position (132.0 §4.1.2, §4.1.3.2; GEN-051).
@@ -160,6 +160,7 @@ impl ReceiveProtocol for Tm {
     type Channel = TmChannel;
     type VcParams = TmVc;
     type Plain<'a> = aldis_core::Plain<aldis_tm::TmFrame<'a>>;
+    type HeaderPointer = FirstHeaderPointer;
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.as_bytes()
@@ -200,7 +201,7 @@ impl ReceiveProtocol for Tm {
         let ocf_flag = layout::OcfFlag::flag(&h);
         let fsh_flag = layout::FshFlag::flag(&h);
         let sync = layout::SyncFlag::flag(&h);
-        let pointer = layout::Pointer::get_u16(&h);
+        let pointer = FirstHeaderPointer::try_from(layout::Pointer::get_u16(&h))?;
         let mc = layout::McCount::get_u8(&h);
         let vcc = layout::VcCount::get_u8(&h);
         let fsh_len = if fsh_flag {
@@ -260,7 +261,7 @@ impl ReceiveProtocol for Tm {
             return cx.discard(DiscardReason::NotServed, Some(vc), None);
         }
         let carries_packets = p.content() == TmContent::Packets;
-        if carries_packets && !sync && pointer == OID_POINTER {
+        if carries_packets && !sync && pointer == FirstHeaderPointer::ONLY_IDLE_DATA {
             // An OID frame: its counts and services count, its data is dropped (LNK-052).
             cx.count_oid();
             return Ok(());

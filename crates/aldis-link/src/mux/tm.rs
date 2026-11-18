@@ -121,13 +121,13 @@ impl TmVc {
     }
 }
 
-/// What a TM offer carries besides its field: the raw First Header Pointer of the frame
-/// header (LNK-076, LNK-082).
+/// What a TM offer carries besides its field: the First Header Pointer of the frame header
+/// (LNK-076, LNK-082).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct TmOffer {
-    /// The raw First Header Pointer: required on a TM VC of Packets and refused on a TM VC
-    /// of `VCA_SDUs`.
-    pub pointer: Option<u16>,
+    /// The First Header Pointer, 11 bits (132.0 §4.1.2.7.6): required on a TM VC of Packets
+    /// and refused on a TM VC of `VCA_SDUs`.
+    pub pointer: Option<FirstHeaderPointer>,
 }
 
 impl MuxProtocol for Tm {
@@ -173,13 +173,7 @@ impl MuxProtocol for Tm {
 
     fn admit(vc: &TmVc, meta: &TmOffer) -> Result<Admitted<FirstHeaderPointer>> {
         let pointer = match (vc.config.content(), meta.pointer) {
-            (DataFieldContent::Packets, Some(raw)) => {
-                FirstHeaderPointer::new(raw).ok_or(Error::out_of_range(
-                    field::FIRST_HEADER_POINTER,
-                    u64::from(FirstHeaderPointer::MAX),
-                    u64::from(raw),
-                ))?
-            }
+            (DataFieldContent::Packets, Some(pointer)) => pointer,
             (DataFieldContent::VcaSdu, None) => FirstHeaderPointer::ZERO,
             (DataFieldContent::Packets, None) | (DataFieldContent::VcaSdu, Some(_)) => {
                 return Err(

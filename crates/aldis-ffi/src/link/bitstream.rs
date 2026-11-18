@@ -200,13 +200,13 @@ fn bg_config(c: &aldis_bitstream_generator_config_t) -> Result<BitstreamGenerato
     BitstreamGeneratorConfig::new(vc::<Aos>(&c.channel)?, c.field_len, c.idle_pattern)
 }
 
-fn bg_action(output: &BitstreamOutput) -> aldis_bitstream_generator_action_t {
+fn bg_action(output: &BitstreamOutput<Aos>) -> aldis_bitstream_generator_action_t {
     match output {
         BitstreamOutput::DataField(f) => aldis_bitstream_generator_action_t {
             kind: ALDIS_BITSTREAM_GENERATOR_ACTION_DATA_FIELD,
-            vc_id: f.vc,
+            vc_id: f.vc.into(),
             field: range(f.field),
-            pointer: f.pointer,
+            pointer: f.pointer.to_raw(),
             octets: 0,
         },
         BitstreamOutput::Discarded { octets } => aldis_bitstream_generator_action_t {
@@ -223,7 +223,7 @@ fn bg_run(
     input: &aldis_bitstream_generator_input_t,
     data: &[u8],
     area: &mut [u8],
-) -> Result<BitstreamActions> {
+) -> Result<BitstreamActions<Aos>> {
     let input = match parse::<aldis_bitstream_generator_input>(input.kind)? {
         aldis_bitstream_generator_input::ALDIS_BITSTREAM_GENERATOR_INPUT_SUBMIT_BITS => {
             BitstreamInput::SubmitBits {

@@ -199,8 +199,9 @@ pub enum ReceiverOutput<P: ReceiveProtocol> {
         /// The bits of `data` that are valid, for a `B_PDU` (the rest of the last octet is
         /// zero; LNK-077).
         bit_count: Option<usize>,
-        /// The First Header Pointer of the TM frame header, for a VC that carries packets.
-        pointer: Option<u16>,
+        /// The First Header Pointer of the TM frame header, for a VC that carries packets (132.0
+        /// §4.1.2.7.6; LNK-060).
+        pointer: Option<P::HeaderPointer>,
         /// A gap or discontinuity was detected for the VC since the last data field delivered
         /// for it (LNK-051, LNK-061).
         gap: bool,
@@ -342,6 +343,10 @@ pub trait ReceiveProtocol: Protocol {
     type VcParams: Copy + Debug + Eq;
     /// The codec's `Plain` frame, the only frame the receiver takes (RS-023, LNK-050).
     type Plain<'a>: Debug + Clone + PartialEq + Eq;
+    /// The First Header Pointer of the frame header, which a data field carries to the extractor
+    /// of the VC: the 11-bit field of TM (132.0 §4.1.2.7.6), `()` where the pointer is in the data
+    /// field (TC, AOS, USLP; LNK-060).
+    type HeaderPointer: Copy + Debug + Eq;
 
     /// The octets of a `Plain` frame.
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8];

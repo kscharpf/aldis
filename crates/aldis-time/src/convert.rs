@@ -5,6 +5,8 @@
 //! of the three codes, so only the target can lose precision; it truncates toward zero. There is
 //! no time-scale change: leap seconds pass through as second 60 (TIME-022).
 
+use core::num::NonZeroU64;
+
 use aldis_core::{Error, ErrorKind, Result};
 
 use crate::ascii::{AsciiFormat, AsciiTime, Fraction};
@@ -12,6 +14,7 @@ use crate::calendar::{CalendarDate, Hour, Minute, Second, Year, civil, day_numbe
 use crate::ccs::{Ccs, CcsFormat, CcsValue, CcsVariation};
 use crate::cds::{Cds, CdsEpoch, CdsFormat, CdsSubMs, CdsValue, Micros, MsOfDay, Picos, SubMillis};
 use crate::field;
+use crate::util::nonzero;
 
 /// Picoseconds per millisecond.
 const PICOS_PER_MS: u64 = 1_000_000_000;
@@ -22,16 +25,17 @@ const CDS_EPOCH: u32 = day_number(1958, 1, 1);
 /// Milliseconds of day at which a positive leap second starts (301.0 Annex A).
 const LEAP_MS: u32 = 86_400_000;
 
-/// 10^(12 − 2n): picoseconds per unit of a CCS sub-second value with `n` octets.
-const fn ccs_scale(octets: u8) -> u64 {
+/// 10^(12 − 2n): picoseconds per unit of a CCS sub-second value with `n` octets (301.0 §3.4.2,
+/// TIME-033). Non-zero, so dividing by it has no zero case (RS-020).
+const fn ccs_scale(octets: u8) -> NonZeroU64 {
     match octets {
-        0 => 1_000_000_000_000,
-        1 => 10_000_000_000,
-        2 => 100_000_000,
-        3 => 1_000_000,
-        4 => 10_000,
-        5 => 100,
-        _ => 1,
+        0 => nonzero!(NonZeroU64, 1_000_000_000_000),
+        1 => nonzero!(NonZeroU64, 10_000_000_000),
+        2 => nonzero!(NonZeroU64, 100_000_000),
+        3 => nonzero!(NonZeroU64, 1_000_000),
+        4 => nonzero!(NonZeroU64, 10_000),
+        5 => nonzero!(NonZeroU64, 100),
+        _ => NonZeroU64::MIN,
     }
 }
 
@@ -75,24 +79,34 @@ impl UtcInstant {
         let base = epoch_day(cds.format().epoch(), agency_epoch)?;
         let value = cds.value();
         let ms = value.ms_of_day.get();
+        // Valid by construction: below the leap second the hour is below 24 and the minute and
+        // second are remainders modulo 60; from it the time is 23:59:60 (301.0 Annex A).
         let (hour, minute, second, ms_rest) = if ms >= LEAP_MS {
-            (23, 59, 60, ms.wrapping_sub(LEAP_MS))
+            (
+                Hour::reduced(23),
+                Minute::reduced(59),
+                Second::reduced(60),
+                ms.wrapping_sub(LEAP_MS),
+            )
         } else {
-            let secs = ms / 1000;
-            (secs / 3600, secs / 60 % 60, secs % 60, ms % 1000)
+            let secs = u64::from(ms / 1000);
+            (
+                Hour::reduced(secs / 3600),
+                Minute::reduced(secs / 60 % 60),
+                Second::reduced(secs % 60),
+                ms % 1000,
+            )
         };
         let sub = match value.subms {
             SubMillis::None => 0,
             SubMillis::Micros(us) => u64::from(us.get()).wrapping_mul(1_000_000),
             SubMillis::Picos(ps) => u64::from(ps.get()),
         };
-        let narrow = |n: u32| u8::try_from(n).unwrap_or(u8::MAX);
-        // Valid by construction: hour < 24, minute < 60, second ≤ 60.
         Ok(Self {
             day: base.wrapping_add(value.day),
-            hour: Hour::new(narrow(hour)).unwrap_or_default(),
-            minute: Minute::new(narrow(minute)).unwrap_or_default(),
-            second: Second::new(narrow(second)).unwrap_or_default(),
+            hour,
+            minute,
+            second,
             picos: u64::from(ms_rest)
                 .wrapping_mul(PICOS_PER_MS)
                 .wrapping_add(sub),
@@ -110,7 +124,7 @@ impl UtcInstant {
             second: value.second,
             picos: value
                 .subsecond
-                .wrapping_mul(ccs_scale(ccs.format().subsecond_octets())),
+                .wrapping_mul(ccs_scale(ccs.format().subsecond_octets()).get()),
         }
     }
 
@@ -147,28 +161,25 @@ impl UtcInstant {
         if s == 60 && (h, m) != (23, 59) {
             return Err(Error::out_of_range(field::SECOND, 59, 60));
         }
-        let secs = u32::from(h)
+        let secs = u64::from(h)
             .wrapping_mul(3600)
-            .wrapping_add(u32::from(m).wrapping_mul(60))
-            .wrapping_add(u32::from(s));
-        let whole_ms = u32::try_from(self.picos / PICOS_PER_MS).unwrap_or(0);
-        let ms = secs.wrapping_mul(1000).wrapping_add(whole_ms);
+            .wrapping_add(u64::from(m).wrapping_mul(60))
+            .wrapping_add(u64::from(s));
+        let ms = secs
+            .wrapping_mul(1000)
+            .wrapping_add(self.picos / PICOS_PER_MS);
         let rest = self.picos % PICOS_PER_MS;
         // Valid by construction: at most 23:59:60.999, and sub-millisecond values below 1 ms.
         let subms = match format.subms() {
             CdsSubMs::None => SubMillis::None,
-            CdsSubMs::Micros => SubMillis::Micros(
-                Micros::new(u16::try_from(rest / 1_000_000).unwrap_or(0)).unwrap_or_default(),
-            ),
-            CdsSubMs::Picos => {
-                SubMillis::Picos(Picos::new(u32::try_from(rest).unwrap_or(0)).unwrap_or_default())
-            }
+            CdsSubMs::Micros => SubMillis::Micros(Micros::reduced(rest / 1_000_000)),
+            CdsSubMs::Picos => SubMillis::Picos(Picos::reduced(rest)),
         };
         Cds::new(
             format,
             CdsValue {
                 day,
-                ms_of_day: MsOfDay::new(ms).unwrap_or_default(),
+                ms_of_day: MsOfDay::reduced(ms),
                 subms,
             },
         )
@@ -185,10 +196,7 @@ impl UtcInstant {
             hour: self.hour,
             minute: self.minute,
             second: self.second,
-            subsecond: self
-                .picos
-                .checked_div(ccs_scale(format.subsecond_octets()))
-                .unwrap_or(0),
+            subsecond: self.picos / ccs_scale(format.subsecond_octets()),
         };
         // Fits: the date is in the format's variation and the sub-second value has at most the
         // format's digits.
@@ -489,7 +497,7 @@ mod tests {
             ErrorKind::OutOfRange
         );
         assert_eq!(
-            [0, 1, 2, 3, 4, 5, 6].map(ccs_scale),
+            [0, 1, 2, 3, 4, 5, 6].map(|n| ccs_scale(n).get()),
             [
                 1_000_000_000_000,
                 10_000_000_000,

@@ -194,12 +194,12 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
 
 /// A data field for the extractor, as the `FrameReceiver` delivers it (docs/04-engines.md §3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FieldIn<'a> {
+pub struct FieldIn<'a, P: PacketProtocol> {
     /// The data field: the TM data field, the AOS `M_PDU` (header and Packet Zone), or the USLP
     /// TFDF (header and TFDZ).
     pub field: &'a [u8],
     /// The First Header Pointer of the TM frame header; AOS and USLP carry it in `field`.
-    pub header_pointer: Option<u16>,
+    pub header_pointer: Option<P::HeaderPointer>,
     /// A frame gap was flagged on this field (LNK-051, LNK-061).
     pub gap: bool,
 }
@@ -208,7 +208,7 @@ pub struct FieldIn<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtractorInput<'a, P: PacketProtocol> {
     /// A data field of the VC (LNK-060).
-    DataField(FieldIn<'a>),
+    DataField(FieldIn<'a, P>),
     /// Replace the configuration between data units (LNK-003, GEN-061).
     Reconfigure(PacketExtractorConfig<P>),
 }
@@ -498,7 +498,7 @@ impl<P: PacketProtocol, const M: usize, const D: usize> PacketExtractor<P, M, D>
     }
 
     /// `DataField` (LNK-060…LNK-064).
-    fn data_field(&mut self, input: FieldIn<'_>, out: &mut [u8]) -> Result<ExtractorActions> {
+    fn data_field(&mut self, input: FieldIn<'_, P>, out: &mut [u8]) -> Result<ExtractorActions> {
         let ParsedField { pointer, zone } = P::parse(
             &self.head.config.protocol,
             input.header_pointer,

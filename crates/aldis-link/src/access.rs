@@ -30,10 +30,6 @@ const PREFIX: usize = 2;
 /// The longest SDU, and zone, that the 16-bit length of a queued SDU can count.
 const MAX_SDU: usize = 0xFFFF;
 
-/// The Last Valid Octet Pointer of a TFDZ in which the SDU does not end: all ones (732.1
-/// §4.1.4.2.4.6).
-const LVO_SDU_CONTINUES: u16 = 0xFFFF;
-
 /// A frame protocol whose VCs carry Access SDUs (LNK-001, LNK-020): TM, AOS, and USLP.
 pub trait AccessProtocol: Protocol {
     /// The parameters of the protocol that the generator needs: none for TM and AOS; the UPID,
@@ -43,13 +39,30 @@ pub trait AccessProtocol: Protocol {
     /// Whether an SDU may span fields (USLP): the others carry one SDU of exactly the field.
     const SPANNING: bool;
 
+    /// The Last Valid Octet Pointer of the protocol, in the codec's type (USLP, 732.1
+    /// §4.1.4.2.4.5–6); [`core::convert::Infallible`] where the protocol has none (TM, AOS), so that no field
+    /// of those carries one.
+    type Pointer: Copy + Debug + Eq;
+
     /// The longest zone whose every offset has a Last Valid Octet Pointer value.
     fn max_zone_len(params: &Self::Params) -> usize;
     /// The MAP and `QoS` the fields are sent on (USLP).
     fn route(params: &Self::Params) -> Option<Route>;
+    /// The pointer of a field whose SDU ends at offset `end` of the zone, counted from 0, or
+    /// does not end in it (`None`); `Ok(None)` where the protocol has no pointer (LNK-020).
+    ///
+    /// # Errors
+    /// `OutOfRange` (`fhp_lvo_pointer`) for an offset the pointer cannot hold, which a zone of
+    /// at most [`max_zone_len`](Self::max_zone_len) octets never has.
+    fn pointer(end: Option<usize>) -> Result<Option<Self::Pointer>>;
     /// Writes the data field header into `header`, `SDU_HEADER_LEN` octets: rule `001`, or `010`
-    /// for a `continuation`, with the raw Last Valid Octet Pointer `pointer` (LNK-020).
-    fn write_header(params: &Self::Params, continuation: bool, pointer: u16, header: &mut [u8]);
+    /// for a `continuation`, with the Last Valid Octet Pointer `pointer` (LNK-020).
+    fn write_header(
+        params: &Self::Params,
+        continuation: bool,
+        pointer: Self::Pointer,
+        header: &mut [u8],
+    );
 }
 
 /// The configuration of an `AccessGenerator` (LNK-020, LNK-078).
@@ -170,23 +183,23 @@ pub enum AccessInput<'a, P: AccessProtocol> {
 
 /// A data field the generator gives out, for the multiplexer's `Offer` (LNK-076, API-054).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AccessField {
+pub struct AccessField<P: AccessProtocol> {
     /// The VCID of the generator.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// Where the field is in the output area: the TM data field, the AOS `VCA_SDU`, the USLP
     /// TFDF (header and TFDZ).
     pub field: OutRange,
-    /// The raw Last Valid Octet Pointer of a USLP field; none for TM and AOS.
-    pub pointer: Option<u16>,
+    /// The Last Valid Octet Pointer of a USLP field; none for TM and AOS.
+    pub pointer: Option<P::Pointer>,
     /// The MAP and `QoS` of the field (USLP).
     pub route: Option<Route>,
 }
 
 /// An action of the `AccessGenerator` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessOutput {
+pub enum AccessOutput<P: AccessProtocol> {
     /// A data field, in the output area (LNK-020).
-    DataField(AccessField),
+    DataField(AccessField<P>),
     /// `Reconfigure` discarded this many octets: the SDU in progress and the queue (LNK-003).
     Discarded {
         /// The octets of SDUs not yet released.
@@ -195,7 +208,7 @@ pub enum AccessOutput {
 }
 
 /// The actions of one input of the `AccessGenerator` (LNK-074).
-pub type AccessActions = Actions<AccessOutput, ACCESS_GENERATOR_MAX_ACTIONS>;
+pub type AccessActions<P> = Actions<AccessOutput<P>, ACCESS_GENERATOR_MAX_ACTIONS>;
 
 /// The read-only status of an `AccessGenerator`, for housekeeping telemetry (API-056, LNK-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -333,7 +346,7 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     ///   `WouldBlock` if the queue cannot take the SDU whole (API-052).
     /// - `Release`: `BufferTooSmall` if `out` is shorter than the data field (LNK-075).
     /// - `Reconfigure`: `CapacityExceeded` as for [`new`](Self::new).
-    pub fn step(&mut self, input: AccessInput<'_, P>, out: &mut [u8]) -> Result<AccessActions> {
+    pub fn step(&mut self, input: AccessInput<'_, P>, out: &mut [u8]) -> Result<AccessActions<P>> {
         let mut actions = AccessActions::new();
         match input {
             AccessInput::SubmitSdu(sdu) => self.submit(sdu)?,
@@ -425,7 +438,7 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
     }
 
     /// `Release` (LNK-020).
-    fn release(&mut self, out: &mut [u8]) -> Result<Option<AccessField>> {
+    fn release(&mut self, out: &mut [u8]) -> Result<Option<AccessField<P>>> {
         let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
@@ -437,23 +450,20 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
         let remaining = len.saturating_sub(self.head.sent);
         let done = remaining <= zone_len;
         let take = remaining.min(zone_len);
-        // The offset of the last octet of the SDU in the zone; it fits 16 bits where a pointer
-        // is written (USLP, `max_zone_len`), and the other protocols have none.
-        let [.., hi, lo] = remaining.saturating_sub(1).to_be_bytes();
-        let pointer = if done {
-            u16::from_be_bytes([hi, lo])
-        } else {
-            LVO_SDU_CONTINUES
-        };
+        // The offset of the last octet of the SDU in the zone; it fits where a pointer is
+        // written (USLP, `max_zone_len`), and the other protocols have none.
+        let pointer = P::pointer(done.then(|| remaining.saturating_sub(1)))?;
         let (header, zone) = area
             .split_at_mut_checked(P::SDU_HEADER_LEN)
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        P::write_header(
-            &self.head.config.params,
-            self.head.sent > 0,
-            pointer,
-            header,
-        );
+        if let Some(pointer) = pointer {
+            P::write_header(
+                &self.head.config.params,
+                self.head.sent > 0,
+                pointer,
+                header,
+            );
+        }
         let from = PREFIX.saturating_add(self.head.sent);
         let sdu = self
             .bufs
@@ -476,9 +486,9 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
         self.head.status.fields_out.incr();
         self.head.status.queue.set(self.head.octets);
         Ok(Some(AccessField {
-            vc: self.head.config.vc.into(),
+            vc: self.head.config.vc,
             field: OutRange::new(0, field_len),
-            pointer: P::SPANNING.then_some(pointer),
+            pointer,
             route: P::route(&self.head.config.params),
         }))
     }
@@ -501,11 +511,16 @@ impl<P: AccessProtocol, const Q: usize> AccessGenerator<P, Q> {
 
 #[cfg(feature = "tm")]
 mod tm_impl {
+    use core::convert::Infallible;
+
+    use aldis_core::Result;
+
     use super::AccessProtocol;
     use crate::protocol::{Route, Tm};
 
     impl AccessProtocol for Tm {
         type Params = ();
+        type Pointer = Infallible;
         const SPANNING: bool = false;
 
         fn max_zone_len(&(): &()) -> usize {
@@ -516,17 +531,28 @@ mod tm_impl {
             None
         }
 
-        fn write_header(&(): &(), _: bool, _: u16, _: &mut [u8]) {}
+        fn pointer(_: Option<usize>) -> Result<Option<Infallible>> {
+            Ok(None)
+        }
+
+        fn write_header(&(): &(), _: bool, pointer: Infallible, _: &mut [u8]) {
+            match pointer {}
+        }
     }
 }
 
 #[cfg(feature = "aos")]
 mod aos_impl {
+    use core::convert::Infallible;
+
+    use aldis_core::Result;
+
     use super::AccessProtocol;
     use crate::protocol::{Aos, Route};
 
     impl AccessProtocol for Aos {
         type Params = ();
+        type Pointer = Infallible;
         const SPANNING: bool = false;
 
         fn max_zone_len(&(): &()) -> usize {
@@ -537,12 +563,19 @@ mod aos_impl {
             None
         }
 
-        fn write_header(&(): &(), _: bool, _: u16, _: &mut [u8]) {}
+        fn pointer(_: Option<usize>) -> Result<Option<Infallible>> {
+            Ok(None)
+        }
+
+        fn write_header(&(): &(), _: bool, pointer: Infallible, _: &mut [u8]) {
+            match pointer {}
+        }
     }
 }
 
 #[cfg(feature = "uslp")]
 mod uslp_impl {
+    use aldis_core::{Error, Result, field};
     use aldis_uslp::{LastValidOctet, TfdfHeader, TfdzOffset, TfdzRule};
 
     use super::AccessProtocol;
@@ -550,6 +583,7 @@ mod uslp_impl {
 
     impl AccessProtocol for Uslp {
         type Params = UslpParams;
+        type Pointer = LastValidOctet;
         const SPANNING: bool = true;
 
         fn max_zone_len(_: &UslpParams) -> usize {
@@ -563,13 +597,32 @@ mod uslp_impl {
             })
         }
 
-        fn write_header(params: &UslpParams, continuation: bool, pointer: u16, header: &mut [u8]) {
-            let last = LastValidOctet::from_raw(pointer);
+        fn pointer(end: Option<usize>) -> Result<Option<LastValidOctet>> {
+            match end {
+                None => Ok(Some(LastValidOctet::SduContinues)),
+                Some(at) => u16::try_from(at)
+                    .ok()
+                    .and_then(TfdzOffset::new)
+                    .map(|offset| Some(LastValidOctet::At(offset)))
+                    .ok_or(Error::out_of_range(
+                        field::FHP_LVO_POINTER,
+                        u64::from(TfdzOffset::MAX),
+                        u64::try_from(at).unwrap_or(u64::MAX),
+                    )),
+            }
+        }
+
+        fn write_header(
+            params: &UslpParams,
+            continuation: bool,
+            pointer: LastValidOctet,
+            header: &mut [u8],
+        ) {
             let tfdf = TfdfHeader {
                 rule: if continuation {
-                    TfdzRule::SduContinuation(last)
+                    TfdzRule::SduContinuation(pointer)
                 } else {
-                    TfdzRule::SduStart(last)
+                    TfdzRule::SduStart(pointer)
                 },
                 upid: params.upid(),
             };

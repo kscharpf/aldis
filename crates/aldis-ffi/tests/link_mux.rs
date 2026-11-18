@@ -602,6 +602,64 @@ fn the_step_builds_frames_and_changes_the_slots() {
 }
 
 #[test]
+fn a_slot_update_for_a_vcid_the_protocol_cannot_hold_is_unknown_and_changes_nothing() {
+    // req: CABI-022, LNK-033, API-001, API-058
+    let mut d = detail();
+    let mut actions = aldis_channel_mux_actions_t::default();
+    let mut out = [0xEE_u8; 64];
+    let mut cfg = tm_config();
+    cfg.vcs[0].ocf = 1;
+    cfg.vcs[0].ocf_init = 0x0A0B_0C0D;
+    cfg.vcs[0].fsh_len = 2;
+    cfg.vcs[0].fsh_init = [0x0F; ALDIS_CHANNEL_MUX_MAX_FSH_DATA];
+    cfg.frame_len = 32;
+    let mut s = storage();
+    assert_eq!(init(&mut s, &cfg, &mut d), 0);
+    // A TM VCID has 3 bits: 9 and 129 are not VC 1 with its high bits masked off, but no VC.
+    let new_fsh = [0xC1_u8, 0xC2];
+    for vc_id in [8_u8, 9, 129, 255] {
+        let mut ocf = input(ALDIS_CHANNEL_MUX_INPUT_SET_OCF);
+        ocf.scope = ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL;
+        ocf.vc_id = vc_id;
+        ocf.ocf = 0x0102_0304;
+        assert_eq!(
+            step(&mut s, &ocf, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_UNKNOWN_CHANNEL
+        );
+        let mut set = input(ALDIS_CHANNEL_MUX_INPUT_SET_FSH);
+        set.scope = ALDIS_LINK_SCOPE_VIRTUAL_CHANNEL;
+        set.vc_id = vc_id;
+        set.data = new_fsh.as_ptr();
+        set.data_len = new_fsh.len();
+        assert_eq!(
+            step(&mut s, &set, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_UNKNOWN_CHANNEL
+        );
+    }
+    // The slots of VC 1 still hold the configured values: the next frame of VC 1 carries them.
+    let field = [0x22_u8; 32 - 6 - 2 - 4 - 3];
+    let mut offer = input(ALDIS_CHANNEL_MUX_INPUT_OFFER);
+    offer.vc_id = 1;
+    offer.data = field.as_ptr();
+    offer.data_len = field.len();
+    offer.pointer_present = 1;
+    assert_eq!(step(&mut s, &offer, &mut out, &mut actions, &mut d), 0);
+    assert_eq!(
+        step(
+            &mut s,
+            &input(ALDIS_CHANNEL_MUX_INPUT_OPPORTUNITY),
+            &mut out,
+            &mut actions,
+            &mut d
+        ),
+        0
+    );
+    assert_eq!(actions.items[0].class, ALDIS_LINK_FRAME_CLASS_DATA);
+    assert_eq!(&out[6..9], &[0x02, 0x0F, 0x0F]);
+    assert_eq!(&out[26..30], &[0x0A, 0x0B, 0x0C, 0x0D]);
+}
+
+#[test]
 fn the_slots_of_tm_aos_and_uslp_take_their_values() {
     // req: CABI-040, LNK-033, LNK-034, LNK-032, LNK-076
     let mut d = detail();
@@ -1185,4 +1243,36 @@ fn the_vc_relations_of_the_codec_sets_report_the_same_field_and_order_as_before(
     let mut s = storage();
     let mut d = detail();
     assert_eq!(init(&mut s, &c, &mut d), 0);
+}
+
+#[test]
+fn an_offer_pointer_wider_than_eleven_bits_is_refused_and_counted() {
+    // req: CABI-022, LNK-002, LNK-076, API-001, API-058
+    let mut s = storage();
+    let mut d = detail();
+    let mut actions = aldis_channel_mux_actions_t::default();
+    let mut out = [0xEE_u8; 64];
+    assert_eq!(init(&mut s, &tm_config(), &mut d), 0);
+    let field = [0x11_u8; 16];
+    let mut offer = input(ALDIS_CHANNEL_MUX_INPUT_OFFER);
+    offer.vc_id = 1;
+    offer.data = field.as_ptr();
+    offer.data_len = field.len();
+    offer.pointer_present = 1;
+    // 0x800 needs 12 bits (132.0 §4.1.2.7.6): `OutOfRange`, counted as refused, nothing held.
+    for wide in [0x800_u16, 0xFFFF] {
+        offer.pointer = wide;
+        assert_eq!(
+            step(&mut s, &offer, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_OUT_OF_RANGE
+        );
+        assert_eq!(d.field, ALDIS_FIELD_FIRST_HEADER_POINTER);
+    }
+    let after = status(&mut s);
+    assert_eq!((after.offers, after.refused, after.would_block), (0, 2, 0));
+    // The widest pointer is taken, so the refusals changed nothing.
+    offer.pointer = 0x7FF;
+    assert_eq!(step(&mut s, &offer, &mut out, &mut actions, &mut d), 0);
+    let after = status(&mut s);
+    assert_eq!((after.offers, after.refused), (1, 2));
 }

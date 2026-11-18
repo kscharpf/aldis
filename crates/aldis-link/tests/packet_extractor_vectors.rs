@@ -103,7 +103,9 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Opt
                 data = hex::decode(v["data_hex"].as_str().unwrap()).unwrap();
                 let input = ExtractorInput::DataField(FieldIn {
                     field: &data,
-                    header_pointer: v.get("fhp").map(|f| u16::try_from(num(f)).unwrap()),
+                    header_pointer: v
+                        .get("fhp")
+                        .and_then(|f| P::header_pointer_of(u16::try_from(num(f)).unwrap())),
                     gap: v["gap"].as_bool().unwrap(),
                 });
                 match engine.step(input, &mut area) {

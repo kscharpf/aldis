@@ -17,7 +17,7 @@ use aldis::tc::{
     Clcw, ControlCommand, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame,
     VcConfig, VcTable,
 };
-use aldis::tm::{TmFrame, TmPhysicalChannelConfig};
+use aldis::tm::{FirstHeaderPointer, TmFrame, TmPhysicalChannelConfig};
 use refapp_flight::FrameUplink;
 use refapp_flight::command::parse;
 use refapp_flight::event::{APP_CMD_RECEIVED, APP_PACKET_REJECTED, APP_TABLE_RECEIVED};
@@ -38,7 +38,7 @@ pub struct DecodedFrame {
     /// The data field (TM: the packet zone; TC: the Segment Header and the FDU).
     pub data: Vec<u8>,
     /// TM: the First Header Pointer of the primary header, as the extractor takes it.
-    pub pointer: Option<u16>,
+    pub pointer: Option<FirstHeaderPointer>,
     /// TC: the Segment Header octet of a Type-D frame on a VC that has one.
     pub segment_header: Option<u8>,
     /// TC: the frame type, the Bypass and Control Command Flags (232.0 Table 4-1).
@@ -113,7 +113,7 @@ pub fn decode_frame(
             Ok(DecodedFrame {
                 vcid: frame.vcid().get(),
                 data: frame.data_field().to_vec(),
-                pointer: Some(frame.header().first_header_pointer.get()),
+                pointer: Some(frame.header().first_header_pointer),
                 segment_header: None,
                 frame_type: None,
                 sequence: None,

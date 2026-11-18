@@ -31,6 +31,7 @@ use aldis_link::generator::{
 use aldis_link::protocol::{Aos, AosParams, PacketProtocol, Tm, TmParams, Uslp, UslpParams};
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
+use aldis_tm::FirstHeaderPointer;
 use aldis_uslp::Upid;
 
 /// Failing cases are saved here and replayed first.
@@ -133,13 +134,13 @@ struct Trip {
 fn extract<P: PacketProtocol, const EM: usize, const ED: usize>(
     extractor: &mut PacketExtractor<P, EM, ED>,
     field: &[u8],
-    pointer: u16,
+    pointer: Option<P::HeaderPointer>,
     trip: &mut Trip,
 ) {
     let mut area = vec![0u8; EM + ED];
     let input = ExtractorInput::DataField(FieldIn {
         field,
-        header_pointer: Some(pointer),
+        header_pointer: pointer,
         gap: false,
     });
     match extractor.step(input, &mut area) {
@@ -163,7 +164,7 @@ fn extract<P: PacketProtocol, const EM: usize, const ED: usize>(
 
 /// One step of the sending side: the release deadline has passed, and the generator is asked for
 /// a field, which the extractor takes. Returns whether a field came out.
-fn flush<P: PacketProtocol>(
+fn flush<P: common::Proto>(
     generator: &mut PacketGenerator<P, D, Q>,
     extractor: &mut PacketExtractor<P, M, D>,
     now: &mut u64,
@@ -183,7 +184,7 @@ fn flush<P: PacketProtocol>(
         if let GeneratorOutput::DataField(f) = a {
             any = true;
             let field = f.field.slice(&area).unwrap().to_vec();
-            extract(extractor, &field, f.pointer, trip);
+            extract(extractor, &field, P::header_pointer(f.pointer), trip);
         }
     }
     any
@@ -357,7 +358,7 @@ proptest! {
         for (field, pointer, gap) in &fields {
             let input = ExtractorInput::DataField(FieldIn {
                 field,
-                header_pointer: Some(*pointer),
+                header_pointer: Some(FirstHeaderPointer::new(*pointer).unwrap()),
                 gap: *gap,
             });
             match extractor.step(input, &mut area) {

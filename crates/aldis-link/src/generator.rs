@@ -217,24 +217,24 @@ pub enum GeneratorInput<'a, P: PacketProtocol> {
 
 /// A data field the generator gives out, for the multiplexer's `Offer` (LNK-076, API-054).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DataField {
+pub struct DataField<P: PacketProtocol> {
     /// The VCID of the generator.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// Where the field is in the output area: the TM data field, the AOS `M_PDU`, the USLP TFDF
     /// (header and TFDZ).
     pub field: OutRange,
-    /// The raw First Header Pointer of the field (TM carries it in the frame header; AOS and
-    /// USLP also have it inside the field).
-    pub pointer: u16,
+    /// The First Header Pointer of the field, in the codec's type (TM carries it in the frame
+    /// header; AOS and USLP also have it inside the field).
+    pub pointer: P::FieldPointer,
     /// The MAP and `QoS` of the field (USLP).
     pub route: Option<Route>,
 }
 
 /// An action of the `PacketGenerator` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GeneratorOutput {
+pub enum GeneratorOutput<P: PacketProtocol> {
     /// A data field, in the output area (LNK-011).
-    DataField(DataField),
+    DataField(DataField<P>),
     /// `Reconfigure` discarded this many octets: the started field and the queue (LNK-003).
     Discarded {
         /// The octets held, an idle residue included.
@@ -243,7 +243,7 @@ pub enum GeneratorOutput {
 }
 
 /// The actions of one input of the `PacketGenerator` (LNK-074).
-pub type GeneratorActions = Actions<GeneratorOutput, PACKET_GENERATOR_MAX_ACTIONS>;
+pub type GeneratorActions<P> = Actions<GeneratorOutput<P>, PACKET_GENERATOR_MAX_ACTIONS>;
 
 /// The read-only status of a `PacketGenerator`, for housekeeping telemetry (API-056, LNK-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -416,7 +416,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         input: GeneratorInput<'_, P>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<GeneratorActions> {
+    ) -> Result<GeneratorActions<P>> {
         let mut actions = GeneratorActions::new();
         match input {
             GeneratorInput::SubmitPacket(packet) => self.submit(packet, now)?,
@@ -555,7 +555,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     }
 
     /// `Release` (LNK-011…LNK-014).
-    fn release(&mut self, now: Instant, out: &mut [u8]) -> Result<Option<DataField>> {
+    fn release(&mut self, now: Instant, out: &mut [u8]) -> Result<Option<DataField<P>>> {
         let field_len = self.head.config.field_len;
         if out.len() < field_len {
             return Err(Error::buffer_too_small(field_len));
@@ -600,7 +600,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// Writes the releasable field to `out`: header, packet zone, and the idle completion; the
     /// octets of an idle packet that did not fit go to `spill` (LNK-013). Changes no state but
     /// the idle counter.
-    fn write_field(&mut self, out: &mut [u8], spill: &mut [u8]) -> Result<(DataField, usize)> {
+    fn write_field(&mut self, out: &mut [u8], spill: &mut [u8]) -> Result<(DataField<P>, usize)> {
         let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
@@ -616,7 +616,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             None if completion.is_empty() => Pointer::NoStart,
             None => Pointer::StartsAt(self.head.fill),
         };
-        let raw = P::encode_pointer(&self.head.config.protocol, pointer)?;
+        let pointer = P::encode_pointer(&self.head.config.protocol, pointer)?;
         let mut spill_len = 0;
         if !completion.is_empty() {
             spill_len = self.write_idle(completion, spill)?;
@@ -625,16 +625,16 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
         for (d, s) in held.iter_mut().zip(&self.bufs.zone) {
             *d = *s;
         }
-        P::write_header(&self.head.config.protocol, raw, header);
-        Ok((self.data_field(raw), spill_len))
+        P::write_header(&self.head.config.protocol, pointer, header);
+        Ok((self.data_field(pointer), spill_len))
     }
 
     /// The `DataField` action for the field at the start of the output area.
-    fn data_field(&self, raw: u16) -> DataField {
+    fn data_field(&self, pointer: P::FieldPointer) -> DataField<P> {
         DataField {
-            vc: self.head.config.vc.into(),
+            vc: self.head.config.vc,
             field: OutRange::new(0, self.head.config.field_len),
-            pointer: raw,
+            pointer,
             route: P::route(&self.head.config.protocol),
         }
     }
@@ -677,7 +677,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
 
     /// Writes the field of only idle data of the `IdleField` policy to `out` (LNK-014). The
     /// started field and the queue stay as they are.
-    fn write_idle_field(&self, out: &mut [u8]) -> Result<DataField> {
+    fn write_idle_field(&self, out: &mut [u8]) -> Result<DataField<P>> {
         let field_len = self.head.config.field_len;
         let area = out
             .get_mut(..field_len)
@@ -689,7 +689,7 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             IdleField::Packets => Pointer::StartsAt(0),
             IdleField::Pattern => Pointer::OnlyIdle,
         };
-        let raw = P::encode_pointer(&self.head.config.protocol, pointer)?;
+        let pointer = P::encode_pointer(&self.head.config.protocol, pointer)?;
         match P::IDLE_FIELD {
             IdleField::Packets => {
                 let mut none = [0_u8; MIN_SPACE_IDLE];
@@ -697,8 +697,8 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             }
             IdleField::Pattern => zone.fill(self.head.config.idle_pattern),
         }
-        P::write_header(&self.head.config.protocol, raw, header);
-        Ok(self.data_field(raw))
+        P::write_header(&self.head.config.protocol, pointer, header);
+        Ok(self.data_field(pointer))
     }
 
     /// Starts the next field with the octets of the queue: the continuation of a packet that

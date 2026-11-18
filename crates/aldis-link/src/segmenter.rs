@@ -435,13 +435,13 @@ pub enum SegmenterInput<'a, P: SegmenterProtocol, const M: usize> {
 
 /// An FDU or TFDF the segmenter hands out (LNK-043, API-054).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SegmentedFdu {
+pub struct SegmentedFdu<P: SegmenterProtocol> {
     /// The handle of the `NextFdu` request.
     pub handle: Handle,
     /// The VCID of the segmenter.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// The MAP Identifier; `None` on a TC VC without a Segment Header.
-    pub map: Option<u8>,
+    pub map: Option<P::Map>,
     /// The quality of service of the request.
     pub qos: Qos,
     /// How the FDU relates to its SDU: the Sequence Flags or the TFDZ Construction Rule.
@@ -453,9 +453,9 @@ pub struct SegmentedFdu {
 
 /// An action of the `MapSegmenter` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SegmenterOutput {
+pub enum SegmenterOutput<P: SegmenterProtocol> {
     /// An FDU or TFDF, in the output area (LNK-043).
-    Fdu(SegmentedFdu),
+    Fdu(SegmentedFdu<P>),
     /// `Reconfigure` discarded this many octets: the unsent octets of the SDU in progress and of
     /// the queue (LNK-003).
     Discarded {
@@ -465,7 +465,7 @@ pub enum SegmenterOutput {
 }
 
 /// The actions of one input of the `MapSegmenter` (LNK-074).
-pub type SegmenterActions = Actions<SegmenterOutput, MAP_SEGMENTER_MAX_ACTIONS>;
+pub type SegmenterActions<P> = Actions<SegmenterOutput<P>, MAP_SEGMENTER_MAX_ACTIONS>;
 
 /// The read-only status of a `MapSegmenter`, for housekeeping telemetry (API-056, LNK-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -732,7 +732,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         input: SegmenterInput<'_, P, M>,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<SegmenterActions> {
+    ) -> Result<SegmenterActions<P>> {
         let mut actions = SegmenterActions::new();
         match input {
             SegmenterInput::SubmitPacket { map, packet } => {
@@ -967,7 +967,7 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         qos: Qos,
         now: Instant,
         out: &mut [u8],
-    ) -> Result<Option<SegmentedFdu>> {
+    ) -> Result<Option<SegmentedFdu<P>>> {
         let l = self.head.config.max_fdu_len;
         let area = out.get_mut(..l).ok_or(Error::buffer_too_small(l))?;
         let Some(head) = self.eligible() else {
@@ -996,11 +996,11 @@ impl<P: SegmenterProtocol, const M: usize, const Q: usize> MapSegmenter<P, M, Q>
         self.head.status.queue.set(self.head.octets);
         Ok(Some(SegmentedFdu {
             handle,
-            vc: raw(self.head.config.vc),
+            vc: self.head.config.vc,
             map: if P::implicit_map(&self.head.config.channel).is_some() {
                 None
             } else {
-                Some(head.map)
+                Some(map.id())
             },
             qos,
             framing,

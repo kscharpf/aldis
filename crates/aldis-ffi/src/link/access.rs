@@ -14,6 +14,7 @@ use aldis::link::access::{
     AccessGeneratorConfig, AccessGeneratorHead, AccessInput, AccessOutput, AccessProtocol,
 };
 use aldis::link::protocol::{Aos, Tm, Uslp};
+use aldis::uslp::LastValidOctet;
 
 use super::common::range;
 use crate::abi::{self, Out};
@@ -243,8 +244,9 @@ fn ag_run<P: AccessProtocol>(
     input: &aldis_access_generator_input_t,
     data: &[u8],
     params: Result<P::Params>,
+    lvo: fn(P::Pointer) -> u16,
     area: &mut [u8],
-) -> Result<AccessActions> {
+) -> Result<aldis_access_generator_actions_t> {
     let input = match parse::<aldis_access_generator_input>(input.kind)? {
         aldis_access_generator_input::ALDIS_ACCESS_GENERATOR_INPUT_SUBMIT_SDU => {
             AccessInput::SubmitSdu(data)
@@ -254,7 +256,8 @@ fn ag_run<P: AccessProtocol>(
             AccessInput::Reconfigure(ag_config(&input.config, params?)?)
         }
     };
-    engine.step(input, area)
+    let list = engine.step(input, area)?;
+    Ok(ag_actions(&list, lvo))
 }
 
 /// Fails unless a reconfiguration names the protocol of the engine (LNK-003).
@@ -274,20 +277,20 @@ impl AccessGeneratorState {
         input: &aldis_access_generator_input_t,
         data: &[u8],
         area: &mut [u8],
-    ) -> Result<AccessActions> {
+    ) -> Result<aldis_access_generator_actions_t> {
         let ch = &input.config.channel;
         match self {
             Self::Tm(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)?;
-                ag_run(e, input, data, Ok(()), area)
+                ag_run(e, input, data, Ok(()), |p| match p {}, area)
             }
             Self::Aos(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)?;
-                ag_run(e, input, data, Ok(()), area)
+                ag_run(e, input, data, Ok(()), |p| match p {}, area)
             }
             Self::Uslp(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)?;
-                ag_run(e, input, data, uslp_params(ch), area)
+                ag_run(e, input, data, uslp_params(ch), LastValidOctet::raw, area)
             }
         }
     }
@@ -309,16 +312,34 @@ impl AccessGeneratorState {
     }
 }
 
-fn ag_action(output: &AccessOutput) -> aldis_access_generator_action_t {
+/// The C form of the actions of one step; `lvo` is the raw Last Valid Octet Pointer of a pointer
+/// of the protocol (LNK-020).
+fn ag_actions<P: AccessProtocol>(
+    list: &AccessActions<P>,
+    lvo: fn(P::Pointer) -> u16,
+) -> aldis_access_generator_actions_t {
+    let mut result = aldis_access_generator_actions_t::default();
+    for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+        *slot = ag_action(output, lvo);
+    }
+    // `list` holds at most `ACCESS_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
+    result.count = list.len();
+    result
+}
+
+fn ag_action<P: AccessProtocol>(
+    output: &AccessOutput<P>,
+    lvo: fn(P::Pointer) -> u16,
+) -> aldis_access_generator_action_t {
     match output {
         AccessOutput::DataField(f) => {
             let route = RouteFields::from(f.route);
             aldis_access_generator_action_t {
                 kind: ALDIS_ACCESS_GENERATOR_ACTION_DATA_FIELD,
-                vc_id: f.vc,
+                vc_id: f.vc.into(),
                 field: range(f.field),
                 pointer_present: u8::from(f.pointer.is_some()),
-                pointer: f.pointer.unwrap_or_default(),
+                pointer: f.pointer.map_or(0, lvo),
                 route_present: route.present,
                 map_id: route.map_id,
                 qos: route.qos,
@@ -404,14 +425,7 @@ impl handle::Step for aldis_access_generator_t {
         area: &mut [u8],
         actions: Out<'_, aldis_access_generator_actions_t>,
     ) -> Result<()> {
-        let list = state.step(input, data, area)?;
-        let mut result = aldis_access_generator_actions_t::default();
-        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-            *slot = ag_action(output);
-        }
-        // `list` holds at most `ACCESS_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
-        result.count = list.len();
-        actions.write(result);
+        actions.write(state.step(input, data, area)?);
         Ok(())
     }
 }

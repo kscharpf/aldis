@@ -145,7 +145,10 @@ fn trip<P: PacketProtocol>(
     flow(t, &mut generator, &mut extractor, &packets, params);
 
     refusals(t, &mut generator, config);
-    extractor_refusals(t, &mut extractor, ext_config);
+    let no_start = P::encode_pointer(&params, Pointer::NoStart)
+        .ok()
+        .and_then(P::header_pointer);
+    extractor_refusals(t, &mut extractor, ext_config, no_start);
 }
 
 /// Releases fields until the packets are out, and feeds each to the extractor.
@@ -180,10 +183,10 @@ fn flow<P: PacketProtocol>(
                 t.check(false);
                 continue;
             };
-            t.check(f.vc == 1 && f.route == P::route(&params));
+            t.check(Into::<u8>::into(f.vc) == 1 && f.route == P::route(&params));
             let input = ExtractorInput::DataField(FieldIn {
                 field: bb(field),
-                header_pointer: Some(f.pointer),
+                header_pointer: P::header_pointer(f.pointer),
                 gap: false,
             });
             let Ok(got) = extractor.step(input, &mut area) else {
@@ -282,19 +285,20 @@ fn extractor_refusals<P: PacketProtocol>(
     t: &mut Tally,
     extractor: &mut PacketExtractor<P, M, D>,
     ext_config: PacketExtractorConfig<P>,
+    no_start: Option<P::HeaderPointer>,
 ) {
     let mut area = [0u8; M + D];
     let field = [0u8; D];
     let gap = ExtractorInput::DataField(FieldIn {
         field: bb(&field),
-        header_pointer: Some(bb(0x7FF)),
+        header_pointer: bb(no_start),
         gap: true,
     });
     t.check(extractor.step(gap, &mut area).is_ok());
     let mut tiny = [0u8; 8];
     let input = ExtractorInput::DataField(FieldIn {
         field: bb(&field),
-        header_pointer: Some(0x7FF),
+        header_pointer: no_start,
         gap: false,
     });
     t.check(
@@ -319,14 +323,16 @@ fn extractor_refusals<P: PacketProtocol>(
 
 /// The pointer values and the data field headers of `P` (docs/04-engines.md §2.1).
 fn pointers<P: PacketProtocol>(t: &mut Tally, params: P::Params, none: u16, idle: Option<u16>) {
-    t.check(P::encode_pointer(&params, Pointer::NoStart).ok() == Some(none));
-    t.check(P::encode_pointer(&params, Pointer::OnlyIdle).ok() == idle);
-    t.check(P::encode_pointer(&params, Pointer::StartsAt(bb(3))).ok() == Some(3));
+    let raw = |pointer: Pointer| P::encode_pointer(&params, pointer).ok().map(P::raw_pointer);
+    t.check(raw(Pointer::NoStart) == Some(none));
+    t.check(raw(Pointer::OnlyIdle) == idle);
+    t.check(raw(Pointer::StartsAt(bb(3))) == Some(3));
     t.check(P::encode_pointer(&params, Pointer::StartsAt(bb(usize::MAX))).is_err());
     t.check(P::max_zone_len(&params) > 1);
+    let three = P::encode_pointer(&params, Pointer::StartsAt(bb(3))).ok();
     let mut header = [0u8; 3];
-    if let Some(h) = header.get_mut(..P::PACKET_HEADER_LEN) {
-        P::write_header(&params, bb(3), h);
+    if let (Some(h), Some(three)) = (header.get_mut(..P::PACKET_HEADER_LEN), three) {
+        P::write_header(&params, three, h);
     }
     let mut field = [0u8; 8];
     let zone = field.get_mut(P::PACKET_HEADER_LEN..).unwrap_or_default();
@@ -339,9 +345,12 @@ fn pointers<P: PacketProtocol>(t: &mut Tally, params: P::Params, none: u16, idle
     {
         *d = *s;
     }
-    let parsed = P::parse(&params, Some(bb(3)), &field);
+    let parsed = P::parse(&params, three.and_then(P::header_pointer), &field);
     t.check(parsed.is_ok_and(|p| p.pointer == Pointer::StartsAt(3)));
-    t.check(P::parse(&params, Some(bb(0x7FF)), &[]).is_err() || P::PACKET_HEADER_LEN == 0);
+    let no_start = P::encode_pointer(&params, Pointer::NoStart)
+        .ok()
+        .and_then(P::header_pointer);
+    t.check(P::parse(&params, no_start, &[]).is_err() || P::PACKET_HEADER_LEN == 0);
     t.check(P::DELIMITS_IDLE_EIP == (P::ID == LinkProtocol::Uslp));
     t.check(matches!(
         P::IDLE_FIELD,

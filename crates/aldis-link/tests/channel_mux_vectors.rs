@@ -22,7 +22,9 @@ use aldis_link::mux::{
 use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
-use aldis_tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
+use aldis_tm::{
+    DataFieldContent, FirstHeaderPointer, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 use aldis_uslp::{
     OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SecurityScope, SourceOrDestination,
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
@@ -186,7 +188,9 @@ impl Proto for Tm {
         cop: Option<Cop>,
     ) -> Result<TmOffer, Error> {
         refuse_route_and_cop(route, cop)?;
-        Ok(TmOffer { pointer })
+        Ok(TmOffer {
+            pointer: pointer.map(FirstHeaderPointer::try_from).transpose()?,
+        })
     }
 }
 
@@ -317,10 +321,18 @@ impl Proto for Uslp {
     }
 }
 
-fn scope(v: &Value) -> Scope {
+/// The scope of an input; a VCID the protocol cannot hold names no VC the engine has, so the
+/// step is `UnknownChannel` (LNK-033), which `early` takes.
+fn scope<P: Proto>(v: &Value, early: &mut Option<Error>) -> Scope<P::Vc> {
     match v["scope"].as_str().unwrap() {
         "mc" => Scope::Mc,
-        "vc" => Scope::Vc(small(&v["vc"])),
+        "vc" => P::Vc::try_from(small(&v["vc"])).map_or_else(
+            |_| {
+                *early = Some(Error::new(ErrorKind::UnknownChannel));
+                Scope::Mc
+            },
+            Scope::Vc,
+        ),
         other => panic!("unknown scope {other}"),
     }
 }
@@ -329,11 +341,11 @@ fn range(r: aldis_core::engine::OutRange) -> Value {
     json!([r.start(), r.end()])
 }
 
-fn output(o: &MuxOutput, area: &[u8]) -> Value {
+fn output<P: Proto>(o: &MuxOutput<P>, area: &[u8]) -> Value {
     match o {
         MuxOutput::Transmit(t) => json!({"transmit": {
             "kind": match t.class { FrameClass::Data => "data", FrameClass::Oid => "oid" },
-            "vc": t.vc,
+            "vc": Into::<u8>::into(t.vc),
             "frame_hex": hex::encode(t.frame.slice(area).unwrap()),
             "security_header": range(t.security_header),
             "data": range(t.data),
@@ -388,15 +400,20 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
                     early = early.or(Some(e));
                     <P::OfferMeta>::default()
                 });
+                // A VCID the protocol cannot hold names no configured VC (LNK-076).
+                let vc = P::Vc::try_from(vcid).unwrap_or_else(|_| {
+                    early = Some(Error::new(ErrorKind::UnknownChannel));
+                    P::Vc::try_from(0).unwrap()
+                });
                 MuxInput::Offer(Offer {
-                    vc: vcid,
+                    vc,
                     field: &field,
                     meta,
                 })
             }
             "opportunity" => MuxInput::Opportunity,
             "set_ocf" => MuxInput::SetOcf {
-                scope: scope(v),
+                scope: scope::<P>(v, &mut early),
                 ocf: hex::decode(v["ocf_hex"].as_str().unwrap())
                     .unwrap()
                     .try_into()
@@ -405,7 +422,7 @@ fn run_scenario<P: Proto>(scenario: &aldis_testkit::ResolvedScenario<'_>) -> Vec
             "set_fsh" => {
                 data = hex::decode(v["data_hex"].as_str().unwrap()).unwrap();
                 MuxInput::SetFsh {
-                    scope: scope(v),
+                    scope: scope::<P>(v, &mut early),
                     data: &data,
                 }
             }

@@ -6,10 +6,10 @@
 use aldis_core::{AnomalySet, DecodeMode, Error, ErrorKind, FieldId, Result};
 
 use crate::anomaly::TimeAnomaly;
-use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
+use crate::calendar::{CalendarDate, Day, Hour, Minute, Month, Second, Year};
 use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::{octets, wide8};
+use crate::util::{octets, rem10, rem100, wide8, wide16};
 
 /// One past the largest sub-second value for `octets` sub-second octets: 10^(2 × octets), for
 /// 0–6 octets (301.0 §3.4.2).
@@ -230,17 +230,13 @@ impl Ccs {
     pub(crate) fn t_octets(&self) -> [u8; 13] {
         let v = &self.value;
         let year = v.date.year().get();
-        let century = u8::try_from(year / 100).unwrap_or(0);
-        let year = u8::try_from(year % 100).unwrap_or(0);
-        let (a, b) = match (v.date.month_day(), v.date.day_of_year()) {
-            (Some((month, day)), _) => (to_bcd(month.get()), to_bcd(day)),
-            (None, doy) => {
-                let doy = doy.unwrap_or(0);
-                (
-                    u8::try_from(doy / 100).unwrap_or(0),
-                    to_bcd(u8::try_from(doy % 100).unwrap_or(0)),
-                )
-            }
+        // The year is 1–9999: its two digit pairs are the century and the year of the century.
+        let century = rem100(wide16(year / 100));
+        let year = rem100(wide16(year));
+        let (a, b) = match v.date.day() {
+            Day::MonthDay(month, day) => (to_bcd(month.get()), to_bcd(day)),
+            // The day of year is at most 366: its hundreds digit goes in the low nibble.
+            Day::Ordinal(doy) => (rem10(wide16(doy / 100)), to_bcd(rem100(wide16(doy)))),
         };
         let mut sub = [0_u8; 6];
         let mut rest = v.subsecond;
@@ -249,7 +245,7 @@ impl Ccs {
             .take(usize::from(self.format.subsecond))
             .rev()
         {
-            *octet = to_bcd(u8::try_from(rest % 100).unwrap_or(0));
+            *octet = to_bcd(rem100(rest));
             rest /= 100;
         }
         let [s0, s1, s2, s3, s4, s5] = sub;

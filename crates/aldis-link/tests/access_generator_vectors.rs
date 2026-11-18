@@ -8,6 +8,8 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
+use core::convert::Infallible;
+
 use aldis_core::ids::MapId;
 use aldis_link::access::{
     AccessGenerator, AccessGeneratorConfig, AccessInput, AccessOutput, AccessProtocol,
@@ -15,7 +17,7 @@ use aldis_link::access::{
 use aldis_link::common::Qos;
 use aldis_link::protocol::{Aos, Tm, Uslp, UslpParams};
 use aldis_testkit::{ScenarioFile, VectorFile, hex};
-use aldis_uslp::Upid;
+use aldis_uslp::{LastValidOctet, Upid};
 use serde_json::{Map, Value, json};
 
 const FILES: [&str; 3] = [
@@ -35,17 +37,28 @@ fn num(v: &Value) -> u64 {
 /// A protocol of the scenarios, with its parameters from a scenario's `config`.
 trait Proto: AccessProtocol {
     fn params(c: &Map<String, Value>) -> Self::Params;
+    /// The raw Last Valid Octet Pointer of a field.
+    fn lvo(pointer: Self::Pointer) -> u16;
 }
 
 impl Proto for Tm {
     fn params(_: &Map<String, Value>) {}
+    fn lvo(pointer: Infallible) -> u16 {
+        match pointer {}
+    }
 }
 
 impl Proto for Aos {
     fn params(_: &Map<String, Value>) {}
+    fn lvo(pointer: Infallible) -> u16 {
+        match pointer {}
+    }
 }
 
 impl Proto for Uslp {
+    fn lvo(pointer: LastValidOctet) -> u16 {
+        pointer.raw()
+    }
     fn params(c: &Map<String, Value>) -> UslpParams {
         UslpParams::new(
             Upid::from_bits(u8::try_from(num(&c["upid"])).unwrap()).unwrap(),
@@ -79,17 +92,17 @@ fn config<P: Proto>(c: &Map<String, Value>) -> AccessGeneratorConfig<P> {
     config
 }
 
-fn output(o: &AccessOutput, area: &[u8]) -> Value {
+fn output<P: Proto>(o: &AccessOutput<P>, area: &[u8]) -> Value {
     match o {
         AccessOutput::DataField(f) => {
             let mut v = Map::new();
-            v.insert("vc".to_owned(), json!(f.vc));
+            v.insert("vc".to_owned(), json!(Into::<u8>::into(f.vc)));
             v.insert(
                 "field_hex".to_owned(),
                 json!(hex::encode(f.field.slice(area).unwrap())),
             );
             if let Some(lvo) = f.pointer {
-                v.insert("lvo".to_owned(), json!(lvo));
+                v.insert("lvo".to_owned(), json!(P::lvo(lvo)));
             }
             if let Some(route) = f.route {
                 v.insert("map".to_owned(), json!(route.map.get()));
