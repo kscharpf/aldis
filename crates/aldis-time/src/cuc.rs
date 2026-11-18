@@ -4,15 +4,20 @@
 //! applies no leap-second correction to it (TIME-014). Level 2 uses an agency-defined epoch;
 //! Aldis treats its value the same way and does not interpret the epoch.
 
+use core::num::NonZeroU128;
+
 use aldis_core::time::Instant;
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
 use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::{octets, wide8};
+use crate::util::{low32, nonzero, octets, wide8};
 
 /// Nanoseconds per second.
 const NANOS: u32 = 1_000_000_000;
+
+/// Nanoseconds per second as a divisor that cannot be zero.
+const NANOS_DIVISOR: NonZeroU128 = nonzero!(NonZeroU128, 1_000_000_000);
 
 /// Microseconds per second.
 const MICROS: u64 = 1_000_000;
@@ -171,6 +176,21 @@ impl CucFormat {
         octets(self.coarse).wrapping_add(octets(self.fine))
     }
 
+    /// The largest coarse value the format's coarse octets hold: its low `coarse` octets all
+    /// ones (301.0 §3.2.2, TIME-012). The shift is 8 to 56 for the 1 to 7 coarse octets the
+    /// constructors allow, so it stays below 64 and the result is exact.
+    pub(crate) fn coarse_max(&self) -> u64 {
+        u64::MAX.wrapping_shr(64_u32.wrapping_sub(u32::from(self.coarse).wrapping_mul(8)))
+    }
+
+    /// The bits of a left-aligned fraction that the format's fine octets hold: its top `fine`
+    /// octets all ones, so a fraction has no bit below the resolution if it ANDs to itself
+    /// (301.0 §3.2.1, TIME-011). The shift is 0 to 80 for the 0 to 10 fine octets the
+    /// constructors allow, so it stays below 128 and the result is exact (0 for no fine octet).
+    pub(crate) fn fine_mask(&self) -> u128 {
+        !u128::MAX.wrapping_shr(u32::from(self.fine).wrapping_mul(8))
+    }
+
     /// P-field length in octets: 1, or 2 plus the undefined tail with octet 2 (301.0 §3.2.2,
     /// TIME-003).
     pub(crate) const fn pfield_len(&self) -> usize {
@@ -289,16 +309,15 @@ impl CucValue {
         let sum = hi
             .wrapping_mul(nanos)
             .wrapping_add(lo.wrapping_mul(nanos) >> 64);
-        (self.coarse, u32::try_from(sum >> 64).unwrap_or(u32::MAX))
+        // fine < 2¹²⁸, so sum >> 64 = floor(fine × 10⁹ / 2¹²⁸) is below 10⁹ < 2³²: `low32` keeps
+        // all of it.
+        (self.coarse, low32(sum >> 64))
     }
 }
 
 /// `OutOfRange` (`coarse`) unless `coarse` fits the format's coarse octets (TIME-012).
 fn check_coarse(format: &CucFormat, coarse: u64) -> Result<()> {
-    let bits = u32::from(format.coarse).wrapping_mul(8);
-    let max = u64::MAX
-        .checked_shr(64_u32.wrapping_sub(bits))
-        .unwrap_or(u64::MAX);
+    let max = format.coarse_max();
     if coarse > max {
         return Err(range(field::COARSE, max, coarse));
     }
@@ -331,10 +350,7 @@ impl Cuc {
     /// format's resolution.
     pub fn new(format: CucFormat, value: CucValue) -> Result<Self> {
         check_coarse(&format, value.coarse)?;
-        let below = u128::MAX
-            .checked_shr(u32::from(format.fine).wrapping_mul(8))
-            .unwrap_or(0);
-        if value.fine & below != 0 {
+        if value.fine & !format.fine_mask() != 0 {
             return Err(Error::new(ErrorKind::OutOfRange).with_field(field::FINE));
         }
         Ok(Self { format, value })
@@ -357,18 +373,17 @@ impl Cuc {
             return Err(range(field::NANOSECONDS, 999_999_999, u64::from(nanos)));
         }
         check_coarse(&format, seconds)?;
-        let bits = u32::from(format.fine).wrapping_mul(8);
-        // nanos < 2³⁰ and bits ≤ 80, so the shifted value stays below 2¹¹⁰; nanos < 10⁹ keeps
-        // the quotient below 2^bits, so it fits the fine octets and nothing carries.
-        let raw = (u128::from(nanos) << bits)
-            .checked_div(u128::from(NANOS))
-            .unwrap_or(0);
+        // nanos < 10⁹ < 2³⁰, so the shifted value stays below 2¹²⁸. The quotient is nanos / 10⁹
+        // as a binary fraction of 98 bits (below 2⁹⁸, so shifting it by 30 does not overflow), and
+        // the format has at most 80 fine bits: keeping its top bits is the truncation to the
+        // format's resolution, the same as shifting nanos left by the fine bits first (OI-40).
+        let fraction = (u128::from(nanos) << 98) / NANOS_DIVISOR;
         // The truncated fraction has no bits below the format's resolution.
         Ok(Self {
             format,
             value: CucValue {
                 coarse: seconds,
-                fine: raw.checked_shl(128_u32.wrapping_sub(bits)).unwrap_or(0),
+                fine: (fraction << 30) & format.fine_mask(),
             },
         })
     }
@@ -473,13 +488,15 @@ impl Cuc {
             .iter()
             .take(co)
             .fold(0_u64, |acc, &b| (acc << 8) | u64::from(b));
-        let raw = t
-            .iter()
-            .skip(co)
-            .fold(0_u128, |acc, &b| (acc << 8) | u128::from(b));
-        let fine = raw
-            .checked_shl(128_u32.wrapping_sub(u32::from(format.fine).wrapping_mul(8)))
-            .unwrap_or(0);
+        // The fine octets, left-aligned: the top octets of the 128-bit fraction.
+        let mut be = [0_u8; 16];
+        for (d, s) in be
+            .iter_mut()
+            .zip(t.iter().skip(co).take(usize::from(format.fine)))
+        {
+            *d = *s;
+        }
+        let fine = u128::from_be_bytes(be);
         Self {
             format,
             value: CucValue { coarse, fine },
@@ -496,6 +513,46 @@ mod tests {
 
     fn fmt(co: u8, fo: u8) -> CucFormat {
         CucFormat::new(CucEpoch::Tai1958, co, fo).unwrap()
+    }
+
+    #[test]
+    fn masks_follow_the_octet_counts() {
+        // req: TIME-012, TIME-011
+        for co in 1..=CucFormat::MAX_COARSE {
+            // The definition: the low `co` octets all ones.
+            let mut be = [0_u8; 8];
+            for octet in be.iter_mut().rev().take(usize::from(co)) {
+                *octet = u8::MAX;
+            }
+            assert_eq!(fmt(co, 0).coarse_max(), u64::from_be_bytes(be), "{co}");
+        }
+        for fo in 0..=CucFormat::MAX_FINE {
+            // The definition: the top `fo` octets all ones.
+            let mut be = [0_u8; 16];
+            for octet in be.iter_mut().take(usize::from(fo)) {
+                *octet = u8::MAX;
+            }
+            assert_eq!(fmt(1, fo).fine_mask(), u128::from_be_bytes(be), "{fo}");
+        }
+    }
+
+    #[test]
+    fn nanoseconds_truncate_to_the_fine_octets() {
+        // req: TIME-011, OI-40
+        let edges = [0, 1, 999_999_999, 500_000_000, 3_906_250, 1_953_125];
+        let spread =
+            (0..2000_u32).map(|i| i.wrapping_mul(499_979).wrapping_add(i * i) % 1_000_000_000);
+        let nanos = edges.into_iter().chain(spread);
+        for fo in 0..=CucFormat::MAX_FINE {
+            let bits = u32::from(fo) * 8;
+            for n in nanos.clone() {
+                // The definition: scale by 2^bits, divide by 10^9, then left-align.
+                let raw = (u128::from(n) << bits) / 1_000_000_000;
+                let fine = if fo == 0 { 0 } else { raw << (128 - bits) };
+                let code = Cuc::from_seconds_nanos(fmt(1, fo), 1, n).unwrap();
+                assert_eq!(code.value().fine(), fine, "{fo} fine octets, {n} ns");
+            }
+        }
     }
 
     #[test]

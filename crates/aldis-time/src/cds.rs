@@ -8,7 +8,7 @@ use aldis_core::{Error, ErrorKind, Result};
 
 use crate::field;
 use crate::pfield::{PField, PFieldTail, TimeCodeId};
-use crate::util::{bounded, wide, widen16};
+use crate::util::{bounded, reduced, wide, widen16};
 
 /// Milliseconds of day allow one positive leap second: 0 to 86 400 999 (301.0 Annex A, TIME-021).
 pub const MAX_MS_OF_DAY: u32 = 86_400_999;
@@ -38,6 +38,9 @@ bounded!(
     0,
     999_999_999
 );
+reduced!(MsOfDay, u32, 86_400_999);
+reduced!(Micros, u16, 999);
+reduced!(Picos, u32, 999_999_999);
 
 /// The submillisecond segment of a CDS value; its resolution must match the format's
 /// (301.0 §3.3.1, TIME-020).
@@ -265,6 +268,24 @@ pub struct CdsValue {
     pub subms: SubMillis,
 }
 
+/// The next `n` octets of `octets` as a big-endian `u32`; fewer octets than `n` leave the high
+/// octets zero. Callers pass `n` ≤ 4 (301.0 §3.3.1, TIME-020).
+fn take_be<'a>(octets: &mut impl Iterator<Item = &'a u8>, n: usize) -> u32 {
+    octets
+        .by_ref()
+        .take(n)
+        .fold(0_u32, |acc, &b| (acc << 8) | u32::from(b))
+}
+
+/// The next two octets of `octets` as a big-endian `u16`: the width of the microsecond segment
+/// (301.0 Annex A, TIME-021).
+fn take_be16<'a>(octets: &mut impl Iterator<Item = &'a u8>) -> u16 {
+    octets
+        .by_ref()
+        .take(2)
+        .fold(0_u16, |acc, &b| (acc << 8) | u16::from(b))
+}
+
 /// A CDS time code: a format and a value that fits it (301.0 §3.3, TIME-020…TIME-022).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cds {
@@ -341,21 +362,14 @@ impl Cds {
     /// `OutOfRange` (`day`, `ms_of_day`, or `subms`) for a segment outside its range.
     pub(crate) fn from_t(format: CdsFormat, t: &[u8]) -> Result<Self> {
         let mut octets = t.iter();
-        let mut take = |n: usize| {
-            octets
-                .by_ref()
-                .take(n)
-                .fold(0_u32, |acc, &b| (acc << 8) | u32::from(b))
-        };
-        let day = take(format.day_octets());
-        let ms_of_day = MsOfDay::try_from(take(4))?;
-        let raw = take(format.subms.octets());
+        let day = take_be(&mut octets, format.day_octets());
+        let ms_of_day = MsOfDay::try_from(take_be(&mut octets, 4))?;
+        // Each sub-millisecond segment is read at its own width, so `Micros` gets its two octets
+        // as a `u16` and no narrowing is needed.
         let subms = match format.subms {
             CdsSubMs::None => SubMillis::None,
-            CdsSubMs::Micros => {
-                SubMillis::Micros(Micros::try_from(u16::try_from(raw).unwrap_or(u16::MAX))?)
-            }
-            CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(raw)?),
+            CdsSubMs::Micros => SubMillis::Micros(Micros::try_from(take_be16(&mut octets))?),
+            CdsSubMs::Picos => SubMillis::Picos(Picos::try_from(take_be(&mut octets, 4))?),
         };
         // The day has at most the format's octets, and the resolution comes from the format.
         Ok(Self {

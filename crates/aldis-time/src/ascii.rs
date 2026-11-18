@@ -7,12 +7,15 @@
 //! ASCII codes are UTC-based; second 60 is accepted at any minute, and leap-second handling is
 //! the caller's responsibility (TIME-022, TIME-031).
 
+use core::num::NonZeroU64;
+
 use aldis_core::{Error, ErrorKind, FieldId, Result};
 
+use crate::calendar::Day;
 use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year, days_in_month, is_leap};
 use crate::ccs::CcsVariation;
 use crate::field;
-use crate::util::{out_of_bounds, wide8};
+use crate::util::{len64, nonzero, out_of_bounds, rem10, wide8, wide16};
 
 /// Most fractional digits: 12, down to 10⁻¹² s (301.0 §3.5.1, TIME-031).
 pub const MAX_FRACTION_DIGITS: u8 = 12;
@@ -31,22 +34,23 @@ const fn not_digit(field: FieldId) -> Error {
     Error::new(ErrorKind::InvalidField).with_field(field)
 }
 
-/// 10^`n` for `n` = 0–12.
-const fn pow10(n: u8) -> u64 {
+/// 10^`n` for `n` = 0–12 (301.0 §3.5.1, TIME-031); 10¹² above 12. Non-zero, so dividing by it
+/// has no zero case (RS-020).
+const fn pow10(n: u8) -> NonZeroU64 {
     match n {
-        0 => 1,
-        1 => 10,
-        2 => 100,
-        3 => 1_000,
-        4 => 10_000,
-        5 => 100_000,
-        6 => 1_000_000,
-        7 => 10_000_000,
-        8 => 100_000_000,
-        9 => 1_000_000_000,
-        10 => 10_000_000_000,
-        11 => 100_000_000_000,
-        _ => 1_000_000_000_000,
+        0 => NonZeroU64::MIN,
+        1 => nonzero!(NonZeroU64, 10),
+        2 => nonzero!(NonZeroU64, 100),
+        3 => nonzero!(NonZeroU64, 1_000),
+        4 => nonzero!(NonZeroU64, 10_000),
+        5 => nonzero!(NonZeroU64, 100_000),
+        6 => nonzero!(NonZeroU64, 1_000_000),
+        7 => nonzero!(NonZeroU64, 10_000_000),
+        8 => nonzero!(NonZeroU64, 100_000_000),
+        9 => nonzero!(NonZeroU64, 1_000_000_000),
+        10 => nonzero!(NonZeroU64, 10_000_000_000),
+        11 => nonzero!(NonZeroU64, 100_000_000_000),
+        _ => nonzero!(NonZeroU64, 1_000_000_000_000),
     }
 }
 
@@ -69,7 +73,7 @@ impl Fraction {
     /// (301.0 §3.5.1, TIME-031).
     #[must_use]
     pub const fn new(value: u64, digits: u8) -> Option<Self> {
-        if digits <= MAX_FRACTION_DIGITS && value < pow10(digits) {
+        if digits <= MAX_FRACTION_DIGITS && value < pow10(digits).get() {
             Some(Self { digits, value })
         } else {
             None
@@ -92,7 +96,7 @@ impl Fraction {
     #[must_use]
     pub const fn picos(&self) -> u64 {
         self.value
-            .wrapping_mul(pow10(MAX_FRACTION_DIGITS.wrapping_sub(self.digits)))
+            .wrapping_mul(pow10(MAX_FRACTION_DIGITS.wrapping_sub(self.digits)).get())
     }
 
     /// The fraction with `format`'s digits for `picos` (below 10¹²), truncated toward zero
@@ -101,9 +105,7 @@ impl Fraction {
         let digits = format.fraction_digits;
         Self {
             digits,
-            value: picos
-                .checked_div(pow10(MAX_FRACTION_DIGITS.wrapping_sub(digits)))
-                .unwrap_or(0),
+            value: picos / pow10(MAX_FRACTION_DIGITS.wrapping_sub(digits)),
         }
     }
 }
@@ -216,9 +218,19 @@ fn number(digits: &[u8], field: FieldId) -> Result<u16> {
     })
 }
 
-/// Narrows a subfield value of at most 2 digits.
-fn small(n: u16) -> u8 {
-    u8::try_from(n).unwrap_or(u8::MAX)
+/// The value of an all-digit subfield of 2 digits: at most 99, so it is built in `u8`. Every
+/// 2-digit subfield of a shape has exactly 2 digits (301.0 §3.5.1; TIME-031, TIME-032).
+///
+/// # Errors
+/// `InvalidField` (`field`) for a non-digit octet.
+fn number2(digits: &[u8], field: FieldId) -> Result<u8> {
+    digits.iter().try_fold(0_u8, |acc, &b| {
+        if b.is_ascii_digit() {
+            Ok(acc.wrapping_mul(10).wrapping_add(b.wrapping_sub(b'0')))
+        } else {
+            Err(not_digit(field))
+        }
+    })
 }
 
 /// The fraction digits after a `.`: at least one, all digits, at most `max` (§5.1).
@@ -233,16 +245,23 @@ fn fraction_digits(digits: &[u8], max: u8) -> Result<Fraction> {
     if !digits.iter().all(u8::is_ascii_digit) {
         return Err(not_digit(field::FRACTION));
     }
-    let found = u64::try_from(digits.len()).unwrap_or(u64::MAX);
-    if found > u64::from(max) {
-        return Err(Error::out_of_range(field::FRACTION, wide8(max), found));
+    if digits.len() > usize::from(max) {
+        return Err(Error::out_of_range(
+            field::FRACTION,
+            wide8(max),
+            len64(digits.len()),
+        ));
     }
-    let value = digits.iter().fold(0_u64, |acc, &b| {
-        acc.wrapping_mul(10)
-            .wrapping_add(u64::from(b.wrapping_sub(b'0')))
+    // At most `max` ≤ 12 digits were checked above, so the count stays in `u8`.
+    let (count, value) = digits.iter().fold((0_u8, 0_u64), |(n, acc), &b| {
+        (
+            n.wrapping_add(1),
+            acc.wrapping_mul(10)
+                .wrapping_add(u64::from(b.wrapping_sub(b'0'))),
+        )
     });
     Ok(Fraction {
-        digits: u8::try_from(digits.len()).unwrap_or(max),
+        digits: count,
         value,
     })
 }
@@ -267,20 +286,20 @@ const fn dec2(n: u8) -> [u8; 2] {
 
 /// Three decimal digits.
 fn dec3(n: u16) -> [u8; 3] {
-    let [h, t, o] = [n / 100 % 10, n / 10 % 10, n % 10].map(|d| small(d).wrapping_add(b'0'));
+    let [h, t, o] = [n / 100, n / 10, n].map(|d| rem10(wide16(d)).wrapping_add(b'0'));
     [h, t, o]
 }
 
 /// Four decimal digits.
 fn dec4(n: u16) -> [u8; 4] {
-    [n / 1000 % 10, n / 100 % 10, n / 10 % 10, n % 10].map(|d| small(d).wrapping_add(b'0'))
+    [n / 1000, n / 100, n / 10, n].map(|d| rem10(wide16(d)).wrapping_add(b'0'))
 }
 
 /// Twelve decimal digits, zero-padded.
 fn dec12(mut n: u64) -> [u8; 12] {
     let mut out = [b'0'; 12];
     for slot in out.iter_mut().rev() {
-        *slot = u8::try_from(n % 10).unwrap_or(0).wrapping_add(b'0');
+        *slot = rem10(n).wrapping_add(b'0');
         n /= 10;
     }
     out
@@ -310,6 +329,13 @@ pub struct AsciiTime {
 enum DateDigits {
     MonthDay([u8; 4], [u8; 2], [u8; 2]),
     Ordinal([u8; 4], [u8; 3]),
+}
+
+/// The day subfield values of a complete code, in the narrowest type each fits: a month and day of
+/// month are 2 digits, a day of year 3 (301.0 §3.5.1.1–2, TIME-031).
+enum DayDigits {
+    MonthDay(u8, u8),
+    Ordinal(u16),
 }
 
 impl AsciiTime {
@@ -344,36 +370,35 @@ impl AsciiTime {
         };
         let (fraction, utc) = parse_tail(tail, options.max_fraction_digits)?;
         // Digits in subfield order, then ranges in the same order (§5.1).
-        let date = match date {
+        let (year, day) = match date {
             DateDigits::MonthDay(y, m, d) => {
                 let (y, m, d) = (
                     number(&y, field::YEAR)?,
-                    number(&m, field::MONTH)?,
-                    number(&d, field::DAY)?,
+                    number2(&m, field::MONTH)?,
+                    number2(&d, field::DAY)?,
                 );
-                (y, Some((m, d)), None)
+                (y, DayDigits::MonthDay(m, d))
             }
             DateDigits::Ordinal(y, d) => (
                 number(&y, field::YEAR)?,
-                None,
-                Some(number(&d, field::DAY_OF_YEAR)?),
+                DayDigits::Ordinal(number(&d, field::DAY_OF_YEAR)?),
             ),
         };
-        let hour = number(&[*h0, *h1], field::HOUR)?;
-        let minute = number(&[*i0, *i1], field::MINUTE)?;
-        let second = number(&[*s0, *s1], field::SECOND)?;
-        let year = Year::try_from(date.0)?;
-        let date = match (date.1, date.2) {
-            (Some((month, day)), _) => {
-                CalendarDate::from_month_day(year, Month::try_from(small(month))?, small(day))?
+        let hour = number2(&[*h0, *h1], field::HOUR)?;
+        let minute = number2(&[*i0, *i1], field::MINUTE)?;
+        let second = number2(&[*s0, *s1], field::SECOND)?;
+        let year = Year::try_from(year)?;
+        let date = match day {
+            DayDigits::MonthDay(month, day) => {
+                CalendarDate::from_month_day(year, Month::try_from(month)?, day)?
             }
-            (None, doy) => CalendarDate::from_day_of_year(year, doy.unwrap_or(0))?,
+            DayDigits::Ordinal(doy) => CalendarDate::from_day_of_year(year, doy)?,
         };
         Ok(Self {
             date,
-            hour: Hour::try_from(small(hour))?,
-            minute: Minute::try_from(small(minute))?,
-            second: Second::try_from(small(second))?,
+            hour: Hour::try_from(hour)?,
+            minute: Minute::try_from(minute)?,
+            second: Second::try_from(second)?,
             fraction,
             utc,
         })
@@ -408,13 +433,13 @@ impl AsciiTime {
         let n = self.encoded_len();
         let dst = out.get_mut(..n).ok_or(Error::buffer_too_small(n))?;
         let [y0, y1, y2, y3] = dec4(self.date.year().get());
-        let date = match (self.date.month_day(), self.date.day_of_year()) {
-            (Some((month, day)), _) => {
+        let date = match self.date.day() {
+            Day::MonthDay(month, day) => {
                 let ([m0, m1], [d0, d1]) = (dec2(month.get()), dec2(day));
                 [y0, y1, y2, y3, b'-', m0, m1, b'-', d0, d1]
             }
-            (None, doy) => {
-                let [d0, d1, d2] = dec3(doy.unwrap_or(0));
+            Day::Ordinal(doy) => {
+                let [d0, d1, d2] = dec3(doy);
                 [y0, y1, y2, y3, b'-', d0, d1, d2, 0, 0]
             }
         };
@@ -624,12 +649,12 @@ fn shape_of<'s>(text: &[u8], shapes: &'s [Shape]) -> Option<&'s Shape> {
 #[derive(Debug, Clone, Copy, Default)]
 struct Raw {
     year: Option<u16>,
-    month: Option<u16>,
-    day: Option<u16>,
+    month: Option<u8>,
+    day: Option<u8>,
     day_of_year: Option<u16>,
-    hour: Option<u16>,
-    minute: Option<u16>,
-    second: Option<u16>,
+    hour: Option<u8>,
+    minute: Option<u8>,
+    second: Option<u8>,
 }
 
 impl Raw {
@@ -637,15 +662,15 @@ impl Raw {
     fn read(&mut self, text: &[u8], shape: &Shape) -> Result<()> {
         for &(part, at, len) in shape.parts {
             let digits = text.get(at..at.wrapping_add(len)).unwrap_or_default();
-            let value = Some(number(digits, part.field())?);
+            let field = part.field();
             match part {
-                Part::Year => self.year = value,
-                Part::Month => self.month = value,
-                Part::Day => self.day = value,
-                Part::DayOfYear => self.day_of_year = value,
-                Part::Hour => self.hour = value,
-                Part::Minute => self.minute = value,
-                Part::Second => self.second = value,
+                Part::Year => self.year = Some(number(digits, field)?),
+                Part::Month => self.month = Some(number2(digits, field)?),
+                Part::Day => self.day = Some(number2(digits, field)?),
+                Part::DayOfYear => self.day_of_year = Some(number(digits, field)?),
+                Part::Hour => self.hour = Some(number2(digits, field)?),
+                Part::Minute => self.minute = Some(number2(digits, field)?),
+                Part::Second => self.second = Some(number2(digits, field)?),
             }
         }
         Ok(())
@@ -738,7 +763,7 @@ impl AsciiSubset {
         utc: bool,
     ) -> Result<Self> {
         let year = raw.year.map(Year::try_from).transpose()?;
-        let month = raw.month.map(|m| Month::try_from(small(m))).transpose()?;
+        let month = raw.month.map(Month::try_from).transpose()?;
         let day = match raw.day {
             Some(day) => {
                 let last = match (year, month) {
@@ -747,10 +772,10 @@ impl AsciiSubset {
                     (None, Some(m)) => days_in_month(2000, m.get()),
                     (Some(y), Some(m)) => days_in_month(y.get(), m.get()),
                 };
-                if day == 0 || day > u16::from(last) {
+                if day == 0 || day > last {
                     return Err(out_of_bounds(field::DAY, day.into(), 1, last.into()));
                 }
-                Some(small(day))
+                Some(day)
             }
             None => None,
         };
@@ -779,9 +804,9 @@ impl AsciiSubset {
             month,
             day,
             day_of_year,
-            hour: raw.hour.map(|h| Hour::try_from(small(h))).transpose()?,
-            minute: raw.minute.map(|m| Minute::try_from(small(m))).transpose()?,
-            second: raw.second.map(|s| Second::try_from(small(s))).transpose()?,
+            hour: raw.hour.map(Hour::try_from).transpose()?,
+            minute: raw.minute.map(Minute::try_from).transpose()?,
+            second: raw.second.map(Second::try_from).transpose()?,
             fraction,
             utc,
         })
@@ -852,8 +877,8 @@ impl AsciiSubset {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, Fraction, MAX_ASCII_LEN, dec2, dec3,
-        dec4, dec12, number, pow10, small,
+        AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CALENDAR, Fraction, MAX_ASCII_LEN, Part,
+        TIME, dec2, dec3, dec4, dec12, number, number2, pow10,
     };
     use crate::calendar::{CalendarDate, Hour, Minute, Month, Second, Year};
     use crate::ccs::CcsVariation;
@@ -902,7 +927,7 @@ mod tests {
             Fraction::new(999_999_999_999, 12).unwrap()
         );
         for n in 0..=12_u8 {
-            assert_eq!(pow10(n), 10_u64.pow(u32::from(n)));
+            assert_eq!(pow10(n).get(), 10_u64.pow(u32::from(n)));
         }
     }
 
@@ -929,6 +954,25 @@ mod tests {
     }
 
     #[test]
+    fn shape_parts_lie_inside_their_patterns() {
+        // req: TIME-032
+        // `Raw::read` slices the text of a shape by these offsets and widths, and reads a
+        // 2-digit subfield as a `u8`: the tables must keep both inside the pattern.
+        for shape in CALENDAR.iter().chain(&TIME) {
+            for &(part, at, len) in shape.parts {
+                let width = match part {
+                    Part::Year => 4,
+                    Part::DayOfYear => 3,
+                    Part::Month | Part::Day | Part::Hour | Part::Minute | Part::Second => 2,
+                };
+                assert_eq!(len, width, "{:?} in {:?}", part, shape.pattern);
+                let digits = shape.pattern.get(at..at + len).unwrap();
+                assert!(digits.iter().all(|&p| p != b'-' && p != b':'));
+            }
+        }
+    }
+
+    #[test]
     fn helpers() {
         // req: TIME-031
         assert_eq!(number(b"0123", field::YEAR), Ok(123));
@@ -936,7 +980,12 @@ mod tests {
             number(b"1a", field::YEAR).unwrap_err().kind(),
             ErrorKind::InvalidField
         );
-        assert_eq!((small(255), small(300)), (255, 255));
+        assert_eq!(number2(b"07", field::HOUR), Ok(7));
+        assert_eq!(number2(b"99", field::HOUR), Ok(99));
+        assert_eq!(
+            number2(b"1a", field::HOUR).unwrap_err().kind(),
+            ErrorKind::InvalidField
+        );
         assert_eq!(
             (dec2(7), dec3(42), dec4(9), dec12(1)),
             (*b"07", *b"042", *b"0009", *b"000000000001")
