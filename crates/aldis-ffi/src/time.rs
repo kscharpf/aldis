@@ -17,9 +17,10 @@ use aldis::core::{AnomalySet, Error, Result};
 use aldis::time::{
     Agency, AgencyFormat, AsciiFormat, AsciiOptions, AsciiSubset, AsciiTime, CalendarDate, Ccs,
     CcsFormat, CcsValue, CcsVariation, Cds, CdsDayLen, CdsEpoch, CdsFormat, CdsSubMs, CdsValue,
-    Cuc, CucEpoch, CucFormat, CucValue, Decoded, Fraction, Hour, Micros, Minute, Month, MsOfDay,
-    PField, PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode, TimeFormat, UtcInstant,
-    Year, decode_implicit, decode_implicit_lenient, decode_with_pfield, decode_with_pfield_lenient,
+    Cuc, CucEpoch, CucFormat, CucValue, Day, Decoded, Fraction, Hour, Micros, Minute, Month,
+    MsOfDay, PField, PFieldTail, Picos, Second, SubMillis, TimeAnomaly, TimeCode, TimeFormat,
+    UtcInstant, Year, decode_implicit, decode_implicit_lenient, decode_with_pfield,
+    decode_with_pfield_lenient,
 };
 
 use crate::abi::{self, Out, invalid_argument};
@@ -603,14 +604,22 @@ pub(crate) fn code_in(format: TimeFormat, v: &aldis_time_value_t) -> Result<Time
     })
 }
 
-fn date_out(date: CalendarDate, out: &mut aldis_time_value_t) {
+const fn date_out(date: CalendarDate, out: &mut aldis_time_value_t) {
     out.year = date.year().get();
     out.variation = variation_code(date.variation());
-    if let Some((month, day)) = date.month_day() {
-        out.month = month.get();
-        out.day_of_month = day;
+    // 0 is the C struct's value for the field the variation does not carry.
+    match date.day() {
+        Day::MonthDay(month, day) => {
+            out.month = month.get();
+            out.day_of_month = day;
+            out.day_of_year = 0;
+        }
+        Day::Ordinal(day_of_year) => {
+            out.month = 0;
+            out.day_of_month = 0;
+            out.day_of_year = day_of_year;
+        }
     }
-    out.day_of_year = date.day_of_year().unwrap_or(0);
 }
 
 /// The C struct of a time value.
@@ -707,11 +716,15 @@ fn ascii_in(a: &aldis_time_ascii_t) -> Result<AsciiTime> {
 }
 
 fn ascii_out(t: &AsciiTime) -> aldis_time_ascii_t {
-    let (month, day) = t.date.month_day().map_or((0, 0), |(m, d)| (m.get(), d));
+    // 0 is the C struct's value for the field the variation does not carry.
+    let (month, day, day_of_year) = match t.date.day() {
+        Day::MonthDay(month, day) => (month.get(), day, 0),
+        Day::Ordinal(day_of_year) => (0, 0, day_of_year),
+    };
     aldis_time_ascii_t {
         fraction: t.fraction.value(),
         year: t.date.year().get(),
-        day_of_year: t.date.day_of_year().unwrap_or(0),
+        day_of_year,
         variation: variation_code(t.date.variation()),
         month,
         day,

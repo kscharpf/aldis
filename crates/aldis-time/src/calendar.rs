@@ -147,11 +147,19 @@ reduced!(Minute, u8, 59);
 reduced!(Second, u8, 60);
 
 /// How a [`CalendarDate`] names its day (301.0 §3.4.1.1–2; TIME-030).
+///
+/// A closed enum, one variant per calendar variation of 301.0 §3.4.1 (GEN-081): a `match` on
+/// [`CalendarDate::day`] names both and needs no `None` case. There is no constructor: a `Day`
+/// comes only from a [`CalendarDate`], which checks the day against the month and year
+/// ([`from_month_day`](CalendarDate::from_month_day),
+/// [`from_day_of_year`](CalendarDate::from_day_of_year)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Day {
-    /// Month and day of month.
+pub enum Day {
+    /// Month and day of month, the month-day variation (301.0 §3.4.1.1; TIME-030). The day of
+    /// month is 1 to the number of days in that month of the date's year.
     MonthDay(Month, u8),
-    /// Day of year.
+    /// Day of year, the ordinal variation (301.0 §3.4.1.2; TIME-030). The day is 1 to 365, or 366
+    /// in a leap year.
     Ordinal(u16),
 }
 
@@ -287,9 +295,14 @@ impl CalendarDate {
         }
     }
 
-    /// How the date names its day: month and day of month, or day of year, as a closed enum so a
-    /// caller needs no `None` case (301.0 §3.4.1.1–2; TIME-030).
-    pub(crate) const fn day(self) -> Day {
+    /// How the date names its day: month and day of month, or day of year (301.0 §3.4.1.1–2;
+    /// TIME-030).
+    ///
+    /// Unlike [`month_day`](Self::month_day) and [`day_of_year`](Self::day_of_year), each of
+    /// which is `None` for the other variation, this is the accessor that needs no `None` case:
+    /// a `match` on the closed [`Day`] is exhaustive.
+    #[must_use]
+    pub const fn day(self) -> Day {
         self.day
     }
 
@@ -394,6 +407,21 @@ mod tests {
         let md = CalendarDate::from_civil(Year::new(2024).unwrap(), 2, 29);
         assert_eq!(md.day_number(), date.day_number());
         assert_eq!((Year::default().get(), Hour::default().get()), (1, 0));
+    }
+
+    #[test]
+    fn day_names_the_variation_the_date_was_built_in() {
+        // req: TIME-030, RS-020
+        let y = Year::new(2024).unwrap();
+        let month = Month::new(2).unwrap();
+        let md = CalendarDate::from_month_day(y, month, 29).unwrap();
+        assert_eq!(md.day(), Day::MonthDay(month, 29));
+        assert_eq!(md.month_day(), Some((month, 29)));
+        assert_eq!(md.day_of_year(), None);
+        let doy = CalendarDate::from_day_of_year(y, 366).unwrap();
+        assert_eq!(doy.day(), Day::Ordinal(366));
+        assert_eq!(doy.month_day(), None);
+        assert_eq!(doy.day_of_year(), Some(366));
     }
 
     #[test]
