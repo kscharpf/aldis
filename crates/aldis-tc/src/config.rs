@@ -739,6 +739,60 @@ pub(crate) mod tests {
         );
         assert!(both.is_ok());
     }
+
+    #[test]
+    fn an_entry_is_a_duplicate_only_of_the_same_spacecraft_virtual_channel_and_map() {
+        // req: GEN-060, API-040, TC-024
+        let pc = PhysicalChannelConfig::new(1024, true).unwrap();
+        let vc = |sc: u16, n: u8| {
+            VcConfig::new(scid(sc), vcid(n), 1024, SegmentHeaderUse::Present).unwrap()
+        };
+        let map = |sc: u16, v: u8, m: u8| {
+            MapConfig::new(scid(sc), vcid(v), mapid(m), SecurityLayout::NONE)
+        };
+        let kinds =
+            |r: Result<VcTable<4, 4>, aldis_core::Error>| r.map_err(|e| (e.kind(), e.field()));
+        // The same Virtual Channel number under another Spacecraft ID is another channel, and
+        // so is the same MAP number under another Spacecraft ID or Virtual Channel.
+        let table = VcTable::<4, 4>::new(
+            pc,
+            &[vc(1, 2), vc(2, 2), vc(2, 3)],
+            &[map(1, 2, 0), map(2, 2, 0), map(2, 3, 0), map(2, 2, 1)],
+        )
+        .unwrap();
+        assert_eq!(table.vcs().count(), 3);
+        assert_eq!(table.maps().count(), 4);
+        assert_eq!(table.map(scid(2), vcid(3), mapid(0)), Some(map(2, 3, 0)));
+        assert_eq!(table.map(scid(2), vcid(2), mapid(1)), Some(map(2, 2, 1)));
+        // Only the same triple is a duplicate, wherever it is among the entries.
+        assert_eq!(
+            kinds(VcTable::new(
+                pc,
+                &[vc(1, 2), vc(2, 2), vc(2, 3)],
+                &[map(1, 2, 0), map(2, 2, 0), map(2, 3, 0), map(2, 2, 0)],
+            )),
+            Err((ErrorKind::InvalidConfig, Some(field::MAP_ID)))
+        );
+        assert_eq!(
+            kinds(VcTable::new(pc, &[vc(1, 2), vc(2, 2), vc(1, 2)], &[])),
+            Err((ErrorKind::InvalidConfig, Some(field::VC_ID)))
+        );
+    }
+
+    #[test]
+    fn the_entries_before_an_index_beyond_the_slice_are_all_of_it() {
+        // req: GEN-060, API-040
+        let (a, b) = (plain(1), plain(2));
+        assert!(super::given_vc(&[a, b], 5, scid(0x155), vcid(2)));
+        assert!(!super::given_vc(&[a, b], 5, scid(0x155), vcid(3)));
+        assert!(!super::given_vc(&[a, b], 1, scid(0x155), vcid(2)));
+        assert!(!super::given_vc(&[], 1, scid(0x155), vcid(1)));
+        let (m, n) = (map(2, 0, 0, 0), map(2, 1, 0, 0));
+        assert!(super::given_map(&[m, n], 5, n));
+        assert!(!super::given_map(&[m], 5, n));
+        assert!(!super::given_map(&[m, n], 1, n));
+        assert!(!super::given_map(&[], 1, n));
+    }
 }
 
 #[cfg(test)]
