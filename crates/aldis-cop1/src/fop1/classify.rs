@@ -8,7 +8,7 @@ use aldis_core::time::Instant;
 use aldis_core::{Error, ErrorKind, Result, field};
 use aldis_tc::{Clcw, CopInEffect};
 
-use super::{Context, Fop1, Fop1Format, Fop1Input};
+use super::{Context, Fop1, Fop1Format, Fop1Head, Fop1Input};
 use crate::fop1_table::{Fop1Event, FrameKind, SuspendState};
 use crate::notify::{Directive, TimeoutType};
 
@@ -18,7 +18,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// # Errors
     /// `UnknownChannel` (`vc_id`) for a CLCW of another Virtual Channel (cop1.md §2.2).
     pub(super) fn clcw_event(&self, clcw: &Clcw) -> Result<Fop1Event> {
-        if clcw.vc_id.get() != self.target.clcw_vc_id {
+        if clcw.vc_id.get() != self.head.target.clcw_vc_id {
             return Err(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID));
         }
         if clcw.cop_in_effect != CopInEffect::COP_1 {
@@ -28,9 +28,14 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             return Ok(Fop1Event::E14);
         }
         let n_r = clcw.report_value;
-        let outstanding = self.core.v_s.get().wrapping_sub(self.core.nn_r.get());
-        let acked = n_r.get().wrapping_sub(self.core.nn_r.get());
-        let first = n_r == self.core.nn_r;
+        let outstanding = self
+            .head
+            .core
+            .v_s
+            .get()
+            .wrapping_sub(self.head.core.nn_r.get());
+        let acked = n_r.get().wrapping_sub(self.head.core.nn_r.get());
+        let first = n_r == self.head.core.nn_r;
         let (retransmit, wait) = (clcw.retransmit, clcw.wait);
         let event = if acked > outstanding {
             Fop1Event::E13
@@ -47,7 +52,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 (false, true) => Fop1Event::E5,
                 (false, false) => Fop1Event::E6,
             }
-        } else if self.core.transmission_limit.get() == 1 {
+        } else if self.head.core.transmission_limit.get() == 1 {
             if first {
                 Fop1Event::E102
             } else {
@@ -55,7 +60,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             }
         } else if !first {
             if wait { Fop1Event::E9 } else { Fop1Event::E8 }
-        } else if self.core.transmission_count < self.core.transmission_limit.get() {
+        } else if self.head.core.transmission_count < self.head.core.transmission_limit.get() {
             if wait { Fop1Event::E11 } else { Fop1Event::E10 }
         } else if wait {
             Fop1Event::E103
@@ -66,26 +71,26 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     }
 
     /// The event of a directive (232.1 Table 4-1, Table 5-1; COP-014, COP-015).
-    fn directive_event(&self, directive: Directive) -> Fop1Event {
+    const fn directive_event(&self, directive: Directive) -> Fop1Event {
         match directive {
             Directive::InitiateAdWithoutClcwCheck => Fop1Event::E23,
             Directive::InitiateAdWithClcwCheck => Fop1Event::E24,
             Directive::InitiateAdWithUnlock => {
-                if self.core.bc_out_ready {
+                if self.head.core.bc_out_ready {
                     Fop1Event::E25
                 } else {
                     Fop1Event::E26
                 }
             }
             Directive::InitiateAdWithSetVr { .. } => {
-                if self.core.bc_out_ready {
+                if self.head.core.bc_out_ready {
                     Fop1Event::E27
                 } else {
                     Fop1Event::E28
                 }
             }
             Directive::TerminateAd => Fop1Event::E29,
-            Directive::ResumeAd => match self.core.suspend_state {
+            Directive::ResumeAd => match self.head.core.suspend_state {
                 SuspendState::NotSuspended => Fop1Event::E30,
                 SuspendState::Active => Fop1Event::E31,
                 SuspendState::RetransmitWithoutWait => Fop1Event::E32,
@@ -94,7 +99,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             },
             Directive::SetVs { .. } => Fop1Event::E35,
             Directive::SetSlidingWindowWidth { width } => {
-                if Self::k_fits(width) {
+                if Fop1Head::<Q, F, N, P>::k_fits(width) {
                     Fop1Event::E36
                 } else {
                     Fop1Event::E40
@@ -125,7 +130,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             handle: None,
             fdu: &[],
             directive: None,
-            n_r: self.core.nn_r,
+            n_r: self.head.core.nn_r,
         };
         let event = match input {
             Fop1Input::Clcw(clcw) => {
@@ -134,14 +139,15 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
             }
             Fop1Input::InvalidClcw => Fop1Event::E15,
             Fop1Input::Timeout => {
-                let Some(deadline) = self.core.deadline else {
+                let Some(deadline) = self.head.core.deadline else {
                     return Ok(None);
                 };
                 if now < deadline {
                     return Ok(None);
                 }
-                let below = self.core.transmission_count < self.core.transmission_limit.get();
-                match (below, self.core.timeout_type) {
+                let below =
+                    self.head.core.transmission_count < self.head.core.transmission_limit.get();
+                match (below, self.head.core.timeout_type) {
                     (true, TimeoutType::Tt0) => Fop1Event::E16,
                     (true, TimeoutType::Tt1) => Fop1Event::E104,
                     (false, TimeoutType::Tt0) => Fop1Event::E17,
@@ -152,7 +158,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 self.check_fdu(fdu)?;
                 ctx.handle = Some(handle);
                 ctx.fdu = fdu;
-                if self.core.wait.is_none() {
+                if self.head.core.wait.is_none() {
                     Fop1Event::E19
                 } else {
                     Fop1Event::E20
@@ -162,7 +168,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 self.check_fdu(fdu)?;
                 ctx.handle = Some(handle);
                 ctx.fdu = fdu;
-                if self.core.bd_out.is_none() {
+                if self.head.core.bd_out.is_none() {
                     Fop1Event::E21
                 } else {
                     Fop1Event::E22
@@ -183,7 +189,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 (FrameKind::Bc, true) => Fop1Event::E43,
                 (FrameKind::Bc, false) => Fop1Event::E44,
                 (FrameKind::Bd, true) => {
-                    ctx.handle = self.core.bd_out;
+                    ctx.handle = self.head.core.bd_out;
                     Fop1Event::E45
                 }
                 (FrameKind::Bd, false) => Fop1Event::E46,
@@ -199,7 +205,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
         if fdu.is_empty() {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::FRAME_DATA_FIELD));
         }
-        if fdu.len() > self.target.max_fdu_len {
+        if fdu.len() > self.head.target.max_fdu_len {
             return Err(Error::new(ErrorKind::OutOfRange).with_field(field::FRAME_LEN));
         }
         Ok(())

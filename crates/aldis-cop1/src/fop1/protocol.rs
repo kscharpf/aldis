@@ -11,7 +11,7 @@ use core::fmt::Debug;
 use core::hash::Hash;
 
 use aldis_core::Result;
-use aldis_core::format::{FrameFormat, PhysicalChannel};
+use aldis_core::format::FrameFormat;
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::layout::FECF_LEN;
 use aldis_core::writer::{FrameWriter, Variable, VariablePlan};
@@ -60,7 +60,7 @@ mod sealed {
 /// ```
 pub trait Fop1Format: FrameFormat + Hash + sealed::Sealed {
     /// The checked channel the frames belong to: its tables and identifiers.
-    type Channel: Clone + Debug + Eq + Hash;
+    type Channel: Copy + Debug + Eq + Hash;
 
     /// The codec's plan of a variable-length frame (RS-023).
     type Plan: VariablePlan;
@@ -84,26 +84,27 @@ pub trait Fop1Format: FrameFormat + Hash + sealed::Sealed {
     ) -> Result<FrameWriter<'b, Variable, Self::Plan>>;
 }
 
-/// The longest FDU a frame of `physical` carries when its Primary Header has the `extension` and
-/// its data field starts with a header of `data_header_len` octets: what remains of the frame
-/// length after the Primary Header, that header, and the FECF (232.0 §4.1.3; 732.1 §4.1.4.2;
-/// COP-010).
-pub(super) fn max_fdu_len<P: FrameFormat>(
-    physical: &P::Physical,
-    extension: &P::HeaderExtension,
+/// The longest FDU a frame of `frame_len` octets carries when its Primary Header is
+/// `primary_header_len` octets and its data field starts with a header of `data_header_len`
+/// octets: what remains of the frame length after the Primary Header, that header, and the FECF
+/// when `fecf` is set (232.0 §4.1.3; 732.1 §4.1.4.2; COP-010). A `const fn`, for the target of
+/// [`Fop1Target::tc`](super::Fop1Target::tc).
+pub(super) const fn max_fdu_len(
+    frame_len: usize,
+    fecf: bool,
+    primary_header_len: usize,
     data_header_len: usize,
 ) -> usize {
-    let trailer = if physical.fecf() { FECF_LEN } else { 0 };
-    physical
-        .frame_len()
-        .saturating_sub(P::primary_header_len(extension))
+    let trailer = if fecf { FECF_LEN } else { 0 };
+    frame_len
+        .saturating_sub(primary_header_len)
         .saturating_sub(data_header_len)
         .saturating_sub(trailer)
 }
 
 /// The checked TC Virtual Channel of a FOP-1 target, and its table (232.0 §4.1.2.5, §4.1.2.6;
 /// COP-010).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TcChannel {
     pub(super) table: VcTable<1, 0>,
     pub(super) spacecraft_id: TcSpacecraftId,
@@ -154,7 +155,7 @@ impl Fop1Format for TcFormat {
 /// The checked USLP Virtual Channel and MAP of a FOP-1 target, its table, and the TFDF Header of
 /// its user data (732.1 §4.1.2.2–5, §4.1.4.2; COP-010, USLP-013).
 #[cfg(feature = "uslp")]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UslpChannel {
     pub(super) table: UslpVcTable<1, 1>,
     pub(super) spacecraft_id: UslpSpacecraftId,

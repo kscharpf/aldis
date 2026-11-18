@@ -1,28 +1,28 @@
-//! The commit phase: applying a decision to the engine and the store in place (API-058, RS-022).
+//! The commit phase: applying a decision to the engine in place (API-058, RS-022).
 //!
-//! The body of [`Fop1::commit`], which keeps its signature and documentation in `fop1.rs`.
+//! [`Fop1Decision::commit`], the one method of the decision that writes the engine, its head and
+//! its store.
 
-use super::{
-    FduSource, Fop1, Fop1Actions, Fop1Decision, Fop1Format, Fop1Store, Origin, Payload, Waiting,
-};
+use super::{FduSource, Fop1Actions, Fop1Decision, Fop1Format, Origin, Payload, Waiting};
 
-impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N, P> {
-    /// Applies `decision` to the state in place and returns its actions; the body of
-    /// [`commit`](Self::commit) (API-058, RS-022).
-    pub(super) fn apply(
-        &mut self,
-        store: &mut Fop1Store<Q, F>,
-        decision: Fop1Decision<'_, Q, F, N, P>,
-    ) -> Fop1Actions<N> {
-        let Fop1Decision {
-            mut core,
-            actions,
-            fdu,
-            ..
-        } = decision;
+impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format>
+    Fop1Decision<'_, '_, Q, F, N, P>
+{
+    /// Applies the decision to the engine it borrows, in place, and returns its actions (232.1
+    /// §5.3.1; COP-011, API-058, RS-022).
+    ///
+    /// It cannot fail: [`Fop1::decide`](super::Fop1::decide) did every check, and the borrow the
+    /// decision holds keeps the engine as `decide` left it. It takes no engine and no store: the
+    /// decision commits to the engine that made it, and to that engine's own store (RS-021).
+    pub fn commit(self) -> Fop1Actions<N> {
+        // The draft stays where `decide` built it: its fields are read and written in place, not
+        // moved into locals of this frame (VER-011).
+        let Fop1Decision { engine, mut draft } = self;
+        let fdu = draft.fdu;
+        let store = &mut engine.store;
         // The queue keeps its order, so an entry never moves to a later position, and the
         // positions in ascending order read each master copy before its position is written.
-        for (p, sent) in core.sent.iter().enumerate() {
+        for (p, sent) in draft.core.sent.iter().enumerate() {
             let (_, rest) = store.frames.split_at_mut(p);
             let Some((slot, later)) = rest.split_first_mut() else {
                 continue;
@@ -50,9 +50,13 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
                 (_, None) => continue,
             };
             // The decision encoded the same frame into the output area, so this cannot fail.
-            self.target.encode(sent.sequence_number, payload, slot).ok();
+            engine
+                .head
+                .target
+                .encode(sent.sequence_number, payload, slot)
+                .ok();
         }
-        match core.wait {
+        match draft.core.wait {
             None => store.wait_fdu.fill(0),
             Some(Waiting { fresh: true, .. }) => {
                 store.wait_fdu.fill(0);
@@ -64,15 +68,15 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
         }
         // At rest, an entry's octets are at its own position and the `Wait_Queue` octets are in
         // place.
-        for (p, sent) in core.sent.iter_mut().enumerate() {
+        for (p, sent) in draft.core.sent.iter_mut().enumerate() {
             if let Some(sent) = sent {
                 sent.origin = Origin::Base(p);
             }
         }
-        if let Some(waiting) = &mut core.wait {
+        if let Some(waiting) = &mut draft.core.wait {
             waiting.fresh = false;
         }
-        self.core = core;
-        actions
+        engine.head.core = draft.core;
+        draft.actions
     }
 }

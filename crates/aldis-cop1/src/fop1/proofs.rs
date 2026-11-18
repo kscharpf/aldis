@@ -22,7 +22,8 @@ use aldis_core::time::{Duration, Instant};
 use aldis_tc::{Clcw, ClcwStatus, CopInEffect, FarmBCounter, TcSpacecraftId, TcVcId};
 
 use super::{
-    Core, Fop1, Fop1Config, Fop1Target, Origin, Sent, SentKind, Waiting, fop1_max_actions,
+    Core, Fop1, Fop1Config, Fop1Head, Fop1Store, Fop1Target, Origin, Sent, SentKind, Waiting,
+    fop1_max_actions,
 };
 use crate::fop1_table::{EVENT_COUNT, Fop1Event, Fop1State, STATE_COUNT, SuspendState};
 use crate::notify::{AlertReason, TimeoutType};
@@ -257,8 +258,11 @@ fn config() -> Fop1Config {
 
 fn engine_with(core: Core<Q>) -> Engine {
     Fop1 {
-        target: target(),
-        core,
+        head: Fop1Head {
+            target: target(),
+            core,
+        },
+        store: Fop1Store::new(),
     }
 }
 
@@ -424,11 +428,11 @@ fn new_satisfies_invariant() {
     let micros_ok = micros != 0;
     assert!(made.is_ok() == ((1..=Q as u8).contains(&k) && micros_ok));
     if let Ok(fop) = made {
-        assert!(invariant(&fop.core));
-        assert!(fop.core.state == Fop1State::Initial);
+        assert!(invariant(&fop.head.core));
+        assert!(fop.head.core.state == Fop1State::Initial);
     }
-    assert!(Fop1::<1, 1, { fop1_max_actions(1) }>::k_fits(k) == (k == 1));
-    assert!(Fop1::<255, 1, { fop1_max_actions(255) }>::k_fits(k) == (k >= 1));
+    assert!(Fop1Head::<1, 1, { fop1_max_actions(1) }>::k_fits(k) == (k == 1));
+    assert!(Fop1Head::<255, 1, { fop1_max_actions(255) }>::k_fits(k) == (k >= 1));
 }
 
 fn clcw(report: u8, lockout: bool, wait: bool, retransmit: bool, cop: CopInEffect) -> Clcw {
@@ -472,13 +476,13 @@ fn clcw_event_modulo_256() {
     let c = clcw(n_r, lockout, wait, retransmit, cop);
     let got = fop.clcw_event(&c);
     let (v_s, nn_r) = (
-        u32::from(fop.core.v_s.get()),
-        u32::from(fop.core.nn_r.get()),
+        u32::from(fop.head.core.v_s.get()),
+        u32::from(fop.head.core.nn_r.get()),
     );
     let outstanding = (v_s + 256 - nn_r) % 256;
     let acked = (u32::from(n_r) + 256 - nn_r) % 256;
-    let limit = fop.core.transmission_limit.get();
-    let count = fop.core.transmission_count;
+    let limit = fop.head.core.transmission_limit.get();
+    let count = fop.head.core.transmission_count;
     use Fop1Event as E;
     let expected = if cop != CopInEffect::COP_1 {
         E::E15

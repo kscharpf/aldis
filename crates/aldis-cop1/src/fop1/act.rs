@@ -1,7 +1,7 @@
 //! The action interpreter: the actions of a cell of Table 5-1 on a decision (232.1 §5.2; COP-001,
 //! COP-003, COP-004, COP-006, COP-010, COP-011, COP-013, API-057, API-061, API-083).
 //!
-//! The second phase of [`Fop1::decide`], run by `Fop1Decision::run` for each action token of the
+//! The second phase of [`Fop1::decide`], run by `Draft::run` for each action token of the
 //! cell. It changes the small state of the decision and appends its actions; the engine and the
 //! store are only read.
 
@@ -12,8 +12,8 @@ use aldis_core::{Error, ErrorKind, Result};
 use aldis_tc::ControlCommand;
 
 use super::{
-    Base, Context, FduSource, Fop1Decision, Fop1Format, Fop1Output, Handle, Origin, OutArea,
-    Payload, Sent, SentKind, Waiting,
+    Base, Context, Draft, FduSource, Fop1Format, Fop1Output, Handle, Origin, OutArea, Payload,
+    Sent, SentKind, Waiting,
 };
 use crate::fop1_table::{BcCommand, Fop1Action, Fop1Event, Fop1State, FrameKind, SuspendState};
 use crate::notify::{
@@ -21,7 +21,7 @@ use crate::notify::{
     TransferNotify,
 };
 
-impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision<'_, Q, F, N, P> {
+impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q, F, N, P> {
     /// Executes one action token of a cell (232.1 §5.2).
     #[expect(clippy::too_many_lines, reason = "one arm per action token of §5.2")]
     pub(super) fn act(
@@ -300,7 +300,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Decision
 
     /// Transmit Type-AD Frame (232.1 §5.2.4): N(S) := V(S), V(S) + 1, the master copy on the
     /// `Sent_Queue`, `Transmission_Count` := 1 if the queue was empty, the timer, `AD_Out_Flag`,
-    /// and the request. The frame is encoded into the output area; [`Fop1::commit`] encodes it
+    /// and the request. The frame is encoded into the output area; [`Fop1Decision::commit`] encodes it
     /// again into the master copy.
     fn transmit_ad(
         &mut self,

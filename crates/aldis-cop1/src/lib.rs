@@ -9,18 +9,11 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-#[cfg(test)]
-extern crate self as aldis_cop1;
-
 pub mod farm1;
 pub mod farm1_table;
 pub mod fop1;
 pub mod fop1_table;
 pub mod notify;
-#[cfg(test)]
-#[cfg_attr(coverage_nightly, coverage(off))]
-#[path = "../tests/common/mod.rs"]
-mod rig;
 
 pub use aldis_core::engine::{Actions, OutRange};
 pub use farm1::{
@@ -34,8 +27,8 @@ pub use farm1_table::{
 #[cfg(feature = "uslp")]
 pub use fop1::UslpChannel;
 pub use fop1::{
-    Fop1, Fop1Actions, Fop1Config, Fop1Decision, Fop1Format, Fop1Input, Fop1Output, Fop1Store,
-    Fop1Target, Handle, TcChannel, fop1_max_actions,
+    Fop1, Fop1Actions, Fop1Config, Fop1Decision, Fop1Format, Fop1Head, Fop1Input, Fop1Output,
+    Fop1Store, Fop1Target, Handle, TcChannel, fop1_max_actions,
 };
 pub use fop1_table::{
     BcCommand, EVENT_COUNT as FOP1_EVENT_COUNT, FOP1_TABLE, Fop1Action, Fop1Cell, Fop1Event,

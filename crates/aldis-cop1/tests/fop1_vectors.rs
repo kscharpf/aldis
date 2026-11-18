@@ -7,12 +7,9 @@
     reason = "test-only harness: malformed vectors must fail loudly (RS-018)"
 )]
 
-#[path = "common/mod.rs"]
-mod common;
-
 use aldis_cop1::{
-    Directive, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
-    TimeoutType, fop1_max_actions,
+    Directive, Fop1, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target,
+    FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
@@ -23,12 +20,10 @@ use serde_json::{Map, Value, json};
 
 /// Four frames of at most 64 octets: room for every scenario (K is at most 3), and the same
 /// instance as the unit tests, so that coverage counts one instantiation (VER-024).
-use common::Rig;
-
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Rig<Q, F, N>;
+type Engine = Fop1<Q, F, N>;
 
 const FILES: [&str; 5] = [
     "fop1_table.json",
@@ -336,16 +331,14 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
                 let e = event(num(&t["event"]));
                 let inner = t.get("input").and_then(Value::as_object);
                 let given = inner.map_or(Fop1Input::Timeout, |m| input(m, vcid, &mut data));
-                engine
-                    .fop
-                    .decide_event(&engine.store, e, given, now, &mut area)
+                engine.decide_event(e, given, now, &mut area)
             } else {
                 let given = input(&step.input, vcid, &mut data);
                 engine.decide(given, now, &mut area)
             };
             let got: Vec<Value> = match result {
                 Ok(decision) => {
-                    let actions = engine.commit(decision);
+                    let actions = decision.commit();
                     actions.iter().map(|o| output(o, &area)).collect()
                 }
                 Err(e) => vec![json!({"error": e.kind().name()})],
@@ -396,7 +389,7 @@ fn the_action_bound_target_and_classification_at_run_time() {
     assert_eq!(plain.max_fdu_len(), F - 5);
     assert_eq!(plain.channel().spacecraft_id().get(), 1);
     assert_eq!(plain.channel().vc_id().get(), 0);
-    let f = Engine::new(Fop1Config {
+    let mut f = Engine::new(Fop1Config {
         target: plain,
         t1_initial: Duration::from_micros(10),
         transmission_limit: NonZeroU8::MIN,
@@ -410,9 +403,9 @@ fn the_action_bound_target_and_classification_at_run_time() {
     let at = Instant::from_micros(0);
     // No timer: a Timeout is no event.
     let mut g = f.clone();
-    let decision = g.decide(Fop1Input::Timeout, at, &mut out).unwrap();
-    let actions = g.commit(decision);
-    assert_eq!((g, actions.len()), (f.clone(), 0));
+    let actions = g.decide(Fop1Input::Timeout, at, &mut out).unwrap().commit();
+    assert_eq!(actions.len(), 0);
+    assert_eq!(g, f);
     // An FDU longer than the frame allows is refused before any cell runs.
     let long = [0; F];
     for input in [

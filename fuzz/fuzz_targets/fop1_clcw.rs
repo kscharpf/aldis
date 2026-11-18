@@ -9,15 +9,10 @@
 //! that the `Sent_Queue` holds frames to acknowledge. No input panics (GEN-020).
 #![no_main]
 
-#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
-mod common;
-
-use common::Rig;
-
 // req: COP-010, COP-012, COP-041, API-058, GEN-020, VER-022
 
 use aldis_cop1::{
-    Directive, FOP1_TABLE, Fop1Config, Fop1Decision, Fop1Input, Fop1Output, Fop1State, Fop1Target,
+    Directive, FOP1_TABLE, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target,
     FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
@@ -35,13 +30,13 @@ const VCID: u8 = 5;
 
 /// Applies `input` as the harness of a lower layer would: decides, commits, and answers each
 /// Transmit with an accepted Transmit Response. A refused input changes nothing (API-058).
-fn drive(f: &mut Rig<Q, F, N>, input: Fop1Input<'_>, at: Instant) {
+fn drive(f: &mut Fop1<Q, F, N>, input: Fop1Input<'_>, at: Instant) {
     let mut area = [0_u8; F];
     let Ok(decision) = f.decide(input, at, &mut area) else {
         return;
     };
-    let kinds: Vec<FrameKind> = f
-        .commit(decision)
+    let kinds: Vec<FrameKind> = decision
+        .commit()
         .iter()
         .filter_map(|a| match a {
             Fop1Output::Transmit { kind, .. } => Some(*kind),
@@ -55,7 +50,7 @@ fn drive(f: &mut Rig<Q, F, N>, input: Fop1Input<'_>, at: Instant) {
             accepted: true,
         };
         if let Ok(d) = f.decide(done, at, &mut area) {
-            let _ = f.commit(d);
+            let _ = d.commit();
         }
     }
 }
@@ -71,7 +66,7 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
         aldis_tc::PhysicalChannelConfig::new(F, u.arbitrary()?).unwrap(),
     )
     .unwrap();
-    let mut f = Rig::<Q, F, N>::new(Fop1Config {
+    let mut f = Fop1::<Q, F, N>::new(Fop1Config {
         target,
         t1_initial: Duration::from_micros(u.int_in_range(1..=2_000)?),
         transmission_limit: NonZeroU8::new(u.int_in_range(1..=5)?).unwrap(),
@@ -134,23 +129,27 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                 let (queue, nn_r) = (f.sent_queue_len(), f.nn_r().get());
                 let mut area = [0_u8; F];
                 let mut again = [0_u8; F];
-                let first = f.decide(input, at(now), &mut area);
-                // The decision is a pure function of the state, the input, and the time.
+                // The decision is a pure function of the state, the input, and the time: decide,
+                // copy the actions out, drop the decision, and decide again.
+                let first = f
+                    .decide(input, at(now), &mut area)
+                    .map(|d| d.actions().iter().copied().collect::<Vec<_>>());
                 assert_eq!(
-                    first.as_ref().map(Fop1Decision::actions),
-                    f.decide(input, at(now), &mut again)
-                        .as_ref()
-                        .map(Fop1Decision::actions)
+                    first,
+                    f.decide(input, at(now), &mut again).map(|d| d
+                        .actions()
+                        .iter()
+                        .copied()
+                        .collect::<Vec<_>>())
                 );
                 if decoded.is_some_and(|c| c.vc_id.get() != VCID) {
                     assert_eq!(first.unwrap_err().kind(), ErrorKind::UnknownChannel);
                     continue;
                 }
-                let Ok(decision) = first else {
+                if first.is_err() {
                     continue;
-                };
-                let mut after = f.clone();
-                let actions = after.commit(decision);
+                }
+                let actions = f.decide(input, at(now), &mut again).unwrap().commit();
                 assert!(actions.len() <= N);
                 let events: &[usize] = if decoded.is_some() {
                     &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 46, 47, 48]
@@ -158,17 +157,12 @@ fn run(u: &mut Unstructured<'_>) -> Result<()> {
                     &[14]
                 };
                 let row = &FOP1_TABLE[before as usize];
-                assert!(
-                    events
-                        .iter()
-                        .any(|e| row[*e].next_state == Some(after.state()))
-                );
-                assert!(after.sent_queue_len() <= queue);
-                if after.state() != Fop1State::Initial && before != Fop1State::Initial {
-                    let advance = usize::from(after.nn_r().get().wrapping_sub(nn_r));
+                assert!(events.iter().any(|e| row[*e].next_state == Some(f.state())));
+                assert!(f.sent_queue_len() <= queue);
+                if f.state() != Fop1State::Initial && before != Fop1State::Initial {
+                    let advance = usize::from(f.nn_r().get().wrapping_sub(nn_r));
                     assert!(advance <= queue);
                 }
-                f = after;
             }
         }
     }

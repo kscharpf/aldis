@@ -10,13 +10,10 @@
     reason = "test-only harness: a violated assumption must fail loudly (RS-018)"
 )]
 
-#[path = "common/mod.rs"]
-mod common;
-
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1Config,
-    Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, TransferNotification,
-    fop1_max_actions,
+    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1,
+    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
+    TransferNotification, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -31,12 +28,10 @@ use aldis_uslp::{
 };
 use core::num::NonZeroU8;
 
-use common::Rig;
-
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = Rig<Q, F, N, UslpFormat>;
+type Engine = Fop1<Q, F, N, UslpFormat>;
 const NOW: Instant = Instant::from_micros(0);
 
 const fn scid() -> UslpSpacecraftId {
@@ -118,8 +113,7 @@ fn clcw(n_r: u8) -> Clcw {
 fn go(f: &Engine, input: Fop1Input<'_>) -> (Engine, Option<Vec<u8>>, Vec<Fop1Output>) {
     let mut out = [0u8; F];
     let mut next = f.clone();
-    let decision = next.decide(input, NOW, &mut out).unwrap();
-    let actions = next.commit(decision);
+    let actions = next.decide(input, NOW, &mut out).unwrap().commit();
     let actions: Vec<Fop1Output> = actions.iter().copied().collect();
     let frame = actions.iter().find_map(|a| {
         if let Fop1Output::Transmit { frame, .. } = a {
@@ -166,7 +160,7 @@ fn the_target_names_its_channel_and_sizes_its_frames() {
     assert_eq!(t.max_fdu_len(), F - 7 - 1 - 1 - 2);
     assert_eq!(target(false).max_fdu_len(), F - 7 - 1 - 1);
     // The longest FDU fills the longest frame exactly; one more does not fit.
-    let f = active();
+    let mut f = active();
     let fdu = vec![0xAB; t.max_fdu_len()];
     let (g, frame, _) = go(
         &f,
@@ -559,7 +553,7 @@ fn type_bc_frames_carry_the_control_commands_as_protocol_control() {
     assert_eq!(bc.full().unwrap().kind(), UslpKind::ProtocolControl);
 
     // The Type-BC frame is a master copy: it is retransmitted unchanged when the timer expires.
-    let (g, _, _) = go(
+    let (mut g, _, _) = go(
         &g,
         Fop1Input::TransmitDone {
             kind: FrameKind::Bc,
@@ -586,7 +580,7 @@ fn type_bc_frames_carry_the_control_commands_as_protocol_control() {
 #[test]
 fn a_clcw_of_another_virtual_channel_is_refused() {
     // req: COP-010, COP-012
-    let f = active();
+    let mut f = active();
     let mut out = [0u8; F];
     let other = Clcw {
         vc_id: TcVcId::new(vcid().get() + 1).unwrap(),
@@ -628,8 +622,7 @@ fn feed(
     // bound: each response transmits at most one frame, and K and Q bound the chain
     while let Some(input) = work.pop() {
         let mut area = [0u8; F];
-        let decision = ground.decide(input, NOW, &mut area).unwrap();
-        let actions = ground.commit(decision);
+        let actions = ground.decide(input, NOW, &mut area).unwrap().commit();
         for a in actions.iter() {
             match *a {
                 Fop1Output::Transmit { kind, frame, .. } => {

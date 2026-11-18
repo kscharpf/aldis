@@ -19,8 +19,8 @@
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Format, Fop1Input, Fop1Output, Fop1Store, Fop1Target,
-    FrameKind, TimeoutType, fop1_max_actions,
+    Directive, Fop1, Fop1Config, Fop1Format, Fop1Input, Fop1Output, Fop1Target, FrameKind,
+    TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::{MapId, VcId};
 use aldis_core::time::{Duration, Instant};
@@ -55,10 +55,9 @@ const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
 const NOW: Instant = Instant::from_micros(0);
 
-/// FOP-1 in State S1 (Active) over `target`, with its store.
+/// FOP-1 in State S1 (Active) over `target`.
 struct Link<P: Fop1Format> {
     fop: Fop1<Q, F, N, P>,
-    store: Fop1Store<Q, F>,
 }
 
 impl<P: Fop1Format> Link<P> {
@@ -74,7 +73,6 @@ impl<P: Fop1Format> Link<P> {
                 bc_repetitions: 1,
             })
             .unwrap(),
-            store: Fop1Store::new(),
         };
         let directive = Fop1Input::Directive {
             handle: 0,
@@ -87,8 +85,7 @@ impl<P: Fop1Format> Link<P> {
     /// Steps FOP-1 and returns the frame it transmits, if any.
     fn step(&mut self, input: Fop1Input<'_>) -> Option<(FrameKind, Vec<u8>)> {
         let mut out = [0_u8; F];
-        let decision = self.fop.decide(&self.store, input, NOW, &mut out).unwrap();
-        let actions = self.fop.commit(&mut self.store, decision);
+        let actions = self.fop.decide(input, NOW, &mut out).unwrap().commit();
         actions.iter().find_map(|a| {
             if let Fop1Output::Transmit { kind, frame, .. } = a {
                 Some((*kind, frame.slice(&out).unwrap().to_vec()))

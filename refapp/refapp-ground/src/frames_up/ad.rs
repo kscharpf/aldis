@@ -160,14 +160,14 @@ impl Uplink {
     fn drive(&mut self, input: Fop1Input<'_>, now: Instant, out: &mut dyn Output) -> bool {
         let before = self.fop.state();
         let mut area = [0_u8; FRAME];
-        let decision = match self.fop.decide(&self.store, input, now, &mut area) {
+        let decision = match self.fop.decide(input, now, &mut area) {
             Ok(decision) => decision,
             Err(error) => {
                 self.refuse(out, STAGE_FOP1, error, 0);
                 return false;
             }
         };
-        let actions = self.fop.commit(&mut self.store, decision);
+        let actions = decision.commit();
         for action in actions.iter() {
             match *action {
                 Fop1Output::Transmit { kind, frame, .. } => match frame.slice(&area) {

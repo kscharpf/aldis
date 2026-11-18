@@ -14,8 +14,7 @@
 use core::num::NonZeroU8;
 
 use aldis::cop1::{
-    Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Store, Fop1Target, FrameKind, TimeoutType,
-    fop1_max_actions,
+    Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis::core::Error;
 use aldis::core::ErrorKind;
@@ -57,7 +56,6 @@ const ACTIONS: usize = fop1_max_actions(SENT);
 pub(crate) struct Uplink {
     segmenter: MapSegmenter<Tc, 2, QUEUE>,
     fop: Fop1<SENT, FRAME, ACTIONS>,
-    store: Fop1Store<SENT, FRAME>,
     /// The handle of the next request (API-054).
     next_handle: u32,
     /// Inputs the engines refused; zero in a run whose script fits the capacities.
@@ -152,7 +150,6 @@ impl Uplink {
         Ok(Self {
             segmenter: MapSegmenter::new(config)?,
             fop,
-            store: Fop1Store::new(),
             next_handle: 0,
             refused: 0,
             ad: None,
@@ -235,8 +232,8 @@ impl Uplink {
     /// One FOP-1 input; returns the frame its Transmit action holds, if any.
     fn fop_step(&mut self, input: Fop1Input<'_>, now: Instant) -> Result<Option<Vec<u8>>, Error> {
         let mut out = [0_u8; FRAME];
-        let decision = self.fop.decide(&self.store, input, now, &mut out)?;
-        let actions = self.fop.commit(&mut self.store, decision);
+        let decision = self.fop.decide(input, now, &mut out)?;
+        let actions = decision.commit();
         Ok(actions.iter().find_map(|action| match action {
             Fop1Output::Transmit { frame, .. } => frame.slice(&out).map(<[u8]>::to_vec),
             Fop1Output::Abort

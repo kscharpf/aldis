@@ -1,15 +1,12 @@
 //! Calls every public `aldis-cop1` FOP-1 API (VER-010; M3 WP-4). Inputs pass through
 //! `black_box`.
 
-#[path = "../../crates/aldis-cop1/tests/common/mod.rs"]
-mod rig;
-
 use core::hint::black_box as bb;
 use core::num::NonZeroU8;
 
 use aldis_cop1::{
-    Directive, Fop1Config, Fop1Event, Fop1Format, Fop1Input, Fop1Output, Fop1State, Fop1Store,
-    Fop1Target, FrameKind, SuspendState, TimeoutType, fop1_max_actions,
+    Directive, Fop1, Fop1Config, Fop1Event, Fop1Format, Fop1Head, Fop1Input, Fop1Output, Fop1State,
+    Fop1Store, Fop1Target, FrameKind, SuspendState, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::security::SecurityLayout;
@@ -26,18 +23,20 @@ use crate::exercise::Tally;
 const Q: usize = 4;
 const F: usize = 64;
 const N: usize = fop1_max_actions(Q);
-type Engine = rig::Rig<Q, F, N>;
-type UslpEngine = rig::Rig<Q, F, N, aldis_uslp::UslpFormat>;
+type Engine = Fop1<Q, F, N>;
+type UslpEngine = Fop1<Q, F, N, aldis_uslp::UslpFormat>;
 
 /// Steps `f` in place by `decide` and `commit`; `None` if the input failed.
 fn step<P: Fop1Format>(
-    f: &mut rig::Rig<Q, F, N, P>,
+    f: &mut Fop1<Q, F, N, P>,
     input: Fop1Input<'_>,
     at: u64,
     out: &mut [u8],
 ) -> Option<()> {
-    let decision = f.decide(bb(input), Instant::from_micros(at), out).ok()?;
-    let _ = f.commit(decision);
+    let _ = f
+        .decide(bb(input), Instant::from_micros(at), out)
+        .ok()?
+        .commit();
     Some(())
 }
 
@@ -83,8 +82,9 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
         })
         .is_err(),
     );
-    let f = Engine::new(config).ok()?;
-    t.check(Fop1Store::<Q, F>::default() == f.store);
+    let f = Engine::new(config.clone()).ok()?;
+    t.check(Fop1Head::<Q, F, N>::new(config).is_ok());
+    t.check(Fop1Store::<Q, F>::default() == Fop1Store::new());
     t.check(f.state() == Fop1State::Initial && f.v_s().get() == 0 && f.nn_r().get() == 0);
     t.check(f.sliding_window_k() == 2 && f.t1_initial().as_micros() == 1000);
     t.check(f.transmission_limit().get() == 2 && f.timeout_type() == TimeoutType::Tt0);
@@ -108,8 +108,10 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
         handle: bb(2),
         fdu: &fdu,
     };
-    let decision = f.decide(request, Instant::from_micros(1), &mut out).ok()?;
-    let actions = f.commit(decision);
+    let actions = f
+        .decide(request, Instant::from_micros(1), &mut out)
+        .ok()?
+        .commit();
     t.check(matches!(
         actions.get(1),
         Some(Fop1Output::Transmit {
@@ -148,8 +150,7 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
         &mut out,
     )?;
     t.check(f == before);
-    let na = f.fop.decide_event(
-        &f.store,
+    let na = f.decide_event(
         Fop1Event::E31,
         Fop1Input::Timeout,
         Instant::from_micros(8),
@@ -163,33 +164,24 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
             limit: NonZeroU8::new(bb(3))?,
         },
     };
-    let decision = f
-        .fop
-        .decide_event(
-            &f.store,
-            bb(Fop1Event::E38),
-            limit,
-            Instant::from_micros(9),
-            &mut out,
-        )
-        .ok()?;
-    let _ = f.commit(decision);
+    let _ = f
+        .decide_event(bb(Fop1Event::E38), limit, Instant::from_micros(9), &mut out)
+        .ok()?
+        .commit();
     t.check(f.transmission_limit().get() == 3);
     let bd_done = Fop1Input::TransmitDone {
         kind: FrameKind::Ad,
         accepted: bb(true),
     };
-    let decision = f
-        .fop
+    let _ = f
         .decide_event(
-            &f.store,
             bb(Fop1Event::E45),
             bd_done,
             Instant::from_micros(10),
             &mut out,
         )
-        .ok()?;
-    let _ = f.commit(decision);
+        .ok()?
+        .commit();
     t.check(f.out_flag_ready(FrameKind::Bd));
     step(&mut f, Fop1Input::InvalidClcw, 7, &mut out)?;
     t.check(f.state() == Fop1State::Initial);
@@ -246,7 +238,7 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
 fn uslp_frames(t: &mut Tally, mut f: UslpEngine) -> Option<()> {
     let mut out = [0_u8; F];
     // A Type-BC frame with the Unlock command, then a Type-AD and a Type-BD frame.
-    let decision = f
+    let actions = f
         .decide(
             bb(Fop1Input::Directive {
                 handle: bb(1),
@@ -255,8 +247,8 @@ fn uslp_frames(t: &mut Tally, mut f: UslpEngine) -> Option<()> {
             Instant::from_micros(0),
             &mut out,
         )
-        .ok()?;
-    let actions = f.commit(decision);
+        .ok()?
+        .commit();
     t.check(actions.iter().any(|a| {
         matches!(
             a,
@@ -277,7 +269,7 @@ fn uslp_frames(t: &mut Tally, mut f: UslpEngine) -> Option<()> {
     )?;
     step(&mut f, clcw(false, false, false, 0)?, 2, &mut out)?;
     let fdu = bb([0xA0_u8, 1]);
-    let decision = f
+    let actions = f
         .decide(
             bb(Fop1Input::RequestAd {
                 handle: bb(2),
@@ -286,8 +278,8 @@ fn uslp_frames(t: &mut Tally, mut f: UslpEngine) -> Option<()> {
             Instant::from_micros(3),
             &mut out,
         )
-        .ok()?;
-    let actions = f.commit(decision);
+        .ok()?
+        .commit();
     t.check(actions.iter().any(|a| {
         matches!(
             a,

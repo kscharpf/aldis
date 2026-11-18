@@ -82,7 +82,7 @@ fn configurations_are_plain_data_built_in_const_context() {
 fn a_configuration_cannot_change_after_construction() {
     // req: GEN-061, RS-012
     let t = VcTable::<1, 1>::new(PC, &[VC], &[MAP]).unwrap();
-    let before = t.clone();
+    let before = t;
     // The table hands out copies and shared references only: a copy is a value of its own, and
     // a different configuration is a new value built by the validating constructor.
     let copy = t.physical();
