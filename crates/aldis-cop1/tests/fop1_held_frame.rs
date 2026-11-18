@@ -337,3 +337,24 @@ fn a_purge_of_the_sent_queue_leaves_no_held_frame() {
     assert!(!f.out_flag_ready(FrameKind::Bc));
     assert_eq!(held(&f, FrameKind::Bc), None);
 }
+
+#[test]
+fn a_frame_acknowledged_before_its_response_is_no_longer_held() {
+    // req: COP-011, API-056
+    // 232.1 §5.1.7 a): a CLCW that acknowledges the frame in flight removes its master copy;
+    // the Out flag stays Not_Ready until the response (§5.1.6).
+    let mut f = active();
+    let _ = request_ad(&mut f, &[1, 2, 3], 10);
+    assert_eq!(feed(&mut f, clcw(false, false, 1), 20), vec![]);
+    assert_eq!(f.sent_queue_len(), 0);
+    assert!(!f.out_flag_ready(FrameKind::Ad));
+    assert_eq!(held(&f, FrameKind::Ad), None);
+
+    // S5, E1: the CLCW confirms the Type-BC frame; Release BC copy.
+    let mut f = engine();
+    let _ = feed(&mut f, directive(Directive::InitiateAdWithUnlock), 0);
+    assert_eq!(feed(&mut f, clcw(false, false, 0), 10), vec![]);
+    assert_eq!(f.state(), Fop1State::Active);
+    assert!(!f.out_flag_ready(FrameKind::Bc));
+    assert_eq!(held(&f, FrameKind::Bc), None);
+}

@@ -745,7 +745,8 @@ pub enum Fop1Output {
     /// (232.1 §5.2.4 to §5.2.6; COP-010, COP-011, COP-016).
     ///
     /// At most one Transmit request per kind is outstanding: the Out flag of the kind is
-    /// `Not_Ready` from the request until its [`Fop1Input::TransmitDone`] (232.1 §5.1.6). For a
+    /// `Not_Ready` from the request until a [`Fop1Input::TransmitDone`] that accepts it
+    /// (232.1 §5.1.6); a Reject leaves it `Not_Ready` (E42, E44, E46). For a
     /// Type-AD or Type-BC request, [`Fop1::held_frame`] returns the frame the engine holds, so a
     /// caller that waits for a link slot need not copy it; a Type-BD frame is not retained.
     Transmit {
@@ -1269,9 +1270,10 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// It is `None`:
     /// - for [`FrameKind::Ad`] and [`FrameKind::Bc`] while the Out flag is Ready, that is, no
     ///   request of the kind is outstanding;
-    /// - for a Type-AD or Type-BC request whose master copy a purge of the `Sent_Queue` has since
-    ///   removed (an Alert, or Initialize): the engine retains no copy, and the caller still
-    ///   answers the request with [`Fop1Input::TransmitDone`];
+    /// - for a Type-AD or Type-BC request whose master copy has since left the `Sent_Queue`,
+    ///   acknowledged by a CLCW or removed by a purge (an Alert, or Initialize; 232.1 §5.1.7): the
+    ///   engine retains no copy, and the caller still answers the request with
+    ///   [`Fop1Input::TransmitDone`];
     /// - for [`FrameKind::Bd`] always: 232.1 does not retain a Type-BD frame, so the frame of a
     ///   Type-BD request is only in the output area.
     ///
