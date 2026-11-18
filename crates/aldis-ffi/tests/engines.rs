@@ -836,6 +836,7 @@ fn a_fop1_step_checks_every_argument() {
             ..fop1_input(ALDIS_FOP1_INPUT_DIRECTIVE)
         };
         assert_eq!(call(&raw mut *s, &raw const zero_k, &mut out), 0);
+        assert_eq!(actions.count, 1);
         assert_eq!(actions.items[0].status, ALDIS_FOP1_NOTICE_REJECT);
         let unparsed = fop1_input(ALDIS_FOP1_INPUT_INVALID_DIRECTIVE);
         assert_eq!(call(&raw mut *s, &raw const unparsed, &mut out), 0);
