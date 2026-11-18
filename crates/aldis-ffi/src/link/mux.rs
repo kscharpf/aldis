@@ -39,7 +39,9 @@ use aldis::link::mux::{
 };
 use aldis::link::policy::{MuxPolicy, Weight};
 use aldis::link::protocol::{Aos, Route, Tm, Uslp};
-use aldis::tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
+use aldis::tm::{
+    DataFieldContent, FirstHeaderPointer, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 use aldis::uslp::{
     OcfUse, PhysicalChannelConfig as UslpPhysical, SecurityScope, SourceOrDestination,
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
@@ -637,7 +639,7 @@ impl MxProtocol for Tm {
     fn offer_meta(flat: FlatOffer) -> Result<TmOffer> {
         flat.refuse_route_and_cop()?;
         Ok(TmOffer {
-            pointer: flat.pointer,
+            pointer: flat.pointer.map(FirstHeaderPointer::try_from).transpose()?,
         })
     }
 }
@@ -945,6 +947,10 @@ fn offer<'a, P: MxProtocol>(
     data: &'a [u8],
 ) -> Result<Offer<'a, P>> {
     let flat = flat_offer(input)?;
+    // A VCID the protocol's identifier cannot hold names no configured VC, as for any offer.
+    let Ok(vc) = P::Vc::try_from(input.vc_id) else {
+        return Err(engine.refuse(Error::new(ErrorKind::UnknownChannel)));
+    };
     let meta = match P::offer_meta(flat) {
         Ok(meta) => meta,
         Err(e)
@@ -958,14 +964,14 @@ fn offer<'a, P: MxProtocol>(
         Err(_) => P::OfferMeta::default(),
     };
     Ok(Offer {
-        vc: input.vc_id,
+        vc,
         field: data,
         meta,
     })
 }
 
 /// The C form of an action of the mux.
-fn mx_action(output: &MuxOutput) -> aldis_channel_mux_action_t {
+fn mx_action<P: MxProtocol>(output: &MuxOutput<P>) -> aldis_channel_mux_action_t {
     match output {
         MuxOutput::Transmit(t) => aldis_channel_mux_action_t {
             kind: ALDIS_CHANNEL_MUX_ACTION_TRANSMIT,
@@ -973,7 +979,7 @@ fn mx_action(output: &MuxOutput) -> aldis_channel_mux_action_t {
                 FrameClass::Data => ALDIS_LINK_FRAME_CLASS_DATA,
                 FrameClass::Oid => ALDIS_LINK_FRAME_CLASS_OID,
             },
-            vc_id: t.vc,
+            vc_id: t.vc.into(),
             frame: range(t.frame),
             security_header: range(t.security_header),
             data: range(t.data),
@@ -999,7 +1005,7 @@ fn mx_run<P: MxProtocol>(
     data: &[u8],
     area: &mut [u8],
 ) -> Result<aldis_channel_mux_actions_t> {
-    let list: MuxActions = match parse::<aldis_channel_mux_input>(input.kind)? {
+    let list: MuxActions<P> = match parse::<aldis_channel_mux_input>(input.kind)? {
         aldis_channel_mux_input::ALDIS_CHANNEL_MUX_INPUT_OFFER => {
             let offered = offer(engine, input, data)?;
             engine.step(MuxInput::Offer(offered), area)?

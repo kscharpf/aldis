@@ -236,7 +236,7 @@ impl Cop {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Offer<'a, P: MuxProtocol> {
     /// The VCID of the field.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// The field: the TM data field, the AOS `M_PDU`, `B_PDU`, or `VCA_SDU`, the USLP TFDF.
     pub field: &'a [u8],
     /// What the protocol's frames need besides the field: the pointer of TM, the route and the
@@ -282,11 +282,11 @@ pub enum FrameClass {
 
 /// A frame the mux built, in the output area (LNK-030, LNK-035).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Transmit {
+pub struct Transmit<P: MuxProtocol> {
     /// Data or OID.
     pub class: FrameClass,
     /// The VCID of the frame.
-    pub vc: u8,
+    pub vc: P::Vc,
     /// The whole frame; the Security Header and Trailer, the FHEC, and the FECF are zero
     /// octets (LNK-035).
     pub frame: OutRange,
@@ -301,9 +301,9 @@ pub struct Transmit {
 
 /// An action of the `ChannelMux` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MuxOutput {
+pub enum MuxOutput<P: MuxProtocol> {
     /// The next frame (LNK-030).
-    Transmit(Transmit),
+    Transmit(Transmit<P>),
     /// The Insert Zone holds the value of the frame before: no `IN_SDU` arrived since (LNK-034,
     /// OI-68).
     InsertSduRepeated,
@@ -315,7 +315,7 @@ pub enum MuxOutput {
 }
 
 /// The actions of one input of the `ChannelMux` (LNK-074).
-pub type MuxActions = Actions<MuxOutput, CHANNEL_MUX_MAX_ACTIONS>;
+pub type MuxActions<P> = Actions<MuxOutput<P>, CHANNEL_MUX_MAX_ACTIONS>;
 
 /// The read-only status of a `ChannelMux`, for housekeeping telemetry (API-056, LNK-002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -425,7 +425,7 @@ pub trait MuxProtocol: Protocol {
     ///
     /// # Errors
     /// `InvalidField` (`first_header_pointer`, `map_id`, `cop_in_effect`, `qos`) or
-    /// `OutOfRange` (`first_header_pointer`, `vcf_count`) for a pointer, route, or COP block the
+    /// `OutOfRange` (`vcf_count`) for a pointer, route, or COP block the
     /// VC cannot have; `UnknownChannel` (`map_id`) for a MAP the VC does not have.
     fn admit(vc: &Self::VcParams, meta: &Self::OfferMeta) -> Result<Admitted<Self::Pointer>>;
     /// The relations between the channel and its VCs (LNK-078): called with the VCs in ascending
@@ -990,7 +990,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     ///   (`insert_zone_len`).
     /// - `Opportunity`: `BufferTooSmall` if `out` is shorter than the frame (LNK-075).
     /// - `Reconfigure`: `CapacityExceeded` as for [`new`](Self::new).
-    pub fn step(&mut self, input: MuxInput<'_, P, V>, out: &mut [u8]) -> Result<MuxActions> {
+    pub fn step(&mut self, input: MuxInput<'_, P, V>, out: &mut [u8]) -> Result<MuxActions<P>> {
         let mut actions = MuxActions::new();
         match input {
             MuxInput::Offer(offer) => self.offer(&offer)?,
@@ -1042,7 +1042,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
         let (pos, vc) = self
             .head
             .config
-            .find(offer.vc)
+            .find(offer.vc.into())
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
         let admitted = P::admit(&vc.params, &offer.meta)?;
         if offer.field.len()
@@ -1149,7 +1149,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
     }
 
     /// `Opportunity` (LNK-030…LNK-036).
-    fn opportunity(&mut self, out: &mut [u8], actions: &mut MuxActions) -> Result<()> {
+    fn opportunity(&mut self, out: &mut [u8], actions: &mut MuxActions<P>) -> Result<()> {
         let frame_len = self.head.config.frame_len();
         if out.len() < frame_len {
             return Err(Error::buffer_too_small(frame_len));
@@ -1175,7 +1175,7 @@ impl<P: MuxProtocol, const V: usize, const F: usize> ChannelMux<P, V, F> {
             } else {
                 FrameClass::Data
             },
-            vc: fields.vc.into(),
+            vc: fields.vc,
             frame: OutRange::new(0, written),
             security_header: out_range(&layout.security_header()),
             data: out_range(&layout.data()),
@@ -1423,7 +1423,7 @@ mod tests {
         let _ = mux
             .step(
                 MuxInput::Offer(Offer {
-                    vc: 1,
+                    vc: VcId::<6>::from_const::<1>(),
                     field: &field,
                     meta: (),
                 }),

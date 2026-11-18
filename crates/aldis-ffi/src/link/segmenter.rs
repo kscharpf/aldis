@@ -409,7 +409,7 @@ fn sg_run<P: SgProtocol>(
     data: &[u8],
     now: Instant,
     area: &mut [u8],
-) -> Result<SegmenterActions> {
+) -> Result<aldis_map_segmenter_actions_t> {
     let input = match parse::<aldis_map_segmenter_input>(input.kind)? {
         aldis_map_segmenter_input::ALDIS_MAP_SEGMENTER_INPUT_SUBMIT_PACKET => {
             SegmenterInput::SubmitPacket {
@@ -438,7 +438,8 @@ fn sg_run<P: SgProtocol>(
             SegmenterInput::Reconfigure(sg_config::<P>(&input.config)?)
         }
     };
-    engine.step(input, now, area)
+    let list = engine.step(input, now, area)?;
+    Ok(sg_actions(&list))
 }
 
 impl MapSegmenterState {
@@ -449,7 +450,7 @@ impl MapSegmenterState {
         data: &[u8],
         now: Instant,
         area: &mut [u8],
-    ) -> Result<SegmenterActions> {
+    ) -> Result<aldis_map_segmenter_actions_t> {
         let reconfigure = parse::<aldis_map_segmenter_input>(input.kind)?
             == aldis_map_segmenter_input::ALDIS_MAP_SEGMENTER_INPUT_RECONFIGURE;
         let ch = &input.config.channel;
@@ -486,14 +487,25 @@ impl MapSegmenterState {
     }
 }
 
-fn sg_action(output: &SegmenterOutput) -> aldis_map_segmenter_action_t {
+/// The C form of the actions of one step.
+fn sg_actions<P: SegmenterProtocol>(list: &SegmenterActions<P>) -> aldis_map_segmenter_actions_t {
+    let mut result = aldis_map_segmenter_actions_t::default();
+    for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+        *slot = sg_action(output);
+    }
+    // `list` holds at most `MAP_SEGMENTER_MAX_ACTIONS` actions, the length of `items`.
+    result.count = list.len();
+    result
+}
+
+fn sg_action<P: SegmenterProtocol>(output: &SegmenterOutput<P>) -> aldis_map_segmenter_action_t {
     match output {
         SegmenterOutput::Fdu(f) => aldis_map_segmenter_action_t {
             kind: ALDIS_MAP_SEGMENTER_ACTION_FDU,
             handle: f.handle,
-            vc_id: f.vc,
+            vc_id: f.vc.into(),
             map_present: u8::from(f.map.is_some()),
-            map_id: f.map.unwrap_or(0),
+            map_id: f.map.map_or(0, Into::into),
             qos: qos_code(f.qos),
             framing: framing_code(f.framing),
             fdu: range(f.fdu),
@@ -580,14 +592,7 @@ impl handle::TimedStep for aldis_map_segmenter_t {
         area: &mut [u8],
         actions: Out<'_, aldis_map_segmenter_actions_t>,
     ) -> Result<()> {
-        let list = state.step(input, data, now, area)?;
-        let mut result = aldis_map_segmenter_actions_t::default();
-        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-            *slot = sg_action(output);
-        }
-        // `list` holds at most `MAP_SEGMENTER_MAX_ACTIONS` actions, the length of `items`.
-        result.count = list.len();
-        actions.write(result);
+        actions.write(state.step(input, data, now, area)?);
         Ok(())
     }
 }

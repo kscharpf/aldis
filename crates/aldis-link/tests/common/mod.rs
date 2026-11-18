@@ -11,6 +11,7 @@ use aldis_aos::AosEdition;
 use aldis_core::ids::MapId;
 use aldis_link::common::Qos;
 use aldis_link::protocol::{Aos, AosParams, PacketProtocol, Tm, TmParams, Uslp, UslpParams};
+use aldis_tm::FirstHeaderPointer;
 use aldis_uslp::Upid;
 use serde_json::{Map, Value};
 
@@ -20,12 +21,18 @@ pub(crate) trait Proto: PacketProtocol {
     const NAME: &'static str;
     /// The protocol's parameters from `config`.
     fn params(config: &Map<String, Value>) -> Self::Params;
+    /// The First Header Pointer of the frame header from the raw field of a scenario: TM's 11
+    /// bits, ignored by the protocols that carry the pointer in the data field.
+    fn header_pointer_of(raw: u16) -> Option<Self::HeaderPointer>;
 }
 
 impl Proto for Tm {
     const NAME: &'static str = "tm";
     fn params(_: &Map<String, Value>) -> TmParams {
         TmParams
+    }
+    fn header_pointer_of(raw: u16) -> Option<FirstHeaderPointer> {
+        Some(FirstHeaderPointer::try_from(raw).unwrap())
     }
 }
 
@@ -38,6 +45,9 @@ impl Proto for Aos {
                 _ => AosEdition::Issue5,
             },
         }
+    }
+    fn header_pointer_of(_: u16) -> Option<()> {
+        None
     }
 }
 
@@ -54,6 +64,9 @@ impl Proto for Uslp {
             },
         )
         .unwrap()
+    }
+    fn header_pointer_of(_: u16) -> Option<()> {
+        None
     }
 }
 

@@ -9,7 +9,7 @@
     reason = "tests fail loudly by design, and many steps are run for their effect on the state"
 )]
 
-use aldis_aos::AosEdition;
+use aldis_aos::{AosEdition, PacketPointer};
 use aldis_core::ErrorKind;
 use aldis_core::field;
 use aldis_core::ids::{MapId, VcId};
@@ -27,6 +27,7 @@ use aldis_link::protocol::Pointer::{self, NoStart, OnlyIdle, StartsAt};
 use aldis_link::protocol::{
     Aos, AosParams, LinkProtocol, PacketProtocol, Protocol, Tc, Tm, TmParams, Uslp, UslpParams,
 };
+use aldis_tm::FirstHeaderPointer;
 use aldis_uslp::Upid;
 
 const T0: Instant = Instant::from_micros(0);
@@ -73,7 +74,7 @@ fn ext_config() -> PacketExtractorConfig<Tm> {
 const fn field_in(field: &[u8], pointer: u16) -> ExtractorInput<'_, Tm> {
     ExtractorInput::DataField(FieldIn {
         field,
-        header_pointer: Some(pointer),
+        header_pointer: FirstHeaderPointer::new(pointer),
         gap: false,
     })
 }
@@ -321,12 +322,15 @@ fn a_continuation_field_has_no_start() {
     let Some(GeneratorOutput::DataField(f)) = a.get(0) else {
         panic!()
     };
-    assert_eq!((f.pointer, f.vc, f.route), (0, 1, None));
+    assert_eq!(
+        (f.pointer, f.vc.get(), f.route),
+        (FirstHeaderPointer::ZERO, 1, None)
+    );
     let a = g.step(GeneratorInput::Release, T0, &mut out).unwrap();
     let Some(GeneratorOutput::DataField(f)) = a.get(0) else {
         panic!()
     };
-    assert_eq!(f.pointer, 0x7FF);
+    assert_eq!(f.pointer, FirstHeaderPointer::NO_PACKET_START);
 }
 
 #[test]
@@ -491,7 +495,7 @@ fn judgement_calls_of_oi_78_for_the_extractor() {
     e.step(field_in(&first, 0), &mut out).unwrap();
     let idle = ExtractorInput::DataField(FieldIn {
         field: &[0; 24],
-        header_pointer: Some(0x7FE),
+        header_pointer: Some(FirstHeaderPointer::ONLY_IDLE_DATA),
         gap: true,
     });
     let a = e.step(idle, &mut out).unwrap();
@@ -523,7 +527,7 @@ fn judgement_calls_of_oi_78_for_the_extractor() {
     e.step(field_in(&f, 0), &mut out).unwrap();
     let gap = ExtractorInput::DataField(FieldIn {
         field: &[0; 24],
-        header_pointer: Some(0x7FF),
+        header_pointer: Some(FirstHeaderPointer::NO_PACKET_START),
         gap: true,
     });
     let a = e.step(gap, &mut out).unwrap();
@@ -535,7 +539,7 @@ fn judgement_calls_of_oi_78_for_the_extractor() {
         .step(
             ExtractorInput::DataField(FieldIn {
                 field: &[0; 24],
-                header_pointer: Some(0x7FF),
+                header_pointer: Some(FirstHeaderPointer::NO_PACKET_START),
                 gap: true,
             }),
             &mut out,
@@ -560,20 +564,49 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
         edition: AosEdition::Issue4Compatible,
     };
     let uslp = UslpParams::new(Upid::Packets, MapId::<4>::new(3).unwrap(), Qos::Expedited).unwrap();
-    assert_eq!(Tm::encode_pointer(&TmParams, NoStart).unwrap(), 0x7FF);
-    assert_eq!(Tm::encode_pointer(&TmParams, OnlyIdle).unwrap(), 0x7FE);
-    assert_eq!(Tm::encode_pointer(&TmParams, StartsAt(5)).unwrap(), 5);
+    let tm = |p| Tm::raw_pointer(&TmParams, Tm::encode_pointer(&TmParams, p).unwrap()).unwrap();
+    let aos =
+        |params, p| Aos::raw_pointer(params, Aos::encode_pointer(params, p).unwrap()).unwrap();
+    let uslp_raw =
+        |params, p| Uslp::raw_pointer(params, Uslp::encode_pointer(params, p).unwrap()).unwrap();
+    assert_eq!(
+        Tm::encode_pointer(&TmParams, NoStart).unwrap(),
+        FirstHeaderPointer::NO_PACKET_START
+    );
+    assert_eq!(
+        Tm::encode_pointer(&TmParams, OnlyIdle).unwrap(),
+        FirstHeaderPointer::ONLY_IDLE_DATA
+    );
+    assert_eq!(tm(NoStart), 0x7FF);
+    assert_eq!(tm(OnlyIdle), 0x7FE);
+    assert_eq!(tm(StartsAt(5)), 5);
     assert!(Tm::encode_pointer(&TmParams, StartsAt(0x7FE)).is_err());
     assert!(Tm::encode_pointer(&TmParams, StartsAt(usize::MAX)).is_err());
-    assert_eq!(Aos::encode_pointer(&aos5, NoStart).unwrap(), 0xFFFF);
-    assert_eq!(Aos::encode_pointer(&aos5, OnlyIdle).unwrap(), 0xFFFE);
-    assert_eq!(Aos::encode_pointer(&aos4, NoStart).unwrap(), 0x7FF);
-    assert_eq!(Aos::encode_pointer(&aos4, OnlyIdle).unwrap(), 0x7FE);
-    assert_eq!(Aos::encode_pointer(&aos4, StartsAt(9)).unwrap(), 9);
+    assert_eq!(
+        Aos::encode_pointer(&aos5, NoStart).unwrap(),
+        PacketPointer::NoPacketStart
+    );
+    assert_eq!(aos(&aos5, NoStart), 0xFFFF);
+    assert_eq!(aos(&aos5, OnlyIdle), 0xFFFE);
+    assert_eq!(aos(&aos4, NoStart), 0x7FF);
+    assert_eq!(aos(&aos4, OnlyIdle), 0x7FE);
+    assert_eq!(aos(&aos4, StartsAt(9)), 9);
+    // A pointer of one edition does not fit the field of the other (732.0 §4.1.4.2.2).
+    let wide = Aos::encode_pointer(&aos5, StartsAt(0x7FE)).unwrap();
+    assert_eq!(aos(&aos5, StartsAt(0x7FE)), 0x7FE);
+    assert_eq!(
+        Aos::raw_pointer(&aos4, wide).unwrap_err().kind(),
+        ErrorKind::OutOfRange
+    );
+    assert!(Aos::write_header(&aos4, wide, &mut [0; 2]).is_err());
     assert!(Aos::encode_pointer(&aos4, StartsAt(0x7FE)).is_err());
     assert!(Aos::encode_pointer(&aos5, StartsAt(usize::MAX)).is_err());
-    assert_eq!(Uslp::encode_pointer(&uslp, NoStart).unwrap(), 0xFFFF);
-    assert_eq!(Uslp::encode_pointer(&uslp, StartsAt(4)).unwrap(), 4);
+    assert_eq!(
+        Uslp::encode_pointer(&uslp, NoStart).unwrap(),
+        aldis_uslp::FirstHeaderPointer::NoPacketStartOrEnd
+    );
+    assert_eq!(uslp_raw(&uslp, NoStart), 0xFFFF);
+    assert_eq!(uslp_raw(&uslp, StartsAt(4)), 4);
     assert!(Uslp::encode_pointer(&uslp, OnlyIdle).is_err());
     assert!(Uslp::encode_pointer(&uslp, StartsAt(0xFFFF)).is_err());
     assert!(Uslp::encode_pointer(&uslp, StartsAt(usize::MAX)).is_err());
@@ -593,12 +626,17 @@ fn the_protocol_trait_has_one_implementation_per_protocol() {
     );
     assert!(Tm::route(&TmParams).is_none() && Aos::route(&aos5).is_none());
     let mut h = [0u8; 3];
-    Uslp::write_header(&uslp, 4, &mut h);
+    Uslp::write_header(
+        &uslp,
+        Uslp::encode_pointer(&uslp, StartsAt(4)).unwrap(),
+        &mut h,
+    )
+    .unwrap();
     assert_eq!(h, [0x00, 0x00, 0x04]);
     let mut h = [0u8; 2];
-    Aos::write_header(&aos4, 0x7FE, &mut h);
+    Aos::write_header(&aos4, Aos::encode_pointer(&aos4, OnlyIdle).unwrap(), &mut h).unwrap();
     assert_eq!(h, [0x07, 0xFE]);
-    Tm::write_header(&TmParams, 0, &mut []);
+    Tm::write_header(&TmParams, FirstHeaderPointer::ZERO, &mut []).unwrap();
 }
 
 #[test]
@@ -717,7 +755,7 @@ fn an_idle_field_never_splits_a_packet() {
         panic!()
     };
     // 12 octets of continuation, 8 of the second packet, and 4 of the third: the pointer is 12.
-    assert_eq!(f.pointer, 12);
+    assert_eq!(f.pointer.get(), 12);
     // The next field starts with the rest of the third packet: a continuation again.
     assert!(
         g.step(GeneratorInput::Release, T0, &mut out)
@@ -750,7 +788,7 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
     let mut e = TmExt::new(ext_config()).unwrap();
     let gap = ExtractorInput::DataField(FieldIn {
         field: &spp(24, 3),
-        header_pointer: Some(0),
+        header_pointer: Some(FirstHeaderPointer::ZERO),
         gap: true,
     });
     let a = e.step(gap, &mut out).unwrap();
@@ -763,7 +801,7 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
     e.step(field_in(&f, 0), &mut out).unwrap();
     let gap = ExtractorInput::DataField(FieldIn {
         field: &[0; 24],
-        header_pointer: Some(0x7FF),
+        header_pointer: Some(FirstHeaderPointer::NO_PACKET_START),
         gap: true,
     });
     let a = e.step(gap, &mut out).unwrap();

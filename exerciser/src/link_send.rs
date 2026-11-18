@@ -26,10 +26,10 @@ use aldis_link::mux::{
 };
 use aldis_link::policy::{MuxPolicy, Selector, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp, UslpParams};
-use aldis_tm::{DataFieldContent, TmVirtualChannelConfig};
+use aldis_tm::{DataFieldContent, FirstHeaderPointer, TmVirtualChannelConfig};
 use aldis_uslp::{
-    OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination,
-    TransferFrameType, Upid, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
+    LastValidOctet, OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig,
+    SourceOrDestination, TransferFrameType, Upid, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
 };
 
 use crate::exercise::Tally;
@@ -55,9 +55,10 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         t.check(false);
         return;
     };
-    let (Some(v1), Some(v3), Some(weight)) = (
+    let (Some(v1), Some(v3), Some(v6), Some(weight)) = (
         VcId::<3>::new(bb(1)),
         VcId::<3>::new(bb(3)),
+        VcId::<3>::new(bb(6)),
         Weight::new(bb(2)).ok(),
     ) else {
         t.check(false);
@@ -127,7 +128,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     let mut out = [0u8; F];
     t.check(mux.config() == &config);
     let field = [bb(9u8); F];
-    let offer = |vc: u8, len: usize, pointer: Option<u16>| Offer {
+    let offer = |vc: VcId<3>, len: usize, pointer: Option<FirstHeaderPointer>| Offer {
         vc,
         field: field.get(..len).unwrap_or_default(),
         meta: TmOffer { pointer },
@@ -136,20 +137,36 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
         mux.step(input, out).err().map(|e| e.kind())
     };
     let fsh_new = [bb(5u8), 6];
-    t.check(kinds(&mut mux, MuxInput::Offer(offer(1, 30, Some(0))), &mut out).is_none());
     t.check(
-        kinds(&mut mux, MuxInput::Offer(offer(1, 30, Some(0))), &mut out)
-            == Some(ErrorKind::WouldBlock),
+        kinds(
+            &mut mux,
+            MuxInput::Offer(offer(v1, 30, Some(FirstHeaderPointer::ZERO))),
+            &mut out,
+        )
+        .is_none(),
     );
     t.check(
-        kinds(&mut mux, MuxInput::Offer(offer(1, 3, Some(0))), &mut out)
-            == Some(ErrorKind::LengthMismatch),
+        kinds(
+            &mut mux,
+            MuxInput::Offer(offer(v1, 30, Some(FirstHeaderPointer::ZERO))),
+            &mut out,
+        ) == Some(ErrorKind::WouldBlock),
     );
     t.check(
-        kinds(&mut mux, MuxInput::Offer(offer(6, 3, Some(0))), &mut out)
-            == Some(ErrorKind::UnknownChannel),
+        kinds(
+            &mut mux,
+            MuxInput::Offer(offer(v1, 3, Some(FirstHeaderPointer::ZERO))),
+            &mut out,
+        ) == Some(ErrorKind::LengthMismatch),
     );
-    t.check(kinds(&mut mux, MuxInput::Offer(offer(3, 36, None)), &mut out).is_none());
+    t.check(
+        kinds(
+            &mut mux,
+            MuxInput::Offer(offer(v6, 3, Some(FirstHeaderPointer::ZERO))),
+            &mut out,
+        ) == Some(ErrorKind::UnknownChannel),
+    );
+    t.check(kinds(&mut mux, MuxInput::Offer(offer(v3, 36, None)), &mut out).is_none());
     t.check(
         kinds(
             &mut mux,
@@ -217,7 +234,7 @@ fn tm(t: &mut Tally, policy: MuxPolicy) {
     t.check(s.refused.get() == 2 && s.would_block.get() == 1 && s.insert_repeated.get() == 0);
     t.check(s.slots.high_water() >= s.slots.current() && s.discarded_octets.get() == 0);
     t.check(
-        mux.step(MuxInput::Offer(offer(3, 36, None)), &mut out)
+        mux.step(MuxInput::Offer(offer(v3, 36, None)), &mut out)
             .is_ok_and(|a| a.is_empty()),
     );
     t.check(
@@ -280,8 +297,12 @@ fn aos(t: &mut Tally) {
     let mut out = [0u8; F];
     let data = [bb(4u8); F];
     let len = F - 8 - 2 - 3 - 4;
+    let Some(vc) = VcId::<6>::new(bb(1)) else {
+        t.check(false);
+        return;
+    };
     let offer = Offer {
-        vc: 1,
+        vc,
         field: data.get(..len).unwrap_or_default(),
         meta: (),
     };
@@ -383,7 +404,7 @@ fn uslp(t: &mut Tally) {
     let data = [bb(5u8); F];
     let len = config.field_len(1, Qos::Expedited).unwrap_or(0);
     let offer = Offer {
-        vc: 1,
+        vc: v1,
         field: data.get(..len).unwrap_or_default(),
         meta: UslpOffer {
             route: Some(Route {
@@ -504,13 +525,13 @@ fn access(t: &mut Tally) {
     let sdu = [bb(6u8); 12];
     t.check(g.step(AccessInput::SubmitSdu(&sdu), &mut out).is_ok());
     t.check(g.step(AccessInput::Release, &mut out).is_ok_and(|a| {
-        matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(0xFFFF) && f.route.is_some())
+        matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(LastValidOctet::SduContinues) && f.route.is_some())
     }));
     t.check(g.step(AccessInput::Release, &mut out).is_ok_and(
-        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(0xFFFF)),
+        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(LastValidOctet::SduContinues)),
     ));
     t.check(g.step(AccessInput::Release, &mut out).is_ok_and(
-        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(1)),
+        |a| matches!(a.get(0), Some(AccessOutput::DataField(f)) if f.pointer == Some(LastValidOctet::from_raw(1))),
     ));
     t.check(g.step(AccessInput::SubmitSdu(&[]), &mut out).is_err());
     t.check(g.step(AccessInput::SubmitSdu(&sdu), &mut out).is_ok());
@@ -557,13 +578,11 @@ fn bitstream(t: &mut Tally) {
         )
         .is_err(),
     );
-    t.check(
-        g.step(BitstreamInput::Release, &mut out).is_ok_and(
-            |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer == 2),
-        ),
-    );
     t.check(g.step(BitstreamInput::Release, &mut out).is_ok_and(
-        |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer == 0x3FFE),
+        |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer.to_raw() == 2),
+    ));
+    t.check(g.step(BitstreamInput::Release, &mut out).is_ok_and(
+        |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer.to_raw() == 0x3FFE),
     ));
     t.check(
         g.step(
@@ -576,7 +595,7 @@ fn bitstream(t: &mut Tally) {
         .is_ok(),
     );
     t.check(g.step(BitstreamInput::Release, &mut out).is_ok_and(
-        |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer == 0x3FFF),
+        |a| matches!(a.get(0), Some(BitstreamOutput::DataField(f)) if f.pointer.to_raw() == 0x3FFF),
     ));
     t.check(
         g.step(

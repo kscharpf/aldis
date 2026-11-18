@@ -336,7 +336,7 @@ fn uslp_trip(
         let data = f.fdu.slice(&area).unwrap().to_vec();
         let mut out = vec![0_u8; AREA];
         let meta = UslpFdu {
-            map: MapId::<4>::new(f.map.unwrap()).unwrap(),
+            map: f.map.unwrap(),
             gap: false,
         };
         let input = ReassemblerInput::Fdu(FduIn {

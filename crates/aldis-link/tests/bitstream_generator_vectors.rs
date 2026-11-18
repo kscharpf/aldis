@@ -75,9 +75,9 @@ fn the_bitstream_generator_scenarios_match_exactly() {
                     .iter()
                     .map(|o| match o {
                         BitstreamOutput::DataField(f) => json!({"data_field": {
-                            "vc": f.vc,
+                            "vc": u8::from(f.vc),
                             "field_hex": hex::encode(f.field.slice(&area).unwrap()),
-                            "bdp": f.pointer,
+                            "bdp": f.pointer.to_raw(),
                         }}),
                         BitstreamOutput::Discarded { octets } => {
                             json!({"notify": {"kind": "Discarded", "octets": octets}})

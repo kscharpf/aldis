@@ -25,7 +25,9 @@ use aldis_link::policy::{MuxPolicy, Weight};
 use aldis_link::protocol::{Aos, Route, Tm, Uslp};
 use aldis_testkit::strategies;
 use aldis_testkit::strategies::proptest::prelude::*;
-use aldis_tm::{DataFieldContent, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig};
+use aldis_tm::{
+    DataFieldContent, FirstHeaderPointer, FshLen, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 use aldis_uslp::{
     OcfUse, PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination,
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
@@ -210,7 +212,9 @@ trait FromPointer {
 
 impl FromPointer for TmOffer {
     fn from_pointer(pointer: Option<u16>) -> Self {
-        Self { pointer }
+        Self {
+            pointer: pointer.map(|p| FirstHeaderPointer::new(p).unwrap()),
+        }
     }
 }
 
@@ -229,7 +233,7 @@ where
     P::OfferMeta: FromPointer,
 {
     Offer {
-        vc,
+        vc: P::Vc::try_from(vc).unwrap(),
         field,
         meta: P::OfferMeta::from_pointer(pointer),
     }
@@ -544,7 +548,8 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
         step(&mut mux, offer(1, &field16[..15], Some(0))),
         named(ErrorKind::LengthMismatch, field::FIELD_LEN)
     );
-    // The First Header Pointer: required for Packets, refused for `VCA_SDUs`, at most 0x7FF.
+    // The First Header Pointer: required for Packets, refused for `VCA_SDUs`; its type holds at
+    // most 0x7FF, so a wider value never reaches the engine (API-001).
     assert_eq!(
         step(&mut mux, offer(1, &field16, None)),
         invalid(field::FIRST_HEADER_POINTER)
@@ -554,14 +559,14 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
         invalid(field::FIRST_HEADER_POINTER)
     );
     assert_eq!(
-        step(&mut mux, offer(1, &field16, Some(0x800))),
+        failure(FirstHeaderPointer::try_from(0x800)),
         named(ErrorKind::OutOfRange, field::FIRST_HEADER_POINTER)
     );
     // A route and a COP-1 block belong to USLP (OI-78): a TM offer has no member for them.
     let s = mux.status();
     assert_eq!(
         (s.offers.get(), s.refused.get(), s.would_block.get()),
-        (0, 5, 0)
+        (0, 4, 0)
     );
     // The refusals changed nothing: the first valid offers are the first frames.
     assert_eq!(step_ok(&mut mux, offer(1, &field16, Some(5))), 0);
@@ -572,7 +577,7 @@ fn an_offer_the_vc_cannot_have_is_refused_and_changes_nothing() {
     let s = mux.status();
     assert_eq!(
         (s.offers.get(), s.refused.get(), s.would_block.get()),
-        (1, 5, 1)
+        (1, 4, 1)
     );
     assert_eq!((s.slots.current(), s.slots.high_water()), (16, 16));
     let mut frame = [0; F];
@@ -836,7 +841,10 @@ fn an_opportunity_needs_the_whole_frame_and_changes_nothing_without() {
     let Some(MuxOutput::Transmit(t)) = a.get(0) else {
         panic!("no frame")
     };
-    assert_eq!((t.class, t.vc, t.frame.len()), (FrameClass::Data, 1, 24));
+    assert_eq!(
+        (t.class, t.vc.get(), t.frame.len()),
+        (FrameClass::Data, 1, 24)
+    );
     assert_eq!(&exact[2..4], [0, 0]);
 }
 
@@ -956,7 +964,7 @@ enum Op {
 
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
-        (0_u8..9, any::<bool>()).prop_map(|(vc, right)| Op::Offer(vc, right)),
+        (0_u8..8, any::<bool>()).prop_map(|(vc, right)| Op::Offer(vc, right)),
         Just(Op::Opportunity),
         Just(Op::Opportunity),
         (0_u8..3).prop_map(Op::SetOcf),
@@ -985,6 +993,8 @@ proptest! {
                     let field = [vc; 16];
                     let len = if right { 16 } else { 15 };
                     let pointer = if vc == 3 { None } else { Some(0) };
+                    let pointer = pointer.map(|p| FirstHeaderPointer::new(p).unwrap());
+                    let vc = VcId::<3>::new(vc).unwrap();
                     match mux.step(MuxInput::Offer(Offer { vc, field: &field[..len], meta: TmOffer { pointer } }), &mut out) {
                         Ok(a) => prop_assert!(a.is_empty()),
                         Err(e) => prop_assert_ne!(e.kind(), ErrorKind::InternalError),
@@ -1004,7 +1014,7 @@ proptest! {
                         prop_assert!(t.data.end() <= t.security_trailer.start());
                         // The MC count is one per frame; the VC count one per frame of its VC.
                         prop_assert_eq!(out[2], u8::try_from(frames % 256).unwrap());
-                        let vc = usize::from(t.vc);
+                        let vc = usize::from(t.vc.get());
                         prop_assert_eq!(out[3], u8::try_from(vc_frames[vc] % 256).unwrap());
                         frames += 1;
                         vc_frames[vc] += 1;
@@ -1026,7 +1036,13 @@ fn the_protocols_without_cop_have_no_vcf_count_to_take() {
     let admitted = Aos::admit(&aos, &()).unwrap();
     assert_eq!(admitted.kind, CopFrameKind::Ad);
     assert_eq!(admitted.given_count, None);
-    let admitted = Tm::admit(&tm, &TmOffer { pointer: Some(5) }).unwrap();
+    let admitted = Tm::admit(
+        &tm,
+        &TmOffer {
+            pointer: FirstHeaderPointer::new(5),
+        },
+    )
+    .unwrap();
     assert_eq!(
         (admitted.kind, admitted.given_count),
         (CopFrameKind::Ad, None)

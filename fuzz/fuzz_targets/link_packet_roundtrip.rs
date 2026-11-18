@@ -19,6 +19,7 @@ use aldis_link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
 };
 use aldis_link::protocol::{Aos, AosParams, PacketProtocol, Tm, TmParams, Uslp, UslpParams};
+use aldis_tm::FirstHeaderPointer;
 use aldis_uslp::Upid;
 use libfuzzer_sys::arbitrary::{Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
@@ -95,13 +96,13 @@ struct Trip {
 fn extract<P: PacketProtocol>(
     extractor: &mut PacketExtractor<P, M, D>,
     field: &[u8],
-    pointer: u16,
+    pointer: Option<P::HeaderPointer>,
     trip: &mut Trip,
 ) {
     let mut area = vec![0u8; M + D];
     let input = ExtractorInput::DataField(FieldIn {
         field,
-        header_pointer: Some(pointer),
+        header_pointer: pointer,
         gap: false,
     });
     let actions = extractor.step(input, &mut area).unwrap();
@@ -136,7 +137,7 @@ fn flush<P: PacketProtocol>(
         if let GeneratorOutput::DataField(f) = a {
             any = true;
             let field = f.field.slice(&area).unwrap().to_vec();
-            extract(extractor, &field, f.pointer, trip);
+            extract(extractor, &field, P::header_pointer(f.pointer), trip);
         }
     }
     any
@@ -249,7 +250,7 @@ fn extractor_inputs(u: &mut Unstructured<'_>) -> Result<()> {
         };
         let input = ExtractorInput::DataField(FieldIn {
             field: &field,
-            header_pointer: Some(pointer),
+            header_pointer: Some(FirstHeaderPointer::new(pointer).unwrap()),
             gap: u.arbitrary()?,
         });
         match extractor.step(input, &mut area) {

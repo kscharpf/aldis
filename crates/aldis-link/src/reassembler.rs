@@ -92,9 +92,9 @@ pub enum Unit<'a> {
 
 /// An FDU or TFDF read by the protocol (LNK-070).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Parsed<'a> {
+pub struct Parsed<'a, P: ReassemblerProtocol> {
     /// The MAP Identifier: from the Segment Header (TC), or given with the frame (USLP).
-    pub map: u8,
+    pub map: P::Map,
     /// A gap was flagged on the field (LNK-051); always false on TC.
     pub gap: bool,
     /// Whether the user data is a fixed-length TFDZ (rules `001` and `010`), which only
@@ -119,7 +119,11 @@ pub trait ReassemblerProtocol: Protocol {
     /// # Errors
     /// `InvalidField` (`frame_data_field`) for no user data, (`tfdz_construction_rule`) for rule
     /// `000`; `Malformed` (`fhp_lvo_pointer`) for a Last Valid Octet Pointer beyond the TFDZ.
-    fn parse<'a>(channel: &Self::Channel, meta: &Self::Meta, data: &'a [u8]) -> Result<Parsed<'a>>;
+    fn parse<'a>(
+        channel: &Self::Channel,
+        meta: &Self::Meta,
+        data: &'a [u8],
+    ) -> Result<Parsed<'a, Self>>;
 }
 
 /// One MAP of a `MapReassembler` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-070, LNK-073).
@@ -591,7 +595,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             }
         };
         let vc = raw(input.vc);
-        let found = self.head.config.find(vc, parsed.map);
+        let found = self.head.config.find(vc, raw(parsed.map));
         if let Some(index) = found
             && let Err(e) = self.check(index, &parsed, out.len())
         {
@@ -605,17 +609,17 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         };
         self.head.status.fdus_in.incr();
         if parsed.gap {
-            self.gap_discard(vc, parsed.map, found, &mut cx)?;
+            self.gap_discard(vc, raw(parsed.map), found, &mut cx)?;
         }
         match found {
-            None => self.event(ReassemblyEvent::UnknownMap, vc, parsed.map, &mut cx)?,
+            None => self.event(ReassemblyEvent::UnknownMap, vc, raw(parsed.map), &mut cx)?,
             Some(index) => self.apply(index, vc, &parsed, &mut cx)?,
         }
         Ok(cx.actions)
     }
 
     /// The checks of an FDU for a configured MAP that precede any change (API-058).
-    fn check(&self, index: usize, parsed: &Parsed<'_>, area: usize) -> Result<()> {
+    fn check(&self, index: usize, parsed: &Parsed<'_, P>, area: usize) -> Result<()> {
         let map = self
             .head
             .config
@@ -735,7 +739,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// Takes the unit of a configured MAP (LNK-070, LNK-071, LNK-072).
-    fn apply(&mut self, index: usize, vc: u8, parsed: &Parsed<'_>, cx: &mut Cx<'_>) -> Result<()> {
+    fn apply(
+        &mut self,
+        index: usize,
+        vc: u8,
+        parsed: &Parsed<'_, P>,
+        cx: &mut Cx<'_>,
+    ) -> Result<()> {
         let map = self
             .head
             .config
@@ -744,7 +754,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
             .copied()
             .flatten()
             .ok_or(Error::new(ErrorKind::InternalError))?;
-        let id = parsed.map;
+        let id = raw(parsed.map);
         // Only an octet stream (and an idle TFDF) has no maximum, and uses none.
         let max = match (parsed.unit, map.max_sdu_len()) {
             (Unit::Stream(_) | Unit::Idle, _) => 0,
@@ -1000,14 +1010,18 @@ mod tc_impl {
         type Channel = TcReassemblerParams;
         type Meta = ();
 
-        fn parse<'a>(channel: &TcReassemblerParams, (): &(), data: &'a [u8]) -> Result<Parsed<'a>> {
+        fn parse<'a>(
+            channel: &TcReassemblerParams,
+            (): &(),
+            data: &'a [u8],
+        ) -> Result<Parsed<'a, Self>> {
             let no_data = Error::new(ErrorKind::InvalidField).with_field(field::FRAME_DATA_FIELD);
             if !channel.segment_header {
                 return if data.is_empty() {
                     Err(no_data)
                 } else {
                     Ok(Parsed {
-                        map: 0,
+                        map: TcMapId::from_const::<0>(),
                         gap: false,
                         fixed_length: false,
                         unit: Unit::Whole(data),
@@ -1025,7 +1039,7 @@ mod tc_impl {
                 SequenceFlags::Unsegmented => Unit::Whole(user),
             };
             Ok(Parsed {
-                map: segment::MapId::get_u8(&[header]),
+                map: segment::MapId::map_id(&[header]),
                 gap: false,
                 fixed_length: false,
                 unit,
@@ -1067,10 +1081,10 @@ mod uslp_impl {
         type Channel = ();
         type Meta = UslpFdu;
 
-        fn parse<'a>(&(): &(), meta: &UslpFdu, data: &'a [u8]) -> Result<Parsed<'a>> {
+        fn parse<'a>(&(): &(), meta: &UslpFdu, data: &'a [u8]) -> Result<Parsed<'a, Self>> {
             let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
             let &first = data.first().ok_or(invalid(field::FRAME_DATA_FIELD))?;
-            let map = meta.map.get();
+            let map = meta.map;
             let (gap, rule) = (
                 meta.gap,
                 ConstructionRule::from_bits(tfdf::Rule::get_u8(&[first])),

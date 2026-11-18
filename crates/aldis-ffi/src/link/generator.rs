@@ -287,7 +287,7 @@ fn pg_run<P: PacketProtocol>(
     params: Result<P::Params>,
     now: Instant,
     area: &mut [u8],
-) -> Result<GeneratorActions> {
+) -> Result<aldis_packet_generator_actions_t> {
     let input = match parse::<aldis_packet_generator_input>(input.kind)? {
         aldis_packet_generator_input::ALDIS_PACKET_GENERATOR_INPUT_SUBMIT_PACKET => {
             GeneratorInput::SubmitPacket(data)
@@ -302,7 +302,8 @@ fn pg_run<P: PacketProtocol>(
             GeneratorInput::Reconfigure(pg_config(&input.config, params?)?)
         }
     };
-    engine.step(input, now, area)
+    let list = engine.step(input, now, area)?;
+    pg_actions(&list, engine.config().protocol())
 }
 
 impl PacketGeneratorState {
@@ -313,7 +314,7 @@ impl PacketGeneratorState {
         data: &[u8],
         now: Instant,
         area: &mut [u8],
-    ) -> Result<GeneratorActions> {
+    ) -> Result<aldis_packet_generator_actions_t> {
         let reconfigure = parse::<aldis_packet_generator_input>(input.kind)?
             == aldis_packet_generator_input::ALDIS_PACKET_GENERATOR_INPUT_RECONFIGURE;
         let ch = &input.config.channel;
@@ -358,15 +359,33 @@ impl PacketGeneratorState {
     }
 }
 
-fn pg_action(output: &GeneratorOutput) -> aldis_packet_generator_action_t {
-    match output {
+/// The C form of the actions of one step; `params` are those of the engine, which give the raw
+/// pointer of a field (LNK-011).
+fn pg_actions<P: PacketProtocol>(
+    list: &GeneratorActions<P>,
+    params: &P::Params,
+) -> Result<aldis_packet_generator_actions_t> {
+    let mut result = aldis_packet_generator_actions_t::default();
+    for (slot, output) in result.items.iter_mut().zip(list.iter()) {
+        *slot = pg_action(output, params)?;
+    }
+    // `list` holds at most `PACKET_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
+    result.count = list.len();
+    Ok(result)
+}
+
+fn pg_action<P: PacketProtocol>(
+    output: &GeneratorOutput<P>,
+    params: &P::Params,
+) -> Result<aldis_packet_generator_action_t> {
+    Ok(match output {
         GeneratorOutput::DataField(f) => {
             let route = RouteFields::from(f.route);
             aldis_packet_generator_action_t {
                 kind: ALDIS_PACKET_GENERATOR_ACTION_DATA_FIELD,
-                vc_id: f.vc,
+                vc_id: f.vc.into(),
                 field: range(f.field),
-                pointer: f.pointer,
+                pointer: P::raw_pointer(params, f.pointer)?,
                 route_present: route.present,
                 map_id: route.map_id,
                 qos: route.qos,
@@ -378,7 +397,7 @@ fn pg_action(output: &GeneratorOutput) -> aldis_packet_generator_action_t {
             octets: *octets,
             ..aldis_packet_generator_action_t::default()
         },
-    }
+    })
 }
 
 /// Places a `PacketGenerator` with an empty field and queue in `storage` (LNK-010; CABI-031,
@@ -457,14 +476,7 @@ impl handle::TimedStep for aldis_packet_generator_t {
         area: &mut [u8],
         actions: Out<'_, aldis_packet_generator_actions_t>,
     ) -> Result<()> {
-        let list = state.step(input, data, now, area)?;
-        let mut result = aldis_packet_generator_actions_t::default();
-        for (slot, output) in result.items.iter_mut().zip(list.iter()) {
-            *slot = pg_action(output);
-        }
-        // `list` holds at most `PACKET_GENERATOR_MAX_ACTIONS` actions, the length of `items`.
-        result.count = list.len();
-        actions.write(result);
+        actions.write(state.step(input, data, now, area)?);
         Ok(())
     }
 }
