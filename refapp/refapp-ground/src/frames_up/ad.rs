@@ -141,11 +141,8 @@ impl Uplink {
         if self.ad.is_none() {
             return;
         }
-        let held = [FrameKind::Bc, FrameKind::Ad]
-            .into_iter()
-            .find(|&kind| !self.fop.out_flag_ready(kind));
-        if let Some(kind) = held {
-            if let Some(frame) = self.fop.held_frame(kind) {
+        if let Some(kind) = self.outstanding() {
+            if let Some(frame) = self.held_frame(kind) {
                 out.unit(frame);
             }
             let done = Fop1Input::TransmitDone {
@@ -154,6 +151,21 @@ impl Uplink {
             };
             self.drive(done, now, out);
         }
+    }
+
+    /// The kind of the transmit request that goes in this slot: Type-BC before Type-AD, the one
+    /// whose Out flag is `Not_Ready` (232.1 §5.1.6; API-056). With `held_frame`, the only reads
+    /// of the engine's held requests: the kinds Type-AD and Type-BC are named here.
+    fn outstanding(&self) -> Option<FrameKind> {
+        [FrameKind::Bc, FrameKind::Ad]
+            .into_iter()
+            .find(|&kind| !self.fop.out_flag_ready(kind))
+    }
+
+    /// The frame FOP-1 holds for the request of `kind`, `None` if its master copy left the
+    /// `Sent_Queue` (232.1 §5.1.7; COP-011, API-056).
+    fn held_frame(&self, kind: FrameKind) -> Option<&[u8]> {
+        self.fop.held_frame(kind)
     }
 
     /// One FOP-1 input: the engine decides, the node commits, and raises the events of the actions in their order, `fop1_state` of a change last (§7.4).
