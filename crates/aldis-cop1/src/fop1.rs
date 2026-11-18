@@ -628,6 +628,43 @@ const fn bad_config(parameter: aldis_core::FieldId) -> Error {
     Error::new(ErrorKind::InvalidConfig).with_field(parameter)
 }
 
+/// The kind of a frame FOP-1 retains on the `Sent_Queue` for an outstanding Transmit request:
+/// Type-AD or Type-BC. A Type-BD frame is not retained (232.1 §5.1.6, §5.1.7; COP-011, API-056).
+///
+/// [`Fop1::held_frame`] takes it, so a request for the held frame of a Type-BD request does not
+/// compile (RS-020, RS-021). The caller answers the request with the [`FrameKind`] of
+/// [`Fop1Output::Transmit`]: `FrameKind::from(held)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HeldKind {
+    /// A Type-AD frame (232.1 §5.2.4).
+    Ad,
+    /// The Type-BC frame of an Initiate AD directive (232.1 §5.2.5).
+    Bc,
+}
+
+impl HeldKind {
+    /// The retained kind of `kind`: `None` for Type-BD, which is not retained (232.1 §5.1.7;
+    /// COP-011, API-056).
+    #[must_use]
+    pub const fn from_frame_kind(kind: FrameKind) -> Option<Self> {
+        match kind {
+            FrameKind::Ad => Some(Self::Ad),
+            FrameKind::Bc => Some(Self::Bc),
+            FrameKind::Bd => None,
+        }
+    }
+}
+
+impl From<HeldKind> for FrameKind {
+    /// The frame kind of a retained kind, for [`Fop1Input::TransmitDone`] (COP-011, API-056).
+    fn from(kind: HeldKind) -> Self {
+        match kind {
+            HeldKind::Ad => Self::Ad,
+            HeldKind::Bc => Self::Bc,
+        }
+    }
+}
+
 /// What a frame on the `Sent_Queue` is (232.1 §5.1.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum SentKind {
@@ -747,8 +784,9 @@ pub enum Fop1Output {
     /// At most one Transmit request per kind is outstanding: the Out flag of the kind is
     /// `Not_Ready` from the request until a [`Fop1Input::TransmitDone`] that accepts it
     /// (232.1 §5.1.6); a Reject leaves it `Not_Ready` (E42, E44, E46). For a
-    /// Type-AD or Type-BC request, [`Fop1::held_frame`] returns the frame the engine holds, so a
-    /// caller that waits for a link slot need not copy it; a Type-BD frame is not retained.
+    /// Type-AD or Type-BC request, [`Fop1::held_frame`] returns the frame the engine holds, read
+    /// with a [`HeldKind`], so a caller that waits for a link slot need not copy it; a Type-BD
+    /// frame is not retained.
     Transmit {
         /// Type-AD, Type-BC, or Type-BD.
         kind: FrameKind,
@@ -1259,7 +1297,8 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
 
     /// The frame the engine holds for the outstanding Transmit request of `kind`: the master
     /// copy on the `Sent_Queue`, trimmed to the frame's length (232.1 §5.1.6, §5.1.7; COP-011,
-    /// API-056).
+    /// API-056). A [`HeldKind`] has only Type-AD and Type-BC: a Type-BD frame is not retained and
+    /// cannot be asked for (RS-020).
     ///
     /// A caller that holds a [`Fop1Output::Transmit`] request until a link slot reads the frame
     /// here instead of copying it from the output area. There is a frame while the Out flag of
@@ -1268,24 +1307,20 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     /// The frame is byte-identical to the one in the output area.
     ///
     /// It is `None`:
-    /// - for [`FrameKind::Ad`] and [`FrameKind::Bc`] while the Out flag is Ready, that is, no
-    ///   request of the kind is outstanding;
-    /// - for a Type-AD or Type-BC request whose master copy has since left the `Sent_Queue`,
-    ///   acknowledged by a CLCW or removed by a purge (an Alert, or Initialize; 232.1 §5.1.7): the
-    ///   engine retains no copy, and the caller still answers the request with
-    ///   [`Fop1Input::TransmitDone`];
-    /// - for [`FrameKind::Bd`] always: 232.1 does not retain a Type-BD frame, so the frame of a
-    ///   Type-BD request is only in the output area.
+    /// - while the Out flag of `kind` is Ready, that is, no request of the kind is outstanding;
+    /// - for a request whose master copy has since left the `Sent_Queue`, acknowledged by a CLCW
+    ///   or removed by a purge (an Alert, or Initialize; 232.1 §5.1.7): the engine retains no
+    ///   copy, and the caller still answers the request with [`Fop1Input::TransmitDone`].
     ///
     /// An input changes the answer, as it changes the `Sent_Queue`: read the frame before the
     /// next input, which the borrow of this reader enforces (RS-021).
     #[must_use]
-    pub fn held_frame(&self, kind: FrameKind) -> Option<&[u8]> {
+    pub fn held_frame(&self, kind: HeldKind) -> Option<&[u8]> {
         let core = &self.head.core;
         let in_flight = |sent: &Sent| match (kind, sent.kind) {
-            (FrameKind::Ad, SentKind::Ad(_)) => core.ad_out == Some(sent.sequence_number),
-            (FrameKind::Bc, SentKind::Bc) => !core.bc_out_ready,
-            (FrameKind::Ad | FrameKind::Bc | FrameKind::Bd, _) => false,
+            (HeldKind::Ad, SentKind::Ad(_)) => core.ad_out == Some(sent.sequence_number),
+            (HeldKind::Bc, SentKind::Bc) => !core.bc_out_ready,
+            (HeldKind::Ad, SentKind::Bc) | (HeldKind::Bc, SentKind::Ad(_)) => false,
         };
         let (position, sent) = core
             .sent

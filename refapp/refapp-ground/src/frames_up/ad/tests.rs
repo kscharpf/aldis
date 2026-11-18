@@ -6,7 +6,8 @@
 )]
 
 use super::Uplink;
-use aldis::cop1::{Fop1, Fop1Config, Fop1Target, TimeoutType};
+use crate::ops::Fop1Directive;
+use aldis::cop1::{Fop1, Fop1Config, Fop1Target, FrameKind, HeldKind, TimeoutType};
 use aldis::core::ErrorKind;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::time::{Duration, Instant};
@@ -18,12 +19,15 @@ use refapp_scenario::{Apid, Output};
 #[derive(Default)]
 struct Recorder {
     units: usize,
+    /// The octets of each unit output, in order.
+    frames: Vec<Vec<u8>>,
     events: Vec<(u16, Vec<u64>)>,
 }
 
 impl Output for Recorder {
-    fn unit(&mut self, _: &[u8]) {
+    fn unit(&mut self, unit: &[u8]) {
         self.units += 1;
+        self.frames.push(unit.to_vec());
     }
     fn packet_out(&mut self, _: Apid, _: &[u8]) {}
     fn packet_in(&mut self, _: Apid, _: &[u8]) {}
@@ -95,4 +99,45 @@ fn a_request_ad_the_engine_refuses_is_not_unanswered_and_the_next_slot_requests_
     assert_eq!(ad.next_request, 1);
     uplink.slot_ad(now, &mut out);
     assert_eq!(uplink.refused(), 2);
+}
+
+#[test]
+fn a_frame_held_across_a_slot_leaves_with_the_bytes_the_engine_holds() {
+    // req: APP-071, APP-101, APP-144, COP-011
+    // The node keeps no copy of a held transmit request: at the slot it outputs what
+    // `Fop1::held_frame` returns (232.1 §5.1.7).
+    let mut uplink = Uplink::new_cop1().unwrap();
+    let mut out = Recorder::default();
+    let at = |ms: u64| Instant::from_micros(ms * 1_000);
+    uplink.directive(Fop1Directive::InitiateAdWithoutClcw, at(0), &mut out);
+    for _ in 0..3 {
+        uplink.submit(
+            Apid::new(apid::COMMANDS).unwrap(),
+            &packet(100),
+            at(0),
+            &mut out,
+        );
+    }
+    // Frames 0, 1, and 2 leave in three slots.
+    for slot in 1..=3 {
+        uplink.slot_ad(at(slot * 250), &mut out);
+    }
+    assert_eq!(out.frames.len(), 3);
+    // The Retransmit flag with N(R) = 1 returns frames 1 and 2: the first is held, not output.
+    uplink.clcw(0x0100_0000 + 1 + 0x0800, at(800), &mut out);
+    assert_eq!(out.frames.len(), 3);
+    assert!(!uplink.fop.out_flag_ready(FrameKind::Ad));
+    let held = uplink.fop.held_frame(HeldKind::Ad).unwrap().to_vec();
+    assert_eq!(held[4], 1);
+    assert_eq!(held, out.frames[1]);
+    // The slot outputs exactly those bytes, as its last output; the next one, frame 2.
+    uplink.slot_ad(at(1_000), &mut out);
+    assert_eq!(out.frames.len(), 4);
+    assert_eq!(out.frames[3], held);
+    let next = uplink.fop.held_frame(HeldKind::Ad).unwrap().to_vec();
+    assert_eq!(next[4], 2);
+    uplink.slot_ad(at(1_250), &mut out);
+    assert_eq!(out.frames.len(), 5);
+    assert_eq!(out.frames[4], next);
+    assert_eq!(uplink.refused(), 0);
 }

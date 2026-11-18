@@ -1,4 +1,4 @@
-//! The uplink at the `cop1` level: FOP-1 with `RequestAd`, its inputs, the held transmit
+//! The uplink at the `cop1` level: FOP-1 with `RequestAd`, its inputs, the outstanding transmit
 //! requests, and the COP-1 events (A3 WP-4).
 //!
 //! Specification: `docs/reference-application.md` §4.5.1 (order of work), §4.5.2 (directives),
@@ -8,11 +8,15 @@
 //! The node is the caller of 232.1 §3.2.2 and nothing more: FOP-1 decides, the node moves its
 //! inputs and outputs. A transmit request that FOP-1 returns is **held** (at most one for each
 //! of Type-AD and Type-BC, since FOP-1 sets the Out flag to `Not_Ready`, 232.1 §5.1.6) until a
-//! slot, where the node outputs it and gives `TransmitDone`.
+//! slot, where the node outputs it and gives `TransmitDone`. The node keeps no copy of the
+//! frame: FOP-1 holds the master copy on its `Sent_Queue` (232.1 §5.1.7) and the node reads it
+//! with `Fop1::held_frame` at the slot (#505; COP-011, API-056). Where the engine holds none (the
+//! master copy was acknowledged by a CLCW or purged by an Alert, Initialize, or Terminate since),
+//! the request still gets its `TransmitDone` and no frame leaves (APP-144, §4.5.1 step 4(b)).
 
 use aldis::cop1::{
     Alert, AlertReason, DirectiveNotification, DirectiveNotify, Fop1Event, Fop1Input, Fop1Output,
-    Fop1State, FrameKind, TransferNotification, TransferNotify,
+    Fop1State, FrameKind, HeldKind, TransferNotification, TransferNotify,
 };
 use aldis::core::time::Instant;
 use aldis::core::{Error, ErrorKind};
@@ -32,17 +36,14 @@ pub(crate) const FOP1_DIRECTIVE: u16 = 202;
 /// Application event `fop1_state` (§7.4).
 pub(crate) const FOP1_STATE: u16 = 203;
 
-/// What the node keeps of FOP-1's callers' state at the `cop1` level (§4.5.1).
+/// What the node keeps of FOP-1's callers' state at the `cop1` level (§4.5.1). The frames of the
+/// held transmit requests are not among it: they are FOP-1's (`Fop1::held_frame`).
 #[derive(Debug, Clone, Default)]
 pub(super) struct Ad {
     /// The request identifier of the next FDU given to FOP-1 (§4.5.1: the n-th is n - 1).
     next_request: u32,
     /// Whether the last `RequestAd` has neither its Accept nor its Reject yet (APP-145).
     unanswered: bool,
-    /// The held Type-AD transmit request: the frame.
-    sequence_controlled: Option<Vec<u8>>,
-    /// The held Type-BC transmit request: the frame.
-    control: Option<Vec<u8>>,
     /// The directives given to FOP-1; the handle of a directive is its index.
     directives: Vec<Fop1Directive>,
 }
@@ -108,8 +109,12 @@ impl Uplink {
     }
 
     /// One uplink slot at `cop1` (§4.5.1 step 4): a `RequestAd` of one FDU if none is
-    /// unanswered, then the held frame, Type-BC before Type-AD, as the last output of the step
-    /// and `TransmitDone` for its kind (APP-071, APP-090, APP-144).
+    /// unanswered, then the frame of the held transmit request, Type-BC before Type-AD, as the
+    /// last output of the step and `TransmitDone` for its kind (APP-071, APP-090, APP-144).
+    ///
+    /// A request is held while the Out flag of its kind is `Not_Ready` (232.1 §5.1.6); its frame
+    /// is the one `Fop1::held_frame` returns (232.1 §5.1.7; COP-011, API-056). If the engine
+    /// holds none, the request is still answered and nothing is output.
     pub(crate) fn slot_ad(&mut self, now: Instant, out: &mut dyn Output) {
         let Some(ad) = &mut self.ad else {
             return;
@@ -133,29 +138,37 @@ impl Uplink {
                 }
             }
         }
-        let Some(ad) = &mut self.ad else {
+        if self.ad.is_none() {
             return;
-        };
-        let held = match (ad.control.take(), ad.sequence_controlled.take()) {
-            (Some(bc), sequence_controlled) => {
-                ad.sequence_controlled = sequence_controlled;
-                Some((FrameKind::Bc, bc))
+        }
+        if let Some(kind) = self.outstanding() {
+            if let Some(frame) = self.held_frame(kind) {
+                out.unit(frame);
             }
-            (None, Some(frame)) => Some((FrameKind::Ad, frame)),
-            (None, None) => None,
-        };
-        if let Some((kind, frame)) = held {
-            out.unit(&frame);
             let done = Fop1Input::TransmitDone {
-                kind,
+                kind: FrameKind::from(kind),
                 accepted: true,
             };
             self.drive(done, now, out);
         }
     }
 
-    /// One FOP-1 input: the engine decides, the node commits, holds the frame it returns, and
-    /// raises the events of the actions in their order, `fop1_state` of a change last (§7.4).
+    /// The kind of the transmit request that goes in this slot: Type-BC before Type-AD, the one
+    /// whose Out flag is `Not_Ready` (232.1 §5.1.6; API-056). With `held_frame`, the only reads
+    /// of the engine's held requests: the kinds Type-AD and Type-BC are named here.
+    fn outstanding(&self) -> Option<HeldKind> {
+        [HeldKind::Bc, HeldKind::Ad]
+            .into_iter()
+            .find(|&kind| !self.fop.out_flag_ready(FrameKind::from(kind)))
+    }
+
+    /// The frame FOP-1 holds for the request of `kind`, `None` if its master copy left the
+    /// `Sent_Queue` (232.1 §5.1.7; COP-011, API-056).
+    fn held_frame(&self, kind: HeldKind) -> Option<&[u8]> {
+        self.fop.held_frame(kind)
+    }
+
+    /// One FOP-1 input: the engine decides, the node commits, and raises the events of the actions in their order, `fop1_state` of a change last (§7.4).
     /// Returns `false` if the engine refused the input with an error (`uplink_refused`).
     fn drive(&mut self, input: Fop1Input<'_>, now: Instant, out: &mut dyn Output) -> bool {
         let before = self.fop.state();
@@ -170,15 +183,12 @@ impl Uplink {
         let actions = decision.commit();
         for action in actions.iter() {
             match *action {
-                Fop1Output::Transmit { kind, frame, .. } => match frame.slice(&area) {
-                    Some(octets) => self.hold(kind, octets, out),
-                    None => self.refuse(out, STAGE_FOP1, Error::new(ErrorKind::OutOfRange), 0),
-                },
                 Fop1Output::Transfer(notify) => self.transferred(notify, out),
                 Fop1Output::Directive(notify) => self.directive_notified(notify, out),
                 Fop1Output::Alert(alert) => alert_event(alert, out),
-                // The Abort Request is not acted on (§4.5.1); Suspend needs Timeout_Type 1.
-                Fop1Output::Abort | Fop1Output::Suspend => {}
+                // A Transmit request is held by the engine until a slot (`slot_ad`). The Abort
+                // Request is not acted on (§4.5.1); Suspend needs Timeout_Type 1.
+                Fop1Output::Transmit { .. } | Fop1Output::Abort | Fop1Output::Suspend => {}
             }
         }
         let after = self.fop.state();
@@ -186,20 +196,6 @@ impl Uplink {
             out.app_event(FOP1_STATE, &[state_number(after)]);
         }
         true
-    }
-
-    /// Holds the frame of a transmit request until a slot (§4.5.1). A second request of a kind
-    /// that is still held, or a Type-BD request, is not something FOP-1 returns here.
-    fn hold(&mut self, kind: FrameKind, octets: &[u8], out: &mut dyn Output) {
-        let held = self.ad.as_mut().and_then(|ad| match kind {
-            FrameKind::Ad => Some(&mut ad.sequence_controlled),
-            FrameKind::Bc => Some(&mut ad.control),
-            FrameKind::Bd => None,
-        });
-        match held {
-            Some(place) if place.is_none() => *place = Some(octets.to_vec()),
-            Some(_) | None => self.refuse(out, STAGE_FOP1, Error::new(ErrorKind::InvalidState), 0),
-        }
     }
 
     /// The notification of a transfer request (§4.4.2): the last request is answered by any

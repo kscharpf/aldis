@@ -22,7 +22,7 @@
 use aldis_cop1::{
     Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config, Farm1Frame,
     Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target,
-    FrameKind, TimeoutType, fop1_max_actions,
+    FrameKind, HeldKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -293,17 +293,19 @@ proptest! {
                     prop_assert!(frame.slice(&area).is_some_and(|b| !b.is_empty() && b.len() <= F));
                 }
             }
-            // The frame held for a request (#505): none for Type-BD or while the Out flag is
-            // Ready; a request that ends the step with its copy still queued is held, and
-            // byte-identical to the frame in the output area.
-            prop_assert!(after.held_frame(FrameKind::Bd).is_none());
-            for k in [FrameKind::Ad, FrameKind::Bc] {
-                prop_assert!(!after.out_flag_ready(k) || after.held_frame(k).is_none());
+            // The frame held for a request (#505): none while the Out flag is Ready; a request
+            // of a retained kind (Type-AD or Type-BC) that ends the step with its copy still
+            // queued is held, and byte-identical to the frame in the output area. A Type-BD
+            // request has no `HeldKind` and is skipped.
+            for k in [HeldKind::Ad, HeldKind::Bc] {
+                prop_assert!(!after.out_flag_ready(FrameKind::from(k)) || after.held_frame(k).is_none());
             }
             if !actions.iter().any(|a| matches!(a, Fop1Output::Alert(_))) {
                 for a in actions.iter() {
-                    if let Fop1Output::Transmit { kind: k @ (FrameKind::Ad | FrameKind::Bc), frame, .. } = a {
-                        prop_assert_eq!(after.held_frame(*k), frame.slice(&area));
+                    if let Fop1Output::Transmit { kind, frame, .. } = a
+                        && let Some(k) = HeldKind::from_frame_kind(*kind)
+                    {
+                        prop_assert_eq!(after.held_frame(k), frame.slice(&area));
                     }
                 }
             }

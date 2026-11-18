@@ -7,7 +7,7 @@
 )]
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind,
+    Directive, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, HeldKind,
     TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
@@ -131,7 +131,7 @@ fn request_ad(f: &mut Engine, fdu: &[u8], now: u64) -> Sent {
     sent.remove(0)
 }
 
-fn held(f: &Engine, kind: FrameKind) -> Option<Vec<u8>> {
+fn held(f: &Engine, kind: HeldKind) -> Option<Vec<u8>> {
     f.held_frame(kind).map(<[u8]>::to_vec)
 }
 
@@ -139,24 +139,23 @@ fn held(f: &Engine, kind: FrameKind) -> Option<Vec<u8>> {
 fn the_ad_frame_is_held_from_its_request_until_the_response() {
     // req: COP-011, API-056
     let mut f = active();
-    assert_eq!(held(&f, FrameKind::Ad), None, "no request is outstanding");
+    assert_eq!(held(&f, HeldKind::Ad), None, "no request is outstanding");
     let request = request_ad(&mut f, &[1, 2, 3], 10);
     assert_eq!(request.kind, FrameKind::Ad);
     assert!(!f.out_flag_ready(FrameKind::Ad));
-    assert_eq!(held(&f, FrameKind::Ad), Some(request.frame.clone()));
+    assert_eq!(held(&f, HeldKind::Ad), Some(request.frame.clone()));
     assert_eq!(
-        f.held_frame(FrameKind::Ad).map(<[u8]>::len),
+        f.held_frame(HeldKind::Ad).map(<[u8]>::len),
         Some(request.frame.len())
     );
-    // The other kinds hold nothing.
-    assert_eq!(held(&f, FrameKind::Bc), None);
-    assert_eq!(held(&f, FrameKind::Bd), None);
+    // The other kind holds nothing.
+    assert_eq!(held(&f, HeldKind::Bc), None);
     // The response releases the Out flag: no request is outstanding, the master copy stays for
     // retransmission and is no longer held for a request.
     assert_eq!(feed(&mut f, done(FrameKind::Ad), 20), vec![]);
     assert!(f.out_flag_ready(FrameKind::Ad));
     assert_eq!(f.sent_queue_len(), 1);
-    assert_eq!(held(&f, FrameKind::Ad), None);
+    assert_eq!(held(&f, HeldKind::Ad), None);
 }
 
 #[test]
@@ -168,20 +167,20 @@ fn the_held_ad_frame_is_the_one_in_flight_not_the_oldest_on_the_queue() {
     let second = request_ad(&mut f, &[2, 2, 2, 2], 30);
     assert_ne!(first.frame, second.frame);
     assert_eq!(f.sent_queue_len(), 2);
-    assert_eq!(held(&f, FrameKind::Ad), Some(second.frame.clone()));
+    assert_eq!(held(&f, HeldKind::Ad), Some(second.frame.clone()));
     // An FDU requested while the flag is Not_Ready waits; the held frame does not change.
     let waiting = Fop1Input::RequestAd {
         handle: 3,
         fdu: &[3],
     };
     assert_eq!(feed(&mut f, waiting, 40), vec![]);
-    assert_eq!(held(&f, FrameKind::Ad), Some(second.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(second.frame));
     // The response sends the waiting FDU: the held frame is the third, at the third position.
     let mut sent = feed(&mut f, done(FrameKind::Ad), 50);
     assert_eq!(sent.len(), 1);
     let third = sent.remove(0);
     assert_eq!(third.sequence_number, FrameSeqNum::new(2));
-    assert_eq!(held(&f, FrameKind::Ad), Some(third.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(third.frame));
 }
 
 #[test]
@@ -194,7 +193,7 @@ fn the_held_frame_survives_a_removal_of_acknowledged_frames_ahead_of_it() {
     // A CLCW acknowledges the first frame while the second is outstanding: the queue moves up.
     assert_eq!(feed(&mut f, clcw(false, false, 1), 40), vec![]);
     assert_eq!(f.sent_queue_len(), 1);
-    assert_eq!(held(&f, FrameKind::Ad), Some(second.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(second.frame));
 }
 
 #[test]
@@ -215,19 +214,19 @@ fn the_bc_frame_is_held_while_its_request_is_outstanding() {
         let request = sent.remove(0);
         assert_eq!(request.kind, FrameKind::Bc, "{expected}");
         assert!(!f.out_flag_ready(FrameKind::Bc));
-        assert_eq!(held(&f, FrameKind::Bc), Some(request.frame), "{expected}");
-        assert_eq!(held(&f, FrameKind::Ad), None, "{expected}");
+        assert_eq!(held(&f, HeldKind::Bc), Some(request.frame), "{expected}");
+        assert_eq!(held(&f, HeldKind::Ad), None, "{expected}");
         assert_eq!(feed(&mut f, done(FrameKind::Bc), 10), vec![]);
         assert!(f.out_flag_ready(FrameKind::Bc));
-        assert_eq!(held(&f, FrameKind::Bc), None, "{expected}");
+        assert_eq!(held(&f, HeldKind::Bc), None, "{expected}");
     }
 }
 
 #[test]
-fn a_type_bd_frame_is_never_held() {
+fn a_type_bd_request_holds_no_frame_and_changes_no_held_frame() {
     // req: COP-011, API-056
+    // A Type-BD frame is not retained and has no `HeldKind` to ask for (RS-020).
     let mut f = active();
-    assert_eq!(held(&f, FrameKind::Bd), None);
     let mut sent = feed(
         &mut f,
         Fop1Input::RequestBd {
@@ -239,13 +238,27 @@ fn a_type_bd_frame_is_never_held() {
     assert_eq!(sent.len(), 1);
     assert_eq!(sent.remove(0).kind, FrameKind::Bd);
     assert!(!f.out_flag_ready(FrameKind::Bd));
-    assert_eq!(held(&f, FrameKind::Bd), None);
-    // A Type-AD request outstanding at the same time is held; the Type-BD one is not.
+    assert_eq!(held(&f, HeldKind::Ad), None);
+    assert_eq!(held(&f, HeldKind::Bc), None);
+    // A Type-AD request outstanding at the same time is held; the Type-BD one changes nothing.
     let ad = request_ad(&mut f, &[1], 20);
-    assert_eq!(held(&f, FrameKind::Ad), Some(ad.frame));
-    assert_eq!(held(&f, FrameKind::Bd), None);
+    assert_eq!(held(&f, HeldKind::Ad), Some(ad.frame.clone()));
+    assert_eq!(held(&f, HeldKind::Bc), None);
     assert_eq!(feed(&mut f, done(FrameKind::Bd), 30), vec![]);
-    assert_eq!(held(&f, FrameKind::Bd), None);
+    assert!(f.out_flag_ready(FrameKind::Bd));
+    assert_eq!(held(&f, HeldKind::Ad), Some(ad.frame));
+    assert_eq!(held(&f, HeldKind::Bc), None);
+}
+
+#[test]
+fn a_held_kind_converts_to_and_from_a_frame_kind() {
+    // req: COP-011, API-056, RS-020
+    assert_eq!(HeldKind::from_frame_kind(FrameKind::Ad), Some(HeldKind::Ad));
+    assert_eq!(HeldKind::from_frame_kind(FrameKind::Bc), Some(HeldKind::Bc));
+    assert_eq!(HeldKind::from_frame_kind(FrameKind::Bd), None);
+    for k in [HeldKind::Ad, HeldKind::Bc] {
+        assert_eq!(HeldKind::from_frame_kind(FrameKind::from(k)), Some(k));
+    }
 }
 
 /// An engine in S1 with two frames on the `Sent_Queue`, both answered, so that both Out flags are
@@ -270,14 +283,14 @@ fn a_retransmission_holds_the_retransmitted_master_copy_after_a_retransmit_clcw(
     assert!(retransmit.retransmission);
     assert_eq!(retransmit.sequence_number, first.sequence_number);
     assert_eq!(retransmit.frame, first.frame);
-    assert_eq!(held(&f, FrameKind::Ad), Some(first.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(first.frame));
     // The response of the first sends the second, a retransmission as well.
     let mut sent = feed(&mut f, done(FrameKind::Ad), 60);
     assert_eq!(sent.len(), 1);
     let retransmit = sent.remove(0);
     assert!(retransmit.retransmission);
     assert_eq!(retransmit.frame, second.frame);
-    assert_eq!(held(&f, FrameKind::Ad), Some(second.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(second.frame));
 }
 
 #[test]
@@ -290,7 +303,7 @@ fn a_retransmission_holds_the_retransmitted_master_copy_after_a_timeout() {
     let retransmit = sent.remove(0);
     assert!(retransmit.retransmission);
     assert_eq!(retransmit.frame, first.frame);
-    assert_eq!(held(&f, FrameKind::Ad), Some(first.frame));
+    assert_eq!(held(&f, HeldKind::Ad), Some(first.frame));
 }
 
 #[test]
@@ -300,7 +313,7 @@ fn a_bc_retransmission_holds_the_retransmitted_master_copy_after_a_timeout() {
     let mut sent = feed(&mut f, directive(Directive::InitiateAdWithUnlock), 0);
     let first = sent.remove(0);
     assert_eq!(feed(&mut f, done(FrameKind::Bc), 10), vec![]);
-    assert_eq!(held(&f, FrameKind::Bc), None);
+    assert_eq!(held(&f, HeldKind::Bc), None);
     let deadline = f.next_deadline().unwrap().as_micros();
     let mut sent = feed(&mut f, Fop1Input::Timeout, deadline);
     assert_eq!(sent.len(), 1);
@@ -308,7 +321,7 @@ fn a_bc_retransmission_holds_the_retransmitted_master_copy_after_a_timeout() {
     assert_eq!(retransmit.kind, FrameKind::Bc);
     assert!(retransmit.retransmission);
     assert_eq!(retransmit.frame, first.frame);
-    assert_eq!(held(&f, FrameKind::Bc), Some(first.frame));
+    assert_eq!(held(&f, HeldKind::Bc), Some(first.frame));
 }
 
 #[test]
@@ -317,25 +330,25 @@ fn a_purge_of_the_sent_queue_leaves_no_held_frame() {
     // Alert: a CLCW with the Lockout Flag purges the queue while the request is outstanding.
     let mut f = active();
     let _ = request_ad(&mut f, &[1, 2, 3], 10);
-    assert!(held(&f, FrameKind::Ad).is_some());
+    assert!(held(&f, HeldKind::Ad).is_some());
     assert_eq!(feed(&mut f, clcw(false, true, 0), 20), vec![]);
     assert_eq!(f.state(), Fop1State::Initial);
     assert_eq!(f.sent_queue_len(), 0);
     // The Out flag stays Not_Ready until the caller answers; the engine retains no copy.
     assert!(!f.out_flag_ready(FrameKind::Ad));
-    assert_eq!(held(&f, FrameKind::Ad), None);
+    assert_eq!(held(&f, HeldKind::Ad), None);
     assert_eq!(feed(&mut f, done(FrameKind::Ad), 30), vec![]);
     assert!(f.out_flag_ready(FrameKind::Ad));
-    assert_eq!(held(&f, FrameKind::Ad), None);
+    assert_eq!(held(&f, HeldKind::Ad), None);
 
     // Terminate AD purges the Type-BC frame the same way.
     let mut f = engine();
     let _ = feed(&mut f, directive(Directive::InitiateAdWithUnlock), 0);
-    assert!(held(&f, FrameKind::Bc).is_some());
+    assert!(held(&f, HeldKind::Bc).is_some());
     let _ = feed(&mut f, directive(Directive::TerminateAd), 10);
     assert_eq!(f.sent_queue_len(), 0);
     assert!(!f.out_flag_ready(FrameKind::Bc));
-    assert_eq!(held(&f, FrameKind::Bc), None);
+    assert_eq!(held(&f, HeldKind::Bc), None);
 }
 
 #[test]
@@ -348,7 +361,7 @@ fn a_frame_acknowledged_before_its_response_is_no_longer_held() {
     assert_eq!(feed(&mut f, clcw(false, false, 1), 20), vec![]);
     assert_eq!(f.sent_queue_len(), 0);
     assert!(!f.out_flag_ready(FrameKind::Ad));
-    assert_eq!(held(&f, FrameKind::Ad), None);
+    assert_eq!(held(&f, HeldKind::Ad), None);
 
     // S5, E1: the CLCW confirms the Type-BC frame; Release BC copy.
     let mut f = engine();
@@ -356,5 +369,5 @@ fn a_frame_acknowledged_before_its_response_is_no_longer_held() {
     assert_eq!(feed(&mut f, clcw(false, false, 0), 10), vec![]);
     assert_eq!(f.state(), Fop1State::Active);
     assert!(!f.out_flag_ready(FrameKind::Bc));
-    assert_eq!(held(&f, FrameKind::Bc), None);
+    assert_eq!(held(&f, HeldKind::Bc), None);
 }
