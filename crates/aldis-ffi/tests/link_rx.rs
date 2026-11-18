@@ -922,7 +922,7 @@ fn a_tm_header_pointer_wider_than_eleven_bits_is_refused_and_changes_nothing() {
     // SAFETY: every pointer is to a live local.
     unsafe { aldis_packet_extractor_status(&mut *s, &mut status, &mut d) };
     assert_eq!(status.fields_in, 0);
-    // The widest pointer is taken.
+    // A pointer of 11 bits is taken.
     input.header_pointer = 0;
     assert_eq!(
         pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),

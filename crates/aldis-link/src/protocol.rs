@@ -177,6 +177,8 @@ pub trait PacketProtocol: Protocol {
 
     /// Writes the data field header for `pointer` into `header`, which holds
     /// [`PACKET_HEADER_LEN`](FrameFormat::PACKET_HEADER_LEN) octets; writes nothing for TM.
+    /// `pointer` comes from [`encode_pointer`](Self::encode_pointer) with the same `params`: AOS
+    /// writes the raw value of the edition it was built for.
     fn write_header(params: &Self::Params, pointer: Self::FieldPointer, header: &mut [u8]);
 
     /// Reads a data field: the pointer and the packet zone (LNK-060, LNK-064). `header_pointer`
