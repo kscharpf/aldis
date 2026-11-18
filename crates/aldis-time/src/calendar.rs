@@ -10,7 +10,7 @@ use aldis_core::Result;
 
 use crate::ccs::CcsVariation;
 use crate::field;
-use crate::util::{bounded, out_of_bounds, wide8, wide16};
+use crate::util::{bounded, out_of_bounds, reduced, wide8, wide16};
 
 /// Gregorian leap year: divisible by 4, except centuries not divisible by 400 (301.0 Annex A).
 pub(crate) const fn is_leap(year: u16) -> bool {
@@ -142,10 +142,13 @@ bounded!(
     0,
     60
 );
+reduced!(Hour, u8, 23);
+reduced!(Minute, u8, 59);
+reduced!(Second, u8, 60);
 
-/// How a [`CalendarDate`] names its day.
+/// How a [`CalendarDate`] names its day (301.0 §3.4.1.1–2; TIME-030).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Day {
+pub(crate) enum Day {
     /// Month and day of month.
     MonthDay(Month, u8),
     /// Day of year.
@@ -284,6 +287,12 @@ impl CalendarDate {
         }
     }
 
+    /// How the date names its day: month and day of month, or day of year, as a closed enum so a
+    /// caller needs no `None` case (301.0 §3.4.1.1–2; TIME-030).
+    pub(crate) const fn day(self) -> Day {
+        self.day
+    }
+
     /// The CCS calendar variation this date is expressed in (301.0 §3.4.2 bit 4, TIME-030).
     #[must_use]
     pub const fn variation(&self) -> CcsVariation {
@@ -298,7 +307,7 @@ impl CalendarDate {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        CalendarDate, Hour, Minute, Month, Second, Year, days_in_month, days_in_year, is_leap,
+        CalendarDate, Day, Hour, Minute, Month, Second, Year, days_in_month, days_in_year, is_leap,
     };
     use crate::ccs::CcsVariation;
     use crate::field;
@@ -423,11 +432,13 @@ mod tests {
             (y(2024), Some((m(2), 29)), None)
         );
         assert_eq!(d.variation(), CcsVariation::MonthDay);
+        assert_eq!(d.day(), Day::MonthDay(m(2), 29));
         let o = CalendarDate::from_day_of_year(y(2024), 366).unwrap();
         assert_eq!(
             (o.month_day(), o.day_of_year(), o.variation()),
             (None, Some(366), CcsVariation::DayOfYear)
         );
+        assert_eq!(o.day(), Day::Ordinal(366));
         for (e, field, expected, found) in [
             (
                 CalendarDate::from_month_day(y(2023), m(2), 29).unwrap_err(),

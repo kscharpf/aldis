@@ -19,7 +19,9 @@ use aldis_link::mux::{
 };
 use aldis_link::policy::MuxPolicy;
 use aldis_link::protocol::{Aos, Tm, Uslp};
-use aldis_tm::{DataFieldContent, TmPhysicalChannelConfig, TmVirtualChannelConfig};
+use aldis_tm::{
+    DataFieldContent, FirstHeaderPointer, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+};
 use aldis_uslp::{
     PhysicalChannelConfig as UslpPhysicalChannelConfig, SourceOrDestination, TransferFrameType,
     VcConfig as UslpVcConfig, VcParams, VcfCountLen,
@@ -127,7 +129,9 @@ trait FromPointer {
 
 impl FromPointer for TmOffer {
     fn from_pointer(pointer: Option<u16>) -> Self {
-        Self { pointer }
+        Self {
+            pointer: pointer.map(|p| FirstHeaderPointer::new(p).unwrap()),
+        }
     }
 }
 
@@ -160,7 +164,7 @@ where
         let ocf = [u.arbitrary()?; 4];
         let input = match u.int_in_range(0..=9)? {
             0..=3 => MuxInput::Offer(Offer {
-                vc: u.int_in_range(0..=9)?,
+                vc: P::Vc::try_from(u.int_in_range(0..=7)?).unwrap(),
                 field: &field_octets,
                 meta: P::OfferMeta::from_pointer(if u.arbitrary()? {
                     Some(u.int_in_range(0..=0x7FF)?)
@@ -173,13 +177,13 @@ where
                 scope: if u.arbitrary()? {
                     Scope::Mc
                 } else {
-                    Scope::Vc(u.int_in_range(0..=9)?)
+                    Scope::Vc(P::Vc::try_from(u.int_in_range(0..=7)?).unwrap())
                 },
                 ocf,
             },
             7 => MuxInput::SetInsert(&field_octets[..field_octets.len().min(4)]),
             8 => MuxInput::SetFsh {
-                scope: Scope::Vc(u.int_in_range(0..=9)?),
+                scope: Scope::Vc(P::Vc::try_from(u.int_in_range(0..=7)?).unwrap()),
                 data: &field_octets[..field_octets.len().min(4)],
             },
             _ => {

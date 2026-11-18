@@ -61,11 +61,16 @@ trait Proto: ReceiveProtocol + Plained {
     const FIXED: bool;
     fn channel(c: &Map<String, Value>) -> Self::Channel;
     fn vc_params(vc: &Value, c: &Map<String, Value>) -> Self::VcParams;
+    /// The raw First Header Pointer of the frame header, as a scenario states it.
+    fn fhp(pointer: Self::HeaderPointer) -> u16;
 }
 
 impl Proto for Tm {
     const NAME: &'static str = "tm";
     const FIXED: bool = true;
+    fn fhp(pointer: aldis_tm::FirstHeaderPointer) -> u16 {
+        pointer.get()
+    }
     fn channel(c: &Map<String, Value>) -> TmChannel {
         let physical = TmPhysicalChannelConfig::new(num(&c["frame_len"]), fecf(c)).unwrap();
         TmChannel::new(
@@ -99,6 +104,9 @@ impl Proto for Tm {
 impl Proto for Aos {
     const NAME: &'static str = "aos";
     const FIXED: bool = true;
+    fn fhp((): ()) -> u16 {
+        0
+    }
     fn channel(c: &Map<String, Value>) -> AosChannel {
         let physical = AosPhysicalChannelConfig::new(
             num(&c["frame_len"]),
@@ -125,6 +133,9 @@ impl Proto for Aos {
 impl Proto for Uslp {
     const NAME: &'static str = "uslp";
     const FIXED: bool = false;
+    fn fhp((): ()) -> u16 {
+        0
+    }
     fn channel(c: &Map<String, Value>) -> UslpChannel {
         let physical = UslpPhysicalChannelConfig::new(
             TransferFrameType::Fixed,
@@ -153,6 +164,9 @@ impl Proto for Uslp {
 impl Proto for Tc {
     const NAME: &'static str = "tc";
     const FIXED: bool = false;
+    fn fhp((): ()) -> u16 {
+        0
+    }
     fn channel(c: &Map<String, Value>) -> TcChannel {
         TcChannel::new(TcPhysicalChannelConfig::new(num(&c["frame_len"]), fecf(c)).unwrap())
     }
@@ -253,7 +267,7 @@ where
             m.insert("vc".to_owned(), json!((*vc).into()));
             m.insert("data_hex".to_owned(), json!(bytes(*data, area)));
             m.insert("gap".to_owned(), json!(gap));
-            let m = with(m, "fhp", pointer.map(|p| json!(p)));
+            let m = with(m, "fhp", pointer.map(|p| json!(P::fhp(p))));
             let m = with(m, "bit_count", bit_count.map(|b| json!(b)));
             json!({"deliver": with(m, "replay", replay.map(|r| json!(r)))})
         }

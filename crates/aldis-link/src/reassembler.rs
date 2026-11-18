@@ -63,12 +63,7 @@ use crate::protocol::Protocol;
 pub const MAP_REASSEMBLER_MAX_ACTIONS: usize = 2;
 
 /// The actions of one input of a `MapReassembler` (LNK-074).
-pub type ReassemblerActions = Actions<ReassemblerOutput, MAP_REASSEMBLER_MAX_ACTIONS>;
-
-/// The raw identifier.
-fn raw<I: Into<u8>>(id: I) -> u8 {
-    id.into()
-}
+pub type ReassemblerActions<P> = Actions<ReassemblerOutput<P>, MAP_REASSEMBLER_MAX_ACTIONS>;
 
 /// How an FDU relates to its SDU, whichever rule or flags said so (232.0 Table 4-2; 732.1
 /// Table 4-3).
@@ -92,9 +87,9 @@ pub enum Unit<'a> {
 
 /// An FDU or TFDF read by the protocol (LNK-070).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Parsed<'a> {
+pub struct Parsed<'a, P: ReassemblerProtocol> {
     /// The MAP Identifier: from the Segment Header (TC), or given with the frame (USLP).
-    pub map: u8,
+    pub map: P::Map,
     /// A gap was flagged on the field (LNK-051); always false on TC.
     pub gap: bool,
     /// Whether the user data is a fixed-length TFDZ (rules `001` and `010`), which only
@@ -119,7 +114,11 @@ pub trait ReassemblerProtocol: Protocol {
     /// # Errors
     /// `InvalidField` (`frame_data_field`) for no user data, (`tfdz_construction_rule`) for rule
     /// `000`; `Malformed` (`fhp_lvo_pointer`) for a Last Valid Octet Pointer beyond the TFDZ.
-    fn parse<'a>(channel: &Self::Channel, meta: &Self::Meta, data: &'a [u8]) -> Result<Parsed<'a>>;
+    fn parse<'a>(
+        channel: &Self::Channel,
+        meta: &Self::Meta,
+        data: &'a [u8],
+    ) -> Result<Parsed<'a, Self>>;
 }
 
 /// One MAP of a `MapReassembler` (232.0 §5.4 Table 5-4; 732.1 §5.5 Table 5-4; LNK-070, LNK-073).
@@ -245,7 +244,7 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
         }
         let mut table = [None; M];
         for (i, (slot, map)) in table.iter_mut().zip(maps).enumerate() {
-            let same = |m: &ReassemblerMap<P>| raw(m.vc) == raw(map.vc) && raw(m.id) == raw(map.id);
+            let same = |m: &ReassemblerMap<P>| m.vc == map.vc && m.id == map.id;
             if maps.iter().take(i).any(same) {
                 return Err(bad);
             }
@@ -273,10 +272,10 @@ impl<P: ReassemblerProtocol, const M: usize> MapReassemblerConfig<P, M> {
     }
 
     /// The index of the MAP `id` of the VC `vc`.
-    fn find(&self, vc: u8, id: u8) -> Option<usize> {
+    fn find(&self, vc: P::Vc, id: P::Map) -> Option<usize> {
         self.maps
             .iter()
-            .position(|m| m.is_some_and(|m| raw(m.vc) == vc && raw(m.id) == id))
+            .position(|m| m.is_some_and(|m| m.vc == vc && m.id == id))
     }
 }
 
@@ -322,22 +321,22 @@ pub enum ReassemblyEvent {
 
 /// An action of the `MapReassembler` (API-057).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReassemblerOutput {
+pub enum ReassemblerOutput<P: ReassemblerProtocol> {
     /// A reassembly event (LNK-070).
     Event {
         /// What happened.
         event: ReassemblyEvent,
         /// The VC of the FDU.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP the event concerns.
-        map: u8,
+        map: P::Map,
     },
     /// An SDU, whole, in the output area (LNK-070).
     Sdu {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the SDU is in the output area.
         sdu: OutRange,
     },
@@ -346,9 +345,9 @@ pub enum ReassemblerOutput {
     /// length of each come from its own header (API-061).
     Packets {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the run is in the output area.
         run: OutRange,
         /// How many packets it holds.
@@ -357,9 +356,9 @@ pub enum ReassemblerOutput {
     /// Octets of a stream, as they arrived (LNK-072).
     StreamData {
         /// The VC.
-        vc: u8,
+        vc: P::Vc,
         /// The MAP.
-        map: u8,
+        map: P::Map,
         /// Where the octets are in the output area.
         data: OutRange,
         /// A gap was flagged on the field that carried them.
@@ -415,12 +414,12 @@ impl Assembly {
 }
 
 /// The output area and the actions of one input.
-struct Cx<'a> {
+struct Cx<'a, P: ReassemblerProtocol> {
     out: &'a mut [u8],
-    actions: ReassemblerActions,
+    actions: ReassemblerActions<P>,
 }
 
-impl Cx<'_> {
+impl<P: ReassemblerProtocol> Cx<'_, P> {
     /// Copies `head` then `tail` to the start of the output area; returns their range.
     fn write(&mut self, head: &[u8], tail: &[u8]) -> Result<OutRange> {
         let total = head.len().saturating_add(tail.len());
@@ -562,7 +561,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
         &mut self,
         input: ReassemblerInput<'_, P, M>,
         out: &mut [u8],
-    ) -> Result<ReassemblerActions> {
+    ) -> Result<ReassemblerActions<P>> {
         match input {
             ReassemblerInput::Fdu(fdu) => self.fdu(&fdu, out),
             ReassemblerInput::Reconfigure(config) => {
@@ -582,7 +581,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// `Fdu` (LNK-070…LNK-072).
-    fn fdu(&mut self, input: &FduIn<'_, P>, out: &mut [u8]) -> Result<ReassemblerActions> {
+    fn fdu(&mut self, input: &FduIn<'_, P>, out: &mut [u8]) -> Result<ReassemblerActions<P>> {
         let parsed = match P::parse(&self.head.config.channel, &input.meta, input.data) {
             Ok(parsed) => parsed,
             Err(e) => {
@@ -590,7 +589,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
                 return Err(e);
             }
         };
-        let vc = raw(input.vc);
+        let vc = input.vc;
         let found = self.head.config.find(vc, parsed.map);
         if let Some(index) = found
             && let Err(e) = self.check(index, &parsed, out.len())
@@ -615,7 +614,7 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// The checks of an FDU for a configured MAP that precede any change (API-058).
-    fn check(&self, index: usize, parsed: &Parsed<'_>, area: usize) -> Result<()> {
+    fn check(&self, index: usize, parsed: &Parsed<'_, P>, area: usize) -> Result<()> {
         let map = self
             .head
             .config
@@ -683,21 +682,21 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     /// of the field if an SDU of it was in progress, else the first MAP that had one (LNK-070).
     fn gap_discard(
         &mut self,
-        vc: u8,
-        map: u8,
+        vc: P::Vc,
+        map: P::Map,
         found: Option<usize>,
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         let field_had = found.is_some_and(|i| self.held(i) > 0);
         let mut total = 0_usize;
         let mut first = None;
         for (slot, entry) in self.head.slots.iter_mut().zip(self.head.config.maps.iter()) {
             let Some(entry) = entry else { continue };
-            if raw(entry.vc) != vc || slot.held() == 0 {
+            if entry.vc != vc || slot.held() == 0 {
                 continue;
             }
             total = total.saturating_add(slot.held());
-            first.get_or_insert(raw(entry.id));
+            first.get_or_insert(entry.id);
             *slot = Assembly::Idle;
         }
         let Some(first) = first else { return Ok(()) };
@@ -708,7 +707,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// Counts and returns an event.
-    fn event(&mut self, event: ReassemblyEvent, vc: u8, map: u8, cx: &mut Cx<'_>) -> Result<()> {
+    fn event(
+        &mut self,
+        event: ReassemblyEvent,
+        vc: P::Vc,
+        map: P::Map,
+        cx: &mut Cx<'_, P>,
+    ) -> Result<()> {
         match event {
             ReassemblyEvent::GapDiscard => self.head.status.gap_discards.incr(),
             ReassemblyEvent::SequenceViolation => self.head.status.sequence_violations.incr(),
@@ -735,7 +740,13 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     }
 
     /// Takes the unit of a configured MAP (LNK-070, LNK-071, LNK-072).
-    fn apply(&mut self, index: usize, vc: u8, parsed: &Parsed<'_>, cx: &mut Cx<'_>) -> Result<()> {
+    fn apply(
+        &mut self,
+        index: usize,
+        vc: P::Vc,
+        parsed: &Parsed<'_, P>,
+        cx: &mut Cx<'_, P>,
+    ) -> Result<()> {
         let map = self
             .head
             .config
@@ -848,11 +859,11 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     fn deliver(
         &mut self,
         service: MapService,
-        vc: u8,
-        map: u8,
+        vc: P::Vc,
+        map: P::Map,
         head: &[u8],
         tail: &[u8],
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         Self::deliver_from(&mut self.head.status, service, (vc, map), head, tail, cx)
     }
@@ -860,10 +871,10 @@ impl<P: ReassemblerProtocol, const M: usize, const S: usize> MapReassembler<P, M
     fn deliver_from(
         status: &mut ReassemblerStatus,
         service: MapService,
-        (vc, map): (u8, u8),
+        (vc, map): (P::Vc, P::Map),
         head: &[u8],
         tail: &[u8],
-        cx: &mut Cx<'_>,
+        cx: &mut Cx<'_, P>,
     ) -> Result<()> {
         let range = cx.write(head, tail)?;
         match service {
@@ -1000,14 +1011,18 @@ mod tc_impl {
         type Channel = TcReassemblerParams;
         type Meta = ();
 
-        fn parse<'a>(channel: &TcReassemblerParams, (): &(), data: &'a [u8]) -> Result<Parsed<'a>> {
+        fn parse<'a>(
+            channel: &TcReassemblerParams,
+            (): &(),
+            data: &'a [u8],
+        ) -> Result<Parsed<'a, Self>> {
             let no_data = Error::new(ErrorKind::InvalidField).with_field(field::FRAME_DATA_FIELD);
             if !channel.segment_header {
                 return if data.is_empty() {
                     Err(no_data)
                 } else {
                     Ok(Parsed {
-                        map: 0,
+                        map: TcMapId::from_const::<0>(),
                         gap: false,
                         fixed_length: false,
                         unit: Unit::Whole(data),
@@ -1025,7 +1040,7 @@ mod tc_impl {
                 SequenceFlags::Unsegmented => Unit::Whole(user),
             };
             Ok(Parsed {
-                map: segment::MapId::get_u8(&[header]),
+                map: segment::MapId::map_id(&[header]),
                 gap: false,
                 fixed_length: false,
                 unit,
@@ -1067,10 +1082,10 @@ mod uslp_impl {
         type Channel = ();
         type Meta = UslpFdu;
 
-        fn parse<'a>(&(): &(), meta: &UslpFdu, data: &'a [u8]) -> Result<Parsed<'a>> {
+        fn parse<'a>(&(): &(), meta: &UslpFdu, data: &'a [u8]) -> Result<Parsed<'a, Self>> {
             let invalid = |f| Error::new(ErrorKind::InvalidField).with_field(f);
             let &first = data.first().ok_or(invalid(field::FRAME_DATA_FIELD))?;
-            let map = meta.map.get();
+            let map = meta.map;
             let (gap, rule) = (
                 meta.gap,
                 ConstructionRule::from_bits(tfdf::Rule::get_u8(&[first])),

@@ -84,15 +84,19 @@ struct Delivered {
     events: usize,
 }
 
-fn collect(actions: &aldis_link::reassembler::ReassemblerActions, area: &[u8], d: &mut Delivered) {
+fn collect<P: aldis_link::reassembler::ReassemblerProtocol>(
+    actions: &aldis_link::reassembler::ReassemblerActions<P>,
+    area: &[u8],
+    d: &mut Delivered,
+) {
     for o in actions.iter() {
         match *o {
             ReassemblerOutput::Sdu { map, sdu, .. } => {
-                d.sdus.push((map, sdu.slice(area).unwrap().to_vec()));
+                d.sdus.push((map.into(), sdu.slice(area).unwrap().to_vec()));
             }
             ReassemblerOutput::Packets { map, run, .. } => {
                 for p in PacketRun::new(run, area).unwrap() {
-                    d.packets.push((map, p.to_vec()));
+                    d.packets.push((map.into(), p.to_vec()));
                 }
             }
             ReassemblerOutput::StreamData { data, .. } => {
@@ -320,7 +324,7 @@ fn uslp_trip(u: &mut Unstructured<'_>) -> Result<()> {
         let data = f.fdu.slice(&area).unwrap().to_vec();
         let mut out = vec![0_u8; AREA];
         let meta = UslpFdu {
-            map: MapId::<4>::new(f.map.unwrap()).unwrap(),
+            map: f.map.unwrap(),
             gap: false,
         };
         let input = ReassemblerInput::Fdu(FduIn {

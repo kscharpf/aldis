@@ -66,7 +66,10 @@ const _: () = {
 const QUEUE: usize = 512;
 
 /// The virtual channels of data, in the order the node serves them (§2.1 step 6).
-const DATA_VCS: [u8; 2] = [tm::VCID_REALTIME, tm::VCID_PAYLOAD];
+const DATA_VCS: [VcId<3>; 2] = [
+    VcId::<3>::from_const::<{ tm::VCID_REALTIME }>(),
+    VcId::<3>::from_const::<{ tm::VCID_PAYLOAD }>(),
+];
 
 type Generator = PacketGenerator<Tm, DATA_FIELD, QUEUE>;
 type Mux = ChannelMux<Tm, 3, FRAME>;
@@ -183,7 +186,7 @@ impl FrameDownlink {
             .generators
             .iter_mut()
             .zip(DATA_VCS)
-            .find_map(|(g, id)| (id == vc).then_some(g))
+            .find_map(|(g, id)| (id.get() == vc).then_some(g))
             .ok_or(Error::new(ErrorKind::UnknownChannel))?;
         none(generator.step(GeneratorInput::SubmitPacket(packet), now, &mut [])?)
     }

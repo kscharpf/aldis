@@ -37,7 +37,8 @@ use aldis::tc::{
     TcSpacecraftId, TcVcId, VcConfig as TcVcConfig,
 };
 use aldis::tm::{
-    DataFieldContent, FshLen, TmFrame, TmPhysicalChannelConfig, TmVirtualChannelConfig,
+    DataFieldContent, FirstHeaderPointer, FshLen, TmFrame, TmPhysicalChannelConfig,
+    TmVirtualChannelConfig,
 };
 use aldis::uslp::{
     MapConfig as UslpMapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType,
@@ -388,6 +389,10 @@ where
     /// The parameters of the VC `vc` of `c`.
     fn vc_params(vc: &aldis_frame_receiver_vc_t, id: Self::Vc) -> Result<Self::VcParams>;
 
+    /// The raw First Header Pointer of the frame header in the C action; 0 where the protocol
+    /// has none (the action then says `pointer_present` 0).
+    fn raw_header_pointer(pointer: Self::HeaderPointer) -> u16;
+
     /// The `Plain` frame of `octets` for `config`: the codec decodes it, and it takes the `Plain`
     /// step through `NoSecurity`. The codec knows no VC, as the receiver counts frames of
     /// channels that are not configured too (OI-77).
@@ -427,6 +432,10 @@ where
 }
 
 impl RxProtocol for Tm {
+    fn raw_header_pointer(pointer: FirstHeaderPointer) -> u16 {
+        pointer.get()
+    }
+
     fn channel(c: &aldis_frame_receiver_config_t) -> Result<TmChannel> {
         let ocf = service(c.ocf_service)?;
         let fsh = service(c.fsh_service)?;
@@ -479,6 +488,10 @@ impl aldis::core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs 
 }
 
 impl RxProtocol for Aos {
+    fn raw_header_pointer((): ()) -> u16 {
+        0
+    }
+
     fn channel(c: &aldis_frame_receiver_config_t) -> Result<AosChannel> {
         let fhec = flag(c.aos_fhec)?;
         let fecf = flag(c.fecf)?;
@@ -544,6 +557,10 @@ impl aldis::core::lookup::MapLookup<TcSpacecraftId, TcVcId, TcMapId> for NoTcCha
 }
 
 impl RxProtocol for Tc {
+    fn raw_header_pointer((): ()) -> u16 {
+        0
+    }
+
     fn channel(c: &aldis_frame_receiver_config_t) -> Result<TcChannel> {
         // The C member is `frame_len` for every protocol: the TC codec names the same length
         // `max_frame_len`.
@@ -616,6 +633,10 @@ fn map_set(mask: u16) -> Result<MapSet> {
 }
 
 impl RxProtocol for Uslp {
+    fn raw_header_pointer((): ()) -> u16 {
+        0
+    }
+
     fn channel(c: &aldis_frame_receiver_config_t) -> Result<UslpChannel> {
         let ocf = service(c.ocf_service)?;
         let physical = if flag(c.uslp_variable)? {
@@ -696,7 +717,7 @@ fn caller_reason(value: u32) -> Result<CallerDiscardReason> {
     clippy::too_many_lines,
     reason = "one arm for each of the ten actions of the receiver"
 )]
-fn rx_action<P: ReceiveProtocol>(output: &ReceiverOutput<P>) -> aldis_frame_receiver_action_t
+fn rx_action<P: RxProtocol>(output: &ReceiverOutput<P>) -> aldis_frame_receiver_action_t
 where
     <P as Protocol>::Vc: Into<u8>,
 {
@@ -750,7 +771,7 @@ where
                 bit_count_present: u8::from(bit_count.is_some()),
                 bit_count: bit_count.unwrap_or(0),
                 pointer_present: u8::from(pointer.is_some()),
-                pointer: pointer.unwrap_or(0),
+                pointer: pointer.map_or(0, P::raw_header_pointer),
                 gap: u8::from(*gap),
                 replay_present,
                 replay,

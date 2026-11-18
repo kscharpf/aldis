@@ -16,13 +16,14 @@
 //! buffer of `ALDIS_LINK_PACKET_QUEUE_OCTETS` octets and takes a data field of
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` at most (CABI-030).
 
-use aldis::core::Result;
+use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::link::extractor::{
     EXTRACTOR_MAX_ACTIONS, ExtractionError, ExtractorActions, ExtractorInput, ExtractorOutput,
     ExtractorStatus, FieldIn, PacketExtractor, PacketExtractorBuffers, PacketExtractorConfig,
     PacketExtractorHead,
 };
 use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
+use aldis::tm::FirstHeaderPointer;
 
 use super::common::range;
 use crate::abi::{self, Out, flag};
@@ -297,12 +298,20 @@ unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
     const BUFFERS_OFFSET: usize = <Self>::BUFFERS_OFFSET;
 }
 
+/// The First Header Pointer of a TM frame header: an `InvalidField` (`first_header_pointer`) for
+/// a value of more than 11 bits, as for a TM field without one (132.0 §4.1.2.7.6; LNK-060).
+fn tm_header_pointer(raw: u16) -> Result<FirstHeaderPointer> {
+    FirstHeaderPointer::new(raw)
+        .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::FIRST_HEADER_POINTER))
+}
+
 /// One step of `engine`, in the protocol `P` (API-057).
 fn pe_run<P: PacketProtocol>(
     engine: &mut Pe<P>,
     input: &aldis_packet_extractor_input_t,
     data: &[u8],
     params: Result<P::Params>,
+    header_pointer: fn(u16) -> Result<P::HeaderPointer>,
     area: &mut [u8],
 ) -> Result<ExtractorActions> {
     let input = match parse::<aldis_packet_extractor_input>(input.kind)? {
@@ -310,7 +319,7 @@ fn pe_run<P: PacketProtocol>(
             ExtractorInput::DataField(FieldIn {
                 field: data,
                 header_pointer: if flag(input.header_pointer_present)? {
-                    Some(input.header_pointer)
+                    Some(header_pointer(input.header_pointer)?)
                 } else {
                     None
                 },
@@ -342,19 +351,19 @@ impl PacketExtractorState {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
-                pe_run(e, input, data, Ok(TmParams), area)
+                pe_run(e, input, data, Ok(TmParams), tm_header_pointer, area)
             }
             Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
-                pe_run(e, input, data, aos_params(ch), area)
+                pe_run(e, input, data, aos_params(ch), |_| Ok(()), area)
             }
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
                 }
-                pe_run(e, input, data, uslp_params(ch), area)
+                pe_run(e, input, data, uslp_params(ch), |_| Ok(()), area)
             }
         }
     }

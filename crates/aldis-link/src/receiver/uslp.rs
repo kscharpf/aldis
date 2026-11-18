@@ -145,6 +145,7 @@ impl ReceiveProtocol for Uslp {
     type Channel = UslpChannel;
     type VcParams = UslpVc;
     type Plain<'a> = aldis_core::Plain<aldis_uslp::UslpFrame<'a>>;
+    type HeaderPointer = ();
 
     fn plain_octets<'a>(frame: &Self::Plain<'a>) -> &'a [u8] {
         frame.octets()

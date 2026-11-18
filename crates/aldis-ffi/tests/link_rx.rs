@@ -19,9 +19,9 @@ use aldis_ffi::aldis_error_detail_t;
 use aldis_ffi::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS;
 use aldis_ffi::error::*;
 use aldis_ffi::field::{
-    ALDIS_FIELD_DATA_FIELD_CONTENT, ALDIS_FIELD_FRAME_LEN, ALDIS_FIELD_FSH_LEN,
-    ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_PACKET_LEN, ALDIS_FIELD_RAW_FRAMES,
-    ALDIS_FIELD_VC_ID,
+    ALDIS_FIELD_DATA_FIELD_CONTENT, ALDIS_FIELD_FIRST_HEADER_POINTER, ALDIS_FIELD_FRAME_LEN,
+    ALDIS_FIELD_FSH_LEN, ALDIS_FIELD_LINK_PROTOCOL, ALDIS_FIELD_MAX_PACKET_LEN,
+    ALDIS_FIELD_RAW_FRAMES, ALDIS_FIELD_VC_ID,
 };
 use aldis_ffi::link::common::*;
 use aldis_ffi::link::extractor::*;
@@ -889,5 +889,43 @@ fn the_tm_vc_members_are_refused_in_the_same_order_as_before_the_codec_configura
     assert_eq!(
         refuse(&c),
         (ALDIS_ERR_INVALID_CONFIG, ALDIS_FIELD_FRAME_LEN)
+    );
+}
+
+#[test]
+fn a_tm_header_pointer_wider_than_eleven_bits_is_refused_and_changes_nothing() {
+    // req: CABI-022, LNK-060, API-001, API-058
+    let mut s = pe_storage();
+    let mut d = detail();
+    let mut actions = aldis_packet_extractor_actions_t::default();
+    let mut out = [0_u8; 256];
+    // SAFETY: every pointer is to a live local.
+    assert_eq!(
+        unsafe { aldis_packet_extractor_init(&mut *s, &pe_config(ALDIS_LINK_PROTOCOL_TM), &mut d) },
+        0
+    );
+    let field = packet(10);
+    let mut input = pe_input(ALDIS_PACKET_EXTRACTOR_INPUT_DATA_FIELD);
+    input.data = field.as_ptr();
+    input.data_len = field.len();
+    input.header_pointer_present = 1;
+    // 0x800 needs 12 bits (132.0 §4.1.2.7.6): `InvalidField`, as for a field without a pointer.
+    for wide in [0x800_u16, 0xFFFF] {
+        input.header_pointer = wide;
+        assert_eq!(
+            pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+            ALDIS_ERR_INVALID_FIELD
+        );
+        assert_eq!(d.field, ALDIS_FIELD_FIRST_HEADER_POINTER);
+    }
+    let mut status = aldis_packet_extractor_status_t::default();
+    // SAFETY: every pointer is to a live local.
+    unsafe { aldis_packet_extractor_status(&mut *s, &mut status, &mut d) };
+    assert_eq!(status.fields_in, 0);
+    // A pointer of 11 bits is taken.
+    input.header_pointer = 0;
+    assert_eq!(
+        pe_step(&raw mut *s, &input, &mut out, &mut actions, &mut d),
+        0
     );
 }

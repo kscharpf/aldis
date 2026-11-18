@@ -96,7 +96,11 @@ impl<P: Fop1Format> Link<P> {
     }
 
     /// Hands the FDU of the segmenter to FOP-1 as the request of its service.
-    fn request(&mut self, f: &SegmentedFdu, fdu: &[u8]) -> (FrameKind, Vec<u8>) {
+    fn request<S: aldis_link::segmenter::SegmenterProtocol>(
+        &mut self,
+        f: &SegmentedFdu<S>,
+        fdu: &[u8],
+    ) -> (FrameKind, Vec<u8>) {
         let input = match f.qos {
             Qos::SequenceControlled => Fop1Input::RequestAd {
                 handle: f.handle,
@@ -122,7 +126,7 @@ fn next<P: aldis_link::segmenter::SegmenterProtocol, const M: usize, const L: us
     s: &mut MapSegmenter<P, M, L>,
     handle: u32,
     qos: Qos,
-) -> (SegmentedFdu, Vec<u8>) {
+) -> (SegmentedFdu<P>, Vec<u8>) {
     let mut out = [0_u8; F];
     let a = s
         .step(SegmenterInput::NextFdu { handle, qos }, NOW, &mut out)
@@ -249,7 +253,7 @@ fn uslp_tfdfs_of_whole_sdus_are_the_requests_of_fop1() {
         seg.step(SegmenterInput::SubmitSdu { map, sdu: &sdu }, NOW, &mut out)
             .unwrap();
         let (f, tfdf) = next(&mut seg, handle, qos);
-        assert_eq!((f.framing, f.map), (Framing::Whole, Some(2)));
+        assert_eq!((f.framing, f.map.map(u8::from)), (Framing::Whole, Some(2)));
         // Rule 111 and the UPID of the MAP: the header FOP-1 writes for its target.
         assert_eq!(tfdf[0], 0b111 << 5 | Upid::OctetStream.bits());
         let (sent, frame) = link.request(&f, &tfdf[1..]);

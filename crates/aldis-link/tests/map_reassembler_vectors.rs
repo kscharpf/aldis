@@ -119,13 +119,15 @@ fn counter(s: &ReassemblerStatus, name: &str) -> u64 {
 }
 
 /// The outputs of the vectors for an action: a run of packets is one output for each packet.
-fn outputs(o: &ReassemblerOutput, area: &[u8]) -> Vec<Value> {
+fn outputs<P: ReassemblerProtocol>(o: &ReassemblerOutput<P>, area: &[u8]) -> Vec<Value> {
     match *o {
         ReassemblerOutput::Event { event, vc, map } => {
-            vec![json!({"reassembly_event": {"kind": event_name(event), "vc": vc, "map": map}})]
+            vec![
+                json!({"reassembly_event": {"kind": event_name(event), "vc": Into::<u8>::into(vc), "map": Into::<u8>::into(map)}}),
+            ]
         }
         ReassemblerOutput::Sdu { vc, map, sdu } => vec![json!({"deliver": {
-            "kind": "Sdu", "vc": vc, "map": map, "data_hex": hex::encode(sdu.slice(area).unwrap()),
+            "kind": "Sdu", "vc": Into::<u8>::into(vc), "map": Into::<u8>::into(map), "data_hex": hex::encode(sdu.slice(area).unwrap()),
         }})],
         ReassemblerOutput::StreamData {
             vc,
@@ -135,8 +137,8 @@ fn outputs(o: &ReassemblerOutput, area: &[u8]) -> Vec<Value> {
         } => {
             let mut d = Map::new();
             d.insert("kind".to_owned(), json!("Sdu"));
-            d.insert("vc".to_owned(), json!(vc));
-            d.insert("map".to_owned(), json!(map));
+            d.insert("vc".to_owned(), json!(Into::<u8>::into(vc)));
+            d.insert("map".to_owned(), json!(Into::<u8>::into(map)));
             d.insert("octet_stream".to_owned(), json!(true));
             d.insert(
                 "data_hex".to_owned(),
@@ -159,7 +161,7 @@ fn outputs(o: &ReassemblerOutput, area: &[u8]) -> Vec<Value> {
                 .into_iter()
                 .map(|p| {
                     json!({"deliver": {
-                        "kind": "Packet", "vc": vc, "map": map, "pvn": PacketRun::pvn(p).unwrap(),
+                        "kind": "Packet", "vc": Into::<u8>::into(vc), "map": Into::<u8>::into(map), "pvn": PacketRun::pvn(p).unwrap(),
                         "data_hex": hex::encode(p), "incomplete": false,
                     }})
                 })
