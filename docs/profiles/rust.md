@@ -19,11 +19,11 @@ This profile binds the language-neutral specification to Rust. The Rust crates a
 | `aldis-time` | — | — |
 | `aldis-spp` | — | `time` (typed secondary-header time codes) |
 | `aldis-epp`, `aldis-tm`, `aldis-tc`, `aldis-aos`, `aldis-uslp` | — | — |
-| `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp` |
+| `aldis-link` | — | `tm`, `tc`, `aos`, `uslp`, `spp`, `epp`; the packet engines need `spp` or `epp`, USLP ones `epp` |
 | `aldis-cop1` | — | `uslp` |
 | `aldis-framework` (planned) | — | `alloc`, `std`, `std-udp`, `std-tcp`, `embedded-nal`, `trace`, `async` |
 | `aldis` (facade) | — | one feature per crate, `spp-time` (`spp` and `time` with `aldis-spp/time`, for the time secondary header of SPP-008), `full`; the codec features `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` also enable the same feature of `aldis-link` and (`uslp`) `aldis-cop1` when those are enabled (weak dependencies) |
-| `aldis-ffi` | `std` | `std`, `panic-handler`; enables `aldis/full`; capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
+| `aldis-ffi` | `std` | `std`, `panic-handler`; features as the facade, `full` default (GEN-009; planned); capacities via build-time config ([C ABI §5](c-abi.md#5-memory-model)) |
 
 ## 3. API shapes
 
