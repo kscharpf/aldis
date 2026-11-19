@@ -1,5 +1,6 @@
-//! `xtask rs020`: no bare integer in the public API of the codec crates, unless exempted with a
-//! reason (RS-020, "parse, don't validate"; M2 plan WP-7; part of `cargo xtask ci`).
+//! `xtask rs020`: no bare integer in the public API of the codec and engine crates, unless
+//! exempted with a reason (RS-020, "parse, don't validate"; M2 plan WP-7; part of
+//! `cargo xtask ci`).
 //!
 //! RS-020 requires a field with a restricted range to be a type that enforces it. A bare
 //! integer in a public field or enum payload is where such a range most easily goes unenforced:
@@ -42,7 +43,7 @@ use std::fmt::Write as _;
 
 use crate::repo;
 
-/// The codec crates whose public API is checked (Layers 0 and 1).
+/// The codec and engine crates whose public API is checked (Layers 0 to 2).
 pub const CRATES: &[&str] = &[
     "aldis-core",
     "aldis-time",
@@ -52,6 +53,9 @@ pub const CRATES: &[&str] = &[
     "aldis-tc",
     "aldis-aos",
     "aldis-uslp",
+    "aldis-link",
+    "aldis-cop1",
+    "aldis-sync",
 ];
 
 /// The exemption list, relative to the repository root.
@@ -1438,7 +1442,7 @@ garbage
     }
 
     #[test]
-    fn the_codec_crates_read_cleanly() {
+    fn the_codec_and_engine_crates_read_cleanly() {
         // req: RS-020
         let root = repo::root();
         let read = |rel: &str| std::fs::read_to_string(root.join(rel)).ok();

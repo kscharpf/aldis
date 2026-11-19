@@ -906,7 +906,7 @@ cargo xtask sana
 # The per-crate registrations (coverage, features, mutants, exerciser, layers, fuzz matrix,
 # vector index) agree (docs/milestones/checklists.md).
 cargo xtask consistency
-# No bare integer in the public API of a codec crate unless exempted with a reason (RS-020).
+# No bare integer in the public API of a codec or engine crate unless exempted with a reason (RS-020).
 cargo xtask rs020
 # Every loop of the library code is bounded by construction or carries a `// bound:` comment (GEN-022).
 cargo xtask loops

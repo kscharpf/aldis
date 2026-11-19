@@ -4,6 +4,7 @@
 //! `111`, 133.1 §4.1.2); the length of either comes from the length peek of its crate.
 
 use aldis_core::ErrorKind;
+use aldis_core::ids::PacketVersion;
 use aldis_epp::{EncapsulationPacket, Epi};
 use aldis_spp::SpacePacket;
 
@@ -53,9 +54,10 @@ pub(crate) const fn kind_of(first: u8) -> Option<Kind> {
     }
 }
 
-/// The PVN in the first octet.
-pub(crate) const fn pvn(first: u8) -> u8 {
-    first_octet::Pvn::get_u8(&[first])
+/// The PVN in the first octet (133.0 §4.1.3.2, 133.1 §4.1.2.2): its top three bits, so it is
+/// in range by construction.
+pub(crate) const fn pvn(first: u8) -> PacketVersion {
+    first_octet::Pvn::packet_version(&[first])
 }
 
 /// The length of the packet that starts `prefix` (not empty) of kind `kind`.
@@ -87,7 +89,7 @@ pub(crate) fn is_idle(kind: Kind, prefix: &[u8]) -> bool {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Kind, Length, is_idle, kind_of, length, pvn};
+    use super::{Kind, Length, PacketVersion, is_idle, kind_of, length, pvn};
 
     #[test]
     fn kinds_lengths_and_idle() {
@@ -95,7 +97,10 @@ mod tests {
         assert_eq!(kind_of(0x00), Some(Kind::Space));
         assert_eq!(kind_of(0xE0), Some(Kind::Encapsulation));
         assert_eq!(kind_of(0x20), None);
-        assert_eq!((pvn(0x00), pvn(0xFD), pvn(0x20)), (0, 7, 1));
+        assert_eq!(
+            (pvn(0x00), pvn(0xFD), pvn(0x20).get()),
+            (PacketVersion::SPACE_PACKET, PacketVersion::ENCAPSULATION, 1)
+        );
         let space = [0x00, 0x01, 0xC0, 0x00, 0x00, 0x02, 1, 2, 3];
         assert_eq!(length(Kind::Space, &space), Length::Total(9));
         assert_eq!(length(Kind::Space, &space[..5]), Length::More);

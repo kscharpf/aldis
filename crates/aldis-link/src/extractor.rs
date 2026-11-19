@@ -16,6 +16,7 @@
 //! caller sizes the area once. `Reconfigure` writes nothing.
 
 use aldis_core::engine::{Actions, OutRange};
+use aldis_core::ids::PacketVersion;
 use aldis_core::{Error, ErrorKind, Result, field};
 
 use crate::common::{Counter, Occupancy, ValidPvns};
@@ -49,9 +50,10 @@ pub struct PacketRun<'a> {
 }
 
 impl<'a> PacketRun<'a> {
-    /// The Packet Version Number of a packet of a run, read from its header (API-061, LNK-060).
+    /// The Packet Version Number of a packet of a run, read from its header (133.0 §4.1.3.2,
+    /// 133.1 §4.1.2.2; API-061, LNK-060); `None` for an empty packet.
     #[must_use]
-    pub fn pvn(packet: &[u8]) -> Option<u8> {
+    pub fn pvn(packet: &[u8]) -> Option<PacketVersion> {
         packet.first().map(|&b| packet::pvn(b))
     }
 
@@ -226,8 +228,9 @@ pub enum ExtractorOutput {
     },
     /// A partial packet flagged incomplete, the Packet Quality Indicator (LNK-061).
     IncompletePacket {
-        /// The Packet Version Number in the header: 0 (Space Packet) or 7 (Encapsulation).
-        pvn: u8,
+        /// The Packet Version Number in the header: `SPACE_PACKET` or `ENCAPSULATION`
+        /// (133.0 §4.1.3.2, 133.1 §4.1.2.2; LNK-061).
+        pvn: PacketVersion,
         /// Where the packet is in the output area.
         packet: OutRange,
     },
