@@ -184,7 +184,7 @@ fn the_vc_ocf_of_an_aos_frame_is_a_clcw() {
 }
 
 #[test]
-fn an_aos_oid_frame_decodes_as_idle_data() {
+fn an_aos_oid_frame_is_rejected() {
     // req: APP-086, APP-170
     let s = Scenario::load().unwrap();
     let c = aos_channels(&s);
@@ -199,13 +199,9 @@ fn an_aos_oid_frame_decodes_as_idle_data() {
     )
     .unwrap();
     assert_eq!(n, 223);
-    let d = decode_frame(&s, Level::Cop1, Variant::Aos, Dir::Down, &out).unwrap();
-    assert!(d.oid);
-    // 223 − header 6 − FHEC 2 − FECF 2: an OID frame has no M_PDU Header and no VC_OCF.
-    assert_eq!(
-        (d.vcid, d.data.len(), d.clcw, d.packet_pointer),
-        (63, 213, None, None)
-    );
+    // The flight node sends no OID frame (APP-170, OI-43).
+    let e = decode_frame(&s, Level::Cop1, Variant::Aos, Dir::Down, &out).unwrap_err();
+    assert!(e.contains("OID frame"), "{e}");
 }
 
 /// A Type-BD TC frame with a Segment Header (232.0 §4.1.2, §4.1.3).
@@ -445,6 +441,40 @@ fn a_uslp_downlink_frame_fails_on_the_fecf_the_spacecraft_and_the_ocf() {
     assert!(e.contains("not a CLCW"), "{e}");
 }
 
+#[test]
+fn a_uslp_downlink_frame_is_expedited_and_a_data_frame_has_the_rule_000() {
+    // req: APP-086, APP-176, APP-178
+    let s = Scenario::load().unwrap();
+    let table = uslp_down_channels(&s);
+    let encode = |kind: uslp::FrameKind, tfdf: uslp::TfdfHeader, body: &[u8]| {
+        let fields = uslp_fields(&s, uslp::SourceOrDestination::Source, 0, kind, 0);
+        let content = uslp::FrameContent {
+            tfdf,
+            insert_zone: &[],
+            ocf: Some(clcw_ocf()),
+        };
+        let mut out = vec![0_u8; 223];
+        uslp::encode(&table, fields, content, body, &mut out).unwrap();
+        out
+    };
+    // A sequence-controlled frame (flags `00`) has no VCF Count here and is no expedited frame.
+    let seq = encode(
+        uslp::FrameKind::SequenceControlled,
+        pointer_header(uslp::Upid::Packets, 0),
+        &zone(207),
+    );
+    let e = decode_frame(&s, Level::Cop1, Variant::Uslp, Dir::Down, &seq).unwrap_err();
+    assert!(e.contains("expedited"), "{e}");
+    // A rule other than `000` on a data frame.
+    let start = uslp::TfdfHeader {
+        rule: uslp::TfdzRule::SduStart(uslp::LastValidOctet::from_raw(205)),
+        upid: uslp::Upid::Packets,
+    };
+    let sdu = encode(uslp::FrameKind::Expedited, start, &zone(206));
+    let e = decode_frame(&s, Level::Cop1, Variant::Uslp, Dir::Down, &sdu).unwrap_err();
+    assert!(e.contains("rule `000`"), "{e}");
+}
+
 type UpTable = uslp::VcTable<1, 1>;
 
 fn uslp_up_channels(s: &Scenario) -> UpTable {
@@ -607,13 +637,12 @@ fn a_uslp_type_bc_frame_holds_exactly_one_control_command() {
 
 #[test]
 fn a_uslp_uplink_frame_breaks_no_rule_of_app_183_unnoticed() {
-    // req: APP-086, APP-181, APP-183
+    // req: APP-086, APP-181, APP-183, APP-184
     let s = Scenario::load().unwrap();
     let ad = |tfdf: uslp::TfdfHeader| {
         uslp_up_frame(&s, uslp::FrameKind::SequenceControlled, 1, tfdf, &PACKET)
     };
-    // The UPID that goes with the type (the codec refuses a rule with a pointer on a
-    // variable-length VC, so the rule `111` is the only one a writer can send, APP-184).
+    // The UPID that goes with the type.
     let e = decode_frame(
         &s,
         Level::Cop1,
@@ -632,6 +661,14 @@ fn a_uslp_uplink_frame_breaks_no_rule_of_app_183_unnoticed() {
     );
     let e = decode_frame(&s, Level::Cop1, Variant::Uslp, Dir::Up, &control).unwrap_err();
     assert!(e.contains("UPID"), "{e}");
+    // A segmentation rule (`100` to `110`) is no rule of the variable-length VC (APP-184); the
+    // writer refuses only a rule of the other TFDZ type, so `StartingSegment` encodes.
+    let seg = ad(uslp::TfdfHeader {
+        rule: uslp::TfdzRule::StartingSegment,
+        upid: uslp::Upid::Packets,
+    });
+    let e = decode_frame(&s, Level::Cop1, Variant::Uslp, Dir::Up, &seg).unwrap_err();
+    assert!(e.contains("rule `111`"), "{e}");
     // A frame of the wrong direction: it names the source.
     let table = uslp_up_channels(&s);
     let fields = uslp_fields(

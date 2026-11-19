@@ -46,7 +46,7 @@ pub struct DecodedFrame {
     /// Virtual channel ID.
     pub vcid: u8,
     /// The data field (TM: the packet zone; TC: the Segment Header and the FDU; AOS: the packet
-    /// zone of the `M_PDU`, or the idle data of an OID frame; USLP: the TFDZ).
+    /// zone of the `M_PDU`; USLP: the TFDZ).
     pub data: Vec<u8>,
     /// TM: the First Header Pointer of the primary header, as the extractor takes it.
     pub pointer: Option<FirstHeaderPointer>,
@@ -62,8 +62,7 @@ pub struct DecodedFrame {
     pub control_command: Option<ControlCommand>,
     /// TM, AOS, and USLP downlink: the CLCW of the OCF, when the frame has one (232.0 §4.2.1).
     pub clcw: Option<Clcw>,
-    /// AOS: the First Header Pointer of the `M_PDU` Header (732.0 §4.1.4.2.2); `None` in an OID
-    /// frame, which has no `M_PDU` Header.
+    /// AOS: the First Header Pointer of the `M_PDU` Header (732.0 §4.1.4.2.2).
     pub packet_pointer: Option<aos::PacketPointer>,
     /// USLP: the TFDF Header, the construction rule with its pointer and the UPID (732.1
     /// §4.1.4.2).
@@ -76,7 +75,7 @@ pub struct DecodedFrame {
     /// AOS: the VC Frame Count (732.0 §4.1.2.4). USLP: the VCF Count of a frame that has one
     /// (732.1 §4.1.2.12). `None` for a USLP frame whose count length is 0.
     pub count: Option<u64>,
-    /// AOS and USLP: an OID frame, on VCID 63 (732.0 §4.1.4.1.5; 732.1 §4.1.4.1.5).
+    /// USLP: an OID frame, on VCID 63 (732.1 §4.1.4.1.5).
     pub oid: bool,
 }
 
@@ -108,7 +107,9 @@ impl DecodedFrame {
 ///
 /// An AOS frame has its FHEC corrected and its FECF checked (APP-169, APP-174). A USLP uplink
 /// frame has VC 0 and MAP 0, and is a Type-AD frame, a Type-BD frame, or a Type-BC frame by its
-/// two flags; a Type-BC frame holds exactly one Control Command (APP-183, OI-100).
+/// two flags; a Type-BC frame holds exactly one Control Command (APP-183, OI-100). An AOS frame is
+/// no OID frame (APP-170). A USLP downlink frame is expedited, and a data frame has the rule
+/// `000` (APP-176, APP-178).
 ///
 /// # Errors
 /// If `level` is [`Level::Packets`] or the variant does not apply at `level` (APP-187), the
@@ -232,7 +233,7 @@ fn decode_tc(scenario: &Scenario, level: Level, octets: &[u8]) -> Result<Decoded
 }
 
 /// An AOS frame of the downlink (§4.3.1): FHEC corrected, FECF checked, the channel one of the
-/// configured VCs or an OID frame, the `VC_OCF` a CLCW (APP-169, APP-170, APP-173, APP-174).
+/// configured VCs and no OID frame, the `VC_OCF` a CLCW (APP-169, APP-170, APP-173, APP-174).
 fn decode_aos(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, String> {
     use aldis::core::Check as _;
     let scid = scenario.spacecraft_id.get();
@@ -276,9 +277,12 @@ fn decode_aos(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, String
             frame.scid().get()
         ));
     }
+    // The flight node sends no OID frame (APP-170, OI-43).
+    if frame.is_oid() {
+        return Err("an AOS frame must not be an OID frame (APP-170, OI-43)".to_owned());
+    }
     let (data, packet_pointer) = match frame.data_unit() {
         aos::DataUnit::Mpdu(mpdu) => (mpdu.packet_zone().to_vec(), Some(mpdu.pointer())),
-        aos::DataUnit::IdleData(zone) if frame.is_oid() => (zone.to_vec(), None),
         aos::DataUnit::IdleData(_) | aos::DataUnit::Bpdu(_) | aos::DataUnit::VcaSdu(_) => {
             return Err("the data field of an AOS frame is not an M_PDU".to_owned());
         }
@@ -289,7 +293,6 @@ fn decode_aos(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, String
         clcw: clcw_of(frame.ocf(), "an AOS frame")?,
         packet_pointer,
         count: Some(u64::from(frame.vc_frame_count().get())),
-        oid: frame.is_oid(),
         ..DecodedFrame::default()
     })
 }
@@ -411,6 +414,14 @@ fn decode_uslp_down(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, 
             "a USLP downlink frame must have Source-or-Destination Identifier 0".to_owned(),
         );
     }
+    // Every downlink frame is expedited: Bypass/Sequence Control Flag 1, Protocol Control Command
+    // Flag 0 (APP-176, APP-178, OI-99).
+    if full.kind() != uslp::FrameKind::Expedited {
+        return Err(format!(
+            "a USLP downlink frame must be expedited (flags `10`), not {:?} (APP-176, OI-99)",
+            full.kind()
+        ));
+    }
     let vcid = header.vc_id().get();
     let oid = vcid == uslp::OID_VCID;
     let tfdf = full.tfdf_header();
@@ -421,6 +432,13 @@ fn decode_uslp_down(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, 
         return Err(format!(
             "a data frame must have the UPID of Space Packets or Encapsulation packets, not {:?}",
             tfdf.upid
+        ));
+    }
+    // A data frame has the rule `000`, packets spanning frames (APP-176).
+    if !oid && !matches!(tfdf.rule, uslp::TfdzRule::PacketsSpanningFrames(_)) {
+        return Err(format!(
+            "a USLP downlink data frame must have the rule `000`, not {:?} (APP-176)",
+            tfdf.rule.rule()
         ));
     }
     let count = header.vcf_count();
