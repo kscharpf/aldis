@@ -5,7 +5,8 @@
 //! RS-020 requires a field with a restricted range to be a type that enforces it. A bare
 //! integer in a public field or enum payload is where such a range most easily goes unenforced:
 //! the caller can build any value, and the code that receives it must check it again or trust
-//! it. This check finds, in the public API of each crate of [`CRATES`]:
+//! it. This check finds, in the public API of each crate of [`CODEC_CRATES`] and
+//! [`ENGINE_CRATES`]:
 //! - an enum variant whose payload includes a bare integer;
 //! - a `pub` field (named, or of a tuple struct) of a public struct or union that is a bare
 //!   integer.
@@ -43,8 +44,9 @@ use std::fmt::Write as _;
 
 use crate::repo;
 
-/// The codec and engine crates whose public API is checked (Layers 0 to 2).
-pub const CRATES: &[&str] = &[
+/// The codec crates (Layers 0 and 1): `rs020` checks their public API, and `restricted` reads
+/// the public types of the same crates. A codec crate belongs here and so reaches both checks.
+pub const CODEC_CRATES: &[&str] = &[
     "aldis-core",
     "aldis-time",
     "aldis-spp",
@@ -53,10 +55,18 @@ pub const CRATES: &[&str] = &[
     "aldis-tc",
     "aldis-aos",
     "aldis-uslp",
-    "aldis-link",
-    "aldis-cop1",
-    "aldis-sync",
 ];
+
+/// The engine crates: only `rs020` reads them. An engine's checked constructor is `new(config)`,
+/// and the range it accepts is the configuration's, already a restricted type of a codec crate,
+/// so `restricted` skips the engines (maintainer decision Q3, 2026-11-17; the RS-020
+/// verification record says why).
+pub const ENGINE_CRATES: &[&str] = &["aldis-link", "aldis-cop1", "aldis-sync"];
+
+/// The crates `rs020` checks: the codec crates, then the engine crates.
+fn crates() -> impl Iterator<Item = &'static &'static str> {
+    CODEC_CRATES.iter().chain(ENGINE_CRATES)
+}
 
 /// The exemption list, relative to the repository root.
 pub const EXEMPTIONS: &str = "xtask/rs020-exemptions.toml";
@@ -1169,7 +1179,7 @@ pub fn check() -> Result<usize, String> {
     let root = repo::root();
     let read = |rel: &str| std::fs::read_to_string(root.join(rel)).ok();
     let mut findings = Vec::new();
-    for krate in CRATES {
+    for krate in crates() {
         findings.extend(crate_findings(krate, &read)?);
     }
     let list = repo::read(&root.join(EXEMPTIONS))?;
@@ -1182,7 +1192,7 @@ pub fn check() -> Result<usize, String> {
     println!(
         "rs020: {} crate(s), {} bare integer(s) in the public API, {exempted} exempt, {} \
          problem(s)",
-        CRATES.len(),
+        crates().count(),
         findings.len(),
         problems.len()
     );
@@ -1443,10 +1453,17 @@ garbage
 
     #[test]
     fn the_codec_and_engine_crates_read_cleanly() {
-        // req: RS-020
+        // req: RS-020, VER-023
+        for krate in CODEC_CRATES {
+            assert!(!ENGINE_CRATES.contains(krate), "{krate} is in both lists");
+        }
+        for krate in crates() {
+            let lib = repo::root().join(format!("crates/{krate}/src/lib.rs"));
+            assert!(lib.is_file(), "{krate} has no src/lib.rs");
+        }
         let root = repo::root();
         let read = |rel: &str| std::fs::read_to_string(root.join(rel)).ok();
-        for krate in CRATES {
+        for krate in crates() {
             let findings = crate_findings(krate, &read).unwrap();
             assert!(
                 findings
