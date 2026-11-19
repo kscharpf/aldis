@@ -114,6 +114,8 @@ impl FlightNode {
     /// generated constants rule out. [`FlightError::Unsupported`] for [`Variant::Uslp`], which exists
     /// at the `cop1` level only (APP-187). [`Variant::Aos`] has the AOS downlink (A4 WP-3a) and
     /// the TC uplink.
+    /// The USLP downlink exists since A4 WP-3b ([`Frames::uslp`]); the arm stays `Unsupported`
+    /// until WP-3c adds the uplink.
     pub fn new_frames(variant: Variant) -> Result<Self, FlightError> {
         match variant {
             Variant::TmTc => Ok(Self {

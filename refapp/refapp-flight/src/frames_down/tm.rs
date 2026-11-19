@@ -37,8 +37,8 @@ impl DownProtocol for Tm {
     const MAX_PACKET_LEN: u16 = tm::MAX_PACKET_LENGTH;
     const IDLE_PATTERN: u8 = tm::IDLE_PATTERN;
 
-    fn generator_params() -> TmParams {
-        TmParams
+    fn generator_params() -> Result<TmParams> {
+        Ok(TmParams)
     }
 
     /// The multiplexer: one master channel with the SCID of §3.4 and the OCF in every frame, VCs
