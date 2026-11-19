@@ -56,7 +56,7 @@ pub const CHECK_REQUIREMENTS: [(&str, &str); 16] = [
         "GEN-001…GEN-004, GEN-070, VER-002, VER-031, APP-168",
     ),
     ("no-std-", "GEN-005"),
-    ("features", "GEN-008, GEN-009"),
+    ("features", "GEN-008"),
     ("clippy", "VER-001, VER-002, GEN-070, GEN-071"),
     ("deny", "VER-003"),
     ("fmt", "VER-004"),
