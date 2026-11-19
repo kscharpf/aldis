@@ -8,7 +8,7 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | | | This plan, D1–D13, non-strict `--scope a4` trace gate (D1) |
-| WP-1 Scenario additions | | | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code |
+| WP-1 Scenario additions | | | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code. New IDs in the exit table of §4; OI-99 and OI-100 proposed; every clause of the checklist read, none wrong |
 | WP-2 Harness, features, variant skeleton | | | `variant` field, features and `refapp/Cargo.lock` once, `Variant` enum and dispatch in both nodes, strict decoding of the new frames |
 | WP-3a Flight `FrameDownlink<P>` and AOS | | | Generic refactor of the flight downlink; AOS arm |
 | WP-3b Flight USLP downlink | | | Stacked on WP-3a |
@@ -156,17 +156,17 @@ A4 is complete when every item below is green on `main`. The requirements WP-1 a
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Variants exist | APP-045 | |
-| Packet projection | APP-003 for both `a4-*` cases | |
-| AOS downlink | The AOS IDs WP-1 adds; the ID for the CLCW in the `VC_OCF` | |
-| USLP downlink | The USLP downlink IDs WP-1 adds; the ID for the CLCW in the MC OCF | |
-| USLP uplink and COP-1 | The USLP uplink IDs WP-1 adds; APP-044 at `uslp` | |
-| FARM-1 over USLP | The FARM-1-over-USLP ID WP-1 adds | |
-| Events | APP-138 as amended (D10); the `GapDiscard` code if added | |
+| Variants exist | APP-045, APP-187 | |
+| Packet projection | APP-003 for both `a4-*` cases; the cases of APP-188 | |
+| AOS downlink | APP-169…APP-174 (APP-173 is the CLCW in the `VC_OCF`) | |
+| USLP downlink | APP-175…APP-180 (APP-179 is the CLCW in the MC OCF) | |
+| USLP uplink and COP-1 | APP-181…APP-184 (APP-182 is the Maximum Transfer Frame Length with the fit of the 309-octet packet); APP-044 at `uslp` | |
+| FARM-1 over USLP | APP-185 (the flight node's events for the USLP uplink: APP-186) | |
+| Events | APP-138 as amended (D10); APP-186 (the `GapDiscard` code 115) | |
 | Harness | APP-071, APP-075, APP-076, APP-090, APP-100, APP-107 at the variants | |
 | Golden traces | APP-082, APP-083, APP-086 for every `a4-*` trace | |
 | Reproduction in CI | `compare` on every `a4-*` case (APP-106); `cargo xtask trace --scope a4 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
-| New requirements | The IDs WP-1 adds, listed here by its pull request | |
+| New requirements | APP-169…APP-189, added by WP-1 (APP-187 and APP-189 select the variant and place its parameters in the scenario file; the others are in the rows above) | |
 | Follow-up issues | Every A4 `api-feedback` and review follow-up issue closed, or deferred to a named target | |
 | Docs | Roadmap §3 and §4, the READMEs and the A5 entry gate updated | |
 
