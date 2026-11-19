@@ -416,7 +416,7 @@ impl FlightNode {
 mod slot_failure_tests {
     extern crate std;
 
-    use refapp_scenario::Instant;
+    use refapp_scenario::{Instant, Variant};
 
     use crate::FlightNode;
     use crate::tests::{At, Out, Rec};
@@ -429,7 +429,7 @@ mod slot_failure_tests {
     #[test]
     fn a_passed_deadline_does_not_hide_an_earlier_future_one() {
         // req: APP-135, APP-167
-        let mut node = FlightNode::new_frames().unwrap();
+        let mut node = FlightNode::new_frames(Variant::TmTc).unwrap();
         let frames = node.frames.as_mut().unwrap();
         // VC 0 starts at 100 000 (deadline 350 000, passed at `now`); VC 1 starts at 10 000
         // (deadline 1 010 000, between `now` and the next slot at 1 125 000).
@@ -449,7 +449,7 @@ mod slot_failure_tests {
     #[test]
     fn an_engine_failing_in_a_slot_raises_downlink_refused_and_outputs_no_frame() {
         // req: APP-142
-        let mut node = FlightNode::new_frames().unwrap();
+        let mut node = FlightNode::new_frames(Variant::TmTc).unwrap();
         let mut rec = Rec::default();
         let at = Instant::from_micros(60_000_000);
         let later = Instant::from_micros(70_000_000);

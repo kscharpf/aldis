@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::frame::{FlightIntake, FramedPackets, decode_frame};
 use crate::micros::Micros;
-use crate::scenario::Scenario;
+use crate::scenario::{Scenario, Variant};
 
 /// Which node a record belongs to (§7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,6 +119,7 @@ pub const APP_EVENTS: &[(u16, &str)] = &[
     (112, "sdu_too_long"),
     (113, "downlink_refused"),
     (114, "uplink_refused"),
+    (115, "gap_discard"),
     (200, "fop1_alert"),
     (201, "fop1_transfer"),
     (202, "fop1_directive"),
@@ -564,7 +565,9 @@ fn check_packet(kind: &str, v: &Value, octets: &[u8]) -> Result<(), String> {
 /// and not in trace order as on a clean link) through FARM-1 (the flight node's `FrameUplink`)
 /// into the `MapReassembler`. Every complete packet they hand out is decoded strictly too, and
 /// the packets the uplink gives are set against the flight node's own intake records
-/// ([`FlightIntake`]). Returns what was decoded.
+/// ([`FlightIntake`]). Returns what was decoded. In a case of the variant `aos` or `uslp` the
+/// frames are decoded with the codec of the variant and the engines are not run: the packets
+/// inside those frames are the work of A4 WP-6.
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
@@ -578,7 +581,12 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
     let case_id = header["case"]
         .as_str()
         .ok_or_else(|| "line 1: header without a case".to_owned())?;
-    let level = scenario.case(case_id)?.level;
+    let case = scenario.case(case_id)?;
+    let (level, variant) = (case.level, case.variant);
+    // The engines behind the frames, the extractors and FARM-1, are those of TM and TC; the packets
+    // inside the AOS and USLP frames are checked with the strict decode of A4 WP-6, so until then
+    // the frames of those variants are decoded and no further.
+    let engines = level.has_frames() && variant == Variant::TmTc;
     let mut decoded = Decoded::default();
     let mut framed = FramedPackets::new(scenario)?;
     // The uplink units as sent, by index, the indices a fault dropped or corrupted, and whether
@@ -619,7 +627,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
             let index = v["index"]
                 .as_u64()
                 .ok_or_else(|| at("unit_delivered record without an index".to_owned()))?;
-            if direction(&v) == Some(Dir::Up) && !corrupted_up.contains(&index) {
+            if engines && direction(&v) == Some(Dir::Up) && !corrupted_up.contains(&index) {
                 let octets = sent_up
                     .get(&index)
                     .ok_or_else(|| at(format!("unit {index} delivered but never sent")))?;
@@ -650,10 +658,13 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
         if kind == "unit_sent" && level.has_frames() {
             let dir = direction(&v)
                 .ok_or_else(|| at("unit_sent record without a direction".to_owned()))?;
-            let frame = decode_frame(scenario, level, dir, &octets).map_err(at)?;
+            let frame = decode_frame(scenario, level, variant, dir, &octets).map_err(at)?;
             decoded.frames += 1;
             match dir {
-                Dir::Down => decoded.framed_packets += framed.take_down(&frame).map_err(at)?,
+                Dir::Down if engines => {
+                    decoded.framed_packets += framed.take_down(&frame).map_err(at)?;
+                }
+                Dir::Down => {}
                 Dir::Up => {
                     let index = v["index"]
                         .as_u64()
@@ -666,7 +677,7 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
         }
         decoded.records += 1;
     }
-    if level.has_frames() {
+    if engines {
         // The node is its own oracle for FARM-1 (§4.5.3); the packets it handled must still be
         // the ones the strict decode reassembles from the uplink.
         FlightIntake::check(&up_packets, &intake)?;

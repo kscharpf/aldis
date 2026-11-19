@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use refapp_harness::frame::decode_frame;
 use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
-use refapp_harness::scenario::{Case, Direction, Fault, FaultEntry, Level, Scenario};
+use refapp_harness::scenario::{Case, Direction, Fault, FaultEntry, Level, Scenario, Variant};
 use refapp_harness::sim;
 use refapp_harness::trace::{Dir, FaultKind, Record};
 use refapp_scenario::{Delivered, Instant, Node, Output, StepInput};
@@ -15,6 +15,7 @@ fn case(end_us: u64, faults: Vec<FaultEntry>) -> Case {
     Case {
         id: "test".to_owned(),
         level: Level::Frames,
+        variant: Variant::TmTc,
         end_us: Micros::new(end_us),
         trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
@@ -239,29 +240,29 @@ fn frames_decode_by_direction_with_the_strict_codecs() {
     // req: APP-086
     let s = Scenario::load().unwrap();
     let tm = tm_oid_frame(7);
-    let d = decode_frame(&s, Level::Frames, Dir::Down, &tm).unwrap();
+    let d = decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Down, &tm).unwrap();
     assert_eq!((d.vcid, d.data.len()), (7, 211));
     let tc = tc_frame(&[0x1A; 9]);
-    let d = decode_frame(&s, Level::Frames, Dir::Up, &tc).unwrap();
+    let d = decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Up, &tc).unwrap();
     assert_eq!(d.vcid, 0);
     assert_eq!(d.data.last(), Some(&0x1A));
     // A wrong FECF, a wrong length, and a unit of the other direction fail.
     let mut bad = tm.clone();
     bad[100] ^= 1;
-    assert!(decode_frame(&s, Level::Frames, Dir::Down, &bad).is_err());
-    assert!(decode_frame(&s, Level::Frames, Dir::Down, &tm[..222]).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Down, &bad).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Down, &tm[..222]).is_err());
     let mut bad = tc;
     bad[8] ^= 1;
-    assert!(decode_frame(&s, Level::Frames, Dir::Up, &bad).is_err());
-    assert!(decode_frame(&s, Level::Frames, Dir::Up, &tm).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Up, &bad).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Up, &tm).is_err());
     // Another Spacecraft ID fails (APP-026).
     let mut other = tm.clone();
     other[1] ^= 0x10;
     other.truncate(221);
     fecf(&mut other);
-    assert!(decode_frame(&s, Level::Frames, Dir::Down, &other).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Down, &other).is_err());
     // A unit of a packet-level case is no frame.
-    assert!(decode_frame(&s, Level::Packets, Dir::Down, &tm).is_err());
+    assert!(decode_frame(&s, Level::Packets, Variant::TmTc, Dir::Down, &tm).is_err());
 }
 
 #[test]
@@ -269,7 +270,14 @@ fn a_tc_vc_without_a_segment_header_decodes_without_maps() {
     // req: APP-086
     let mut s = Scenario::load().unwrap();
     s.tc.segment_header = false;
-    let d = decode_frame(&s, Level::Frames, Dir::Up, &tc_frame(&[0x1A; 9])).unwrap();
+    let d = decode_frame(
+        &s,
+        Level::Frames,
+        Variant::TmTc,
+        Dir::Up,
+        &tc_frame(&[0x1A; 9]),
+    )
+    .unwrap();
     // The Segment Header octet is data now.
     assert_eq!((d.vcid, d.data.len()), (0, 10));
 }

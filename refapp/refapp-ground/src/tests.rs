@@ -5,11 +5,11 @@
     reason = "test arithmetic on small literals"
 )]
 
-use crate::{Call, Execution, GroundNode, OpsEntry, telemetry};
+use crate::{Call, Execution, GroundError, GroundNode, OpsEntry, telemetry};
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode};
 use refapp_scenario::{
-    Delivered, Duration, Instant, Node, Output, StepInput, TableId, TableLength,
+    Delivered, Duration, Instant, Node, Output, StepInput, TableId, TableLength, Variant,
 };
 
 /// One output of a step, in order.
@@ -643,4 +643,26 @@ fn a_script_that_cannot_be_built_is_an_error_naming_the_entry() {
     ])
     .unwrap_err();
     assert!(e.to_string().starts_with("ops[1]: "), "{e}");
+}
+
+#[test]
+fn a_variant_without_a_node_is_unsupported() {
+    // req: APP-187
+    // `tm_tc` builds the nodes of A2 and A3.
+    assert!(GroundNode::new_frames(Variant::TmTc, &[]).is_ok());
+    assert!(GroundNode::new_cop1(Variant::TmTc, &[]).is_ok());
+    // `aos` and `uslp` have no node until their work packages, and `uslp` has none at the frame
+    // level at all.
+    for variant in [Variant::Aos, Variant::Uslp] {
+        assert_eq!(
+            GroundNode::new_frames(variant, &[]).unwrap_err(),
+            GroundError::Unsupported(variant)
+        );
+        assert_eq!(
+            GroundNode::new_cop1(variant, &[]).unwrap_err(),
+            GroundError::Unsupported(variant)
+        );
+    }
+    let e = GroundNode::new_cop1(Variant::Aos, &[]).unwrap_err();
+    assert!(e.to_string().contains("`aos`"), "{e}");
 }

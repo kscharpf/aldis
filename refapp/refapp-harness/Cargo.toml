@@ -10,7 +10,7 @@ publish.workspace = true
 default-run = "refapp-harness"
 
 [dependencies]
-aldis = { workspace = true, features = ["core", "link", "spp", "tc", "tm"] }
+aldis = { workspace = true, features = ["core", "link", "spp", "tc", "tm", "aos", "uslp"] }
 refapp-flight = { workspace = true }
 refapp-ground = { workspace = true }
 refapp-scenario = { workspace = true }

@@ -45,8 +45,8 @@ pub fn run_pair(case_id: &str, loss: &LossScript, sink: &mut dyn Sink) -> Result
         .collect::<Result<Vec<_>, _>>()
         .map_err(Error::Script)?;
     let mut ground = match case.level {
-        Level::Cop1 => GroundNode::new_cop1(&script),
-        Level::Frames => GroundNode::new_frames(&script),
+        Level::Cop1 => GroundNode::new_cop1(refapp_scenario::Variant::TmTc, &script),
+        Level::Frames => GroundNode::new_frames(refapp_scenario::Variant::TmTc, &script),
         Level::Packets => GroundNode::new(&script),
     }
     .map_err(|e| Error::Script(format!("ground node: {e}")))?;
