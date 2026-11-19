@@ -11,6 +11,7 @@ use crate::{Call, Execution, Fop1Directive, GroundNode, OpsEntry};
 use aldis::core::ids::{Apid, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::oid::OidGenerator;
+use aldis::link::protocol::Tm;
 use aldis::tm::{McFrameCount, TmFrameFields, VcFrameCount, encode_oid};
 use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, TableId, TableLength, Variant};
 
@@ -51,7 +52,7 @@ const fn event(code: u16, args: &[u64]) -> (u16, &[u64]) {
 struct Rig {
     node: GroundNode,
     at: Vec<u64>,
-    down: FrameDownlink,
+    down: FrameDownlink<Tm>,
     mc: u8,
 }
 
@@ -91,7 +92,7 @@ impl Rig {
         Self {
             node: GroundNode::new_cop1(Variant::TmTc, &script).unwrap(),
             at: entries.iter().map(|(t, _)| *t).collect(),
-            down: FrameDownlink::new().unwrap(),
+            down: FrameDownlink::<Tm>::new().unwrap(),
             mc: 0,
         }
     }
