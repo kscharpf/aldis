@@ -614,13 +614,16 @@ pub struct Fop1Config<P: Fop1Format = TcFormat> {
     pub transmission_limit: NonZeroU8,
     /// `Timeout_Type` (232.1 §5.1.10.3).
     pub timeout_type: TimeoutType,
-    /// The FOP Sliding Window Width K: 1..=min(255, `Q`) (232.1 §5.1.12; COP-015).
-    pub sliding_window_k: u8,
-    /// The systematic retransmission value of Type-AD frames, passed through on their
-    /// Transmit actions and never acted on (232.1 §5.1.9.3 note 1; COP-016).
-    pub ad_repetitions: u8,
-    /// The systematic retransmission value of Type-BC frames (COP-016).
-    pub bc_repetitions: u8,
+    /// The FOP Sliding Window Width K: 1..=min(255, `Q`) (232.1 §5.1.12, §7.2 Table 7-1; COP-015).
+    /// 0 is unrepresentable; [`Fop1::new`] checks the upper bound, which depends on `Q`.
+    pub sliding_window_k: NonZeroU8,
+    /// The Repetitions value of Type-AD frames, at least 1 (232.0 §2.4.2, Table 5-3,
+    /// 231.0 Annex A3), passed through on their Transmit actions and never acted on
+    /// (232.1 §5.1.9.3 note 1; COP-016). 1 requests no systematic retransmission.
+    pub ad_repetitions: NonZeroU8,
+    /// The Repetitions value of Type-BC frames, at least 1 (232.0 §2.4.2, Table 5-3,
+    /// 231.0 Annex A3; COP-016).
+    pub bc_repetitions: NonZeroU8,
 }
 
 /// `InvalidConfig` naming `parameter` (API-040).
@@ -830,9 +833,9 @@ struct Core<const Q: usize> {
     t1_initial: Duration,
     transmission_limit: NonZeroU8,
     timeout_type: TimeoutType,
-    k: u8,
-    ad_repetitions: u8,
-    bc_repetitions: u8,
+    k: NonZeroU8,
+    ad_repetitions: NonZeroU8,
+    bc_repetitions: NonZeroU8,
     state: Fop1State,
     v_s: FrameSeqNum,
     nn_r: FrameSeqNum,
@@ -1106,13 +1109,13 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1Head<Q, 
     }
 
     /// Whether `k` is a valid FOP Sliding Window Width: 1..=min(255, `Q`) (232.1 §5.1.12;
-    /// COP-015).
+    /// COP-015). The type holds the bounds 1 and 255; this checks the one that depends on `Q`.
     #[expect(
         clippy::as_conversions,
         reason = "u8 to usize is lossless, and `usize::from` is not a const fn"
     )]
-    const fn k_fits(k: u8) -> bool {
-        k >= 1 && (k as usize) <= Q
+    const fn k_fits(k: NonZeroU8) -> bool {
+        (k.get() as usize) <= Q
     }
 }
 
@@ -1170,14 +1173,15 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
     ///         physical,
     ///     ) else { panic!() };
     ///     let Some(transmission_limit) = NonZeroU8::new(3) else { panic!() };
+    ///     let Some(sliding_window_k) = NonZeroU8::new(8) else { panic!() };
     ///     Fop1Config {
     ///         target,
     ///         t1_initial: Duration::from_micros(1_000_000),
     ///         transmission_limit,
     ///         timeout_type: TimeoutType::Tt0,
-    ///         sliding_window_k: 8,
-    ///         ad_repetitions: 1,
-    ///         bc_repetitions: 1,
+    ///         sliding_window_k,
+    ///         ad_repetitions: NonZeroU8::MIN,
+    ///         bc_repetitions: NonZeroU8::MIN,
     ///     }
     /// };
     ///
@@ -1239,7 +1243,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Fop1<Q, F, N
 
     /// The FOP Sliding Window Width K (232.1 §5.1.12; API-056).
     #[must_use]
-    pub const fn sliding_window_k(&self) -> u8 {
+    pub const fn sliding_window_k(&self) -> NonZeroU8 {
         self.head.core.k
     }
 
@@ -1591,15 +1595,19 @@ mod tests {
         .unwrap()
     }
 
+    fn nz(n: u8) -> NonZeroU8 {
+        NonZeroU8::new(n).unwrap()
+    }
+
     fn config(tt: TimeoutType, limit: u8) -> Fop1Config {
         Fop1Config {
             target: target(),
             t1_initial: Duration::from_micros(100),
             transmission_limit: NonZeroU8::new(limit).unwrap(),
             timeout_type: tt,
-            sliding_window_k: 2,
-            ad_repetitions: 3,
-            bc_repetitions: 4,
+            sliding_window_k: nz(2),
+            ad_repetitions: nz(3),
+            bc_repetitions: nz(4),
         }
     }
 
@@ -1979,9 +1987,9 @@ mod tests {
             t1_initial: Duration::from_micros(100),
             transmission_limit: NonZeroU8::new(2).unwrap(),
             timeout_type: TimeoutType::Tt0,
-            sliding_window_k: 2,
-            ad_repetitions: 3,
-            bc_repetitions: 4,
+            sliding_window_k: nz(2),
+            ad_repetitions: nz(3),
+            bc_repetitions: nz(4),
         };
         let f = Fop1::<Q, F, N, UslpFormat>::new(uslp_config).unwrap();
         let (f, out) = go(&f, directive(1, Directive::InitiateAdWithUnlock), 0);
@@ -2066,7 +2074,7 @@ mod tests {
             (f.state(), f.v_s().get(), f.nn_r().get()),
             (Fop1State::Initial, 0, 0)
         );
-        assert_eq!(f.sliding_window_k(), 2);
+        assert_eq!(f.sliding_window_k(), nz(2));
         assert_eq!(f.t1_initial(), Duration::from_micros(100));
         assert_eq!(f.transmission_limit().get(), 2);
         assert_eq!(f.timeout_type(), TimeoutType::Tt0);
@@ -2076,11 +2084,12 @@ mod tests {
         assert!(f.out_flag_ready(FrameKind::Ad) && f.out_flag_ready(FrameKind::Bc));
         assert!(f.out_flag_ready(FrameKind::Bd) && f.next_deadline().is_none());
         let bad = |c: Fop1Config| Engine::new(c).unwrap_err().field();
+        // K = 0 and a Repetitions value of 0 do not compile (`NonZeroU8`); the bound that depends
+        // on Q is checked here.
         let k = |k| Fop1Config {
-            sliding_window_k: k,
+            sliding_window_k: nz(k),
             ..config(TimeoutType::Tt0, 1)
         };
-        assert_eq!(bad(k(0)), Some(field::SLIDING_WINDOW_K));
         assert_eq!(bad(k(5)), Some(field::SLIDING_WINDOW_K));
         let t1 = Fop1Config {
             t1_initial: Duration::from_micros(0),
@@ -2201,7 +2210,7 @@ mod tests {
         let k = inject(
             &f,
             Fop1Event::E36,
-            directive(9, Directive::SetSlidingWindowWidth { width: 1 }),
+            directive(9, Directive::SetSlidingWindowWidth { width: nz(1) }),
         )
         .unwrap();
         let limit = NonZeroU8::new(3).unwrap();
@@ -2228,7 +2237,7 @@ mod tests {
                 t.transmission_limit(),
                 t.timeout_type()
             ),
-            (1, limit, TimeoutType::Tt1)
+            (nz(1), limit, TimeoutType::Tt1)
         );
         let unlock = directive(9, Directive::InitiateAdWithUnlock);
         assert_eq!(
@@ -2294,8 +2303,7 @@ mod tests {
             })]
         };
         for d in [
-            Directive::SetSlidingWindowWidth { width: 0 },
-            Directive::SetSlidingWindowWidth { width: 5 },
+            Directive::SetSlidingWindowWidth { width: nz(5) },
             Directive::SetT1Initial {
                 duration: Duration::from_micros(0),
             },

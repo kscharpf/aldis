@@ -71,13 +71,13 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
         t1_initial: Duration::from_micros(bb(1000)),
         transmission_limit: NonZeroU8::new(bb(2))?,
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: bb(2),
-        ad_repetitions: bb(1),
-        bc_repetitions: bb(1),
+        sliding_window_k: NonZeroU8::new(bb(2))?,
+        ad_repetitions: NonZeroU8::new(bb(1))?,
+        bc_repetitions: NonZeroU8::new(bb(1))?,
     };
     t.check(
         Engine::new(Fop1Config {
-            sliding_window_k: bb(9),
+            sliding_window_k: NonZeroU8::new(bb(9))?,
             ..config.clone()
         })
         .is_err(),
@@ -86,7 +86,7 @@ fn fresh(t: &mut Tally) -> Option<Engine> {
     t.check(Fop1Head::<Q, F, N>::new(config).is_ok());
     t.check(Fop1Store::<Q, F>::default() == Fop1Store::new());
     t.check(f.state() == Fop1State::Initial && f.v_s().get() == 0 && f.nn_r().get() == 0);
-    t.check(f.sliding_window_k() == 2 && f.t1_initial().as_micros() == 1000);
+    t.check(f.sliding_window_k().get() == 2 && f.t1_initial().as_micros() == 1000);
     t.check(f.transmission_limit().get() == 2 && f.timeout_type() == TimeoutType::Tt0);
     t.check(f.transmission_count() == 1 && f.suspend_state() == SuspendState::NotSuspended);
     t.check(f.sent_queue_len() == 0 && !f.wait_queue_occupied() && f.next_deadline().is_none());
@@ -137,10 +137,12 @@ fn inputs(t: &mut Tally, mut f: Engine) -> Option<()> {
     t.check(!f.out_flag_ready(FrameKind::Bd));
     let set_k = Fop1Input::Directive {
         handle: bb(4),
-        directive: Directive::SetSlidingWindowWidth { width: bb(1) },
+        directive: Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::new(bb(1))?,
+        },
     };
     step(&mut f, set_k, 5, &mut out)?;
-    t.check(f.sliding_window_k() == 1);
+    t.check(f.sliding_window_k().get() == 1);
     // An invalid directive is answered and changes no state.
     let before = f.clone();
     step(
@@ -226,9 +228,9 @@ fn uslp_target(t: &mut Tally) -> Option<()> {
         t1_initial: Duration::from_micros(bb(1000)),
         transmission_limit: NonZeroU8::new(bb(2))?,
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: bb(2),
-        ad_repetitions: bb(1),
-        bc_repetitions: bb(1),
+        sliding_window_k: NonZeroU8::new(bb(2))?,
+        ad_repetitions: NonZeroU8::new(bb(1))?,
+        bc_repetitions: NonZeroU8::new(bb(1))?,
     })
     .ok()?;
     uslp_frames(t, f)

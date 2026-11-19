@@ -23,7 +23,7 @@ use aldis::cop1::{
 };
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::{Duration, Instant};
-use aldis::core::{Error, ErrorKind, Result, field};
+use aldis::core::{Error, ErrorKind, FieldId, Result, field};
 use aldis::tc::{Clcw, PhysicalChannelConfig, TcSpacecraftId, TcVcId};
 
 use crate::abi::{self, Out, flag};
@@ -370,10 +370,11 @@ pub struct aldis_fop1_config_t {
     pub timeout_type: u32,
     /// The FOP Sliding Window Width K, 1 to `ALDIS_FOP1_SENT_QUEUE_FRAMES` (232.1 §5.1.12).
     pub sliding_window_k: u8,
-    /// The systematic retransmission value of Type-AD frames, passed through on `TRANSMIT`
-    /// actions (232.1 §5.1.9.3 note 1; COP-016).
+    /// The Repetitions value of Type-AD frames, at least 1 (232.0 §2.4.2; 231.0 Annex A3),
+    /// passed through on `TRANSMIT` actions (232.1 §5.1.9.3 note 1; COP-016).
     pub ad_repetitions: u8,
-    /// The systematic retransmission value of Type-BC frames (COP-016).
+    /// The Repetitions value of Type-BC frames, at least 1 (232.0 §2.4.2; 231.0 Annex A3;
+    /// COP-016).
     pub bc_repetitions: u8,
 }
 
@@ -667,7 +668,16 @@ fn action(output: &Fop1Output) -> aldis_fop1_action_t {
     }
 }
 
+/// `value` as a `NonZeroU8`, or `InvalidConfig` naming `parameter` for 0 (232.1 §7.2 Table 7-1;
+/// COP-015, COP-016).
+fn nonzero(value: u8, parameter: FieldId) -> Result<NonZeroU8> {
+    NonZeroU8::new(value).ok_or_else(|| Error::new(ErrorKind::InvalidConfig).with_field(parameter))
+}
+
 /// The engine configuration of `cfg` (232.1 §7.2; COP-010, COP-015).
+///
+/// A K of 0, a Repetitions value of 0 (231.0 Annex A3: at least 1), and a `Transmission_Limit` of 0
+/// are `InvalidConfig`.
 fn config(cfg: &aldis_fop1_config_t) -> Result<Fop1Config> {
     let scid = TcSpacecraftId::try_from(cfg.scid)?;
     let vc_id = TcVcId::try_from(cfg.vc_id)?;
@@ -680,13 +690,11 @@ fn config(cfg: &aldis_fop1_config_t) -> Result<Fop1Config> {
     Ok(Fop1Config {
         target,
         t1_initial: Duration::from_micros(cfg.t1_initial_us),
-        transmission_limit: NonZeroU8::new(cfg.transmission_limit).ok_or_else(|| {
-            Error::new(ErrorKind::InvalidConfig).with_field(field::TRANSMISSION_LIMIT)
-        })?,
+        transmission_limit: nonzero(cfg.transmission_limit, field::TRANSMISSION_LIMIT)?,
         timeout_type,
-        sliding_window_k: cfg.sliding_window_k,
-        ad_repetitions: cfg.ad_repetitions,
-        bc_repetitions: cfg.bc_repetitions,
+        sliding_window_k: nonzero(cfg.sliding_window_k, field::SLIDING_WINDOW_K)?,
+        ad_repetitions: nonzero(cfg.ad_repetitions, field::AD_REPETITIONS)?,
+        bc_repetitions: nonzero(cfg.bc_repetitions, field::BC_REPETITIONS)?,
     })
 }
 
@@ -714,9 +722,9 @@ fn directive(kind: aldis_fop1_directive, value: u64) -> Option<Directive> {
         aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_VS => Directive::SetVs {
             v_s: FrameSeqNum::new(octet?),
         },
-        aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_K => {
-            Directive::SetSlidingWindowWidth { width: octet? }
-        }
+        aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_K => Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::new(octet?)?,
+        },
         aldis_fop1_directive::ALDIS_FOP1_DIRECTIVE_SET_T1_INITIAL => Directive::SetT1Initial {
             duration: Duration::from_micros(value),
         },
@@ -795,8 +803,8 @@ const fn suspend_number(s: SuspendState) -> u8 {
 /// `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, a flag that is not 0 or
 /// 1, or a `timeout_type` with no constant; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`);
 /// `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`, `sliding_window_k`, `t1_initial`,
-/// `transmission_limit`) for a value outside its range or a frame length above
-/// `ALDIS_FOP1_MAX_FRAME_OCTETS`.
+/// `transmission_limit`, `ad_repetitions`, `bc_repetitions`) for a value outside its range or a
+/// frame length above `ALDIS_FOP1_MAX_FRAME_OCTETS`.
 ///
 /// # Safety
 /// `storage` is valid for writes of one `aldis_fop1_t` and outlives its use; `cfg` is valid for a
@@ -975,7 +983,7 @@ pub unsafe extern "C" fn aldis_fop1_status(
                 state: state_number(engine.state()),
                 v_s: engine.v_s().get(),
                 nn_r: engine.nn_r().get(),
-                sliding_window_k: engine.sliding_window_k(),
+                sliding_window_k: engine.sliding_window_k().get(),
                 transmission_limit: engine.transmission_limit().get(),
                 transmission_count: engine.transmission_count(),
                 suspend_state: suspend_number(engine.suspend_state()),

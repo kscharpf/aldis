@@ -87,9 +87,9 @@ fn engine(fecf: bool) -> Engine {
         t1_initial: Duration::from_micros(1_000),
         transmission_limit: NonZeroU8::new(3).unwrap(),
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: 2,
-        ad_repetitions: 2,
-        bc_repetitions: 3,
+        sliding_window_k: NonZeroU8::new(2).unwrap(),
+        ad_repetitions: NonZeroU8::new(2).unwrap(),
+        bc_repetitions: NonZeroU8::new(3).unwrap(),
     })
     .unwrap()
 }
