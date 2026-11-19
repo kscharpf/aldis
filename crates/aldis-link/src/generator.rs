@@ -94,13 +94,11 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         // A set holds only the PVNs of compiled codecs (GEN-009), so a Space Packet idle packet
         // is chosen only with `spp`, and an Encapsulation Idle Packet only with `epp`, or, in a
         // build with `spp` alone, the kind `checked` rejects for a zone shorter than 7 octets.
-        let kind = P::IDLE_KIND.unwrap_or(
-            if space_idle_chosen(valid_pvns, zone) {
-                IdlePacketKind::SpacePacket
-            } else {
-                IdlePacketKind::Encapsulation
-            },
-        );
+        let kind = P::IDLE_KIND.unwrap_or(if space_idle_chosen(valid_pvns, zone) {
+            IdlePacketKind::SpacePacket
+        } else {
+            IdlePacketKind::Encapsulation
+        });
         Self {
             vc,
             protocol,
