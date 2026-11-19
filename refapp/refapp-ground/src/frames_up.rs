@@ -35,10 +35,28 @@ const QUEUE: usize = 1024;
 /// Entries of the `Sent_Queue` of FOP-1. It must equal `cop1::K`, which `Uplink::new` checks;
 /// Type-BD frames never enter the queue (D2).
 const SENT: usize = 4;
+/// The scenario's Sliding Window Width K: a zero in the scenario fails the build (COP-010).
+const WINDOW: NonZeroU8 = nonzero(cop1::K);
+/// The scenario's repetitions of an AD frame (Type-A), at least 1.
+const AD_REPETITIONS: NonZeroU8 = nonzero(cop1::FOP_REPETITIONS_TYPE_A);
+/// The scenario's repetitions of a BC or BD frame (Type-B), at least 1.
+const BC_REPETITIONS: NonZeroU8 = nonzero(cop1::FOP_REPETITIONS_CONTROL);
 /// Octets of a frame, the capacity of FOP-1's master copies and of the output areas.
 const FRAME: usize = 128;
 /// Octets of an FDU (Segment Header included).
 const FDU: usize = 121;
+
+/// A scenario constant that must not be zero, evaluated at compile time.
+#[expect(
+    clippy::panic,
+    reason = "evaluated only in a const: a zero scenario value fails the build"
+)]
+const fn nonzero(value: u8) -> NonZeroU8 {
+    match NonZeroU8::new(value) {
+        Some(value) => value,
+        None => panic!("a scenario constant is 0"),
+    }
+}
 
 /// Application event `uplink_refused` (§7.4, APP-143).
 const UPLINK_REFUSED: u16 = 114;
@@ -143,9 +161,9 @@ impl Uplink {
             t1_initial: Duration::from_micros(cop1::T1_INITIAL_US),
             transmission_limit: NonZeroU8::new(cop1::TRANSMISSION_LIMIT).ok_or(bad)?,
             timeout_type,
-            sliding_window_k: cop1::K,
-            ad_repetitions: cop1::FOP_REPETITIONS_TYPE_A,
-            bc_repetitions: cop1::FOP_REPETITIONS_CONTROL,
+            sliding_window_k: WINDOW,
+            ad_repetitions: AD_REPETITIONS,
+            bc_repetitions: BC_REPETITIONS,
         })?;
         Ok(Self {
             segmenter: MapSegmenter::new(config)?,
