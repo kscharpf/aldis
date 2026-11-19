@@ -318,16 +318,16 @@ fn the_missing_number_is_counted_modulo_the_width_of_the_count() {
         ],
     );
     assert_eq!(outs[1], vec![]);
-    // From 0xFFFFF0 to 0x000110 the missing frames are 0xFFFFF1 to 0x00010F: 15 + 272 = 287,
-    // which a count of 8 bits would give as 31.
+    // From 0xFFFFF0 to 0x010010 the missing frames are 0xFFFFF1 to 0x01000F: 15 + 65_552 = 65_567,
+    // which a count of 16 or 8 bits would give as 31.
     let outs = deliver(
         &mut node(),
         &[
             idle_frame(0x00FF_FFF0, INITIAL_OCF),
-            idle_frame(0x0000_0110, INITIAL_OCF),
+            idle_frame(0x0001_0010, INITIAL_OCF),
         ],
     );
-    assert_eq!(outs[1], vec![event(FRAME_GAP, &[1, 7, 287])]);
+    assert_eq!(outs[1], vec![event(FRAME_GAP, &[1, 7, 65_567])]);
 }
 
 #[test]
