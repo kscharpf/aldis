@@ -1,19 +1,25 @@
 //! Delimiting packets by their length fields (LNK-010, LNK-060, LNK-063).
 //!
-//! The engines handle Space Packets (PVN `000`, 133.0 §4.1.3) and Encapsulation Packets (PVN
-//! `111`, 133.1 §4.1.2); the length of either comes from the length peek of its crate.
+//! The engines handle Space Packets (PVN `000`, 133.0 §4.1.3, feature `spp`) and Encapsulation
+//! Packets (PVN `111`, 133.1 §4.1.2, feature `epp`); the length of either comes from the length
+//! peek of its crate. A build with one of the features compiles nothing of the other codec: a
+//! packet of its PVN is "not a packet the engines delimit" (LNK-010, GEN-009).
 
 use aldis_core::ErrorKind;
 use aldis_core::ids::PacketVersion;
+#[cfg(feature = "epp")]
 use aldis_epp::{EncapsulationPacket, Epi};
+#[cfg(feature = "spp")]
 use aldis_spp::SpacePacket;
 
-/// The two kinds of packet the engines delimit.
+/// The kinds of packet the engines delimit, one for each codec compiled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
-    /// A Space Packet, PVN `000`.
+    /// A Space Packet, PVN `000` (feature `spp`).
+    #[cfg(feature = "spp")]
     Space,
-    /// An Encapsulation Packet, PVN `111`.
+    /// An Encapsulation Packet, PVN `111` (feature `epp`).
+    #[cfg(feature = "epp")]
     Encapsulation,
 }
 
@@ -34,10 +40,12 @@ mod first_octet {
     use aldis_core::bits::Field;
 
     pub(super) type Pvn = Field<1, 0, 3>;
+    #[cfg(feature = "epp")]
     pub(super) type Epi = Field<1, 3, 3>;
 }
 
 /// The first two octets of a Space Packet by bit position (133.0 §4.1.3.3.4; GEN-051).
+#[cfg(feature = "spp")]
 mod space_header {
     use aldis_core::bits::Field;
 
@@ -45,10 +53,13 @@ mod space_header {
 }
 
 /// The kind of packet whose first octet is `first` (the PVN is its top three bits, 133.0
-/// §4.1.3.2, 133.1 §4.1.2.2), or `None` for a PVN the engines do not delimit.
+/// §4.1.3.2, 133.1 §4.1.2.2), or `None` for a PVN the engines do not delimit: any other, and that
+/// of a codec not compiled in (LNK-010, GEN-009).
 pub(crate) const fn kind_of(first: u8) -> Option<Kind> {
     match first_octet::Pvn::get_u8(&[first]) {
+        #[cfg(feature = "spp")]
         0b000 => Some(Kind::Space),
+        #[cfg(feature = "epp")]
         0b111 => Some(Kind::Encapsulation),
         _ => None,
     }
@@ -63,7 +74,9 @@ pub(crate) const fn pvn(first: u8) -> PacketVersion {
 /// The length of the packet that starts `prefix` (not empty) of kind `kind`.
 pub(crate) fn length(kind: Kind, prefix: &[u8]) -> Length {
     let peeked = match kind {
+        #[cfg(feature = "spp")]
         Kind::Space => SpacePacket::peek_length(prefix),
+        #[cfg(feature = "epp")]
         Kind::Encapsulation => EncapsulationPacket::peek_length(prefix),
     };
     match peeked {
@@ -76,9 +89,18 @@ pub(crate) fn length(kind: Kind, prefix: &[u8]) -> Length {
 /// Whether the packet that starts `prefix` is an idle packet: a Space Packet with APID 2047
 /// (133.0 §4.1.3.3.4.4) or an Encapsulation Packet with EPI `000` (133.1 §4.1.2.3). A Space
 /// Packet needs its first two octets to tell.
+#[cfg_attr(
+    not(feature = "epp"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "the Encapsulation arm calls a function that is not `const`"
+    )
+)]
 pub(crate) fn is_idle(kind: Kind, prefix: &[u8]) -> bool {
     match (kind, prefix) {
+        #[cfg(feature = "spp")]
         (Kind::Space, [b0, b1, ..]) => space_header::Apid::apid(&[*b0, *b1]).is_idle(),
+        #[cfg(feature = "epp")]
         (Kind::Encapsulation, [b0, ..]) => {
             Epi::new(first_octet::Epi::get_u8(&[*b0])).is_some_and(Epi::is_idle)
         }
@@ -89,30 +111,60 @@ pub(crate) fn is_idle(kind: Kind, prefix: &[u8]) -> bool {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Kind, Length, PacketVersion, is_idle, kind_of, length, pvn};
+    #[cfg(any(feature = "spp", feature = "epp"))]
+    use super::{Kind, is_idle};
+    use super::{Length, PacketVersion, kind_of, length, pvn};
 
     #[test]
-    fn kinds_lengths_and_idle() {
+    fn the_pvn_is_the_top_three_bits() {
         // req: LNK-010, LNK-063
-        assert_eq!(kind_of(0x00), Some(Kind::Space));
-        assert_eq!(kind_of(0xE0), Some(Kind::Encapsulation));
-        assert_eq!(kind_of(0x20), None);
         assert_eq!(
             (pvn(0x00), pvn(0xFD), pvn(0x20).get()),
             (PacketVersion::SPACE_PACKET, PacketVersion::ENCAPSULATION, 1)
         );
+        assert_eq!(kind_of(0x20), None);
+    }
+
+    #[cfg(feature = "spp")]
+    #[test]
+    fn space_packets_lengths_and_idle() {
+        // req: LNK-010, LNK-063
+        assert_eq!(kind_of(0x00), Some(Kind::Space));
         let space = [0x00, 0x01, 0xC0, 0x00, 0x00, 0x02, 1, 2, 3];
         assert_eq!(length(Kind::Space, &space), Length::Total(9));
         assert_eq!(length(Kind::Space, &space[..5]), Length::More);
+        assert!(is_idle(Kind::Space, &[0x07, 0xFF, 0xC0]));
+        assert!(!is_idle(Kind::Space, &[0x07]));
+        assert!(!is_idle(Kind::Space, &space));
+    }
+
+    #[cfg(feature = "epp")]
+    #[test]
+    fn encapsulation_packets_lengths_and_idle() {
+        // req: LNK-010, LNK-063
+        assert_eq!(kind_of(0xE0), Some(Kind::Encapsulation));
         assert_eq!(length(Kind::Encapsulation, &[0xE0]), Length::Total(1));
         assert_eq!(length(Kind::Encapsulation, &[0xE1]), Length::More);
         assert_eq!(length(Kind::Encapsulation, &[0xE1, 0x05]), Length::Total(5));
         assert_eq!(length(Kind::Encapsulation, &[0xE1, 0x01]), Length::Invalid);
-        assert!(is_idle(Kind::Space, &[0x07, 0xFF, 0xC0]));
-        assert!(!is_idle(Kind::Space, &[0x07]));
-        assert!(!is_idle(Kind::Space, &space));
         assert!(is_idle(Kind::Encapsulation, &[0xE0]));
         assert!(!is_idle(Kind::Encapsulation, &[0xFD]));
         assert!(!is_idle(Kind::Encapsulation, &[]));
+    }
+
+    #[cfg(all(feature = "spp", not(feature = "epp")))]
+    #[test]
+    fn a_build_with_spp_alone_does_not_delimit_an_encapsulation_packet() {
+        // req: LNK-010, GEN-009
+        assert_eq!(kind_of(0xE0), None);
+        assert_eq!(kind_of(0x00), Some(Kind::Space));
+    }
+
+    #[cfg(all(feature = "epp", not(feature = "spp")))]
+    #[test]
+    fn a_build_with_epp_alone_does_not_delimit_a_space_packet() {
+        // req: LNK-010, GEN-009
+        assert_eq!(kind_of(0x00), None);
+        assert_eq!(kind_of(0xE0), Some(Kind::Encapsulation));
     }
 }

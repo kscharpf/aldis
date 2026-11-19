@@ -4,7 +4,11 @@
 //! For every crate in [`crates`] the command runs the crate's tests, among them the shared vector
 //! suite run by the exact-match runner of `aldis-testkit` (TV-012), with `--no-default-features`
 //! on each base feature set in [`crates`]: no features, and a deliberate extra set where a
-//! crate has an optional feature the empty set leaves out.
+//! crate has an optional feature the empty set leaves out. Every build runs under `-D warnings`,
+//! so a warning of a subset, or a `cfg_attr(…, expect(…))` that no longer holds, fails the check.
+//! `aldis-link` has the subsets of its packet codecs (GEN-009): a frame protocol alone (`tm`,
+//! `tc`, `aos`), with either packet codec (`tm,spp`, `tm,epp`), and USLP with either (`uslp,spp`,
+//! `uslp,epp`; USLP's packet generator and extractor need `epp`).
 //!
 //! A second check covers the facade (GEN-008): `aldis` built and tested with exactly
 //! `link,cop1,tm,tc,spp` and no default features, under the gate's `-D warnings`, must run the
@@ -16,7 +20,16 @@ use std::process::Command;
 use crate::repo;
 
 /// Base feature sets a crate's tests run on besides the empty one (a deliberate choice).
-const EXTRA_BASES: &[(&str, &str)] = &[("aldis-spp", "time")];
+const EXTRA_BASES: &[(&str, &str)] = &[
+    ("aldis-spp", "time"),
+    ("aldis-link", "tm"),
+    ("aldis-link", "tc"),
+    ("aldis-link", "aos"),
+    ("aldis-link", "tm,spp"),
+    ("aldis-link", "tm,epp"),
+    ("aldis-link", "uslp,spp"),
+    ("aldis-link", "uslp,epp"),
+];
 
 /// The crates checked, each with the base feature sets its tests run on: the crates with code
 /// ([`crate::layers::gated`]), so a crate joins when it gets code.
@@ -52,6 +65,7 @@ fn run_tests(krate: &str, features: &str) -> Result<bool, String> {
         cmd.args(["--features", features]);
     }
     let out = cmd
+        .env("RUSTFLAGS", "-D warnings")
         .current_dir(repo::root())
         .output()
         .map_err(|e| format!("cargo test: {e}"))?;
