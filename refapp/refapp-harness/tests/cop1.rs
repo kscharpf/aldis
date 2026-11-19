@@ -9,6 +9,7 @@ use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
 use refapp_harness::scenario::{
     Call, Case, Direction, Execution, Fault, FaultEntry, Fop1Directive, Level, OpsEntry, Scenario,
+    Variant,
 };
 use refapp_harness::sim;
 use refapp_harness::trace::{Dir, FaultKind, NodeId, Record};
@@ -20,6 +21,7 @@ fn case(level: Level, end_us: u64, ops: Vec<OpsEntry>, faults: Vec<FaultEntry>) 
     Case {
         id: "test".to_owned(),
         level,
+        variant: Variant::TmTc,
         end_us: Micros::new(end_us),
         trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
@@ -353,31 +355,47 @@ fn a_unit_sent_off_its_slot_fails_at_cop1() {
 fn the_ad_and_bc_frames_decode_by_level() {
     // req: APP-086, APP-090
     let s = Scenario::load().unwrap();
-    let d = decode_frame(&s, Level::Cop1, Dir::Up, &ad(5, &PACKET)).unwrap();
+    let d = decode_frame(&s, Level::Cop1, Variant::TmTc, Dir::Up, &ad(5, &PACKET)).unwrap();
     assert_eq!(d.frame_type, Some(FrameType::Ad));
     assert_eq!((d.sequence, d.vcid, d.is_control()), (Some(5), 0, false));
     assert_eq!(d.segment_header, Some(0xC0));
     assert_eq!(d.data, PACKET);
     assert_eq!(d.control_command, None);
-    let d = decode_frame(&s, Level::Cop1, Dir::Up, &bd(7, &PACKET)).unwrap();
+    let d = decode_frame(&s, Level::Cop1, Variant::TmTc, Dir::Up, &bd(7, &PACKET)).unwrap();
     assert_eq!((d.frame_type, d.sequence), (Some(FrameType::Bd), Some(7)));
-    let d = decode_frame(&s, Level::Cop1, Dir::Up, &bc(ControlCommand::Unlock)).unwrap();
+    let d = decode_frame(
+        &s,
+        Level::Cop1,
+        Variant::TmTc,
+        Dir::Up,
+        &bc(ControlCommand::Unlock),
+    )
+    .unwrap();
     assert_eq!(d.frame_type, Some(FrameType::Bc));
     assert!(d.is_control());
     assert_eq!(d.control_command, Some(ControlCommand::Unlock));
     assert_eq!(d.segment_header, None);
     let set_vr = ControlCommand::SetVr(aldis::core::ids::FrameSeqNum::new(9));
-    let d = decode_frame(&s, Level::Cop1, Dir::Up, &bc(set_vr)).unwrap();
+    let d = decode_frame(&s, Level::Cop1, Variant::TmTc, Dir::Up, &bc(set_vr)).unwrap();
     assert_eq!(d.control_command, Some(set_vr));
     // A frame-level case has Type-BD frames only (APP-043).
-    assert!(decode_frame(&s, Level::Frames, Dir::Up, &bd(0, &PACKET)).is_ok());
-    assert!(decode_frame(&s, Level::Frames, Dir::Up, &ad(0, &PACKET)).is_err());
-    assert!(decode_frame(&s, Level::Frames, Dir::Up, &bc(ControlCommand::Unlock)).is_err());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Up, &bd(0, &PACKET)).is_ok());
+    assert!(decode_frame(&s, Level::Frames, Variant::TmTc, Dir::Up, &ad(0, &PACKET)).is_err());
+    assert!(
+        decode_frame(
+            &s,
+            Level::Frames,
+            Variant::TmTc,
+            Dir::Up,
+            &bc(ControlCommand::Unlock)
+        )
+        .is_err()
+    );
     // The strict decoding still catches a wrong FECF on each type.
     for mut frame in [ad(0, &PACKET), bc(ControlCommand::Unlock)] {
         let last = frame.len() - 1;
         frame[last] ^= 1;
-        assert!(decode_frame(&s, Level::Cop1, Dir::Up, &frame).is_err());
+        assert!(decode_frame(&s, Level::Cop1, Variant::TmTc, Dir::Up, &frame).is_err());
     }
 }
 
@@ -403,7 +421,7 @@ fn only_the_frames_farm1_accepts_reach_the_reassembler() {
         (ad(1, &PACKET), 0),
     ];
     for (at, (frame, expected)) in uplink.iter().enumerate() {
-        decode_frame(&s, Level::Cop1, Dir::Up, frame).unwrap();
+        decode_frame(&s, Level::Cop1, Variant::TmTc, Dir::Up, frame).unwrap();
         let now = 1_000_000 + 250_000 * at as u64;
         assert_eq!(
             framed.receive_up(now, frame).unwrap().len(),
@@ -618,8 +636,9 @@ fn a_directive_below_cop1_is_ignored() {
     let scenario = Scenario::parse(&text_with("frames", &ops)).unwrap();
     let case = scenario.case("a3-test").unwrap();
     let script: Vec<_> = case.ops.iter().map(|e| e.to_node().unwrap()).collect();
-    let mut flight = refapp_flight::FlightNode::new_frames().unwrap();
-    let mut ground = refapp_ground::GroundNode::new_frames(&script).unwrap();
+    let mut flight = refapp_flight::FlightNode::new_frames(Variant::TmTc.to_node()).unwrap();
+    let mut ground =
+        refapp_ground::GroundNode::new_frames(Variant::TmTc.to_node(), &script).unwrap();
     let records = sim::records(&scenario, case, &mut flight, &mut ground).unwrap();
     assert!(records.iter().all(|r| !matches!(
         r,

@@ -10,7 +10,7 @@ use aldis::core::ids::{Apid, SeqCount};
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SpacePacketWriter, SppConfig};
 use aldis::tc::SequenceFlags as TcFlags;
 use refapp_scenario::generated::{SPACECRAFT_ID, apid, time, tm};
-use refapp_scenario::{Delivered, Instant, Node, StepInput};
+use refapp_scenario::{Delivered, Instant, Node, StepInput, Variant};
 
 use crate::frames_up::tests::bd_frame;
 use crate::tests::{At, Out, Rec};
@@ -71,7 +71,7 @@ struct Run {
 impl Run {
     fn new() -> Self {
         Self {
-            node: FlightNode::new_frames().unwrap(),
+            node: FlightNode::new_frames(Variant::TmTc).unwrap(),
             rec: Rec::default(),
         }
     }
@@ -570,7 +570,7 @@ fn a_packet_a_generator_cannot_take_raises_downlink_refused_and_is_counted() {
 #[test]
 fn a_failed_slot_raises_downlink_refused_with_the_error_code_alone() {
     // req: APP-142
-    let mut node = FlightNode::new_frames().unwrap();
+    let mut node = FlightNode::new_frames(Variant::TmTc).unwrap();
     let mut rec = Rec::default();
     node.slot_failed(aldis::core::ErrorKind::InternalError, &mut At(0, &mut rec));
     let code = u64::from(aldis::core::ErrorKind::InternalError.code());

@@ -40,6 +40,12 @@ pub struct Scenario {
     pub tc: Tc,
     /// COP-1 parameters (§4.2).
     pub cop1: Cop1,
+    /// AOS downlink of the variant `aos` (§4.3.1).
+    pub aos: Aos,
+    /// USLP downlink of the variant `uslp` (§4.3.2).
+    pub uslp_down: UslpDown,
+    /// USLP uplink of the variant `uslp` (§4.3.3).
+    pub uslp_up: UslpUp,
     /// Cases (§6.4).
     pub cases: Vec<Case>,
 }
@@ -257,6 +263,241 @@ pub struct Cop1 {
     pub fop_repetitions_control: Ranged<u8, 1, 255>,
 }
 
+/// AOS downlink of the variant `aos` (§4.3.1, APP-169…APP-174, APP-189).
+///
+/// The numbers and flags of the tables of §4.3.1. The rows that name an engine policy (the
+/// multiplexing scheme, the idle policy of each VC) are choices of the nodes and have no field,
+/// and neither have the constants of the standard that the codec writes: the Transfer Frame
+/// Version Number, the Insert Zone (absent: the nodes configure none) and the edition (Issue 5,
+/// AOS-001).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the flags are the presence rows of 732.0 Tables 5-1, 5-3 and 5-4, one field each in the file (APP-189)"
+)]
+pub struct Aos {
+    /// Transfer Frame Length, octets, constant (732.0 Table 5-1, §4.1.1.2). At least the primary
+    /// header, one octet of the `M_PDU` Packet Zone, and the `M_PDU` Header; [`Aos::check`] adds the
+    /// fields the other parameters make present.
+    pub frame_length: Ranged<u16, 9, 65_535>,
+    /// Frame Header Error Control present (732.0 Table 5-1, §4.1.2.6.2–3).
+    pub fhec: bool,
+    /// Frame Error Control Field present (732.0 Table 5-1, §4.1.6.1.2–3).
+    pub fecf: bool,
+    /// VC of housekeeping and events (732.0 Table 5-2).
+    pub vcid_realtime: Ranged<u8, 0, 62>,
+    /// VC of payload and dump (732.0 Table 5-2).
+    pub vcid_payload: Ranged<u8, 0, 62>,
+    /// VC of the idle `M_PDU`s (732.0 Table 5-2); VCID 63 is the OID frames', never a data VC.
+    pub vcid_idle: Ranged<u8, 0, 62>,
+    /// `VC_OCF` present on each of the three VCs (732.0 Table 5-3, §4.1.5.2–3).
+    pub vc_ocf: bool,
+    /// Release deadline of the real-time VC after its first octet is written, µs (LNK-012).
+    pub release_deadline_realtime_us: Micros,
+    /// Release deadline of the payload VC, µs (LNK-012).
+    pub release_deadline_payload_us: Micros,
+    /// Maximum Packet Length, octets (732.0 Table 5-4): at least a header and one data octet.
+    pub max_packet_length: Ranged<u16, 7, 65_535>,
+    /// Idle data octet (SPP-010).
+    pub idle_pattern: u8,
+    /// Valid Packet Version Number of the packets (732.0 Table 5-4).
+    pub packet_version: Ranged<u8, 0, 7>,
+    /// Multiplexing priority of the real-time VC; 1 is served first (732.0 §4.2.5.3, LNK-031).
+    pub priority_realtime: Ranged<u8, 1, 255>,
+    /// Multiplexing priority of the payload VC (LNK-031).
+    pub priority_payload: Ranged<u8, 1, 255>,
+    /// Multiplexing priority of the idle VC (LNK-031): offered only when no other VC has a
+    /// released data field (LNK-014).
+    pub priority_idle: Ranged<u8, 1, 255>,
+    /// Whether the extractor delivers incomplete packets (732.0 Table 5-4).
+    pub deliver_incomplete_packets: bool,
+}
+
+/// Octets of the AOS primary header (732.0 §4.1.2.1).
+const AOS_HEADER_LEN: u64 = 6;
+/// Octets of the AOS Frame Header Error Control (732.0 §4.1.2.6).
+const AOS_FHEC_LEN: u64 = 2;
+/// Octets of the `M_PDU` Header (732.0 §4.1.4.2.1.3).
+const AOS_MPDU_HEADER_LEN: u64 = 2;
+/// Octets of an OCF (732.0 §4.1.5.1).
+const OCF_LEN: u64 = 4;
+
+impl Aos {
+    /// The relation between the frame length and the fields around the Packet Zone: the primary
+    /// header, the FHEC, the `M_PDU` Header, the `VC_OCF`, and the FECF leave at least one octet of
+    /// the Packet Zone (732.0 §4.1.1.1, §4.1.4.2.1.3 b).
+    fn check(&self) -> Result<(), String> {
+        let fixed = AOS_HEADER_LEN
+            + AOS_MPDU_HEADER_LEN
+            + if self.fhec { AOS_FHEC_LEN } else { 0 }
+            + if self.vc_ocf { OCF_LEN } else { 0 }
+            + if self.fecf { FECF_LEN } else { 0 };
+        let frame = u64::from(self.frame_length.get());
+        if frame <= fixed {
+            return Err(format!(
+                "aos.frame_length {frame} leaves no octet of the Packet Zone after the {fixed} \
+                 octets of the other fields (732.0 §4.1.1.1)"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// USLP downlink of the variant `uslp` (§4.3.2, APP-175…APP-180, APP-189).
+///
+/// The numbers and flags of the tables of §4.3.2. The rows that name an engine policy (the
+/// multiplexing scheme, the idle policy, the quality of service, the construction rule and the
+/// UPID of each VC) are choices of the nodes and have no field, and neither have the constants
+/// of the standard that the codec writes (the TFVN, VCID 63 of the OID frames, the Insert Zone
+/// that is absent) nor the parameters of the Synchronization and Channel Coding sublayer, which
+/// the harness does not model.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UslpDown {
+    /// Transfer Frame Length, octets, of the fixed-length physical channel (732.1 Table 5-1,
+    /// §4.1.2.7): at least the primary header, a TFDF Header of 3 octets, and one octet of the
+    /// TFDZ; [`UslpDown::check`] adds the fields the other parameters make present.
+    pub frame_length: Ranged<u16, 11, 65_535>,
+    /// Frame Error Control Field present (732.1 Table 5-1, §4.1.6.2.1).
+    pub fecf: bool,
+    /// VC of housekeeping and events (732.1 Table 5-2).
+    pub vcid_realtime: Ranged<u8, 0, 62>,
+    /// VC of payload and dump (732.1 Table 5-2).
+    pub vcid_payload: Ranged<u8, 0, 62>,
+    /// "Inclusion of OCF Required" of the master channel: every frame, OID frames included,
+    /// carries the OCF (732.1 Table 5-2, §4.1.5.3; OI-76).
+    pub ocf_required: bool,
+    /// VC Count Length for the Sequence-Controlled service, octets (732.1 Table 5-3, Table 4-2).
+    pub vcf_count_length_sequence: Ranged<u8, 0, 7>,
+    /// VC Count Length for the Expedited service, octets (732.1 Table 5-3, Table 4-2; OI-99).
+    pub vcf_count_length_expedited: Ranged<u8, 0, 7>,
+    /// MAP ID of MAP 0, the one MAP of the downlink VCs (732.1 Table 5-3, Table 5-4).
+    pub map_id: Ranged<u8, 0, 15>,
+    /// Maximum delay for a TFDF to be completed on the real-time VC, µs (732.1 Table 5-3 note
+    /// 4, LNK-012).
+    pub release_deadline_realtime_us: Micros,
+    /// Maximum delay for a TFDF to be completed on the payload VC, µs (LNK-012).
+    pub release_deadline_payload_us: Micros,
+    /// Maximum Packet Length, octets (732.1 Table 5-5): at least a header and one data octet.
+    pub max_packet_length: Ranged<u16, 7, 65_535>,
+    /// Idle data octet (SPP-010, 133.1 Table 4-2).
+    pub idle_pattern: u8,
+    /// Valid Packet Version Number of the Space Packets (732.1 Table 5-5).
+    pub packet_version: Ranged<u8, 0, 7>,
+    /// Valid Packet Version Number of the Encapsulation Packets, which are the Idle Packets only
+    /// (732.1 Table 5-5; OI-06).
+    pub encapsulation_packet_version: Ranged<u8, 0, 7>,
+    /// Multiplexing priority of the real-time VC; 1 is served first (LNK-031).
+    pub priority_realtime: Ranged<u8, 1, 255>,
+    /// Multiplexing priority of the payload VC (LNK-031).
+    pub priority_payload: Ranged<u8, 1, 255>,
+    /// Whether the extractor delivers incomplete packets (732.1 Table 5-5).
+    pub deliver_incomplete_packets: bool,
+}
+
+/// Octets of the USLP primary header of a non-truncated frame (732.1 §4.1.2.1.2).
+const USLP_HEADER_LEN: u64 = 7;
+/// Octets of a TFDF Header with the First Header Pointer, rule `000` to `010` (732.1
+/// §4.1.4.2.1.2).
+const USLP_TFDF_POINTER_HEADER_LEN: u64 = 3;
+/// Octets of a TFDF Header without a pointer, rule `011` to `111` (732.1 §4.1.4.2.1.2).
+const USLP_TFDF_HEADER_LEN: u64 = 1;
+
+impl UslpDown {
+    /// The relation between the frame length and the fields around the TFDZ: the primary header,
+    /// the VCF Count of the expedited service, the TFDF Header, the OCF, and the FECF leave at
+    /// least one octet of the TFDZ (732.1 §4.1.2.1.2, §4.1.2.12.2, §4.1.4.2.1.2).
+    fn check(&self) -> Result<(), String> {
+        let fixed = USLP_HEADER_LEN
+            + u64::from(self.vcf_count_length_expedited.get())
+            + USLP_TFDF_POINTER_HEADER_LEN
+            + if self.ocf_required { OCF_LEN } else { 0 }
+            + if self.fecf { FECF_LEN } else { 0 };
+        let frame = u64::from(self.frame_length.get());
+        if frame <= fixed {
+            return Err(format!(
+                "uslp_down.frame_length {frame} leaves no octet of the TFDZ after the {fixed} \
+                 octets of the other fields (732.1 §4.1.2.1.2)"
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// USLP uplink of the variant `uslp` (§4.3.3, APP-181…APP-184, APP-189).
+///
+/// The numbers and flags of the tables of §4.3.3. The rows that name an engine policy (COP in
+/// effect, the multiplexing scheme) are choices of the nodes and have no field, and neither have
+/// the constants of the standard that the codec writes (the TFVN, the Insert Zone that a
+/// variable-length channel cannot have), the CLCW version and reporting rate, the repetitions
+/// (`cop1.fop_repetitions_type_a` and `cop1.fop_repetitions_control` hold them), the delay
+/// between releases (`link.uplink_slot_us` holds it), or the parameters of the Synchronization
+/// and Channel Coding sublayer, which the harness does not model.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UslpUp {
+    /// Maximum Transfer Frame Length, octets, of the variable-length physical channel (732.1
+    /// Table 5-1 note 2): at least the primary header (7), a TFDF Header of one octet, and the
+    /// shortest packet (7), 15 octets; at most 65 535: the longest frame has 65 536 octets
+    /// (§4.1.2.7), which a `u16` does not hold.
+    pub max_frame_length: Ranged<u16, 15, 65_535>,
+    /// Frame Error Control Field present (732.1 Table 5-1, §4.1.6.2.1).
+    pub fecf: bool,
+    /// The uplink VC, the one VC of the master channel (732.1 Table 5-2).
+    pub vcid: Ranged<u8, 0, 62>,
+    /// MAP ID of MAP 0, the one MAP of the VC (732.1 Table 5-3, Table 5-4).
+    pub map_id: Ranged<u8, 0, 15>,
+    /// VC Count Length for the Sequence-Controlled service, octets (732.1 Table 5-3, Table 4-2):
+    /// the frames that carry packets are sequence-controlled (Type-AD).
+    pub vcf_count_length_sequence: Ranged<u8, 0, 7>,
+    /// VC Count Length for the Expedited service, octets (732.1 Table 5-3, Table 4-2; OI-66).
+    pub vcf_count_length_expedited: Ranged<u8, 0, 7>,
+    /// "Inclusion of OCF Allowed" of the uplink VC (732.1 Table 5-3, §4.1.5.4).
+    pub ocf_allowed: bool,
+    /// Maximum Packet Length of MAP 0, octets (732.1 Table 5-5): at least a header and one data
+    /// octet, and at most what one frame holds ([`UslpUp::tfdz_capacity`], APP-182): the longest
+    /// frame, 65 535 octets, less the primary header (7) and the TFDF Header (1).
+    pub max_packet_length: Ranged<u16, 7, 65_527>,
+    /// Blocking and segmentation of MAP 0 (732.1 §4.2.2.2.8, Table 5-4).
+    pub map_services: MapServices,
+}
+
+impl UslpUp {
+    /// The longest TFDZ a frame of the sequence-controlled service holds: the maximum frame
+    /// length less the primary header, the VCF Count, the TFDF Header of one octet (rule `111`,
+    /// no pointer), and the FECF (732.1 §4.1.2.1.2, §4.1.2.12.2, §4.1.4.2.1.2, §4.1.6.2.2;
+    /// APP-182). Never below 1: [`UslpUp::check`] rejects a length that leaves no octet.
+    fn tfdz_capacity(&self) -> u64 {
+        u64::from(self.max_frame_length.get())
+            .saturating_sub(USLP_HEADER_LEN)
+            .saturating_sub(u64::from(self.vcf_count_length_sequence.get()))
+            .saturating_sub(USLP_TFDF_HEADER_LEN)
+            .saturating_sub(if self.fecf { FECF_LEN } else { 0 })
+    }
+
+    /// The relations between the lengths: the frame leaves at least one TFDZ octet, and the
+    /// Maximum Packet Length fits it (APP-182).
+    fn check(&self) -> Result<(), String> {
+        let capacity = self.tfdz_capacity();
+        let longest = u64::from(self.max_packet_length.get());
+        if capacity == 0 {
+            return Err(format!(
+                "uslp_up.max_frame_length {} leaves no octet of the TFDZ",
+                self.max_frame_length.get()
+            ));
+        }
+        if longest > capacity {
+            return Err(format!(
+                "uslp_up.max_packet_length {longest} is above the {capacity} octets a frame of \
+                 uslp_up.max_frame_length {} holds (APP-182)",
+                self.max_frame_length.get()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Link level of a case (§1, §6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -281,6 +522,58 @@ impl Level {
     }
 }
 
+/// The frame protocols of a case (§4.3, §6.5, APP-187).
+///
+/// The file's own type; [`Variant::to_node`] converts it for the nodes, as
+/// [`OpsEntry::to_node`] converts an entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Variant {
+    /// TM frames down and TC frames up (§4.1, §4.2). The value when `variant` is absent.
+    #[default]
+    TmTc,
+    /// AOS frames down (§4.3.1) and TC frames up. At the levels `frames` and `cop1`.
+    Aos,
+    /// USLP frames down (§4.3.2) and USLP frames up (§4.3.3). At the level `cop1` only.
+    Uslp,
+}
+
+impl Variant {
+    /// The variant as the nodes take it.
+    #[must_use]
+    pub const fn to_node(self) -> refapp_scenario::Variant {
+        match self {
+            Self::TmTc => refapp_scenario::Variant::TmTc,
+            Self::Aos => refapp_scenario::Variant::Aos,
+            Self::Uslp => refapp_scenario::Variant::Uslp,
+        }
+    }
+
+    /// The name the scenario file gives the variant (§6.5).
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        self.to_node().name()
+    }
+
+    /// Whether a case at `level` may have this variant (APP-187): `aos` at the levels `frames`
+    /// and `cop1`, `uslp` at `cop1` only, `tm_tc` at every level.
+    #[must_use]
+    pub const fn applies_at(self, level: Level) -> bool {
+        match (self, level) {
+            (Self::TmTc, Level::Packets | Level::Frames | Level::Cop1)
+            | (Self::Aos, Level::Frames | Level::Cop1)
+            | (Self::Uslp, Level::Cop1) => true,
+            (Self::Aos, Level::Packets) | (Self::Uslp, Level::Packets | Level::Frames) => false,
+        }
+    }
+}
+
+impl std::fmt::Display for Variant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 /// One case (§6.4, APP-076).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -290,6 +583,10 @@ pub struct Case {
     pub id: String,
     /// Link level.
     pub level: Level,
+    /// The frame protocols (§4.3, §6.5, APP-187); absent: `tm_tc`. The loader rejects a variant
+    /// the level does not allow.
+    #[serde(default)]
+    pub variant: Variant,
     /// End instant, exclusive, µs.
     pub end_us: Micros,
     /// Version of the case's golden trace (§7.5, APP-087).
@@ -612,6 +909,9 @@ impl Scenario {
             ));
         }
         self.tc.check()?;
+        self.aos.check()?;
+        self.uslp_down.check()?;
+        self.uslp_up.check()?;
         let mut ids = BTreeSet::new();
         for c in &self.cases {
             if !ids.insert(c.id.as_str()) {
@@ -636,16 +936,46 @@ impl Scenario {
                     c.id
                 ));
             }
+            if !c.variant.applies_at(c.level) {
+                return Err(format!(
+                    "scenario.json: case `{}`: the variant `{}` does not apply at the level \
+                     `{:?}` (APP-187)",
+                    c.id, c.variant, c.level
+                ));
+            }
             self.check_scripts(c)
                 .map_err(|e| format!("scenario.json: case `{}`: {e}", c.id))?;
         }
         Ok(())
     }
 
+    /// The table-upload packet of `length` table octets fits the uplink of `variant` (APP-017,
+    /// APP-182): at `tm_tc` and `aos` the type of the entry holds the limit of 503 octets (the
+    /// 512-octet Maximum Packet Length less the 9 octets of the packet header, APP-017); at
+    /// `uslp` the packet must fit the Maximum Packet Length of MAP 0, which one frame limits.
+    fn check_table_length(&self, variant: Variant, length: u16) -> Result<(), String> {
+        match variant {
+            Variant::TmTc | Variant::Aos => Ok(()),
+            Variant::Uslp => {
+                let packet = u64::from(length).saturating_add(TABLE_PACKET_OVERHEAD);
+                let longest = u64::from(self.uslp_up.max_packet_length.get());
+                if packet > longest {
+                    return Err(format!(
+                        "a table of {length} octets makes a packet of {packet} octets, above \
+                         the {longest} of uslp_up.max_packet_length: at most {} octets at the \
+                         variant `uslp` (APP-182)",
+                        longest.saturating_sub(TABLE_PACKET_OVERHEAD)
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// The rules of §6.5 that the schema cannot express (APP-061, APP-126, APP-128, APP-141).
     fn check_scripts(&self, c: &Case) -> Result<(), String> {
         let slot = self.link.frame_slot_us.get();
-        let mut uplink = Uplink::new(self);
+        let mut uplink = Uplink::new(self, c.variant);
         let mut previous = Micros::default();
         // Execution times of the time-tagged commands the flight node holds (§2.3).
         let mut queue: Vec<Micros> = Vec::new();
@@ -687,6 +1017,8 @@ impl Scenario {
                     *at_us
                 }
                 OpsEntry::TableUpload { at_us, length, .. } => {
+                    self.check_table_length(c.variant, length.get())
+                        .map_err(|e| format!("ops[{i}]: {e}"))?;
                     uplink.table_upload(*at_us, length.get());
                     *at_us
                 }
@@ -770,13 +1102,20 @@ struct Uplink {
 const TABLE_PACKET_OVERHEAD: u64 = 9;
 
 impl Uplink {
-    fn new(s: &Scenario) -> Self {
+    fn new(s: &Scenario, variant: Variant) -> Self {
         Self {
             slot_us: s.link.uplink_slot_us.get(),
             delay_us: s.link.one_way_delay_us,
-            // The Segment Header, when the VC has one, takes one octet of the frame data unit
-            // (§4.2); the range of `max_fdu_length` leaves at least one more.
-            max_data: u64::from(s.tc.max_fdu_length.get()) - u64::from(s.tc.segment_header),
+            max_data: match variant {
+                // The Segment Header, when the VC has one, takes one octet of the frame data
+                // unit (§4.2); the range of `max_fdu_length` leaves at least one more.
+                Variant::TmTc | Variant::Aos => {
+                    u64::from(s.tc.max_fdu_length.get()) - u64::from(s.tc.segment_header)
+                }
+                // The TFDZ of one frame holds the packets of one blocked request (§4.3.3,
+                // APP-184); a table-upload packet is one TFDZ and is not segmented.
+                Variant::Uslp => s.uslp_up.tfdz_capacity(),
+            },
             free_slot: Micros::default(),
             open: None,
         }
@@ -1277,6 +1616,288 @@ pub fn rust_constants(s: &Scenario) -> String {
             ),
         ],
     );
+    let aos = &s.aos;
+    module(
+        &mut out,
+        "aos",
+        "AOS downlink of the variant `aos` (§4.3.1, APP-189).",
+        &[
+            (
+                "FRAME_LENGTH",
+                "u16",
+                n(aos.frame_length.get().into()),
+                "Transfer Frame Length, octets (APP-169).",
+            ),
+            (
+                "FHEC",
+                "bool",
+                aos.fhec.to_string(),
+                "Frame Header Error Control present (APP-169).",
+            ),
+            (
+                "FECF",
+                "bool",
+                aos.fecf.to_string(),
+                "Frame Error Control Field present (APP-169).",
+            ),
+            (
+                "VCID_REALTIME",
+                "u8",
+                n(aos.vcid_realtime.get().into()),
+                "VC of housekeeping and events (APP-170).",
+            ),
+            (
+                "VCID_PAYLOAD",
+                "u8",
+                n(aos.vcid_payload.get().into()),
+                "VC of payload and dump (APP-170).",
+            ),
+            (
+                "VCID_IDLE",
+                "u8",
+                n(aos.vcid_idle.get().into()),
+                "VC of the idle `M_PDU`s (APP-170).",
+            ),
+            (
+                "VC_OCF",
+                "bool",
+                aos.vc_ocf.to_string(),
+                "`VC_OCF` present on each VC (APP-173).",
+            ),
+            (
+                "RELEASE_DEADLINE_REALTIME_US",
+                "u64",
+                n(aos.release_deadline_realtime_us.get()),
+                "Release deadline of the real-time VC, µs (APP-172).",
+            ),
+            (
+                "RELEASE_DEADLINE_PAYLOAD_US",
+                "u64",
+                n(aos.release_deadline_payload_us.get()),
+                "Release deadline of the payload VC, µs (APP-172).",
+            ),
+            (
+                "MAX_PACKET_LENGTH",
+                "u16",
+                n(aos.max_packet_length.get().into()),
+                "Maximum Packet Length, octets (APP-172).",
+            ),
+            (
+                "IDLE_PATTERN",
+                "u8",
+                n(aos.idle_pattern.into()),
+                "Idle data octet (APP-172).",
+            ),
+            (
+                "PACKET_VERSION",
+                "u8",
+                n(aos.packet_version.get().into()),
+                "Valid Packet Version Number (APP-189).",
+            ),
+            (
+                "PRIORITY_REALTIME",
+                "u8",
+                n(aos.priority_realtime.get().into()),
+                "Multiplexing priority of the real-time VC (APP-170).",
+            ),
+            (
+                "PRIORITY_PAYLOAD",
+                "u8",
+                n(aos.priority_payload.get().into()),
+                "Multiplexing priority of the payload VC (APP-170).",
+            ),
+            (
+                "PRIORITY_IDLE",
+                "u8",
+                n(aos.priority_idle.get().into()),
+                "Multiplexing priority of the idle VC (APP-170).",
+            ),
+            (
+                "DELIVER_INCOMPLETE_PACKETS",
+                "bool",
+                aos.deliver_incomplete_packets.to_string(),
+                "The extractor delivers incomplete packets (APP-189).",
+            ),
+        ],
+    );
+    let down = &s.uslp_down;
+    module(
+        &mut out,
+        "uslp_down",
+        "USLP downlink of the variant `uslp` (§4.3.2, APP-189).",
+        &[
+            (
+                "FRAME_LENGTH",
+                "u16",
+                n(down.frame_length.get().into()),
+                "Transfer Frame Length, octets (APP-175).",
+            ),
+            (
+                "FECF",
+                "bool",
+                down.fecf.to_string(),
+                "Frame Error Control Field present (APP-175).",
+            ),
+            (
+                "VCID_REALTIME",
+                "u8",
+                n(down.vcid_realtime.get().into()),
+                "VC of housekeeping and events (APP-175).",
+            ),
+            (
+                "VCID_PAYLOAD",
+                "u8",
+                n(down.vcid_payload.get().into()),
+                "VC of payload and dump (APP-175).",
+            ),
+            (
+                "OCF_REQUIRED",
+                "bool",
+                down.ocf_required.to_string(),
+                "Inclusion of OCF Required of the master channel (APP-175).",
+            ),
+            (
+                "VCF_COUNT_LENGTH_SEQUENCE",
+                "u8",
+                n(down.vcf_count_length_sequence.get().into()),
+                "VC Count Length for the Sequence-Controlled service, octets (APP-176).",
+            ),
+            (
+                "VCF_COUNT_LENGTH_EXPEDITED",
+                "u8",
+                n(down.vcf_count_length_expedited.get().into()),
+                "VC Count Length for the Expedited service, octets (APP-176).",
+            ),
+            (
+                "MAP_ID",
+                "u8",
+                n(down.map_id.get().into()),
+                "MAP ID of MAP 0 (APP-176).",
+            ),
+            (
+                "RELEASE_DEADLINE_REALTIME_US",
+                "u64",
+                n(down.release_deadline_realtime_us.get()),
+                "Maximum delay for a TFDF to be completed on the real-time VC, µs (APP-177).",
+            ),
+            (
+                "RELEASE_DEADLINE_PAYLOAD_US",
+                "u64",
+                n(down.release_deadline_payload_us.get()),
+                "Maximum delay for a TFDF to be completed on the payload VC, µs (APP-177).",
+            ),
+            (
+                "MAX_PACKET_LENGTH",
+                "u16",
+                n(down.max_packet_length.get().into()),
+                "Maximum Packet Length, octets (APP-177).",
+            ),
+            (
+                "IDLE_PATTERN",
+                "u8",
+                n(down.idle_pattern.into()),
+                "Idle data octet (APP-177).",
+            ),
+            (
+                "PACKET_VERSION",
+                "u8",
+                n(down.packet_version.get().into()),
+                "Valid Packet Version Number of the Space Packets (APP-189).",
+            ),
+            (
+                "ENCAPSULATION_PACKET_VERSION",
+                "u8",
+                n(down.encapsulation_packet_version.get().into()),
+                "Valid Packet Version Number of the Encapsulation Packets (APP-189).",
+            ),
+            (
+                "PRIORITY_REALTIME",
+                "u8",
+                n(down.priority_realtime.get().into()),
+                "Multiplexing priority of the real-time VC (APP-175).",
+            ),
+            (
+                "PRIORITY_PAYLOAD",
+                "u8",
+                n(down.priority_payload.get().into()),
+                "Multiplexing priority of the payload VC (APP-175).",
+            ),
+            (
+                "DELIVER_INCOMPLETE_PACKETS",
+                "bool",
+                down.deliver_incomplete_packets.to_string(),
+                "The extractor delivers incomplete packets (APP-189).",
+            ),
+        ],
+    );
+    let up = &s.uslp_up;
+    module(
+        &mut out,
+        "uslp_up",
+        "USLP uplink of the variant `uslp` (§4.3.3, APP-189).",
+        &[
+            (
+                "MAX_FRAME_LENGTH",
+                "u16",
+                n(up.max_frame_length.get().into()),
+                "Maximum Transfer Frame Length, octets (APP-182).",
+            ),
+            (
+                "FECF",
+                "bool",
+                up.fecf.to_string(),
+                "Frame Error Control Field present (APP-181).",
+            ),
+            (
+                "VCID",
+                "u8",
+                n(up.vcid.get().into()),
+                "The uplink VC (APP-181).",
+            ),
+            (
+                "MAP_ID",
+                "u8",
+                n(up.map_id.get().into()),
+                "MAP ID of MAP 0 (APP-181).",
+            ),
+            (
+                "VCF_COUNT_LENGTH_SEQUENCE",
+                "u8",
+                n(up.vcf_count_length_sequence.get().into()),
+                "VC Count Length for the Sequence-Controlled service, octets (APP-181).",
+            ),
+            (
+                "VCF_COUNT_LENGTH_EXPEDITED",
+                "u8",
+                n(up.vcf_count_length_expedited.get().into()),
+                "VC Count Length for the Expedited service, octets (APP-181).",
+            ),
+            (
+                "OCF_ALLOWED",
+                "bool",
+                up.ocf_allowed.to_string(),
+                "Inclusion of OCF Allowed (APP-181).",
+            ),
+            (
+                "MAX_PACKET_LENGTH",
+                "u16",
+                n(up.max_packet_length.get().into()),
+                "Maximum Packet Length of MAP 0, octets (APP-182).",
+            ),
+            (
+                "MAP_BLOCKING",
+                "bool",
+                up.map_services.blocking.to_string(),
+                "MAP 0 permits blocking (APP-181).",
+            ),
+            (
+                "MAP_SEGMENTATION",
+                "bool",
+                up.map_services.segmentation.to_string(),
+                "MAP 0 permits segmentation (APP-181).",
+            ),
+        ],
+    );
     out
 }
 
@@ -1369,7 +1990,7 @@ mod tests {
         doc.to_string()
     }
 
-    /// Every field of the A0 scenario with a range: the pointer, the lowest and the highest
+    /// Every field of the scenario with a range: the pointer, the lowest and the highest
     /// value.
     const RANGES: &[(&str, u64, u64)] = &[
         ("/spacecraft_id", 0, 1023),
@@ -1397,6 +2018,32 @@ mod tests {
         ("/cop1/transmission_limit", 1, 255),
         ("/cop1/timeout_type", 0, 1),
         ("/cop1/farm_buffer_depth", 1, 255),
+        ("/aos/frame_length", 9, 65_535),
+        ("/aos/vcid_realtime", 0, 62),
+        ("/aos/vcid_payload", 0, 62),
+        ("/aos/vcid_idle", 0, 62),
+        ("/aos/max_packet_length", 7, 65_535),
+        ("/aos/packet_version", 0, 7),
+        ("/aos/priority_realtime", 1, 255),
+        ("/aos/priority_payload", 1, 255),
+        ("/aos/priority_idle", 1, 255),
+        ("/uslp_down/frame_length", 11, 65_535),
+        ("/uslp_down/vcid_realtime", 0, 62),
+        ("/uslp_down/vcid_payload", 0, 62),
+        ("/uslp_down/vcf_count_length_sequence", 0, 7),
+        ("/uslp_down/vcf_count_length_expedited", 0, 7),
+        ("/uslp_down/map_id", 0, 15),
+        ("/uslp_down/max_packet_length", 7, 65_535),
+        ("/uslp_down/packet_version", 0, 7),
+        ("/uslp_down/encapsulation_packet_version", 0, 7),
+        ("/uslp_down/priority_realtime", 1, 255),
+        ("/uslp_down/priority_payload", 1, 255),
+        ("/uslp_up/max_frame_length", 15, 65_535),
+        ("/uslp_up/vcid", 0, 62),
+        ("/uslp_up/map_id", 0, 15),
+        ("/uslp_up/vcf_count_length_sequence", 0, 7),
+        ("/uslp_up/vcf_count_length_expedited", 0, 7),
+        ("/uslp_up/max_packet_length", 7, 65_527),
     ];
 
     #[test]
@@ -1449,6 +2096,33 @@ mod tests {
                     doc["tc"]["max_frame_length"] = 1024.into();
                     doc["tc"]["fecf"] = false.into();
                 }
+                // Likewise the frame lengths of the variants relate to the fields around the
+                // packet zone, the TFDZ, and the packet (APP-169, APP-175, APP-182).
+                match pointer {
+                    "/aos/frame_length" => {
+                        for flag in ["fhec", "fecf", "vc_ocf"] {
+                            doc["aos"][flag] = false.into();
+                        }
+                    }
+                    "/uslp_down/frame_length" => {
+                        doc["uslp_down"]["fecf"] = false.into();
+                        doc["uslp_down"]["ocf_required"] = false.into();
+                        doc["uslp_down"]["vcf_count_length_expedited"] = 0.into();
+                    }
+                    "/uslp_up/max_frame_length" | "/uslp_up/max_packet_length" => {
+                        doc["uslp_up"]["fecf"] = false.into();
+                        doc["uslp_up"]["vcf_count_length_sequence"] = 0.into();
+                        if pointer == "/uslp_up/max_frame_length" {
+                            doc["uslp_up"]["max_packet_length"] = 7.into();
+                        } else {
+                            doc["uslp_up"]["max_frame_length"] = 65_535.into();
+                        }
+                    }
+                    "/uslp_up/vcf_count_length_sequence" => {
+                        doc["uslp_up"]["max_packet_length"] = 7.into();
+                    }
+                    _ => {}
+                }
                 let r = Scenario::parse(&doc.to_string());
                 assert!(r.is_ok(), "{pointer} = {v}: {:?}", r.err());
             }
@@ -1466,6 +2140,8 @@ mod tests {
             } else {
                 let name = match section {
                     "apid" => "Apids".to_owned(),
+                    "uslp_down" => "UslpDown".to_owned(),
+                    "uslp_up" => "UslpUp".to_owned(),
                     _ => format!("{}{}", section[..1].to_uppercase(), &section[1..]),
                 };
                 &schema["$defs"][name]["properties"][field]
@@ -1879,5 +2555,285 @@ mod tests {
         assert!(rejects(&s, "tc.max_frame_length"));
         s.tc.fecf = false;
         s.check().unwrap();
+    }
+
+    /// The scenario file with the first case at `level` and with `variant`, when given.
+    fn with_variant(level: &str, variant: Option<&str>) -> Result<Scenario, String> {
+        let mut doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+        let case = &mut doc["cases"][0];
+        case["level"] = level.into();
+        if let Some(variant) = variant {
+            case["variant"] = variant.into();
+        }
+        Scenario::parse(&doc.to_string())
+    }
+
+    #[test]
+    fn the_variant_applies_at_its_levels_only() {
+        // req: APP-187
+        // `aos` at `frames` and `cop1`, `uslp` at `cop1`, `tm_tc` at every level.
+        for (level, variant) in [
+            ("cop1", "aos"),
+            ("frames", "aos"),
+            ("cop1", "uslp"),
+            ("packets", "tm_tc"),
+            ("frames", "tm_tc"),
+            ("cop1", "tm_tc"),
+        ] {
+            let s = with_variant(level, Some(variant));
+            assert!(s.is_ok(), "{level}/{variant}: {:?}", s.err());
+        }
+        // `aos` not at `packets`, `uslp` neither at `packets` nor at `frames`.
+        for (level, variant) in [("packets", "aos"), ("packets", "uslp"), ("frames", "uslp")] {
+            let e = with_variant(level, Some(variant)).unwrap_err();
+            assert!(
+                e.contains(&format!(
+                    "the variant `{variant}` does not apply at the level"
+                )) && e.contains("APP-187"),
+                "{level}/{variant}: {e}"
+            );
+        }
+        // The rule is the type's: it holds for every pair.
+        for level in [Level::Packets, Level::Frames, Level::Cop1] {
+            assert!(super::Variant::TmTc.applies_at(level));
+        }
+        assert_eq!(super::Variant::Uslp.name(), "uslp");
+    }
+
+    #[test]
+    fn an_absent_variant_is_tm_tc_and_an_unknown_one_is_rejected() {
+        // req: APP-187
+        // None of the cases of A0 to A3 names a variant: all are `tm_tc`.
+        assert!(!super::SCENARIO_JSON.contains("\"variant\""));
+        let s = Scenario::load().unwrap();
+        assert!(s.cases.iter().all(|c| c.variant == super::Variant::TmTc));
+        assert_eq!(
+            with_variant("cop1", None).unwrap().cases[0].variant,
+            super::Variant::TmTc
+        );
+        // Any other value is an error, a different spelling included.
+        for bad in ["tm", "AOS", "Uslp", "tmtc", "tm-tc", ""] {
+            let e = with_variant("cop1", Some(bad)).unwrap_err();
+            assert!(e.contains("unknown variant"), "{bad:?}: {e}");
+        }
+        // The schema says the same: three values, `tm_tc` when absent.
+        let schema: serde_json::Value = serde_json::from_str(&super::schema().unwrap()).unwrap();
+        assert!(schema["$defs"]["Case"]["properties"]["variant"].is_object());
+        let values: Vec<_> = schema["$defs"]["Variant"]["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["const"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(values, ["tm_tc", "aos", "uslp"]);
+        assert!(
+            !schema["$defs"]["Case"]["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f == "variant")
+        );
+    }
+
+    /// The scenario with a copy of `a3-nominal` as the case `x` at `variant`, uploading a table
+    /// of `length` octets.
+    fn with_upload(variant: super::Variant, length: u16) -> Scenario {
+        let mut s = Scenario::load().unwrap();
+        let mut case = s.case("a3-nominal").unwrap().clone();
+        "x".clone_into(&mut case.id);
+        case.variant = variant;
+        let upload = case
+            .ops
+            .iter_mut()
+            .find(|o| matches!(o, OpsEntry::TableUpload { .. }))
+            .unwrap();
+        if let OpsEntry::TableUpload { length: l, .. } = upload {
+            *l = Ranged::new(length).unwrap();
+        }
+        s.cases.push(case);
+        s
+    }
+
+    #[test]
+    fn the_table_limit_depends_on_the_variant() {
+        // req: APP-182, APP-017
+        // At `tm_tc` and `aos` a table of 503 octets, a packet of 512, is the longest (APP-017);
+        // at `uslp` the packet must fit the 501 octets of one frame, so the table has 492 at most.
+        for variant in [super::Variant::TmTc, super::Variant::Aos] {
+            with_upload(variant, 503).check().unwrap();
+        }
+        with_upload(super::Variant::Uslp, 492).check().unwrap();
+        let e = with_upload(super::Variant::Uslp, 493).check().unwrap_err();
+        assert!(
+            e.contains("case `x`: ops[2]: a table of 493 octets makes a packet of 502 octets")
+                && e.contains("501")
+                && e.contains("at most 492 octets")
+                && e.contains("APP-182"),
+            "{e}"
+        );
+        // The type of the entry still ends at 503, whatever the variant (APP-017).
+        assert!(
+            serde_json::from_str::<OpsEntry>(
+                r#"{"kind":"table_upload","at_us":0,"table_id":1,"length":504}"#
+            )
+            .is_err()
+        );
+        // The limit follows the Maximum Packet Length of MAP 0.
+        let mut s = with_upload(super::Variant::Uslp, 400);
+        s.check().unwrap();
+        s.uslp_up.max_packet_length = Ranged::new(408).unwrap();
+        assert!(rejects(&s, "at most 399 octets"));
+    }
+
+    #[test]
+    fn the_uplink_model_of_uslp_sends_a_table_in_one_frame() {
+        // req: APP-182, APP-141
+        // At `tm_tc` the table of 300 octets takes three uplink slots (APP-042); at `uslp` the
+        // packet of 309 octets is one TFDZ in one frame of 320 octets (APP-182, APP-184), so the
+        // command released at the same instant as the upload is sent in the slot behind it.
+        let tagged = |exec_us: u64| Execution::TimeTagged {
+            exec_us: Micros::new(exec_us),
+        };
+        let upload = OpsEntry::TableUpload {
+            at_us: Micros::new(2_000_000),
+            table_id: Ranged::new(1).unwrap(),
+            length: Ranged::new(300).unwrap(),
+        };
+        let command = |exec_us: u64| command(2_000_000, tagged(exec_us), Call::Noop {});
+        let with = |variant: super::Variant, exec_us: u64| {
+            let mut s = frames_with(vec![upload.clone(), command(exec_us)]);
+            s.cases[3].level = Level::Cop1;
+            s.cases[3].variant = variant;
+            s
+        };
+        // The command arrives at 2.75 s + 10 ms at `tm_tc` and at 2.25 s + 10 ms at `uslp`.
+        assert!(rejects(&with(super::Variant::TmTc, 2_750_000), "APP-141"));
+        with(super::Variant::TmTc, 2_875_000).check().unwrap();
+        assert!(rejects(&with(super::Variant::Uslp, 2_250_000), "APP-141"));
+        with(super::Variant::Uslp, 2_375_000).check().unwrap();
+    }
+
+    #[test]
+    fn the_frame_lengths_of_the_variants_leave_room_for_their_fields() {
+        // req: APP-189, APP-182
+        let ok = Scenario::load().unwrap();
+        // AOS: header 6, FHEC 2, `M_PDU` Header 2, `VC_OCF` 4, FECF 2, and one octet of Packet Zone.
+        let mut s = ok.clone();
+        s.aos.frame_length = Ranged::new(17).unwrap();
+        s.check().unwrap();
+        s.aos.frame_length = Ranged::new(16).unwrap();
+        assert!(rejects(&s, "aos.frame_length 16"));
+        s.aos.vc_ocf = false;
+        s.check().unwrap();
+        // USLP down: header 7, VCF Count 1, TFDF Header 3, OCF 4, FECF 2, and one octet of TFDZ.
+        let mut s = ok.clone();
+        s.uslp_down.frame_length = Ranged::new(18).unwrap();
+        s.check().unwrap();
+        s.uslp_down.frame_length = Ranged::new(17).unwrap();
+        assert!(rejects(&s, "uslp_down.frame_length 17"));
+        s.uslp_down.ocf_required = false;
+        s.check().unwrap();
+        // USLP up: 512 − 7 − 1 − 1 − 2 = 501 octets of TFDZ (APP-182).
+        let s = ok.clone();
+        assert_eq!(s.uslp_up.tfdz_capacity(), 501);
+        let mut s = ok;
+        s.uslp_up.max_packet_length = Ranged::new(502).unwrap();
+        assert!(rejects(
+            &s,
+            "uslp_up.max_packet_length 502 is above the 501 octets"
+        ));
+        s.uslp_up.max_frame_length = Ranged::new(513).unwrap();
+        s.check().unwrap();
+    }
+
+    #[test]
+    fn the_sections_of_the_variants_hold_the_values_of_the_tables() {
+        // req: APP-189
+        // The values of the tables of §4.3.1 to §4.3.3 that are numbers or flags, as the file
+        // and the generated constants have them.
+        use refapp_scenario::generated::{aos, uslp_down, uslp_up};
+        let s = Scenario::load().unwrap();
+        assert_eq!(
+            (aos::FRAME_LENGTH, aos::FHEC, aos::FECF, aos::VC_OCF),
+            (223, true, true, true)
+        );
+        assert_eq!(
+            (aos::VCID_REALTIME, aos::VCID_PAYLOAD, aos::VCID_IDLE),
+            (0, 1, 7)
+        );
+        assert_eq!(
+            (
+                aos::RELEASE_DEADLINE_REALTIME_US,
+                aos::RELEASE_DEADLINE_PAYLOAD_US
+            ),
+            (250_000, 1_000_000)
+        );
+        assert_eq!((aos::MAX_PACKET_LENGTH, aos::PACKET_VERSION), (512, 0));
+        assert_eq!(
+            (
+                aos::PRIORITY_REALTIME,
+                aos::PRIORITY_PAYLOAD,
+                aos::PRIORITY_IDLE
+            ),
+            (1, 2, 3)
+        );
+        assert_eq!(
+            (
+                uslp_down::FRAME_LENGTH,
+                uslp_down::FECF,
+                uslp_down::OCF_REQUIRED
+            ),
+            (223, true, true)
+        );
+        assert_eq!(
+            (
+                uslp_down::VCF_COUNT_LENGTH_SEQUENCE,
+                uslp_down::VCF_COUNT_LENGTH_EXPEDITED
+            ),
+            (0, 1)
+        );
+        assert_eq!((uslp_down::VCID_REALTIME, uslp_down::VCID_PAYLOAD), (0, 1));
+        assert_eq!(
+            (
+                uslp_down::MAX_PACKET_LENGTH,
+                uslp_down::PACKET_VERSION,
+                uslp_down::ENCAPSULATION_PACKET_VERSION
+            ),
+            (512, 0, 7)
+        );
+        assert_eq!(
+            (
+                uslp_up::MAX_FRAME_LENGTH,
+                uslp_up::MAX_PACKET_LENGTH,
+                uslp_up::FECF
+            ),
+            (512, 501, true)
+        );
+        assert_eq!(
+            (
+                uslp_up::VCF_COUNT_LENGTH_SEQUENCE,
+                uslp_up::VCF_COUNT_LENGTH_EXPEDITED,
+                uslp_up::OCF_ALLOWED
+            ),
+            (1, 0, false)
+        );
+        assert_eq!(
+            (uslp_up::MAP_BLOCKING, uslp_up::MAP_SEGMENTATION),
+            (true, false)
+        );
+        // The generated constants are the file's values.
+        assert_eq!(
+            u64::from(s.aos.frame_length.get()),
+            u64::from(aos::FRAME_LENGTH)
+        );
+        assert_eq!(
+            u64::from(s.uslp_up.max_packet_length.get()),
+            u64::from(uslp_up::MAX_PACKET_LENGTH)
+        );
+        // 501 octets of packet, 492 of table.
+        assert_eq!(
+            u64::from(uslp_up::MAX_PACKET_LENGTH) - super::TABLE_PACKET_OVERHEAD,
+            492
+        );
     }
 }

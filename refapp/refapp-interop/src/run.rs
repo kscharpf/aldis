@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use refapp_flight::FlightNode;
 use refapp_harness::micros::Micros;
-use refapp_harness::scenario::{Case, Level, Scenario};
+use refapp_harness::scenario::{Case, Level, Scenario, Variant};
 use refapp_scenario::Node;
 
 use crate::Error;
@@ -15,7 +15,8 @@ use crate::loss::LossScript;
 use crate::port::Port;
 use crate::side::{Role, Side};
 
-/// The flight node of a case's link level (as the harness builds it, APP-071, APP-044).
+/// The flight node of a case's link level (as the harness builds it, APP-071, APP-044), for the
+/// variant `tm_tc`, the only one the driver runs ([`load_case`]).
 ///
 /// # Errors
 /// If the level is the packet level, which has no frames to send, or the node cannot be built.
@@ -27,8 +28,8 @@ pub fn flight_node(level: Level) -> Result<FlightNode, Error> {
                     .to_owned(),
             ));
         }
-        Level::Frames => FlightNode::new_frames(),
-        Level::Cop1 => FlightNode::new_cop1(),
+        Level::Frames => FlightNode::new_frames(refapp_scenario::Variant::TmTc),
+        Level::Cop1 => FlightNode::new_cop1(refapp_scenario::Variant::TmTc),
     };
     node.map_err(|e| Error::Script(format!("flight node: {e:?}")))
 }
@@ -136,9 +137,16 @@ pub fn run_flight(
 /// The scenario's case, for the binary.
 ///
 /// # Errors
-/// If the case does not exist.
+/// If the case does not exist, or has a variant other than `tm_tc`, which the driver does not
+/// run (A4 does not extend it).
 pub fn load_case(case_id: &str) -> Result<(Scenario, Case), Error> {
     let scenario = Scenario::load().map_err(Error::Script)?;
     let case = scenario.case(case_id).map_err(Error::Script)?.clone();
+    if case.variant != Variant::TmTc {
+        return Err(Error::Script(format!(
+            "case `{case_id}` has the variant `{}`; the driver runs `tm_tc` only",
+            case.variant
+        )));
+    }
     Ok((scenario, case))
 }

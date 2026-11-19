@@ -46,6 +46,18 @@
       "description": "COP-1 parameters (§4.2).",
       "$ref": "#/$defs/Cop1"
     },
+    "aos": {
+      "description": "AOS downlink of the variant `aos` (§4.3.1).",
+      "$ref": "#/$defs/Aos"
+    },
+    "uslp_down": {
+      "description": "USLP downlink of the variant `uslp` (§4.3.2).",
+      "$ref": "#/$defs/UslpDown"
+    },
+    "uslp_up": {
+      "description": "USLP uplink of the variant `uslp` (§4.3.3).",
+      "$ref": "#/$defs/UslpUp"
+    },
     "cases": {
       "description": "Cases (§6.4).",
       "type": "array",
@@ -65,6 +77,9 @@
     "tm",
     "tc",
     "cop1",
+    "aos",
+    "uslp_down",
+    "uslp_up",
     "cases"
   ],
   "$defs": {
@@ -511,6 +526,335 @@
         "fop_repetitions_control"
       ]
     },
+    "Aos": {
+      "description": "AOS downlink of the variant `aos` (§4.3.1, APP-169…APP-174, APP-189).\n\nThe numbers and flags of the tables of §4.3.1. The rows that name an engine policy (the\nmultiplexing scheme, the idle policy of each VC) are choices of the nodes and have no field,\nand neither have the constants of the standard that the codec writes: the Transfer Frame\nVersion Number, the Insert Zone (absent: the nodes configure none) and the edition (Issue 5,\nAOS-001).",
+      "type": "object",
+      "properties": {
+        "frame_length": {
+          "description": "Transfer Frame Length, octets, constant (732.0 Table 5-1, §4.1.1.2). At least the primary\nheader, one octet of the `M_PDU` Packet Zone, and the `M_PDU` Header; [`Aos::check`] adds the\nfields the other parameters make present.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 9,
+          "maximum": 65535
+        },
+        "fhec": {
+          "description": "Frame Header Error Control present (732.0 Table 5-1, §4.1.2.6.2–3).",
+          "type": "boolean"
+        },
+        "fecf": {
+          "description": "Frame Error Control Field present (732.0 Table 5-1, §4.1.6.1.2–3).",
+          "type": "boolean"
+        },
+        "vcid_realtime": {
+          "description": "VC of housekeeping and events (732.0 Table 5-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "vcid_payload": {
+          "description": "VC of payload and dump (732.0 Table 5-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "vcid_idle": {
+          "description": "VC of the idle `M_PDU`s (732.0 Table 5-2); VCID 63 is the OID frames', never a data VC.",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "vc_ocf": {
+          "description": "`VC_OCF` present on each of the three VCs (732.0 Table 5-3, §4.1.5.2–3).",
+          "type": "boolean"
+        },
+        "release_deadline_realtime_us": {
+          "description": "Release deadline of the real-time VC after its first octet is written, µs (LNK-012).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "release_deadline_payload_us": {
+          "description": "Release deadline of the payload VC, µs (LNK-012).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_packet_length": {
+          "description": "Maximum Packet Length, octets (732.0 Table 5-4): at least a header and one data octet.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 7,
+          "maximum": 65535
+        },
+        "idle_pattern": {
+          "description": "Idle data octet (SPP-010).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "packet_version": {
+          "description": "Valid Packet Version Number of the packets (732.0 Table 5-4).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "priority_realtime": {
+          "description": "Multiplexing priority of the real-time VC; 1 is served first (732.0 §4.2.5.3, LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "priority_payload": {
+          "description": "Multiplexing priority of the payload VC (LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "priority_idle": {
+          "description": "Multiplexing priority of the idle VC (LNK-031): offered only when no other VC has a\nreleased data field (LNK-014).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "deliver_incomplete_packets": {
+          "description": "Whether the extractor delivers incomplete packets (732.0 Table 5-4).",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "frame_length",
+        "fhec",
+        "fecf",
+        "vcid_realtime",
+        "vcid_payload",
+        "vcid_idle",
+        "vc_ocf",
+        "release_deadline_realtime_us",
+        "release_deadline_payload_us",
+        "max_packet_length",
+        "idle_pattern",
+        "packet_version",
+        "priority_realtime",
+        "priority_payload",
+        "priority_idle",
+        "deliver_incomplete_packets"
+      ]
+    },
+    "UslpDown": {
+      "description": "USLP downlink of the variant `uslp` (§4.3.2, APP-175…APP-180, APP-189).\n\nThe numbers and flags of the tables of §4.3.2. The rows that name an engine policy (the\nmultiplexing scheme, the idle policy, the quality of service, the construction rule and the\nUPID of each VC) are choices of the nodes and have no field, and neither have the constants\nof the standard that the codec writes (the TFVN, VCID 63 of the OID frames, the Insert Zone\nthat is absent) nor the parameters of the Synchronization and Channel Coding sublayer, which\nthe harness does not model.",
+      "type": "object",
+      "properties": {
+        "frame_length": {
+          "description": "Transfer Frame Length, octets, of the fixed-length physical channel (732.1 Table 5-1,\n§4.1.2.7): at least the primary header, a TFDF Header of 3 octets, and one octet of the\nTFDZ; [`UslpDown::check`] adds the fields the other parameters make present.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 11,
+          "maximum": 65535
+        },
+        "fecf": {
+          "description": "Frame Error Control Field present (732.1 Table 5-1, §4.1.6.2.1).",
+          "type": "boolean"
+        },
+        "vcid_realtime": {
+          "description": "VC of housekeeping and events (732.1 Table 5-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "vcid_payload": {
+          "description": "VC of payload and dump (732.1 Table 5-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "ocf_required": {
+          "description": "\"Inclusion of OCF Required\" of the master channel: every frame, OID frames included,\ncarries the OCF (732.1 Table 5-2, §4.1.5.3; OI-76).",
+          "type": "boolean"
+        },
+        "vcf_count_length_sequence": {
+          "description": "VC Count Length for the Sequence-Controlled service, octets (732.1 Table 5-3, Table 4-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "vcf_count_length_expedited": {
+          "description": "VC Count Length for the Expedited service, octets (732.1 Table 5-3, Table 4-2; OI-99).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "map_id": {
+          "description": "MAP ID of MAP 0, the one MAP of the downlink VCs (732.1 Table 5-3, Table 5-4).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "release_deadline_realtime_us": {
+          "description": "Maximum delay for a TFDF to be completed on the real-time VC, µs (732.1 Table 5-3 note\n4, LNK-012).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "release_deadline_payload_us": {
+          "description": "Maximum delay for a TFDF to be completed on the payload VC, µs (LNK-012).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "max_packet_length": {
+          "description": "Maximum Packet Length, octets (732.1 Table 5-5): at least a header and one data octet.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 7,
+          "maximum": 65535
+        },
+        "idle_pattern": {
+          "description": "Idle data octet (SPP-010, 133.1 Table 4-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "packet_version": {
+          "description": "Valid Packet Version Number of the Space Packets (732.1 Table 5-5).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "encapsulation_packet_version": {
+          "description": "Valid Packet Version Number of the Encapsulation Packets, which are the Idle Packets only\n(732.1 Table 5-5; OI-06).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "priority_realtime": {
+          "description": "Multiplexing priority of the real-time VC; 1 is served first (LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "priority_payload": {
+          "description": "Multiplexing priority of the payload VC (LNK-031).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 1,
+          "maximum": 255
+        },
+        "deliver_incomplete_packets": {
+          "description": "Whether the extractor delivers incomplete packets (732.1 Table 5-5).",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "frame_length",
+        "fecf",
+        "vcid_realtime",
+        "vcid_payload",
+        "ocf_required",
+        "vcf_count_length_sequence",
+        "vcf_count_length_expedited",
+        "map_id",
+        "release_deadline_realtime_us",
+        "release_deadline_payload_us",
+        "max_packet_length",
+        "idle_pattern",
+        "packet_version",
+        "encapsulation_packet_version",
+        "priority_realtime",
+        "priority_payload",
+        "deliver_incomplete_packets"
+      ]
+    },
+    "UslpUp": {
+      "description": "USLP uplink of the variant `uslp` (§4.3.3, APP-181…APP-184, APP-189).\n\nThe numbers and flags of the tables of §4.3.3. The rows that name an engine policy (COP in\neffect, the multiplexing scheme) are choices of the nodes and have no field, and neither have\nthe constants of the standard that the codec writes (the TFVN, the Insert Zone that a\nvariable-length channel cannot have), the CLCW version and reporting rate, the repetitions\n(`cop1.fop_repetitions_type_a` and `cop1.fop_repetitions_control` hold them), the delay\nbetween releases (`link.uplink_slot_us` holds it), or the parameters of the Synchronization\nand Channel Coding sublayer, which the harness does not model.",
+      "type": "object",
+      "properties": {
+        "max_frame_length": {
+          "description": "Maximum Transfer Frame Length, octets, of the variable-length physical channel (732.1\nTable 5-1 note 2): at least the primary header (7), a TFDF Header of one octet, and the\nshortest packet (7), 15 octets; at most 65 535: the longest frame has 65 536 octets\n(§4.1.2.7), which a `u16` does not hold.",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 15,
+          "maximum": 65535
+        },
+        "fecf": {
+          "description": "Frame Error Control Field present (732.1 Table 5-1, §4.1.6.2.1).",
+          "type": "boolean"
+        },
+        "vcid": {
+          "description": "The uplink VC, the one VC of the master channel (732.1 Table 5-2).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 62
+        },
+        "map_id": {
+          "description": "MAP ID of MAP 0, the one MAP of the VC (732.1 Table 5-3, Table 5-4).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "vcf_count_length_sequence": {
+          "description": "VC Count Length for the Sequence-Controlled service, octets (732.1 Table 5-3, Table 4-2):\nthe frames that carry packets are sequence-controlled (Type-AD).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "vcf_count_length_expedited": {
+          "description": "VC Count Length for the Expedited service, octets (732.1 Table 5-3, Table 4-2; OI-66).",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "ocf_allowed": {
+          "description": "\"Inclusion of OCF Allowed\" of the uplink VC (732.1 Table 5-3, §4.1.5.4).",
+          "type": "boolean"
+        },
+        "max_packet_length": {
+          "description": "Maximum Packet Length of MAP 0, octets (732.1 Table 5-5): at least a header and one data\noctet, and at most what one frame holds ([`UslpUp::tfdz_capacity`], APP-182): the longest\nframe, 65 535 octets, less the primary header (7) and the TFDF Header (1).",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 7,
+          "maximum": 65527
+        },
+        "map_services": {
+          "description": "Blocking and segmentation of MAP 0 (732.1 §4.2.2.2.8, Table 5-4).",
+          "$ref": "#/$defs/MapServices"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max_frame_length",
+        "fecf",
+        "vcid",
+        "map_id",
+        "vcf_count_length_sequence",
+        "vcf_count_length_expedited",
+        "ocf_allowed",
+        "max_packet_length",
+        "map_services"
+      ]
+    },
     "Case": {
       "description": "One case (§6.4, APP-076).",
       "type": "object",
@@ -523,6 +867,11 @@
         "level": {
           "description": "Link level.",
           "$ref": "#/$defs/Level"
+        },
+        "variant": {
+          "description": "The frame protocols (§4.3, §6.5, APP-187); absent: `tm_tc`. The loader rejects a variant\nthe level does not allow.",
+          "$ref": "#/$defs/Variant",
+          "default": "tm_tc"
         },
         "end_us": {
           "description": "End instant, exclusive, µs.",
@@ -587,6 +936,26 @@
           "description": "A3 on: one frame per slot with COP-1 (FOP-1 and FARM-1): Type-AD, Type-BD, and Type-BC\nframes, and the FOP-1 directives of the ops script (APP-019, APP-148).",
           "type": "string",
           "const": "cop1"
+        }
+      ]
+    },
+    "Variant": {
+      "description": "The frame protocols of a case (§4.3, §6.5, APP-187).\n\nThe file's own type; [`Variant::to_node`] converts it for the nodes, as\n[`OpsEntry::to_node`] converts an entry.",
+      "oneOf": [
+        {
+          "description": "TM frames down and TC frames up (§4.1, §4.2). The value when `variant` is absent.",
+          "type": "string",
+          "const": "tm_tc"
+        },
+        {
+          "description": "AOS frames down (§4.3.1) and TC frames up. At the levels `frames` and `cop1`.",
+          "type": "string",
+          "const": "aos"
+        },
+        {
+          "description": "USLP frames down (§4.3.2) and USLP frames up (§4.3.3). At the level `cop1` only.",
+          "type": "string",
+          "const": "uslp"
         }
       ]
     },

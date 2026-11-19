@@ -10,6 +10,7 @@ use aldis::core::crc::crc16;
 use aldis::core::ids::FrameSeqNum;
 use aldis::tc::{ControlCommand, FrameData, FrameFields, FrameType, SegmentHeader, SequenceFlags};
 use aldis::tc::{TcMapId, TcSpacecraftId, TcVcId, encode};
+use refapp_scenario::Variant;
 use refapp_scenario::generated::SPACECRAFT_ID;
 
 use super::{APP_FRAME_REJECTED, APP_SEQUENCE_VIOLATION, CMD_RECEIVED, Run, code, noop, sender};
@@ -219,7 +220,11 @@ fn the_frames_level_raises_no_cop1_event() {
     run.deliver(1_260_000, &[bc_frame(ControlCommand::Unlock)]);
     assert_eq!(run.app_events(), []);
     assert_eq!(
-        FlightNode::new_cop1().unwrap().clcw().unwrap().to_word(),
+        FlightNode::new_cop1(Variant::TmTc)
+            .unwrap()
+            .clcw()
+            .unwrap()
+            .to_word(),
         0x0100_0000
     );
 }
