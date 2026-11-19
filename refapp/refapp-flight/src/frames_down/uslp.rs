@@ -283,10 +283,9 @@ mod tests {
         let frame = data_frame(&mut down, 20);
         let zone = zone(&frame);
         assert_eq!(zone[..20], packet(20));
-        // The Idle Packet of the remainder (186 octets): a 2-octet header, the Encapsulation PVN
-        // `111` in the first 3 bits, and the idle data octets (133.1 Table 4-2).
-        assert_eq!(zone[20] >> 5, 0b111);
-        assert_eq!(zone[20] & 0x03, 0b01);
+        // The Idle Packet of the remainder (186 octets): a 2-octet header whose first octet is PVN
+        // `111`, Protocol ID `000` (idle), Length of Length `01` (133.1-B-3 4.1.2.3.3, 4.1.3.1.3).
+        assert_eq!(zone[20], 0b1110_0001);
         assert_eq!(zone[21], 186);
         assert!(zone[22..].iter().all(|&b| b == 0));
         // The first packet starts at 0.
@@ -305,7 +304,7 @@ mod tests {
         assert_eq!(first[9..11], [0, 0]);
         let second = slot(&mut down, 2_000_000);
         assert_eq!(second[9..11], 94_u16.to_be_bytes());
-        assert_eq!(zone(&second)[94] >> 5, 0b111);
+        assert_eq!(zone(&second)[94], 0b1110_0001);
         assert_eq!(zone(&second)[95], 112);
         // A packet of 412 octets fills two TFDZs: no packet starts in the second, which the
         // packet ends in (OI-69), so the pointer is all ones.
@@ -349,14 +348,12 @@ mod tests {
     fn the_ocf_of_every_frame_is_the_clcw_of_the_slot() {
         // req: APP-179
         let mut down = FrameDownlink::<Uslp>::new().unwrap();
-        // A Type-1 report: the Type Flag, the first bit of the OCF, is 0.
         let clcw = [0x01, 0x02, 0x03, 0x04];
         down.set_ocf(clcw);
         let oid = slot(&mut down, 0);
         let data = data_frame(&mut down, 20);
         for frame in [&oid, &data] {
             assert_eq!(frame[FRAME - 6..FRAME - 2], clcw);
-            assert_eq!(frame[FRAME - 6] & 0x80, 0);
             assert_eq!(crc16(frame).get(), 0);
         }
         let later = [0x01, 0x02, 0x03, 0x05];
