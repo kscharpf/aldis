@@ -69,10 +69,10 @@ impl DownProtocol for Aos {
     const MAX_PACKET_LEN: u16 = aos::MAX_PACKET_LENGTH;
     const IDLE_PATTERN: u8 = aos::IDLE_PATTERN;
 
-    fn generator_params() -> AosParams {
-        AosParams {
+    fn generator_params() -> Result<AosParams> {
+        Ok(AosParams {
             edition: AosEdition::Issue5,
-        }
+        })
     }
 
     /// The multiplexer: one master channel with the SCID of §3.4, frames of 223 octets with the

@@ -3,10 +3,10 @@
 //! Specification: docs/reference-application.md §2.1 step 6, §4.1, §4.3.1, §4.4: one
 //! `PacketGenerator` for VC 0 and one for VC 1, the `ChannelMux` with fixed priority, the OCF
 //! slot, and the finishing of the frame. TM has OID frames on VC 7 ([`tm`]); AOS has an idle
-//! `M_PDU` on VC 7 and no OID frame ([`aos`]).
+//! `M_PDU` on VC 7 and no OID frame ([`aos`]); USLP has OID frames on VCID 63 ([`uslp`]).
 //!
 //! Requirements: APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135, APP-167,
-//! APP-169…APP-173.
+//! APP-169…APP-173, APP-175…APP-179.
 //!
 //! **The protocol type.** [`FrameDownlink`] is generic over a frame protocol `P`, and what differs
 //! between the protocols is the application's own trait [`DownProtocol`] (A4 D3): the frame
@@ -30,7 +30,7 @@ use aldis::link::generator::{
     GeneratorInput, GeneratorOutput, PacketGenerator, PacketGeneratorConfig,
 };
 use aldis::link::mux::{ChannelMux, FrameClass, MuxInput, MuxOutput, MuxProtocol, Offer};
-use aldis::link::protocol::{Aos, PacketProtocol, Tm};
+use aldis::link::protocol::{Aos, PacketProtocol, Tm, Uslp};
 use refapp_scenario::generated::{self, link};
 use refapp_scenario::{Duration, Instant, Output};
 
@@ -41,6 +41,7 @@ use crate::event::APP_DOWNLINK_REFUSED;
 
 mod aos;
 mod tm;
+mod uslp;
 
 /// Octets of a transfer frame: `generated::tm::FRAME_LENGTH` and `generated::aos::FRAME_LENGTH`
 /// (APP-030, APP-169), asserted below.
@@ -53,11 +54,12 @@ const FRAME: usize = 223;
 const _: () = {
     assert!(FRAME == generated::tm::FRAME_LENGTH as usize);
     assert!(FRAME == generated::aos::FRAME_LENGTH as usize);
+    assert!(FRAME == generated::uslp_down::FRAME_LENGTH as usize);
 };
 
 /// Octets of the data field a generator can hold, the most of the protocols: the TM data field
-/// of 211 (the frame less the primary header, the OCF, and the FECF) against the AOS `M_PDU` of
-/// 209. A generator's configuration sets its own length ([`DownProtocol::FIELD_LEN`]).
+/// of 211 (the frame less the primary header, the OCF, and the FECF) against the AOS `M_PDU` and
+/// the USLP TFDF of 209. A generator's configuration sets its own length ([`DownProtocol::FIELD_LEN`]).
 const FIELD_CAPACITY: usize = 211;
 
 /// Octets of a generator's packet queue, behind the field: one Maximum Packet Length
@@ -68,7 +70,7 @@ const FIELD_CAPACITY: usize = 211;
 /// are in the field, so 1 078 − 422 − 211 = 445 octets wait in the queue (the unit tests agree: a
 /// queue of 440 fails them and one of 450 passes). 512 leaves 67 octets of margin. On AOS the
 /// zone is 207 octets and the same arithmetic gives 1 078 − 414 − 207 = 457, which 512 holds with
-/// 55 of margin. A generator out of room refuses a packet with `WouldBlock`, which the node
+/// 55 of margin. On USLP the zone is 206 octets and it gives 1 078 − 412 − 206 = 460, 52 of margin. A generator out of room refuses a packet with `WouldBlock`, which the node
 /// reports as `downlink_refused` (APP-142).
 const QUEUE: usize = 512;
 
@@ -104,8 +106,7 @@ fn none<A: Copy, const N: usize>(actions: Actions<A, N>) -> Result<()> {
 /// What the flight downlink needs of a frame protocol (A4 D3).
 ///
 /// The application's own trait, so the library has no notion of the application's VC plan. It has
-/// the implementations [`Tm`] ([`tm`]) and [`Aos`] ([`aos`]); USLP adds its own with its work
-/// package.
+/// the implementations [`Tm`] ([`tm`]), [`Aos`] ([`aos`]), and [`Uslp`] ([`uslp`]).
 pub trait DownProtocol: PacketProtocol + MuxProtocol {
     /// Octets of the data field the generators build, header included (the TM data field, the
     /// AOS `M_PDU`), at most [`FIELD_CAPACITY`].
@@ -124,7 +125,10 @@ pub trait DownProtocol: PacketProtocol + MuxProtocol {
     const IDLE_PATTERN: u8;
 
     /// The parameters of a VC that the generators need.
-    fn generator_params() -> <Self as PacketProtocol>::Params;
+    ///
+    /// # Errors
+    /// `InvalidConfig` of the engines, which the scenario's values rule out.
+    fn generator_params() -> Result<<Self as PacketProtocol>::Params>;
 
     /// The multiplexer of the master channel, with the VCs of §4.1 or §4.3.1.
     ///
@@ -160,7 +164,7 @@ fn generator<P: DownProtocol>(
 ) -> Result<Generator<P>> {
     let config = PacketGeneratorConfig::<P>::new(
         vc,
-        P::generator_params(),
+        P::generator_params()?,
         P::FIELD_LEN,
         ValidPvns::SPACE,
         usize::from(P::MAX_PACKET_LEN),
@@ -350,17 +354,15 @@ impl<P: DownProtocol> FrameDownlink<P> {
 /// The frame level of the downlink of the variant the node was made with (§4.3).
 ///
 /// The closed set of the protocols, so that a node of a variant that has none fails to compile
-/// where it is matched (RS-021). `uslp` has no arm until its work package.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "the variants are within 5 % of each other, and the node has no heap to box one in"
-)]
+/// where it is matched (RS-021).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Frames {
     /// TM frames (§4.1), the variant `tm_tc`.
     Tm(FrameDownlink<Tm>),
     /// AOS frames (§4.3.1), the variant `aos`.
     Aos(FrameDownlink<Aos>),
+    /// USLP frames (§4.3.2), the variant `uslp`. No node selects it until A4 WP-3c.
+    Uslp(FrameDownlink<Uslp>),
 }
 
 impl Frames {
@@ -380,10 +382,19 @@ impl Frames {
         FrameDownlink::new().map(Self::Aos)
     }
 
+    /// The USLP downlink in its start-of-run state ([`FrameDownlink::new`]).
+    ///
+    /// # Errors
+    /// As [`FrameDownlink::new`].
+    pub fn uslp() -> Result<Self> {
+        FrameDownlink::new().map(Self::Uslp)
+    }
+
     fn submit(&mut self, vc: u8, packet: &[u8], now: Instant) -> Result<()> {
         match self {
             Self::Tm(f) => f.submit(vc, packet, now),
             Self::Aos(f) => f.submit(vc, packet, now),
+            Self::Uslp(f) => f.submit(vc, packet, now),
         }
     }
 
@@ -391,6 +402,7 @@ impl Frames {
         match self {
             Self::Tm(f) => f.set_ocf(ocf),
             Self::Aos(f) => f.set_ocf(ocf),
+            Self::Uslp(f) => f.set_ocf(ocf),
         }
     }
 
@@ -400,6 +412,7 @@ impl Frames {
         match self {
             Self::Tm(f) => f.next_deadline(now),
             Self::Aos(f) => f.next_deadline(now),
+            Self::Uslp(f) => f.next_deadline(now),
         }
     }
 
@@ -411,6 +424,7 @@ impl Frames {
         match self {
             Self::Tm(f) => f.slot(now, out),
             Self::Aos(f) => f.slot(now, out),
+            Self::Uslp(f) => f.slot(now, out),
         }
     }
 }
