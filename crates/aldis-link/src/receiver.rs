@@ -567,6 +567,13 @@ fn advance(expect: &mut Option<u64>, value: u64, bits: u32) -> Track {
 pub struct FrameContext<'a, P: ReceiveProtocol, const V: usize> {
     cfg: &'a FrameReceiverConfig<P, V>,
     slots: &'a mut [Option<Slot<P>>; V],
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM counts the master channel (GEN-009 subsets)"
+        )
+    )]
     mc: &'a mut Option<u64>,
     status: &'a mut ReceiverStatus,
     out: &'a mut [u8],
@@ -662,6 +669,13 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
 
     /// Counts the MC Frame Count of a frame (LNK-051): a `FrameGap` or `CountDiscontinuity`
     /// of the master channel.
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM counts the master channel (GEN-009 subsets)"
+        )
+    )]
     pub(crate) fn count_mc(&mut self, value: u64, bits: u32) -> Result<()> {
         let track = advance(self.mc, value, bits);
         self.report(track, ChannelScope::MasterChannel).map(|_| ())
@@ -745,6 +759,13 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Delivers the FSH (LNK-053).
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM has a Frame Secondary Header here (GEN-009 subsets)"
+        )
+    )]
     pub(crate) fn deliver_fsh(
         &mut self,
         scope: Option<ChannelScope<P::Vc>>,
@@ -809,6 +830,13 @@ pub(crate) fn header<const N: usize>(frame: &[u8]) -> Result<[u8; N]> {
 /// # Errors
 /// `OutOfRange` (`vc_id`) if `raw` needs more bits than the identifier has: the callers mask
 /// the field they read, so this is not reachable from a frame.
+#[cfg_attr(
+    not(any(feature = "tm", feature = "tc", feature = "aos")),
+    expect(
+        dead_code,
+        reason = "only TM, TC, and AOS read the VCID by it (GEN-009 subsets)"
+    )
+)]
 pub(crate) fn vc_of<P: Protocol>(raw: u8) -> Result<P::Vc> {
     P::Vc::try_from(raw)
 }

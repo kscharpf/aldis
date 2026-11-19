@@ -1,6 +1,7 @@
 //! The codec features of the facade forward to the engines of `aldis-link` and `aldis-cop1`:
 //! `link`, `cop1`, `tm`, `tc`, and `spp` give the TM and TC receiver channels and `Fop1` and
-//! `Farm1` without `full` (GEN-008). The `use` lines compiling is the test; the `features` check
+//! `Farm1` without `full` (GEN-008), and `tm` with `spp` alone give the `PacketGenerator` and the
+//! `PacketExtractor` of TM (GEN-009). The `use` lines compiling is the test; the `features` check
 //! builds it with exactly those features.
 #![cfg(all(
     feature = "link",
@@ -11,14 +12,19 @@
 ))]
 
 use aldis::cop1::{Farm1, Fop1};
+use aldis::link::extractor::PacketExtractor;
+use aldis::link::generator::PacketGenerator;
+use aldis::link::protocol::Tm;
 use aldis::link::receiver::{TcChannel, TmChannel};
 
 #[test]
 fn engines_are_nameable_through_the_facade() {
-    // req: GEN-008
+    // req: GEN-008, GEN-009
     // The `use` lines above compiling is the test; these name the types so they stay used.
     let _ = core::any::type_name::<Fop1<1, 1, 1>>();
     let _ = core::any::type_name::<Farm1>();
     let _ = core::any::type_name::<TmChannel>();
     let _ = core::any::type_name::<TcChannel>();
+    let _ = core::any::type_name::<PacketGenerator<Tm, 24, 64>>();
+    let _ = core::any::type_name::<PacketExtractor<Tm, 24, 64>>();
 }

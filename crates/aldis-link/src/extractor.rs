@@ -184,7 +184,9 @@ impl<P: PacketProtocol> PacketExtractorConfig<P> {
     fn accepts(&self, first: u8) -> Option<Kind> {
         let kind = packet::kind_of(first)?;
         let valid = match kind {
+            #[cfg(feature = "spp")]
             Kind::Space => self.valid_pvns.space(),
+            #[cfg(feature = "epp")]
             Kind::Encapsulation => {
                 self.valid_pvns.encapsulation()
                     || (P::DELIMITS_IDLE_EIP && packet::is_idle(kind, &[first]))
