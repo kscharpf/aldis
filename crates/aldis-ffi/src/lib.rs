@@ -34,29 +34,43 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 pub mod abi;
+#[cfg(feature = "aos")]
 pub mod aos;
 pub mod capacities;
+#[cfg(feature = "core")]
 pub mod crc;
+#[cfg(feature = "epp")]
 pub mod epp;
 pub mod error;
+#[cfg(all(feature = "cop1", feature = "tc"))]
 pub mod farm1;
 pub mod field;
+#[cfg(all(feature = "cop1", feature = "tc"))]
 pub mod fop1;
 pub mod handle;
 pub mod layout;
 pub mod link;
 mod mirror;
+#[cfg(feature = "core")]
 pub mod ocf;
+#[cfg(feature = "core")]
 pub mod oid;
 pub mod range;
+#[cfg(feature = "spp")]
 pub mod spp;
+#[cfg(feature = "spp")]
 pub mod spp_state;
 pub mod status;
+#[cfg(feature = "sync")]
 pub mod sync;
+#[cfg(feature = "tc")]
 pub mod tc;
+#[cfg(feature = "time")]
 pub mod time;
+#[cfg(feature = "tm")]
 pub mod tm;
 // ---- USLP (M2 WP-5 module 9)
+#[cfg(feature = "uslp")]
 pub mod uslp;
 // ---- end USLP
 

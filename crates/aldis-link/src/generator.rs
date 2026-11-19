@@ -35,6 +35,18 @@ pub const PACKET_GENERATOR_MAX_ACTIONS: usize = 1;
 /// (LNK-013).
 const MIN_SPACE_IDLE: usize = 7;
 
+/// Whether the first idle packet of a field is a Space Packet one: the set holds the Space
+/// Packet PVN and the zone fits it. A build without `epp` has no other kind (the kind `checked`
+/// rejects for a short zone). Selected by `#[cfg]`, not `cfg!` (GEN-009).
+#[cfg(feature = "epp")]
+const fn space_idle_chosen(valid_pvns: ValidPvns, zone: usize) -> bool {
+    valid_pvns.space() && zone >= MIN_SPACE_IDLE
+}
+#[cfg(not(feature = "epp"))]
+const fn space_idle_chosen(_valid_pvns: ValidPvns, _zone: usize) -> bool {
+    true
+}
+
 /// The configuration of a `PacketGenerator` (LNK-010, LNK-012…LNK-014, LNK-078).
 ///
 /// The managed parameters of one VC or MAP that carries Packets (132.0 §5.4 Table 5-4; 732.0
@@ -79,7 +91,10 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::MAX_PACKET_LEN));
         }
         let zone = field_len.saturating_sub(P::PACKET_HEADER_LEN);
-        let kind = P::IDLE_KIND.unwrap_or(if valid_pvns.space() && zone >= MIN_SPACE_IDLE {
+        // A set holds only the PVNs of compiled codecs (GEN-009), so a Space Packet idle packet
+        // is chosen only with `spp`, and an Encapsulation Idle Packet only with `epp`, or, in a
+        // build with `spp` alone, the kind `checked` rejects for a zone shorter than 7 octets.
+        let kind = P::IDLE_KIND.unwrap_or(if space_idle_chosen(valid_pvns, zone) {
             IdlePacketKind::SpacePacket
         } else {
             IdlePacketKind::Encapsulation
@@ -502,7 +517,9 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             .first()
             .and_then(|&b| packet::kind_of(b))
             .filter(|k| match k {
+                #[cfg(feature = "spp")]
                 Kind::Space => self.head.config.valid_pvns.space(),
+                #[cfg(feature = "epp")]
                 Kind::Encapsulation => self.head.config.valid_pvns.encapsulation(),
             })
             .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::PACKET_VERSION))?;
@@ -642,13 +659,34 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
     /// Writes idle packets that fill `completion` exactly, or, for a Space Packet remainder
     /// shorter than a Space Packet Idle Packet, as many octets as it holds of one of 7 octets,
     /// whose rest goes to `spill`. Returns the octets spilled (LNK-013).
-    fn write_idle(&self, completion: &mut [u8], spill: &mut [u8]) -> Result<usize> {
+    #[cfg_attr(
+        not(feature = "spp"),
+        expect(
+            clippy::needless_pass_by_ref_mut,
+            reason = "only a Space Packet idle packet spills"
+        )
+    )]
+    fn write_idle(
+        &self,
+        completion: &mut [u8],
+        #[cfg_attr(
+            not(feature = "spp"),
+            expect(unused_variables, reason = "only a Space Packet idle packet spills")
+        )]
+        spill: &mut [u8],
+    ) -> Result<usize> {
         let pattern = self.head.config.idle_pattern;
         match self.head.config.idle_packet_kind {
+            #[cfg(feature = "epp")]
             IdlePacketKind::Encapsulation => {
                 aldis_epp::idle(completion.len(), pattern, completion)?;
                 Ok(0)
             }
+            // Not reachable: the configuration rejects a kind whose PVN is not in the valid set,
+            // and the set holds only PVNs of compiled codecs (LNK-013, GEN-009).
+            #[cfg(not(feature = "epp"))]
+            IdlePacketKind::Encapsulation => Err(Error::new(ErrorKind::InternalError)),
+            #[cfg(feature = "spp")]
             IdlePacketKind::SpacePacket => {
                 let remainder = completion.len();
                 let total = remainder.max(MIN_SPACE_IDLE);
@@ -672,6 +710,9 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
                 }
                 Ok(later.len())
             }
+            // Not reachable, as the arm above.
+            #[cfg(not(feature = "spp"))]
+            IdlePacketKind::SpacePacket => Err(Error::new(ErrorKind::InternalError)),
         }
     }
 
@@ -759,5 +800,94 @@ impl<P: PacketProtocol, const D: usize, const Q: usize> PacketGenerator<P, D, Q>
             }
         }
         self.head.queue_len = left;
+    }
+}
+
+/// The configuration of a generator in a build with one packet codec (GEN-009): the kind and the
+/// PVN of the codec not compiled in are refused at configuration time, so a packet of that PVN
+/// and the idle packet of that codec never reach the engine.
+#[cfg(all(
+    test,
+    feature = "tm",
+    any(
+        all(feature = "spp", not(feature = "epp")),
+        all(feature = "epp", not(feature = "spp"))
+    )
+))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use aldis_core::ids::VcId;
+    use aldis_core::time::Instant;
+
+    use super::{
+        GeneratorInput, IdlePacketKind, IdlePolicy, PacketGenerator, PacketGeneratorConfig,
+    };
+    use crate::common::ValidPvns;
+    use crate::protocol::{Tm, TmParams};
+    use aldis_core::{ErrorKind, Result, field};
+
+    #[cfg(feature = "spp")]
+    const PRESENT: IdlePacketKind = IdlePacketKind::SpacePacket;
+    #[cfg(feature = "spp")]
+    const ABSENT: IdlePacketKind = IdlePacketKind::Encapsulation;
+    #[cfg(feature = "spp")]
+    const PVNS: ValidPvns = ValidPvns::SPACE;
+    #[cfg(feature = "spp")]
+    const ABSENT_PACKET: [u8; 3] = [0xE0, 0, 0];
+    #[cfg(feature = "epp")]
+    const PRESENT: IdlePacketKind = IdlePacketKind::Encapsulation;
+    #[cfg(feature = "epp")]
+    const ABSENT: IdlePacketKind = IdlePacketKind::SpacePacket;
+    #[cfg(feature = "epp")]
+    const PVNS: ValidPvns = ValidPvns::ENCAPSULATION;
+    #[cfg(feature = "epp")]
+    const ABSENT_PACKET: [u8; 7] = [0x00, 0x01, 0xC0, 0x00, 0x00, 0x00, 0x00];
+
+    fn config() -> Result<PacketGeneratorConfig<Tm>> {
+        let vc = VcId::<3>::try_from(1_u8)?;
+        PacketGeneratorConfig::<Tm>::new(vc, TmParams, 24, PVNS, 64)
+    }
+
+    #[test]
+    fn the_default_idle_kind_is_the_compiled_one() {
+        // req: LNK-013, GEN-009
+        assert_eq!(config().unwrap().idle_packet_kind, PRESENT);
+    }
+
+    #[test]
+    fn with_idle_refuses_the_kind_of_a_codec_not_compiled_in() {
+        // req: LNK-013, LNK-078, GEN-009
+        let e = config()
+            .unwrap()
+            .with_idle(IdlePolicy::Oid, ABSENT, 0)
+            .unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidConfig, Some(field::IDLE_PACKET_KIND))
+        );
+        assert!(
+            config()
+                .unwrap()
+                .with_idle(IdlePolicy::Oid, PRESENT, 0)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn submit_refuses_the_pvn_of_a_codec_not_compiled_in() {
+        // req: LNK-010, GEN-009
+        let mut g = PacketGenerator::<Tm, 24, 64>::new(config().unwrap()).unwrap();
+        let mut out = [0_u8; 24];
+        let e = g
+            .step(
+                GeneratorInput::SubmitPacket(&ABSENT_PACKET),
+                Instant::from_micros(0),
+                &mut out,
+            )
+            .unwrap_err();
+        assert_eq!(
+            (e.kind(), e.field()),
+            (ErrorKind::InvalidField, Some(field::PACKET_VERSION))
+        );
     }
 }

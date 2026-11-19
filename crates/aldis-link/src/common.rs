@@ -5,6 +5,7 @@
 //! defined over these types once, so that their housekeeping status and their configuration
 //! constructors agree (docs/04-engines.md §1, §5).
 
+#[cfg(any(feature = "spp", feature = "epp"))]
 use aldis_core::{Error, ErrorKind, Result, field};
 
 /// What a MAP carries (232.0 §4.4, §5.3 Table 5-3; 732.1 §4.3.2-4, §5.4 Table 5-4): the kind both
@@ -113,31 +114,54 @@ pub enum Qos {
 /// §5.5 Table 5-4; 732.1 §5.6 Table 5-5).
 ///
 /// The set is never empty, because a VC in a Packets role without a valid-PVN set is a
-/// configuration error (LNK-078, RS-020).
+/// configuration error (LNK-078, RS-020). It holds only the PVNs of the packet codecs compiled
+/// in: Space Packets with the feature `spp`, Encapsulation Packets with `epp` (GEN-009), and
+/// the type exists with either (a build with neither has no packet engine and no valid PVN).
+#[cfg(any(feature = "spp", feature = "epp"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValidPvns {
     space: bool,
     encapsulation: bool,
 }
 
+/// Whether the requested set is non-empty and holds only PVNs whose codec is compiled in
+/// (GEN-009). Selected by `#[cfg]`, not `cfg!`, so a build has no constant operand in a runtime
+/// condition.
+#[cfg(all(feature = "spp", feature = "epp"))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    space || encapsulation
+}
+#[cfg(all(feature = "spp", not(feature = "epp")))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    space && !encapsulation
+}
+#[cfg(all(not(feature = "spp"), feature = "epp"))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    encapsulation && !space
+}
+
+#[cfg(any(feature = "spp", feature = "epp"))]
 impl ValidPvns {
-    /// Space Packets only.
+    /// Space Packets only (feature `spp`).
     ///
-    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
+    /// Requirements: LNK-001, LNK-002, LNK-003, GEN-009; docs/04-engines.md §1, §5.
+    #[cfg(feature = "spp")]
     pub const SPACE: Self = Self {
         space: true,
         encapsulation: false,
     };
-    /// Encapsulation Packets only.
+    /// Encapsulation Packets only (feature `epp`).
     ///
-    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
+    /// Requirements: LNK-001, LNK-002, LNK-003, GEN-009; docs/04-engines.md §1, §5.
+    #[cfg(feature = "epp")]
     pub const ENCAPSULATION: Self = Self {
         space: false,
         encapsulation: true,
     };
-    /// Space Packets and Encapsulation Packets.
+    /// Space Packets and Encapsulation Packets (features `spp` and `epp`).
     ///
-    /// Requirements: LNK-001, LNK-002, LNK-003; docs/04-engines.md §1, §5.
+    /// Requirements: LNK-001, LNK-002, LNK-003, GEN-009; docs/04-engines.md §1, §5.
+    #[cfg(all(feature = "spp", feature = "epp"))]
     pub const BOTH: Self = Self {
         space: true,
         encapsulation: true,
@@ -147,9 +171,11 @@ impl ValidPvns {
     /// `encapsulation`.
     ///
     /// # Errors
-    /// `InvalidConfig` (`valid_pvns`) if neither is set (LNK-078).
+    /// `InvalidConfig` (`valid_pvns`) if neither is set, or if one that is set has its codec
+    /// not compiled in: Space Packets need the feature `spp`, Encapsulation Packets `epp`
+    /// (LNK-078, GEN-009).
     pub const fn new(space: bool, encapsulation: bool) -> Result<Self> {
-        if space || encapsulation {
+        if acceptable(space, encapsulation) {
             Ok(Self {
                 space,
                 encapsulation,
@@ -162,8 +188,9 @@ impl ValidPvns {
     /// The set of the given Packet Version Numbers (`0` Space Packet, `7` Encapsulation Packet).
     ///
     /// # Errors
-    /// `InvalidConfig` (`valid_pvns`) for an empty list or a version other than 0 and 7: the
-    /// engines delimit only these two packets (133.0 §4.1.3.5, 133.1 §4.1.2.8).
+    /// `InvalidConfig` (`valid_pvns`) for an empty list, a version other than 0 and 7 (the
+    /// engines delimit only these two packets, 133.0 §4.1.3.5, 133.1 §4.1.2.8), or the version
+    /// of a codec not compiled in (LNK-078, GEN-009).
     pub fn from_versions(versions: &[u8]) -> Result<Self> {
         let mut space = false;
         let mut encapsulation = false;
@@ -205,6 +232,12 @@ pub enum IdlePolicy {
 }
 
 /// The idle packet that completes a data field (LNK-013).
+///
+/// Both variants exist in every build that has a packet codec, because the enum is closed
+/// (GEN-081); a configuration that names the kind of a codec not compiled in is rejected with
+/// `InvalidConfig` (`idle_packet_kind`) when the engine is configured (LNK-013, LNK-078,
+/// GEN-009).
+#[cfg(any(feature = "spp", feature = "epp"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IdlePacketKind {
     /// A Space Packet Idle Packet, APID 2047 (133.0 §4.1.3.3.4.4).
@@ -213,8 +246,10 @@ pub enum IdlePacketKind {
     Encapsulation,
 }
 
+#[cfg(any(feature = "spp", feature = "epp"))]
 impl IdlePacketKind {
-    /// Whether the PVN of the kind is in `pvns` (LNK-013).
+    /// Whether the PVN of the kind is in `pvns` (LNK-013). A set holds only PVNs of compiled
+    /// codecs, so a kind whose codec is not compiled in is in none (GEN-009).
     #[must_use]
     pub const fn is_valid_in(self, pvns: ValidPvns) -> bool {
         match self {
@@ -227,7 +262,10 @@ impl IdlePacketKind {
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
-    use super::{Counter, IdlePacketKind, Occupancy, Qos, ValidPvns};
+    use super::{Counter, Occupancy, Qos};
+    #[cfg(any(feature = "spp", feature = "epp"))]
+    use super::{IdlePacketKind, ValidPvns};
+    #[cfg(any(feature = "spp", feature = "epp"))]
     use aldis_core::{ErrorKind, field};
 
     #[test]
@@ -257,14 +295,19 @@ mod tests {
         assert_eq!(Qos::default(), Qos::SequenceControlled);
     }
 
-    #[test]
-    fn the_valid_pvn_set_is_never_empty() {
-        // req: LNK-078, RS-020
-        let e = ValidPvns::new(false, false).unwrap_err();
+    #[cfg(any(feature = "spp", feature = "epp"))]
+    fn assert_invalid_pvns(e: aldis_core::Error) {
         assert_eq!(
             (e.kind(), e.field()),
             (ErrorKind::InvalidConfig, Some(field::VALID_PVNS))
         );
+    }
+
+    #[cfg(all(feature = "spp", feature = "epp"))]
+    #[test]
+    fn the_valid_pvn_set_is_never_empty() {
+        // req: LNK-078, RS-020
+        assert_invalid_pvns(ValidPvns::new(false, false).unwrap_err());
         assert_eq!(ValidPvns::from_versions(&[0, 7]), Ok(ValidPvns::BOTH));
         assert_eq!(ValidPvns::from_versions(&[7]), Ok(ValidPvns::ENCAPSULATION));
         assert_eq!(ValidPvns::from_versions(&[0, 0]), Ok(ValidPvns::SPACE));
@@ -276,5 +319,31 @@ mod tests {
         assert!(!IdlePacketKind::SpacePacket.is_valid_in(ValidPvns::ENCAPSULATION));
         assert!(IdlePacketKind::Encapsulation.is_valid_in(ValidPvns::ENCAPSULATION));
         assert!(!IdlePacketKind::Encapsulation.is_valid_in(ValidPvns::SPACE));
+    }
+
+    #[cfg(all(feature = "spp", not(feature = "epp")))]
+    #[test]
+    fn a_build_with_spp_alone_has_only_the_space_packet_pvn() {
+        // req: LNK-078, GEN-009
+        assert_invalid_pvns(ValidPvns::new(false, true).unwrap_err());
+        assert_invalid_pvns(ValidPvns::new(true, true).unwrap_err());
+        assert_invalid_pvns(ValidPvns::from_versions(&[7]).unwrap_err());
+        assert_invalid_pvns(ValidPvns::from_versions(&[0, 7]).unwrap_err());
+        assert_eq!(ValidPvns::from_versions(&[0]), Ok(ValidPvns::SPACE));
+        assert!(IdlePacketKind::SpacePacket.is_valid_in(ValidPvns::SPACE));
+        assert!(!IdlePacketKind::Encapsulation.is_valid_in(ValidPvns::SPACE));
+    }
+
+    #[cfg(all(feature = "epp", not(feature = "spp")))]
+    #[test]
+    fn a_build_with_epp_alone_has_only_the_encapsulation_pvn() {
+        // req: LNK-078, GEN-009
+        assert_invalid_pvns(ValidPvns::new(true, false).unwrap_err());
+        assert_invalid_pvns(ValidPvns::new(true, true).unwrap_err());
+        assert_invalid_pvns(ValidPvns::from_versions(&[0]).unwrap_err());
+        assert_invalid_pvns(ValidPvns::from_versions(&[0, 7]).unwrap_err());
+        assert_eq!(ValidPvns::from_versions(&[7]), Ok(ValidPvns::ENCAPSULATION));
+        assert!(IdlePacketKind::Encapsulation.is_valid_in(ValidPvns::ENCAPSULATION));
+        assert!(!IdlePacketKind::SpacePacket.is_valid_in(ValidPvns::ENCAPSULATION));
     }
 }

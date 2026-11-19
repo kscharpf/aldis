@@ -17,16 +17,27 @@ use aldis::link::generator::{
     PACKET_GENERATOR_MAX_ACTIONS, PacketGenerator, PacketGeneratorBuffers, PacketGeneratorConfig,
     PacketGeneratorHead,
 };
-use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
+#[cfg(feature = "aos")]
+use aldis::link::protocol::Aos;
+use aldis::link::protocol::PacketProtocol;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::Tm;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::TmParams;
+#[cfg(all(feature = "uslp", feature = "epp"))]
+use aldis::link::protocol::Uslp;
 
 use super::common::range;
 use crate::abi::{self, Out};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
 use crate::handle::{self, InPlace, Storage};
+#[cfg(feature = "aos")]
+use crate::link::aos_params;
+#[cfg(all(feature = "uslp", feature = "epp"))]
+use crate::link::uslp_params;
 use crate::link::{
-    RouteFields, aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params,
-    idle_packet, idle_policy, protocol, protocol_tag, unsupported_protocol, uslp_params,
-    valid_pvns, vc,
+    RouteFields, aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, idle_packet,
+    idle_policy, protocol, protocol_tag, unsupported_protocol, valid_pvns, vc,
 };
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -58,10 +69,13 @@ handle::engine_enum! {
     )]
     pub(crate) enum PacketGeneratorState {
         /// TM.
+        #[cfg(feature = "tm")]
         Tm(Pg<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
         /// AOS.
+        #[cfg(feature = "aos")]
         Aos(Pg<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
         /// USLP.
+        #[cfg(all(feature = "uslp", feature = "epp"))]
         Uslp(Pg<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -321,18 +335,21 @@ impl PacketGeneratorState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 pg_run(e, input, data, Ok(TmParams), now, area)
             }
+            #[cfg(feature = "aos")]
             Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 pg_run(e, input, data, aos_params(ch), now, area)
             }
+            #[cfg(all(feature = "uslp", feature = "epp"))]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -344,16 +361,22 @@ impl PacketGeneratorState {
 
     const fn status(&self) -> GeneratorStatus {
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => *e.status(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => *e.status(),
+            #[cfg(all(feature = "uslp", feature = "epp"))]
             Self::Uslp(e) => *e.status(),
         }
     }
 
     fn next_deadline(&self) -> Option<Instant> {
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => e.next_deadline(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => e.next_deadline(),
+            #[cfg(all(feature = "uslp", feature = "epp"))]
             Self::Uslp(e) => e.next_deadline(),
         }
     }
@@ -422,20 +445,29 @@ pub unsafe extern "C" fn aldis_packet_generator_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tm")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Pg<Tm>>(
                     storage,
                     Pg::new_head(pg_config(&cfg, TmParams)?)?,
                 ),
+                #[cfg(not(feature = "tm"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+                #[cfg(feature = "aos")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Pg<Aos>>(
                     storage,
                     Pg::new_head(pg_config(&cfg, aos_params(&cfg.channel)?)?)?,
                 ),
+                #[cfg(not(feature = "aos"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                #[cfg(all(feature = "uslp", feature = "epp"))]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Pg<Uslp>>(
                         storage,
                         Pg::new_head(pg_config(&cfg, uslp_params(&cfg.channel)?)?)?,
                     )
                 }
+                #[cfg(not(all(feature = "uslp", feature = "epp")))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
             }
         })

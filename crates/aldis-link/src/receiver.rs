@@ -105,6 +105,13 @@ pub enum DeliveryService {
 impl DeliveryService {
     /// The scope the part is delivered for, given the VC of the frame; `None` if it is not
     /// delivered.
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "uslp")),
+        expect(
+            dead_code,
+            reason = "only TM and USLP deliver a part by its service (GEN-009 subsets)"
+        )
+    )]
     const fn scope<V: Copy>(self, vc: V) -> Option<ChannelScope<V>> {
         match self {
             Self::None => None,
@@ -565,8 +572,22 @@ fn advance(expect: &mut Option<u64>, value: u64, bits: u32) -> Track {
 /// and the actions so far (LNK-050…LNK-054). Its operations are for the crate.
 #[derive(Debug)]
 pub struct FrameContext<'a, P: ReceiveProtocol, const V: usize> {
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(
+            dead_code,
+            reason = "only the frame protocols with counts and an OCF read the configuration (GEN-009 subsets)"
+        )
+    )]
     cfg: &'a FrameReceiverConfig<P, V>,
     slots: &'a mut [Option<Slot<P>>; V],
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM counts the master channel (GEN-009 subsets)"
+        )
+    )]
     mc: &'a mut Option<u64>,
     status: &'a mut ReceiverStatus,
     out: &'a mut [u8],
@@ -576,6 +597,13 @@ pub struct FrameContext<'a, P: ReceiveProtocol, const V: usize> {
 
 impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     /// The configuration.
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(
+            dead_code,
+            reason = "only the frame protocols with counts and an OCF read the configuration (GEN-009 subsets)"
+        )
+    )]
     pub(crate) const fn cfg(&self) -> &FrameReceiverConfig<P, V> {
         self.cfg
     }
@@ -662,6 +690,13 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
 
     /// Counts the MC Frame Count of a frame (LNK-051): a `FrameGap` or `CountDiscontinuity`
     /// of the master channel.
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM counts the master channel (GEN-009 subsets)"
+        )
+    )]
     pub(crate) fn count_mc(&mut self, value: u64, bits: u32) -> Result<()> {
         let track = advance(self.mc, value, bits);
         self.report(track, ChannelScope::MasterChannel).map(|_| ())
@@ -670,6 +705,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     /// Counts the VC Frame Count `value` of the configured VC `vc` for the Expedited Service if
     /// `expedited`, else for the Sequence-Controlled Service (LNK-051). Returns whether it
     /// raised an action. A VC that is not configured has no count.
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(dead_code, reason = "TC has no VC Frame Count here (GEN-009 subsets)")
+    )]
     pub(crate) fn count_vc(
         &mut self,
         vc: P::Vc,
@@ -712,6 +751,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Flags the next data field delivered for the VC with a gap (LNK-051).
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(dead_code, reason = "TC has no VC Frame Count here (GEN-009 subsets)")
+    )]
     pub(crate) fn mark_gap(&mut self, vc: P::Vc) {
         if let Some(slot) = self.slots.iter_mut().flatten().find(|s| s.entry.vc == vc) {
             slot.pending_gap = true;
@@ -720,6 +763,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
 
     /// Whether the data field about to be delivered for the VC carries a gap flag; clears it
     /// (LNK-051).
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(dead_code, reason = "TC has no VC Frame Count here (GEN-009 subsets)")
+    )]
     pub(crate) fn take_gap(&mut self, vc: P::Vc) -> bool {
         self.slots
             .iter_mut()
@@ -729,6 +776,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Counts an OID frame (LNK-052).
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(dead_code, reason = "TC has no OID frames (GEN-009 subsets)")
+    )]
     pub(crate) const fn count_oid(&mut self) {
         self.status.oid_frames.incr();
     }
@@ -745,6 +796,13 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Delivers the FSH (LNK-053).
+    #[cfg_attr(
+        not(feature = "tm"),
+        expect(
+            dead_code,
+            reason = "only TM has a Frame Secondary Header here (GEN-009 subsets)"
+        )
+    )]
     pub(crate) fn deliver_fsh(
         &mut self,
         scope: Option<ChannelScope<P::Vc>>,
@@ -768,6 +826,10 @@ impl<P: ReceiveProtocol, const V: usize> FrameContext<'_, P, V> {
     }
 
     /// Delivers the OCF (LNK-053, LNK-054).
+    #[cfg_attr(
+        not(any(feature = "tm", feature = "aos", feature = "uslp")),
+        expect(dead_code, reason = "TC has no OCF here (GEN-009 subsets)")
+    )]
     pub(crate) fn deliver_ocf(
         &mut self,
         scope: Option<ChannelScope<P::Vc>>,
@@ -809,6 +871,13 @@ pub(crate) fn header<const N: usize>(frame: &[u8]) -> Result<[u8; N]> {
 /// # Errors
 /// `OutOfRange` (`vc_id`) if `raw` needs more bits than the identifier has: the callers mask
 /// the field they read, so this is not reachable from a frame.
+#[cfg_attr(
+    not(any(feature = "tm", feature = "tc", feature = "aos")),
+    expect(
+        dead_code,
+        reason = "only TM, TC, and AOS read the VCID by it (GEN-009 subsets)"
+    )
+)]
 pub(crate) fn vc_of<P: Protocol>(raw: u8) -> Result<P::Vc> {
     P::Vc::try_from(raw)
 }
@@ -818,6 +887,10 @@ pub(crate) fn vc_of<P: Protocol>(raw: u8) -> Result<P::Vc> {
 /// # Errors
 /// `Malformed` (`frame_data_field`) if the other fields leave no data octet (CMN-041); the
 /// frame is then not one the channel's codec accepts.
+#[cfg_attr(
+    not(any(feature = "tm", feature = "aos", feature = "uslp")),
+    expect(dead_code, reason = "TC reads no layout here (GEN-009 subsets)")
+)]
 pub(crate) fn lay_out(frame: &[u8], spec: LayoutSpec) -> Result<FramedBytes<'_>> {
     let layout = FrameLayout::compute(&spec)
         .map_err(|_| Error::new(ErrorKind::Malformed).with_field(field::FRAME_DATA_FIELD))?;
@@ -825,6 +898,10 @@ pub(crate) fn lay_out(frame: &[u8], spec: LayoutSpec) -> Result<FramedBytes<'_>>
 }
 
 /// The layout of a frame of `frame_len` octets with the given fields and no SDLS.
+#[cfg_attr(
+    not(any(feature = "tm", feature = "aos", feature = "uslp")),
+    expect(dead_code, reason = "TC reads no layout here (GEN-009 subsets)")
+)]
 pub(crate) const fn spec(
     frame_len: usize,
     primary_header_len: usize,
@@ -843,6 +920,10 @@ pub(crate) const fn spec(
 }
 
 /// The OCF in the octets of a frame's OCF part, `None` if the frame has none.
+#[cfg_attr(
+    not(any(feature = "tm", feature = "aos", feature = "uslp")),
+    expect(dead_code, reason = "TC has no OCF here (GEN-009 subsets)")
+)]
 pub(crate) fn ocf_of(part: &[u8]) -> Option<Ocf> {
     part.first_chunk::<4>().map(|&octets| Ocf::decode(octets))
 }

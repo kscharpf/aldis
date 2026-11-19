@@ -110,7 +110,7 @@ jobs:
       - name: Clippy, no features
         run: cargo clippy -p aldis --no-default-features --features full --target ${{ matrix.target }}
       - name: C ABI static library
-        run: cargo build -p aldis-ffi --no-default-features --features panic-handler --target ${{ matrix.target }} --release
+        run: cargo build -p aldis-ffi --no-default-features --features panic-handler,full --target ${{ matrix.target }} --release
       - name: No heap, threads, or C runtime needed (CABI-004)
         run: cargo xtask ffi-imports ${{ matrix.target }}
 

@@ -30,6 +30,13 @@
 //! the TM engines, and `cop1` has `Fop1` and `Farm1` (`aldis-tc` is always a dependency of
 //! `aldis-cop1`). No engine is built for a standard that is not selected.
 //!
+//! Requirement GEN-009: the packet engines of `aldis-link` build with `spp`, `epp`, or both, so
+//! `features = ["link", "tm", "spp"]` has `PacketGenerator<Tm>` and `PacketExtractor<Tm>`, and
+//! `epp` alone has them too. USLP fills a fixed-length data field with an Encapsulation Idle
+//! Packet (LNK-013, LNK-063), so `features = ["link", "uslp", "spp"]` gives no
+//! `PacketGenerator<Uslp>` or `PacketExtractor<Uslp>`: add `epp`. The `MapSegmenter` and the
+//! `MapReassembler` over USLP serve only variable-length frames and need `spp` alone.
+//!
 //! `spp` alone keeps `aldis-time` out of the build; `spp-time` brings it in only for the time
 //! secondary header (GEN-002).
 #![no_std]

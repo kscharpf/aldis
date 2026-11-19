@@ -119,7 +119,7 @@ Layers 0–2 have no `alloc` or `std` feature (GEN-006 withdrawn): no API of the
 | GEN-006 | Withdrawn: Layers 0–2 have no `alloc` or `std` feature, so there is nothing to keep additive (maintainer decision, 2026-11-08; GEN-005 and GEN-010 keep the crates `no_std` without a heap). | — | — |
 | GEN-007 | Behavior SHALL be identical across targets of different endianness and pointer width. | — | V |
 | GEN-008 | A facade feature for a codec, together with `link` or `cop1`, SHALL make that standard's engines available. | — | T |
-| GEN-009 | `aldis-link` SHALL build its packet engines (packet generation and extraction, MAP segmentation and reassembly) with either of the features `spp` and `epp`, compiling no code of the codec not selected, except that its packet engines over USLP SHALL require `epp` (LNK-013, LNK-063); with neither, and with a frame-protocol feature alone, the frame engines SHALL build. `aldis-ffi` SHALL offer the features of the facade, and a subset library SHALL keep every `#[repr(C)]` type of the header at the size and alignment of the full build. | — | T |
+| GEN-009 | `aldis-link` SHALL build its packet engines (packet generation and extraction, MAP segmentation and reassembly) with either of the features `spp` and `epp`, compiling no code of the codec not selected, except that packet generation and extraction over USLP SHALL require `epp` (LNK-013, LNK-063); with neither, and with a frame-protocol feature alone, the frame engines SHALL build. `aldis-ffi` SHALL offer the features of the facade, and a subset library SHALL keep every `#[repr(C)]` type of the header at the size and alignment of the full build. | — | T |
 
 ## 5. Relationship to native C/C++ implementations (Phase 3)
 

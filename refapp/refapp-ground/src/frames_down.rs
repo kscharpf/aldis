@@ -1,36 +1,33 @@
-//! Downlink frames: strict TM decoding, the `FrameReceiver`, one `PacketExtractor` per data VC,
-//! the CLCW, and the frame-level events.
+//! Downlink frames: strict TM or AOS decoding, the `FrameReceiver`, one `PacketExtractor` per data
+//! VC, the CLCW, and the frame-level events.
 //!
-//! Specification: `docs/reference-application.md` §2.2, §4.1, §4.4.1, §4.4.3, §7.4; APP-011,
-//! APP-036, APP-133, APP-136, APP-138. The packets the extractors hand out go to the telemetry
+//! Specification: `docs/reference-application.md` §2.2, §4.1, §4.3.1, §4.4.1, §4.4.3, §7.4;
+//! APP-011, APP-036, APP-133, APP-136, APP-138, APP-169…APP-174. The downlink is generic over the
+//! protocol type ([`DownlinkProtocol`]: `Tm`, `Aos`; D3 of the A4 plan), with one copy of the
+//! receiver, extractor, and event logic. The packets the extractors hand out go to the telemetry
 //! path of A1 unchanged ([`Telemetry`]). The OCF is decoded as a CLCW and reported when it
 //! changes; at the `cop1` level (A3) it also goes to FOP-1 (D3 a).
 
-use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::ocf::Ocf;
-use aldis::core::security::NoSecurity;
-use aldis::core::{Check, Error, ErrorKind, SecuritySlices};
-use aldis::link::common::ValidPvns;
+use aldis::core::{Error, ErrorKind};
 use aldis::link::extractor::{
-    ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor,
-    PacketExtractorConfig, PacketRun,
+    ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketRun,
 };
-use aldis::link::protocol::{Tm, TmParams};
+use aldis::link::protocol::{Aos, Tm};
 use aldis::link::receiver::{
-    CallerDiscardReason, ChannelScope, DeliveryService, DiscardReason, FrameReceiver,
-    FrameReceiverConfig, ReceiverInput, ReceiverOutput, TmChannel, TmVc, VcEntry,
+    CallerDiscardReason, ChannelScope, DiscardReason, FrameReceiver, ReceiverInput, ReceiverOutput,
 };
 use aldis::tc::Clcw;
-use aldis::tm::{
-    DataFieldContent, TmFrame, TmMasterChannelConfig, TmPhysicalChannelConfig,
-    TmVirtualChannelConfig,
-};
-use refapp_scenario::generated::{SPACECRAFT_ID, tm};
-use refapp_scenario::{Instant, Output};
+use refapp_scenario::{Instant, Output, Variant};
 
 use crate::GroundError;
 use crate::frames_up::Uplink;
 use crate::telemetry::Telemetry;
+
+mod protocol;
+
+pub(crate) use protocol::DownlinkProtocol;
+use protocol::VC_CAPACITY;
 
 /// Event code `frame_gap` (§7.4).
 pub const FRAME_GAP: u16 = 100;
@@ -58,45 +55,95 @@ const REASON_UNKNOWN_CHANNEL: u64 = 1;
 /// Reason argument of `frame_discarded`, layer 1: `NotServed`.
 const REASON_NOT_SERVED: u64 = 2;
 
-/// Capacity of the receiver's VC table: VC 0, 1, and 7.
-const VC_CAPACITY: usize = 3;
-/// The assembly buffer of an extractor: the Maximum Packet Length (§4.1).
+/// The assembly buffer of an extractor: the Maximum Packet Length (§4.1, APP-172).
 const ASSEMBLY: usize = 512;
-/// The longest data field an extractor takes: the 211 octets of §4.1.
+/// The longest data field an extractor takes: the 211 octets of a TM frame (§4.1); the `M_PDU`
+/// of an AOS frame is 209 (§4.3.1).
 const FIELD: usize = 211;
 /// The output area of an extractor: `max_packet_len - 1` plus the zone (LNK-075).
 const EXTRACT_AREA: usize = ASSEMBLY - 1 + FIELD;
 
 /// The extractor of one VC.
-type Extractor = PacketExtractor<Tm, ASSEMBLY, FIELD>;
+type Extractor<P> = PacketExtractor<P, ASSEMBLY, FIELD>;
 
-/// The frame-level downlink of the ground node (APP-036).
+/// The frame-level downlink of the ground node for the variant `P` (APP-036, APP-174).
 #[derive(Debug, Clone)]
-pub(crate) struct FrameDownlink {
-    /// The managed parameters of the master channel (§4.1), for the strict decode.
-    channel: TmMasterChannelConfig,
-    receiver: FrameReceiver<Tm, VC_CAPACITY>,
+pub(crate) struct FrameDownlink<P: DownlinkProtocol> {
+    /// The managed parameters of the channel (§4.1, §4.3.1), for the strict decode.
+    channel: P::Managed,
+    receiver: FrameReceiver<P, VC_CAPACITY>,
     /// The receiver's output area.
     area: Vec<u8>,
-    /// The extractors of VC 0 and VC 1 and their output area.
-    extraction: Extraction,
+    /// The extractors of the data VCs and their output area.
+    extraction: Extraction<P>,
     /// The OCF word of the last frame decoded (§7.4 `clcw_changed`).
     ocf_word: u32,
     /// That word as a CLCW, `None` if it is another report or not a valid CLCW.
     clcw: Option<Clcw>,
 }
 
-/// One `PacketExtractor` for each of VC 0 and VC 1 (LNK-060…LNK-064).
+/// The downlink of the variant a node was made for: the closed set of the protocol types.
 #[derive(Debug, Clone)]
-struct Extraction {
-    realtime: Extractor,
-    payload: Extractor,
+pub(crate) enum Downlink {
+    /// The TM downlink (§4.1).
+    Tm(Box<FrameDownlink<Tm>>),
+    /// The AOS downlink (§4.3.1).
+    Aos(Box<FrameDownlink<Aos>>),
+}
+
+impl Downlink {
+    /// The downlink of `variant`.
+    ///
+    /// # Errors
+    /// [`GroundError::Setup`] if the constants do not form a configuration;
+    /// [`GroundError::Unsupported`] for the variant whose downlink is not built yet (`uslp`: A4
+    /// WP-4b).
+    pub(crate) fn new(variant: Variant) -> Result<Self, GroundError> {
+        match variant {
+            Variant::TmTc => FrameDownlink::new().map(|down| Self::Tm(Box::new(down))),
+            Variant::Aos => FrameDownlink::new().map(|down| Self::Aos(Box::new(down))),
+            Variant::Uslp => Err(GroundError::Unsupported(variant)),
+        }
+    }
+
+    /// The CLCW of the last frame decoded (see [`FrameDownlink::clcw`]).
+    pub(crate) const fn clcw(&self) -> Option<Clcw> {
+        match self {
+            Self::Tm(down) => down.clcw(),
+            Self::Aos(down) => down.clcw(),
+        }
+    }
+
+    /// Handles one delivered frame (see [`FrameDownlink::receive`]).
+    pub(crate) fn receive(
+        &mut self,
+        unit: &[u8],
+        telemetry: &mut Telemetry,
+        uplink: Option<&mut Uplink>,
+        now: Instant,
+        out: &mut dyn Output,
+    ) {
+        match self {
+            Self::Tm(down) => down.receive(unit, telemetry, uplink, now, out),
+            Self::Aos(down) => down.receive(unit, telemetry, uplink, now, out),
+        }
+    }
+}
+
+/// One `PacketExtractor` for each data VC (LNK-060…LNK-064): VC 0 and VC 1, and in a variant
+/// whose idle VC has an extractor (AOS, APP-138) that VC.
+#[derive(Debug, Clone)]
+struct Extraction<P: DownlinkProtocol> {
+    realtime: Extractor<P>,
+    payload: Extractor<P>,
+    /// The idle VC's extractor: `Some` if and only if `P::IDLE_VC_EXTRACTED`.
+    idle: Option<Extractor<P>>,
     area: Vec<u8>,
 }
 
-impl FrameDownlink {
-    /// A downlink that has received no frame, with the parameters of §4.1 taken from the
-    /// generated scenario constants (APP-136).
+impl<P: DownlinkProtocol> FrameDownlink<P> {
+    /// A downlink that has received no frame, with the parameters of §4.1 or §4.3.1 taken from the
+    /// generated scenario constants (APP-136, APP-189).
     ///
     /// # Errors
     /// [`GroundError::Setup`] if the constants do not form a configuration.
@@ -105,49 +152,11 @@ impl FrameDownlink {
     }
 
     fn build() -> Result<Self, Error> {
-        let frame_len = usize::from(tm::FRAME_LENGTH);
-        let invalid = || Error::new(ErrorKind::InvalidConfig);
-        let scid = SpacecraftId::new(SPACECRAFT_ID).ok_or_else(invalid)?;
-        let vc = |id: u8| VcId::<3>::new(id).ok_or_else(invalid);
-        let (realtime, payload, idle) = (
-            vc(tm::VCID_REALTIME)?,
-            vc(tm::VCID_PAYLOAD)?,
-            vc(tm::VCID_IDLE)?,
-        );
-        // The MC_OCF is present, so no VC has an OCF of its own (§4.1).
-        let mut channel = TmMasterChannelConfig::new(
-            TmPhysicalChannelConfig::new(frame_len, tm::FECF)?,
-            scid,
-            None,
-            true,
-        );
-        for id in [realtime, payload, idle] {
-            channel =
-                channel.with_vc(TmVirtualChannelConfig::new(id, DataFieldContent::Packets))?;
-        }
-        // The receiver checks a frame's OCF Flag against its VC's configuration: the frames carry the
-        // MC_OCF, so each received VC expects the flag set (`ocf = true` of the former constructor).
-        let entry = |id: VcId<3>| -> VcEntry<Tm> {
-            VcEntry::new(
-                id,
-                TmVc::new(
-                    TmVirtualChannelConfig::new(id, DataFieldContent::Packets).with_ocf(),
-                    true,
-                ),
-            )
-        };
-        let receiver = FrameReceiver::new(FrameReceiverConfig::<Tm, VC_CAPACITY>::new(
-            TmChannel::new(
-                TmPhysicalChannelConfig::new(frame_len, tm::FECF)?,
-                DeliveryService::Mc,
-                DeliveryService::None,
-            ),
-            &[entry(realtime), entry(payload), entry(idle)],
-        )?);
-        let ocf_word = tm::OCF_INITIAL;
+        let receiver = FrameReceiver::new(P::receiver_config()?);
+        let ocf_word = P::OCF_INITIAL;
         Ok(Self {
             area: vec![0; receiver.config().area_len()],
-            channel,
+            channel: P::managed()?,
             receiver,
             extraction: Extraction::new()?,
             ocf_word,
@@ -155,16 +164,16 @@ impl FrameDownlink {
         })
     }
 
-    /// The CLCW of the last frame decoded, initially the CLCW of `OCF_INITIAL`; `None` if the OCF
-    /// of the last frame is not a valid CLCW.
+    /// The CLCW of the last frame decoded, initially the CLCW of the initial OCF word; `None` if
+    /// the OCF of the last frame is not a valid CLCW.
     pub(crate) const fn clcw(&self) -> Option<Clcw> {
         self.clcw
     }
 
-    /// Handles one delivered TM frame, outputting in the order of APP-138 (and APP-144 at `cop1`).
+    /// Handles one delivered frame, outputting in the order of APP-138 (and APP-144 at `cop1`).
     ///
     /// At the `cop1` level `uplink` gets the OCF of the frame as FOP-1's `Clcw` right after
-    /// `clcw_changed` (D3 a, APP-144).
+    /// `clcw_changed` (D3 a, APP-144): of every frame, whatever its VC (APP-173).
     pub(crate) fn receive(
         &mut self,
         unit: &[u8],
@@ -173,13 +182,13 @@ impl FrameDownlink {
         now: Instant,
         out: &mut dyn Output,
     ) {
-        let frame = match self.decode(unit) {
+        let frame = match P::decode(&self.channel, unit) {
             Ok(frame) => frame,
             Err(e) => {
-                // A frame that failed the FECF is counted by the receiver (LNK-080); the
-                // discard it returns is not an event.
-                if e.kind() == ErrorKind::CrcMismatch
-                    && let Err(refused) = self.discard_for_crc()
+                // A frame that failed the FECF or the FHEC is counted by the receiver (LNK-080);
+                // the discard it returns is not an event.
+                if let Some(reason) = caller_discard(e.kind())
+                    && let Err(refused) = self.discard_by_caller(reason)
                 {
                     return reject(out, refused.kind());
                 }
@@ -220,7 +229,7 @@ impl FrameDownlink {
                         return reject(out, ErrorKind::InternalError);
                     };
                     let handled = self.extraction.run(
-                        vc.get(),
+                        vc.into(),
                         FieldIn {
                             field,
                             header_pointer: pointer,
@@ -245,28 +254,14 @@ impl FrameDownlink {
         }
     }
 
-    /// The strict decode and the check against the managed parameters (TM-001…TM-011).
-    fn decode<'a>(
-        &self,
-        unit: &'a [u8],
-    ) -> Result<<Tm as aldis::link::receiver::ReceiveProtocol>::Plain<'a>, Error> {
-        TmFrame::decode_with(unit, self.channel.pc(), &self.channel)?
-            .check(&self.channel)?
-            .into_frame()
-            .into_plain(NoSecurity)
-    }
-
-    /// Tells the receiver that the caller discarded a frame for its FECF (LNK-080). The
-    /// `FrameDiscarded` action it returns has no event (APP-138).
+    /// Tells the receiver that the caller discarded a frame (LNK-080). The `FrameDiscarded`
+    /// action it returns has no event (APP-138).
     ///
     /// # Errors
     /// The receiver's refusal of the input.
-    fn discard_for_crc(&mut self) -> Result<(), Error> {
+    fn discard_by_caller(&mut self, reason: CallerDiscardReason) -> Result<(), Error> {
         self.receiver
-            .step(
-                ReceiverInput::CallerDiscard(CallerDiscardReason::CrcMismatch),
-                &mut self.area,
-            )
+            .step(ReceiverInput::CallerDiscard(reason), &mut self.area)
             .map(|_| ())
     }
 
@@ -285,17 +280,18 @@ impl FrameDownlink {
     }
 }
 
-impl Extraction {
+impl<P: DownlinkProtocol> Extraction<P> {
     fn new() -> Result<Self, Error> {
-        let config = PacketExtractorConfig::<Tm>::new(
-            TmParams,
-            ValidPvns::from_versions(&[tm::PACKET_VERSION])?,
-            usize::from(tm::MAX_PACKET_LENGTH),
-        )?
-        .with_delivery(tm::DELIVER_INCOMPLETE_PACKETS, tm::DELIVER_IDLE_PACKETS);
+        let config = P::extractor_config()?;
+        let idle = if P::IDLE_VC_EXTRACTED {
+            Some(Extractor::new(config)?)
+        } else {
+            None
+        };
         Ok(Self {
             realtime: Extractor::new(config)?,
             payload: Extractor::new(config)?,
+            idle,
             area: vec![0; EXTRACT_AREA],
         })
     }
@@ -303,26 +299,30 @@ impl Extraction {
     /// Gives a data field to the extractor of its VC and hands the packets on, with the
     /// extractor's events before them in the engine's order (APP-138).
     ///
-    /// A data frame on another VC (the VC of the OID frames) is not served.
+    /// A data frame on the idle VC is not served where that VC has no extractor (TM: the VC
+    /// carries OID frames only, §4.1); where it has one (AOS), its idle `M_PDU`s give no packet
+    /// and no event (APP-138, APP-174).
     ///
     /// # Errors
     /// The extractor's refusal of the field.
     fn run(
         &mut self,
         vcid: u8,
-        field: FieldIn<'_, Tm>,
+        field: FieldIn<'_, P>,
         telemetry: &mut Telemetry,
         out: &mut dyn Output,
     ) -> Result<(), Error> {
-        let extractor = match vcid {
-            tm::VCID_REALTIME => &mut self.realtime,
-            tm::VCID_PAYLOAD => &mut self.payload,
-            _ => {
-                // A data frame on the OID VC: the VC carries OID frames only (§4.1), so the
-                // receiver delivers the field and the node discards it (APP-138).
-                out.app_event(FRAME_DISCARDED, &[LAYER_RECEIVER, REASON_NOT_SERVED]);
-                return Ok(());
-            }
+        let extractor = if vcid == P::VCID_REALTIME {
+            &mut self.realtime
+        } else if vcid == P::VCID_PAYLOAD {
+            &mut self.payload
+        } else if let Some(idle) = self.idle.as_mut().filter(|_| vcid == P::VCID_IDLE) {
+            idle
+        } else {
+            // A data frame on the OID VC: the VC carries OID frames only (§4.1), so the
+            // receiver delivers the field and the node discards it (APP-138).
+            out.app_event(FRAME_DISCARDED, &[LAYER_RECEIVER, REASON_NOT_SERVED]);
+            return Ok(());
         };
         let actions = extractor.step(ExtractorInput::DataField(field), &mut self.area)?;
         for action in actions.iter() {
@@ -362,11 +362,24 @@ fn reject(out: &mut dyn Output, kind: ErrorKind) {
     out.app_event(FRAME_REJECTED, &[u64::from(kind.code())]);
 }
 
-/// The scope and VCID arguments of `frame_gap` and `frame_discontinuity`.
-fn scope_args(scope: ChannelScope<VcId<3>>) -> (u64, u64) {
+/// What the receiver is told of a frame the strict decode refused (LNK-080): a FECF or an FHEC
+/// failure; no other refusal is a discard the receiver counts.
+fn caller_discard(kind: ErrorKind) -> Option<CallerDiscardReason> {
+    if kind == ErrorKind::CrcMismatch {
+        Some(CallerDiscardReason::CrcMismatch)
+    } else if kind == ErrorKind::HeaderUncorrectable {
+        Some(CallerDiscardReason::HeaderUncorrectable)
+    } else {
+        None
+    }
+}
+
+/// The scope and VCID arguments of `frame_gap` and `frame_discontinuity`. A scope of the master
+/// channel comes from TM only: AOS has no master-channel count (APP-138, D10).
+fn scope_args<V: Into<u8>>(scope: ChannelScope<V>) -> (u64, u64) {
     match scope {
         ChannelScope::MasterChannel => (SCOPE_MC, 0),
-        ChannelScope::VirtualChannel(vc) => (SCOPE_VC, u64::from(vc.get())),
+        ChannelScope::VirtualChannel(vc) => (SCOPE_VC, u64::from(vc.into())),
     }
 }
 
@@ -385,5 +398,7 @@ fn discarded(reason: DiscardReason, out: &mut dyn Output) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_aos;
 #[cfg(test)]
 mod tests_cop1;

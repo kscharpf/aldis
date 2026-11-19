@@ -23,7 +23,10 @@ use aldis::link::cltu::{
     CLTU_PACKER_MAX_ACTIONS, CltuActions, CltuInput, CltuOutput, CltuPacker, CltuPackerBuffers,
     CltuPackerConfig, CltuPackerHead, CltuProtocol, CltuStatus, FrameIn, Repetitions,
 };
-use aldis::link::protocol::{Tc, Uslp};
+#[cfg(feature = "tc")]
+use aldis::link::protocol::Tc;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
 
 use super::common::range;
 use crate::abi::{self, Out, flag, invalid_argument};
@@ -62,8 +65,10 @@ handle::engine_enum! {
     )]
     pub(crate) enum CltuPackerState {
         /// TC.
+        #[cfg(feature = "tc")]
         Tc(Cp<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
         /// USLP.
+        #[cfg(feature = "uslp")]
         Uslp(Cp<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -279,12 +284,14 @@ impl CltuPackerState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 cp_run(e, input, data, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -296,7 +303,9 @@ impl CltuPackerState {
 
     const fn status(&self) -> CltuStatus {
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         }
     }
@@ -346,16 +355,22 @@ pub unsafe extern "C" fn aldis_cltu_packer_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tc")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Cp<Tc>>(
                     storage,
                     Cp::new_head(cp_config::<Tc>(&cfg)?)?,
                 ),
+                #[cfg(not(feature = "tc"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+                #[cfg(feature = "uslp")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Cp<Uslp>>(
                         storage,
                         Cp::new_head(cp_config::<Uslp>(&cfg)?)?,
                     )
                 }
+                #[cfg(not(feature = "uslp"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
                 | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }
