@@ -14,7 +14,7 @@
 
 use crate::error::{Error, Result, as_u64};
 use crate::field;
-use crate::ids::{Apid, MapId, SeqCount, SpacecraftId, VcId};
+use crate::ids::{Apid, MapId, PacketVersion, SeqCount, SpacecraftId, VcId};
 
 /// Octets covered by a field, and the shift that right-aligns it.
 struct Span {
@@ -265,6 +265,29 @@ impl<const N: usize, const OFFSET: usize, const WIDTH: u8> Field<N, OFFSET, WIDT
         MapId::from_field(Self::get_u8(header))
     }
 
+    /// The Packet Version Number in a 3-bit field, with no error to return (133.0 §4.1.3.2,
+    /// 133.1 §4.1.2.2; GEN-051, API-001, RS-020).
+    ///
+    /// A field whose width is not the 3 bits of [`PacketVersion::MAX`] does not compile, so the
+    /// value always fits the type and a decoder needs no fallback.
+    ///
+    /// ```compile_fail
+    /// use aldis_core::bits::Field;
+    /// use aldis_core::ids::PacketVersion;
+    /// // A 4-bit field read as a Packet Version Number.
+    /// let _: PacketVersion = Field::<1, 0, 4>::packet_version(&[0]);
+    /// ```
+    #[must_use]
+    pub const fn packet_version(header: &[u8; N]) -> PacketVersion {
+        const {
+            assert!(
+                WIDTH as u32 == PacketVersion::MAX.count_ones(),
+                "the field is not as wide as the Packet Version Number"
+            );
+        };
+        PacketVersion::from_field(Self::get_u8(header))
+    }
+
     /// The Application Process Identifier in an 11-bit field, with no error to return (133.0
     /// §4.1.3.3.4.1; GEN-051, API-001, RS-020).
     ///
@@ -451,8 +474,8 @@ octet_int!(
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::{
-        Apid, Field, MapId, SeqCount, SpacecraftId, VcId, get, read_u16, read_u32, read_u64, set,
-        write_u16, write_u32, write_u64,
+        Apid, Field, MapId, PacketVersion, SeqCount, SpacecraftId, VcId, get, read_u16, read_u32,
+        read_u64, set, write_u16, write_u32, write_u64,
     };
     use crate::error::{ErrorDetail, ErrorKind};
     use crate::field;
@@ -557,6 +580,30 @@ mod tests {
         assert_eq!(
             Field::<1, 0, 8>::map_id::<8>(&[0xFF]).get(),
             MapId::<8>::MAX
+        );
+    }
+
+    #[test]
+    fn packet_version_fields_read_as_their_type() {
+        // req: GEN-051, API-001, RS-020
+        // The PVN is the top three bits of the first octet (133.0 §4.1.3.2, 133.1 §4.1.2.2): every
+        // value of the field, with the other five bits all ones and all zeros.
+        type Pvn = Field<1, 0, 3>;
+        for pvn in 0..=PacketVersion::MAX {
+            for low in [0x00, 0x1F] {
+                let octet = [(pvn << 5) | low];
+                assert_eq!(Pvn::packet_version(&octet).get(), pvn);
+                assert_eq!(Some(Pvn::packet_version(&octet)), PacketVersion::new(pvn));
+            }
+        }
+        // A field not at the top of the octet, and in a wider buffer.
+        assert_eq!(
+            Field::<2, 7, 3>::packet_version(&[0x01, 0xC0]),
+            PacketVersion::ENCAPSULATION
+        );
+        assert_eq!(
+            Field::<1, 5, 3>::packet_version(&[0xF8]),
+            PacketVersion::SPACE_PACKET
         );
     }
 

@@ -388,7 +388,7 @@ fn pe_action(output: &ExtractorOutput) -> aldis_packet_extractor_action_t {
         ExtractorOutput::IncompletePacket { pvn, packet } => aldis_packet_extractor_action_t {
             kind: ALDIS_PACKET_EXTRACTOR_ACTION_INCOMPLETE_PACKET,
             packets: range(*packet),
-            pvn: *pvn,
+            pvn: pvn.get(),
             ..aldis_packet_extractor_action_t::default()
         },
         ExtractorOutput::Discarded { octets } => aldis_packet_extractor_action_t {
