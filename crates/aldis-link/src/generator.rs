@@ -35,6 +35,18 @@ pub const PACKET_GENERATOR_MAX_ACTIONS: usize = 1;
 /// (LNK-013).
 const MIN_SPACE_IDLE: usize = 7;
 
+/// Whether the first idle packet of a field is a Space Packet one: the set holds the Space
+/// Packet PVN and the zone fits it. A build without `epp` has no other kind (the kind `checked`
+/// rejects for a short zone). Selected by `#[cfg]`, not `cfg!` (GEN-009).
+#[cfg(feature = "epp")]
+const fn space_idle_chosen(valid_pvns: ValidPvns, zone: usize) -> bool {
+    valid_pvns.space() && zone >= MIN_SPACE_IDLE
+}
+#[cfg(not(feature = "epp"))]
+const fn space_idle_chosen(_valid_pvns: ValidPvns, _zone: usize) -> bool {
+    true
+}
+
 /// The configuration of a `PacketGenerator` (LNK-010, LNK-012…LNK-014, LNK-078).
 ///
 /// The managed parameters of one VC or MAP that carries Packets (132.0 §5.4 Table 5-4; 732.0
@@ -83,7 +95,7 @@ impl<P: PacketProtocol> PacketGeneratorConfig<P> {
         // is chosen only with `spp`, and an Encapsulation Idle Packet only with `epp`, or, in a
         // build with `spp` alone, the kind `checked` rejects for a zone shorter than 7 octets.
         let kind = P::IDLE_KIND.unwrap_or(
-            if (valid_pvns.space() && zone >= MIN_SPACE_IDLE) || !cfg!(feature = "epp") {
+            if space_idle_chosen(valid_pvns, zone) {
                 IdlePacketKind::SpacePacket
             } else {
                 IdlePacketKind::Encapsulation
