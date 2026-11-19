@@ -108,7 +108,7 @@ commands:
                                a claim; --strict also fails on anything left as TODO
                                (VER-065, VER-066)
   rs020                        no bare integer in a public field or enum payload of a codec
-                               crate unless xtask/rs020-exemptions.toml exempts it with a
+                               or engine crate unless xtask/rs020-exemptions.toml exempts it with a
                                reason, and no exemption that matches nothing (RS-020)
   coverage-off                 every test module of a coverage-measured crate carries
                                #[cfg_attr(coverage_nightly, coverage(off))] (VER-024)

@@ -97,3 +97,91 @@ reason = "output: the frame length in octets a header declares, which the stream
 [[exemption]]
 item = "aldis_uslp::writer::FrameFields.vcf_count"
 reason = "relation: the VCF Count, whose range is set by the VC's VCF Count Length; the writer checks the fit when it builds the VcfCount (USLP-004)"
+
+# aldis-link
+
+[[exemption]]
+item = "aldis_link::access::AccessOutput::Discarded.octets"
+reason = "output: the octets of SDUs not yet released that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::bitstream::BitstreamInput::SubmitBits.bit_len"
+reason = "relation: how many bits of `bits` to take; its only bound is the slice (at most 8 times its length, and not 0), which the generator checks on submit (LNK-021)"
+
+[[exemption]]
+item = "aldis_link::bitstream::BitstreamOutput::Discarded.octets"
+reason = "output: the octets that held the queued bits that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::cltu::CltuOutput::Discarded.octets"
+reason = "output: the octets of the frames held in the unit in progress that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::cltu::DataUnit.frames"
+reason = "output: the number of frames of a unit the packer built; no function takes a DataUnit back (LNK-044)"
+
+[[exemption]]
+item = "aldis_link::extractor::ExtractorOutput::Discarded.octets"
+reason = "output: the octets of the partial packet that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::extractor::ExtractorOutput::Packets.count"
+reason = "output: the number of packets of a run the extractor delimited, which PacketRun splits; no function takes it as input (LNK-060)"
+
+[[exemption]]
+item = "aldis_link::generator::GeneratorOutput::Discarded.octets"
+reason = "output: the octets of the started field and the queue that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::mux::Admitted.given_count"
+reason = "relation: the VCF Count an offer gave for a Type-AD frame; its bound is the VC's VCF Count Length, which the USLP admission checks against the configuration (OutOfRange) before the mux takes it (LNK-076)"
+
+[[exemption]]
+item = "aldis_link::mux::Cop::TypeAd.vcf_count"
+reason = "relation: the VCF Count (the Frame Sequence Number) of a Type-AD frame; its bound is the VC's VCF Count Length, a configuration value, which the USLP admission checks (OutOfRange) before the mux takes it (LNK-076)"
+
+[[exemption]]
+item = "aldis_link::mux::FrameFields.frame_len"
+reason = "relation: the frame length in octets the protocol's layout fixed for the channel (LNK-032)"
+
+[[exemption]]
+item = "aldis_link::mux::FrameFields.mc_count"
+reason = "full width: the master channel count before the header masks it to the field; the engine counts with wrapping arithmetic (LNK-082)"
+
+[[exemption]]
+item = "aldis_link::mux::FrameFields.vc_count"
+reason = "full width: the VC count before the header masks it to the field; the engine counts with wrapping arithmetic or takes the count an offer gave (LNK-082)"
+
+[[exemption]]
+item = "aldis_link::mux::MuxOutput::Discarded.octets"
+reason = "output: the octets of the offered fields that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::protocol::Pointer::StartsAt.0"
+reason = "relation: an octet offset inside the packet zone, which the extractor checks against the zone length; the zone length belongs to the codec of the protocol, so a type would be per codec (LNK-060, LNK-064)"
+
+[[exemption]]
+item = "aldis_link::reassembler::ReassemblerOutput::Discarded.octets"
+reason = "output: the octets of the partial SDUs that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+[[exemption]]
+item = "aldis_link::reassembler::ReassemblerOutput::Packets.count"
+reason = "output: the number of packets of a run the reassembler delivered; no function takes it as input (LNK-071)"
+
+[[exemption]]
+item = "aldis_link::receiver::ReceiverOutput::DataField.bit_count"
+reason = "output: the bits of a B_PDU data field that are valid, at most 8 times the length of `data`; no function takes it back (LNK-077)"
+
+[[exemption]]
+item = "aldis_link::receiver::ReceiverOutput::FrameGap.missing"
+reason = "output: the number of frames missing before a frame; any u64 is meaningful (LNK-051)"
+
+[[exemption]]
+item = "aldis_link::segmenter::SegmenterOutput::Discarded.octets"
+reason = "output: the octets of the SDU in progress that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
+
+# aldis-cop1
+
+[[exemption]]
+item = "aldis_cop1::fop1::Fop1Output::Transmit.repetitions"
+reason = "output, pending #682: 0 for a Type-BD frame until the clause is settled"
