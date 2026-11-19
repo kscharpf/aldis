@@ -1567,7 +1567,7 @@ mod reassemble {
                     .map(|p| {
                         json!({"deliver": {
                             "kind": "Packet", "vc": a.vc_id, "map": a.map_id,
-                            "pvn": PacketRun::pvn(p).unwrap(),
+                            "pvn": PacketRun::pvn(p).unwrap().get(),
                             "data_hex": hex::encode(p), "incomplete": false,
                         }})
                     })
