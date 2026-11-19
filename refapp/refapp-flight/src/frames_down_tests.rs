@@ -1,5 +1,6 @@
 //! Tests of the downlink at frame level through the node interface (docs/reference-application.md
-//! §2.1 step 6, §4.1, §4.4; APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135).
+//! §2.1 step 6, §4.1, §4.3.1, §4.4; APP-026, APP-030…APP-035, APP-090, APP-132, APP-134, APP-135,
+//! APP-169…APP-173).
 
 extern crate std;
 
@@ -70,8 +71,12 @@ struct Run {
 
 impl Run {
     fn new() -> Self {
+        Self::of(Variant::TmTc)
+    }
+
+    fn of(variant: Variant) -> Self {
         Self {
-            node: FlightNode::new_frames(Variant::TmTc).unwrap(),
+            node: FlightNode::new_frames(variant).unwrap(),
             rec: Rec::default(),
         }
     }
@@ -116,7 +121,11 @@ impl Run {
 }
 
 fn nominal() -> Run {
-    let mut run = Run::new();
+    nominal_of(Variant::TmTc)
+}
+
+fn nominal_of(variant: Variant) -> Run {
+    let mut run = Run::of(variant);
     run.run(&nominal_commands());
     run
 }
@@ -576,4 +585,320 @@ fn a_failed_slot_raises_downlink_refused_with_the_error_code_alone() {
     let code = u64::from(aldis::core::ErrorKind::InternalError.code());
     assert_eq!(rec.0, [(0, Out::Event(113, std::vec![code]))]);
     assert_eq!(node.build_failures(), 1);
+}
+
+// The AOS downlink (A4 WP-3a, docs/reference-application.md §4.3.1, APP-169…APP-173).
+
+use aldis::aos::{
+    AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent,
+    DataUnit, PacketPointer, VcTable, fhec,
+};
+use aldis::core::ids::{SpacecraftId, VcId};
+use refapp_scenario::generated::aos;
+
+fn aos_run() -> Run {
+    nominal_of(Variant::Aos)
+}
+
+/// The channels of §4.3.1 for the strict decode of the test.
+fn aos_channels() -> (AosPhysicalChannelConfig, VcTable<3>) {
+    let physical = AosPhysicalChannelConfig::new(
+        usize::from(aos::FRAME_LENGTH),
+        aos::FHEC,
+        0,
+        aos::FECF,
+        AosEdition::Issue5,
+    )
+    .unwrap();
+    let scid = SpacecraftId::<10>::new(SPACECRAFT_ID).unwrap();
+    let vc = |id: u8| {
+        AosVirtualChannelConfig::new(scid, VcId::<6>::new(id).unwrap(), DataFieldContent::Mpdu)
+            .unwrap()
+            .with_ocf()
+    };
+    let table = VcTable::new(
+        physical,
+        &[
+            vc(aos::VCID_REALTIME),
+            vc(aos::VCID_PAYLOAD),
+            vc(aos::VCID_IDLE),
+        ],
+    )
+    .unwrap();
+    (physical, table)
+}
+
+/// What a strict decode of an AOS frame holds: the VCID, the pointer, the packet zone, and the
+/// OCF.
+struct AosView {
+    vc: u8,
+    pointer: PacketPointer,
+    zone: Vec<u8>,
+    ocf: [u8; 4],
+}
+
+fn aos_view(octets: &[u8]) -> AosView {
+    let (physical, table) = aos_channels();
+    let frame = AosFrame::decode(octets, &physical, &table).unwrap();
+    let DataUnit::Mpdu(mpdu) = frame.data_unit() else {
+        panic!("an M_PDU")
+    };
+    AosView {
+        vc: frame.vcid().get(),
+        pointer: mpdu.pointer(),
+        zone: mpdu.packet_zone().to_vec(),
+        ocf: frame.ocf().unwrap().to_octets(),
+    }
+}
+
+/// The packets of `vc` in order, cut from the concatenated packet zones by the length field of
+/// each (133.0 §4.1.3.5), Idle Packets included, and the offsets in the VC's stream at which each
+/// starts.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "test arithmetic on offsets inside a stream that was just measured"
+)]
+fn aos_packets_of(frames: &[Vec<u8>], vc: u8) -> (Vec<Vec<u8>>, Vec<usize>) {
+    let stream: Vec<u8> = frames
+        .iter()
+        .map(|f| aos_view(f))
+        .filter(|v| v.vc == vc)
+        .flat_map(|v| v.zone)
+        .collect();
+    let (mut packets, mut starts) = (Vec::new(), Vec::new());
+    let mut at = 0;
+    while at + 6 <= stream.len() {
+        let len = usize::from(u16::from_be_bytes([stream[at + 4], stream[at + 5]])) + 7;
+        starts.push(at);
+        packets.push(stream[at..at + len].to_vec());
+        at += len;
+    }
+    assert_eq!(at, stream.len());
+    (packets, starts)
+}
+
+#[test]
+fn aos_frames_have_the_geometry_and_decode_strictly_with_fhec_and_fecf() {
+    // req: APP-169, APP-171, LNK-035
+    let run = aos_run();
+    let frames = run.frames();
+    assert_eq!(frames.len(), 280);
+    for octets in &frames {
+        assert_eq!(octets.len(), 223);
+        // The strict decode corrects the FHEC and checks the FECF; no symbol was corrected.
+        let (physical, table) = aos_channels();
+        let frame = AosFrame::decode(octets, &physical, &table).unwrap();
+        assert_eq!(frame.corrected_symbols().get(), 0);
+        assert_eq!(frame.scid().get(), SPACECRAFT_ID);
+        assert_eq!(frame.insert_zone(), []);
+        // Version 01 (`0b01` in the top bits), the SCID, and the VCID: octets 0 and 1.
+        assert_eq!(octets[0] >> 6, 0b01);
+        // The FHEC is the code of §4.1.2.6.5 over octets 0 to 5, computed after the header was
+        // final, and the FECF the CRC over the whole frame, FHEC included: LNK-035.
+        let header: [u8; 6] = octets[..6].try_into().unwrap();
+        assert_eq!(octets[6..8], fhec::encode(&header));
+        verify_fecf(octets).unwrap();
+        // Primary header 6, FHEC 2, M_PDU 209 (header 2, zone 207), VC_OCF 4, FECF 2.
+        assert_eq!(frame.data_field().len(), 209);
+        assert_eq!(
+            octets[8 + 209..8 + 209 + 4],
+            frame.ocf().unwrap().to_octets()
+        );
+        assert!(!frame.is_oid());
+    }
+    assert_eq!(run.node.build_failures(), 0);
+}
+
+#[test]
+fn the_aos_vc_frame_count_starts_at_0_and_counts_each_vc_idle_frames_included() {
+    // req: APP-171, APP-035
+    let frames = aos_run().frames();
+    let mut next = [0_u32; 8];
+    for octets in &frames {
+        let (physical, table) = aos_channels();
+        let frame = AosFrame::decode(octets, &physical, &table).unwrap();
+        let vc = usize::from(frame.vcid().get());
+        assert_eq!(frame.vc_frame_count().get(), next[vc], "VC {vc}");
+        next[vc] += 1;
+        // Replay Flag 0, VC Frame Count Cycle Use Flag 0, cycle field 0000 (APP-171).
+        assert!(!frame.replay_flag());
+        assert_eq!(frame.vc_frame_count_cycle(), None);
+        // Octet 5: Replay Flag, Use Flag, two spare bits that Issue 5 gives to the SCID (0x155
+        // has `01` above its low 8 bits), and the cycle field.
+        assert_eq!(octets[5], 0b0001_0000);
+    }
+    // Each VC counted from 0: the three VCs all sent frames, and VC 7's idle frames count.
+    assert!(next[0] > 0 && next[1] > 0 && next[7] > 0);
+    assert_eq!(next.iter().sum::<u32>(), 280);
+}
+
+#[test]
+fn idle_slots_are_an_idle_m_pdu_on_vc_7_and_no_frame_is_an_oid_frame() {
+    // req: APP-170, APP-172
+    let frames = aos_run().frames();
+    // Slots 0 and 1: nothing is released (the first deadline is the 250 ms of VC 0), so VC 7
+    // sends an idle M_PDU: "only idle data" and the idle pattern in the zone.
+    for octets in &frames[..2] {
+        let v = aos_view(octets);
+        assert_eq!(v.vc, aos::VCID_IDLE);
+        assert_eq!(v.pointer, PacketPointer::OnlyIdleData);
+        assert_eq!(v.zone.len(), 207);
+        assert!(v.zone.iter().all(|b| *b == aos::IDLE_PATTERN));
+        // First octets of the M_PDU: the pointer "all ones minus one", 16 bits in Issue 5
+        // (732.0 §4.1.4.2.2.5).
+        assert_eq!(octets[8..10], [0xFF, 0xFE]);
+    }
+    // VC 0's field released at its deadline at slot 2 goes before VC 7's: priority.
+    assert_eq!(aos_view(&frames[2]).vc, aos::VCID_REALTIME);
+    assert_eq!(
+        aos_view(&frames[2]).pointer,
+        PacketPointer::StartsAt(0.try_into().unwrap())
+    );
+    // Every VC 7 frame is idle, and no frame carries VC 63.
+    for octets in &frames {
+        let v = aos_view(octets);
+        assert_ne!(octets[1] & 0x3F, 63);
+        if v.vc == aos::VCID_IDLE {
+            assert_eq!(v.pointer, PacketPointer::OnlyIdleData);
+        } else {
+            assert_ne!(v.pointer, PacketPointer::OnlyIdleData);
+        }
+    }
+}
+
+#[test]
+fn the_aos_packet_zones_hold_the_packets_generated_and_the_pointer_names_the_first_start() {
+    // req: APP-172, APP-033, APP-003
+    let run = aos_run();
+    let frames = run.frames();
+    for (vc, apids) in [
+        (
+            aos::VCID_REALTIME,
+            [apid::HOUSEKEEPING, apid::EVENTS].as_slice(),
+        ),
+        (aos::VCID_PAYLOAD, [apid::PAYLOAD, apid::DUMP].as_slice()),
+    ] {
+        let sent: Vec<Vec<u8>> = run
+            .rec
+            .0
+            .iter()
+            .filter_map(|(_, o)| match o {
+                Out::Packet(a, p) if apids.contains(a) => Some(p.clone()),
+                Out::Packet(..) | Out::Unit(_) | Out::Event(..) => None,
+            })
+            .collect();
+        let (packets, starts) = aos_packets_of(&frames, vc);
+        let extracted: Vec<Vec<u8>> = packets
+            .iter()
+            .filter(|p| apid_of(p) != 2047)
+            .cloned()
+            .collect();
+        assert_eq!(extracted, sent, "VC {vc}");
+        // An Idle Packet completes a field released at its deadline: APID 2047, idle data 0x00,
+        // sequence flags 11 and count 0 (APP-172, OI-90).
+        for idle in packets.iter().filter(|p| apid_of(p) == 2047) {
+            assert_eq!(idle[2..4], [0xC0, 0x00]);
+            assert!(idle[6..].iter().all(|b| *b == aos::IDLE_PATTERN));
+        }
+        // The pointer of each field of the VC is the offset of the first packet that starts in
+        // its zone, or "all ones" when none does (APP-172); the oracle is the starts of the
+        // packets in the concatenated zones.
+        let mut base = 0;
+        for v in frames.iter().map(|f| aos_view(f)).filter(|v| v.vc == vc) {
+            let first = starts
+                .iter()
+                .find(|s| (base..base + 207).contains(*s))
+                .map(|s| s - base);
+            let expected = match first {
+                Some(offset) => {
+                    PacketPointer::StartsAt(u16::try_from(offset).unwrap().try_into().unwrap())
+                }
+                None => PacketPointer::NoPacketStart,
+            };
+            assert_eq!(v.pointer, expected, "VC {vc}, zone at {base}");
+            base += 207;
+        }
+    }
+    // The packet totals of §2.4, as for TM (APP-003).
+    let count = |a: u16| {
+        run.rec
+            .0
+            .iter()
+            .filter(|(_, o)| matches!(o, Out::Packet(x, _) if *x == a))
+            .count()
+    };
+    assert_eq!(
+        (
+            count(apid::HOUSEKEEPING),
+            count(apid::EVENTS),
+            count(apid::PAYLOAD),
+            count(apid::DUMP)
+        ),
+        (30, 10, 13, 5)
+    );
+    assert_eq!(run.node.build_failures(), 0);
+    assert!(
+        run.rec
+            .0
+            .iter()
+            .all(|(_, o)| !matches!(o, Out::Event(113, _)))
+    );
+}
+
+#[test]
+fn the_vc_ocf_is_the_clcw_of_the_slot_in_every_frame_of_every_vc() {
+    // req: APP-173, APP-134
+    // No uplink frame: FARM-1 reports the initial word in every frame, VC 7's idle frames and
+    // the data VCs' alike.
+    let mut run = Run::of(Variant::Aos);
+    run.run(&[]);
+    let views: Vec<AosView> = run.frames().iter().map(|f| aos_view(f)).collect();
+    assert!(views.iter().any(|v| v.vc == 0) && views.iter().any(|v| v.vc == 1));
+    assert!(views.iter().any(|v| v.vc == 7));
+    assert!(views.iter().all(|v| v.ocf == [0x01, 0, 0, 0]));
+    // A Type-BD frame accepted in step 1 of slot 1 is in the frame of that slot and every later
+    // one, whatever the VC (the word has Type Flag 0: a Type-1 report).
+    let mut run = Run::of(Variant::Aos);
+    let noop = command(0, 1, 6_000_000, &[]);
+    let uplink = bd_frame(0, TcFlags::Unsegmented, 0, &noop);
+    run.step(0, true, &[]);
+    for slot in 1..END / SLOT {
+        let delivered = if slot == 1 {
+            std::vec![uplink.clone()]
+        } else {
+            Vec::new()
+        };
+        run.step(slot * SLOT, true, &delivered);
+    }
+    let views: Vec<AosView> = run.frames().iter().map(|f| aos_view(f)).collect();
+    assert_eq!(views[0].ocf, [1, 0, 0, 0]);
+    assert!(views[1..].iter().all(|v| v.ocf == [1, 0, 2, 0]));
+    assert!(views[1..].iter().all(|v| v.ocf[0] >> 7 == 0));
+    assert!(views[1..].iter().any(|v| v.vc == 0));
+    assert!(views[1..].iter().any(|v| v.vc == 1));
+    assert!(views[1..].iter().any(|v| v.vc == 7));
+}
+
+#[test]
+fn the_aos_node_takes_the_cop1_level_too() {
+    // req: APP-169, APP-187
+    let mut node = FlightNode::new_cop1(Variant::Aos).unwrap();
+    let mut rec = Rec::default();
+    let input = StepInput {
+        now: Instant::from_micros(0),
+        delivered: Delivered::new(&[]),
+        ops: &[],
+        tx_slot: true,
+    };
+    node.step(&input, &mut At(0, &mut rec));
+    let frames: Vec<&Vec<u8>> = rec
+        .0
+        .iter()
+        .filter_map(|(_, o)| match o {
+            Out::Unit(u) => Some(u),
+            Out::Packet(..) | Out::Event(..) => None,
+        })
+        .collect();
+    assert_eq!(frames.len(), 1);
+    assert_eq!(aos_view(frames[0]).vc, aos::VCID_IDLE);
 }
