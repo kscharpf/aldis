@@ -1,8 +1,8 @@
 //! `xtask restricted`: every restricted type of a codec crate has a property test (RS-020,
 //! VER-023; M2 plan WP-7, "A test for every restricted type"; part of `cargo xtask ci`).
 //!
-//! A *restricted type* is a public struct or enum of a crate of [`CRATES`] (the codec
-//! crates, not the engines) with a
+//! A *restricted type* is a public struct or enum of a crate of [`CODEC_CRATES`] (the
+//! codec crates, not the engines of [`crate::rs020::ENGINE_CRATES`]) with a
 //! *checked constructor*: an inherent `pub fn` without a `self` receiver that returns
 //! `Option<Self>` or `Result<Self…>` (the type may be named instead of `Self`), or an
 //! `impl TryFrom<…>` for it, where the function either takes every argument by value, or is
@@ -30,23 +30,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use crate::repo;
-use crate::rs020::{Tok, group_end, test_only, tokens};
-
-/// The codec crates whose restricted types the check covers (Layers 0 and 1), the crates of
-/// [`crate::rs020::CRATES`] but the engines `aldis-link`, `aldis-cop1`, and `aldis-sync`. An
-/// engine's checked constructor is `new(config)`, and the range it accepts is the
-/// configuration's, already a restricted type of a codec crate; a property test of the engine's
-/// constructor would test the configuration again (maintainer decision Q3, 2026-11-17).
-const CRATES: &[&str] = &[
-    "aldis-core",
-    "aldis-time",
-    "aldis-spp",
-    "aldis-epp",
-    "aldis-tm",
-    "aldis-tc",
-    "aldis-aos",
-    "aldis-uslp",
-];
+use crate::rs020::{CODEC_CRATES, Tok, group_end, test_only, tokens};
 
 /// The marker that names the restricted types a test covers.
 const MARKER: &str = "// restricted:";
@@ -372,7 +356,7 @@ pub fn run(list: bool) -> Result<usize, String> {
     let mut all = Vec::new();
     let mut total = 0;
     let mut report = String::new();
-    for krate in CRATES {
+    for krate in CODEC_CRATES {
         let types = restricted_types(&read_dir(&format!("crates/{krate}/src"))?)?;
         total += types.len();
         if list {
@@ -393,7 +377,7 @@ pub fn run(list: bool) -> Result<usize, String> {
     print!("{report}");
     println!(
         "restricted: {} crate(s), {total} restricted type(s), {} problem(s)",
-        CRATES.len(),
+        CODEC_CRATES.len(),
         all.len()
     );
     Ok(all.len())
