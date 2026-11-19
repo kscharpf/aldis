@@ -125,10 +125,6 @@ item = "aldis_link::extractor::ExtractorOutput::Discarded.octets"
 reason = "output: the octets of the partial packet that Reconfigure discarded; any usize up to the buffer is meaningful, and no function takes it back (LNK-003)"
 
 [[exemption]]
-item = "aldis_link::extractor::ExtractorOutput::IncompletePacket.pvn"
-reason = "gap, issue #688"
-
-[[exemption]]
 item = "aldis_link::extractor::ExtractorOutput::Packets.count"
 reason = "output: the number of packets of a run the extractor delimited, which PacketRun splits; no function takes it as input (LNK-060)"
 
