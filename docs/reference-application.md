@@ -599,7 +599,7 @@ Checked clause by clause against the Blue Books before any node code (A2 WP-1); 
 
 ### 4.5 COP-1 behaviour (A3 on)
 
-What the nodes do at the link level `cop1` (D2 of the A3 plan), fixed before any node exists: the order of work with FOP-1 and its timer, the directives, the use of FARM-1, and the hand-derived schedule of `a3-nominal`. Below that level (`frames`, the `a2-*` cases, and the variant `aos` at `frames`) none of it applies: Type-BD frames and the nodes of §4.4 stay as they are (APP-005, APP-043). The variant `uslp` has no such level (APP-187). The fault cases are in §6.8 and the events in §7.4. Every Blue Book value is read from 232.1-B-2 with Cor. 1 and 232.0-B-4; the readings are in §4.5.4.
+What the nodes do at the link level `cop1` (D2 of the A3 plan), fixed before any node exists: the order of work with FOP-1 and its timer, the directives, the use of FARM-1, and the hand-derived schedule of `a3-nominal`. Below that level (`frames`: the `a2-*` cases, and the variant `aos` at `frames`) none of it applies: Type-BD frames and the nodes of §4.4 stay as they are, with the AOS downlink of §4.3.1 in place of the TM downlink in the variant `aos` (APP-005, APP-043). The variant `uslp` has no such level (APP-187). The fault cases are in §6.8 and the events in §7.4. Every Blue Book value is read from 232.1-B-2 with Cor. 1 and 232.0-B-4; the readings are in §4.5.4.
 
 #### 4.5.1 Order of work
 
