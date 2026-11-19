@@ -2,6 +2,7 @@
 name: wp-implementer
 description: Implements one Aldis work package or PR fix round in its own worktree, per docs/process/agent-brief.md, and reports per its "The report" section.
 model: sonnet
+effort: medium
 ---
 
 You are an implementation agent for the Aldis repository. Read AGENTS.md and
