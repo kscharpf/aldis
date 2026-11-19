@@ -267,9 +267,9 @@ impl World {
             t1_initial: Duration::from_micros(s.t1_us),
             transmission_limit: NonZeroU8::new(s.transmission_limit).unwrap(),
             timeout_type: s.timeout_type,
-            sliding_window_k: s.k,
-            ad_repetitions: 1,
-            bc_repetitions: 1,
+            sliding_window_k: NonZeroU8::new(s.k).unwrap(),
+            ad_repetitions: NonZeroU8::MIN,
+            bc_repetitions: NonZeroU8::MIN,
         })
         .unwrap();
         let flight = Farm1::new(

@@ -250,9 +250,9 @@ fn config() -> Fop1Config {
         t1_initial: Duration::from_micros(100),
         transmission_limit: NonZeroU8::MIN,
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: 1,
-        ad_repetitions: 0,
-        bc_repetitions: 0,
+        sliding_window_k: NonZeroU8::MIN,
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     }
 }
 
@@ -315,8 +315,7 @@ fn invariant(c: &Core<Q>) -> bool {
         && (!(initial && c.suspend_state == SuspendState::NotSuspended)
             || (entries == 0 && c.wait.is_none()))
         && (c.suspend_state == SuspendState::NotSuspended || initial)
-        && c.k >= 1
-        && usize::from(c.k) <= Q
+        && usize::from(c.k.get()) <= Q
         && c.transmission_count >= 1
         && c.wait.is_none_or(|w| w.len <= F && !w.fresh)
 }
@@ -360,15 +359,19 @@ impl kani::Arbitrary for Core<Q> {
     }
 }
 
+/// Any non-zero octet.
+fn any_nonzero() -> NonZeroU8 {
+    let n = NonZeroU8::new(kani::any());
+    kani::assume(n.is_some());
+    let Some(n) = n else { unreachable!() };
+    n
+}
+
 /// Any `Core` whatever, without `invariant`: V(S), NN(R), and every other field unrestricted.
 fn any_core() -> Core<Q> {
     let t1 = kani::any::<u64>();
     kani::assume(t1 > 0);
-    let limit = NonZeroU8::new(kani::any());
-    kani::assume(limit.is_some());
-    let Some(transmission_limit) = limit else {
-        unreachable!()
-    };
+    let transmission_limit = any_nonzero();
     let sent = [
         if kani::any() { Some(any_sent(0)) } else { None },
         if kani::any() { Some(any_sent(1)) } else { None },
@@ -390,9 +393,9 @@ fn any_core() -> Core<Q> {
         } else {
             TimeoutType::Tt1
         },
-        k: kani::any(),
-        ad_repetitions: kani::any(),
-        bc_repetitions: kani::any(),
+        k: any_nonzero(),
+        ad_repetitions: any_nonzero(),
+        bc_repetitions: any_nonzero(),
         state: any_state(),
         v_s: FrameSeqNum::new(kani::any()),
         nn_r: FrameSeqNum::new(kani::any()),
@@ -417,12 +420,12 @@ fn any_core() -> Core<Q> {
 }
 
 /// The base case of the induction: a new engine satisfies `invariant` for every K that
-/// `Fop1::new` accepts, and `k_fits` accepts exactly K in 1 to min(255, Q) for every `u8`, with
-/// Q = 1, 2, 255 (COP-015).
+/// `Fop1::new` accepts, and `k_fits` accepts exactly K in 1 to min(255, Q) for every non-zero
+/// `u8`, with Q = 1, 2, 255; K = 0 is not a value of the type (COP-015).
 #[kani::proof]
 fn new_satisfies_invariant() {
     // req: COP-001, COP-015, API-040
-    let k: u8 = kani::any();
+    let k = any_nonzero();
     let mut cfg = config();
     cfg.sliding_window_k = k;
     cfg.transmission_limit = NonZeroU8::new(kani::any()).unwrap_or(NonZeroU8::MIN);
@@ -430,13 +433,13 @@ fn new_satisfies_invariant() {
     cfg.t1_initial = Duration::from_micros(micros);
     let made = Engine::new(cfg);
     let micros_ok = micros != 0;
-    assert!(made.is_ok() == ((1..=Q as u8).contains(&k) && micros_ok));
+    assert!(made.is_ok() == (usize::from(k.get()) <= Q && micros_ok));
     if let Ok(fop) = made {
         assert!(invariant(&fop.head.core));
         assert!(fop.head.core.state == Fop1State::Initial);
     }
-    assert!(Fop1Head::<1, 1, { fop1_max_actions(1) }>::k_fits(k) == (k == 1));
-    assert!(Fop1Head::<255, 1, { fop1_max_actions(255) }>::k_fits(k) == (k >= 1));
+    assert!(Fop1Head::<1, 1, { fop1_max_actions(1) }>::k_fits(k) == (k.get() == 1));
+    assert!(Fop1Head::<255, 1, { fop1_max_actions(255) }>::k_fits(k));
 }
 
 fn clcw(report: u8, lockout: bool, wait: bool, retransmit: bool, cop: CopInEffect) -> Clcw {

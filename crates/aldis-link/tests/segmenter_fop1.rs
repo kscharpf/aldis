@@ -68,9 +68,9 @@ impl<P: Fop1Format> Link<P> {
                 t1_initial: Duration::from_micros(1_000),
                 transmission_limit: NonZeroU8::new(3).unwrap(),
                 timeout_type: TimeoutType::Tt0,
-                sliding_window_k: 2,
-                ad_repetitions: 1,
-                bc_repetitions: 1,
+                sliding_window_k: NonZeroU8::MIN.saturating_add(1),
+                ad_repetitions: NonZeroU8::MIN,
+                bc_repetitions: NonZeroU8::MIN,
             })
             .unwrap(),
         };

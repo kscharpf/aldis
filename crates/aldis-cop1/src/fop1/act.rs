@@ -265,7 +265,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
         if self.core.ad_out.is_some() {
             return Ok(());
         }
-        let repetitions = self.core.ad_repetitions;
+        let repetitions = self.core.ad_repetitions.get();
         if let Some(sent) = self
             .core
             .sent
@@ -287,7 +287,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
             return Ok(());
         }
         let outstanding = self.core.v_s.get().wrapping_sub(self.core.nn_r.get());
-        if outstanding >= self.core.k {
+        if outstanding >= self.core.k.get() {
             return Ok(());
         }
         let Some(waiting) = self.core.wait.take() else {
@@ -334,7 +334,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
             kind: FrameKind::Ad,
             sequence_number,
             retransmission: false,
-            repetitions: self.core.ad_repetitions,
+            repetitions: self.core.ad_repetitions.get(),
             frame: range,
         })
     }
@@ -373,7 +373,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
             kind: FrameKind::Bc,
             sequence_number,
             retransmission: false,
-            repetitions: self.core.bc_repetitions,
+            repetitions: self.core.bc_repetitions.get(),
             frame: range,
         })
     }
@@ -388,7 +388,7 @@ impl<const Q: usize, const F: usize, const N: usize, P: Fop1Format> Draft<'_, Q,
         if !self.core.bc_out_ready {
             return Ok(());
         }
-        let repetitions = self.core.bc_repetitions;
+        let repetitions = self.core.bc_repetitions.get();
         if let Some(sent) = self
             .core
             .sent

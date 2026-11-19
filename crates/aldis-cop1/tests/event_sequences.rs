@@ -91,7 +91,7 @@ fn directive_op() -> impl Strategy<Value = DirectiveOp> {
         1 => Just(DirectiveOp::Terminate),
         2 => Just(DirectiveOp::Resume),
         1 => any::<u8>().prop_map(DirectiveOp::SetVs),
-        1 => (0u8..8).prop_map(DirectiveOp::SetK),
+        1 => (1u8..8).prop_map(DirectiveOp::SetK),
         1 => (0u64..5_000).prop_map(DirectiveOp::SetT1),
         1 => (1u8..6).prop_map(DirectiveOp::SetLimit),
         1 => any::<bool>().prop_map(DirectiveOp::SetTimeout),
@@ -134,9 +134,9 @@ fn engine(k: u8, limit: u8, tt1: bool) -> Engine {
         } else {
             TimeoutType::Tt0
         },
-        sliding_window_k: k,
-        ad_repetitions: 0,
-        bc_repetitions: 0,
+        sliding_window_k: NonZeroU8::new(k).unwrap(),
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     })
     .unwrap()
 }
@@ -162,7 +162,9 @@ const fn directive(d: DirectiveOp) -> Directive {
         DirectiveOp::SetVs(v) => Directive::SetVs {
             v_s: FrameSeqNum::new(v),
         },
-        DirectiveOp::SetK(width) => Directive::SetSlidingWindowWidth { width },
+        DirectiveOp::SetK(width) => Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::new(width).unwrap(),
+        },
         DirectiveOp::SetT1(us) => Directive::SetT1Initial {
             duration: Duration::from_micros(us),
         },
@@ -278,7 +280,7 @@ proptest! {
                 "{before:?} -> {:?} by {op:?} is in no selected cell of Table 5-1", after.state()
             );
             prop_assert!(after.sent_queue_len() <= Q);
-            prop_assert!(after.sliding_window_k() >= 1 && usize::from(after.sliding_window_k()) <= Q);
+            prop_assert!(usize::from(after.sliding_window_k().get()) <= Q);
             // COP-017: in S6, an Alert is the Alert[LLIF] of a lower-layer failure only.
             if before == aldis_cop1::Fop1State::Initial {
                 for a in actions.iter() {

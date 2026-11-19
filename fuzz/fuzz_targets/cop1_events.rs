@@ -21,7 +21,7 @@ use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, TcSpacecraftId, TcVcId,
 };
 use core::num::NonZeroU8;
-use libfuzzer_sys::arbitrary::{Result, Unstructured};
+use libfuzzer_sys::arbitrary::{Error, Result, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
 const Q: usize = 4;
@@ -43,7 +43,7 @@ fn directive(u: &mut Unstructured<'_>) -> Result<Directive> {
             v_s: FrameSeqNum::new(u.arbitrary()?),
         },
         7 => Directive::SetSlidingWindowWidth {
-            width: u.arbitrary()?,
+            width: NonZeroU8::new(u.int_in_range(1..=255)?).ok_or(Error::IncorrectFormat)?,
         },
         8 => Directive::SetT1Initial {
             duration: Duration::from_micros(u.int_in_range(0..=5_000)?),
@@ -112,9 +112,9 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
         } else {
             TimeoutType::Tt0
         },
-        sliding_window_k: u.int_in_range(1..=4)?,
-        ad_repetitions: u.arbitrary()?,
-        bc_repetitions: u.arbitrary()?,
+        sliding_window_k: NonZeroU8::new(u.int_in_range(1..=4)?).ok_or(Error::IncorrectFormat)?,
+        ad_repetitions: NonZeroU8::new(u.int_in_range(1..=255)?).ok_or(Error::IncorrectFormat)?,
+        bc_repetitions: NonZeroU8::new(u.int_in_range(1..=255)?).ok_or(Error::IncorrectFormat)?,
     })
     .unwrap();
     let mut now = 0_u64;

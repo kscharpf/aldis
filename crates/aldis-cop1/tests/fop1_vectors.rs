@@ -58,9 +58,9 @@ fn config(c: &Map<String, Value>) -> Engine {
         } else {
             TimeoutType::Tt1
         },
-        sliding_window_k: byte(&c["k"]),
-        ad_repetitions: 1,
-        bc_repetitions: 1,
+        sliding_window_k: NonZeroU8::new(byte(&c["k"])).unwrap(),
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     })
     .unwrap()
 }
@@ -98,7 +98,9 @@ fn directive(v: &Map<String, Value>) -> Option<Directive> {
         "set_v_s" => Directive::SetVs {
             v_s: FrameSeqNum::new(fits(255)?),
         },
-        "set_k" => Directive::SetSlidingWindowWidth { width: fits(255)? },
+        "set_k" => Directive::SetSlidingWindowWidth {
+            width: NonZeroU8::new(fits(255)?)?,
+        },
         "set_t1_initial" => Directive::SetT1Initial {
             duration: Duration::from_micros(value?),
         },
@@ -394,9 +396,9 @@ fn the_action_bound_target_and_classification_at_run_time() {
         t1_initial: Duration::from_micros(10),
         transmission_limit: NonZeroU8::MIN,
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: 1,
-        ad_repetitions: 0,
-        bc_repetitions: 0,
+        sliding_window_k: NonZeroU8::MIN,
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     })
     .unwrap();
     let mut out = [0; F];

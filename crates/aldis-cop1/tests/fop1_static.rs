@@ -40,6 +40,7 @@ type Engine = Fop1<Q, F, N>;
 const _: () = assert!(size_of::<Engine>() > 4096);
 
 /// The configuration of one FOP-1 instance, with sliding window `k`, evaluated at compile time.
+/// A `k` of 0 fails the build.
 const fn config(k: u8) -> Fop1Config {
     let Ok(physical) = PhysicalChannelConfig::new(F, true) else {
         panic!("the physical channel is valid")
@@ -54,14 +55,17 @@ const fn config(k: u8) -> Fop1Config {
     let Some(transmission_limit) = NonZeroU8::new(3) else {
         panic!("3 is not 0")
     };
+    let Some(sliding_window_k) = NonZeroU8::new(k) else {
+        panic!("K is not 0")
+    };
     Fop1Config {
         target,
         t1_initial: Duration::from_micros(1_000_000),
         transmission_limit,
         timeout_type: TimeoutType::Tt0,
-        sliding_window_k: k,
-        ad_repetitions: 1,
-        bc_repetitions: 1,
+        sliding_window_k,
+        ad_repetitions: NonZeroU8::MIN,
+        bc_repetitions: NonZeroU8::MIN,
     }
 }
 
@@ -79,8 +83,9 @@ static CELL: Mutex<Engine> = Mutex::new(match Fop1::new(config(8)) {
     Err(_) => panic!("the configuration is valid"),
 });
 
-/// The refusal of `new` for a window of 0, a value of the compile-time evaluation.
-const REFUSED: Result<Engine> = Fop1::new(config(0));
+/// The refusal of `new` for a window above `Q`, a value of the compile-time evaluation. A window
+/// of 0 is not a value of the type.
+const REFUSED: Result<Engine> = Fop1::new(config(17));
 
 #[test]
 fn the_static_engine_is_the_initial_engine() {
@@ -88,7 +93,7 @@ fn the_static_engine_is_the_initial_engine() {
     assert_eq!(ENGINE.state(), Fop1State::Initial);
     assert_eq!(ENGINE.v_s(), FrameSeqNum::new(0));
     assert_eq!(ENGINE.nn_r(), FrameSeqNum::new(0));
-    assert_eq!(ENGINE.sliding_window_k(), 8);
+    assert_eq!(ENGINE.sliding_window_k().get(), 8);
     assert_eq!(ENGINE.target().max_frame_len(), F);
 }
 
