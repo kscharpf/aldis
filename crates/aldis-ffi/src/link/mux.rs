@@ -23,6 +23,7 @@
 
 use core::fmt::Debug;
 
+#[cfg(feature = "aos")]
 use aldis::aos::{
     AosEdition, AosPhysicalChannelConfig, AosVirtualChannelConfig, DataFieldContent as AosContent,
 };
@@ -31,17 +32,40 @@ use aldis::core::layout::OCF_LEN;
 use aldis::core::security::SecurityLayout;
 use aldis::core::{Error, ErrorKind, Result, field};
 use aldis::link::common::Qos;
+#[cfg(feature = "aos")]
+use aldis::link::mux::AosChannel;
+#[cfg(feature = "aos")]
+use aldis::link::mux::AosVc;
+#[cfg(feature = "tm")]
+use aldis::link::mux::TmChannel;
+#[cfg(feature = "tm")]
+use aldis::link::mux::TmOffer;
+#[cfg(feature = "tm")]
+use aldis::link::mux::TmVc;
+#[cfg(feature = "uslp")]
+use aldis::link::mux::UslpChannel;
+#[cfg(feature = "uslp")]
+use aldis::link::mux::UslpOffer;
+#[cfg(feature = "uslp")]
+use aldis::link::mux::UslpVc;
 use aldis::link::mux::{
-    AosChannel, AosVc, CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig,
-    ChannelMuxHead, Cop, FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput,
-    MuxProtocol, MuxStatus, Offer, Scope, TmChannel, TmOffer, TmVc, UslpChannel, UslpOffer, UslpVc,
-    VcConfig,
+    CHANNEL_MUX_MAX_ACTIONS, ChannelMux, ChannelMuxBuffers, ChannelMuxConfig, ChannelMuxHead, Cop,
+    FrameClass, Fsh, MAX_FSH_DATA, MuxActions, MuxInput, MuxOutput, MuxProtocol, MuxStatus, Offer,
+    Scope, VcConfig,
 };
 use aldis::link::policy::{MuxPolicy, Weight};
-use aldis::link::protocol::{Aos, Route, Tm, Uslp};
+#[cfg(feature = "aos")]
+use aldis::link::protocol::Aos;
+use aldis::link::protocol::Route;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::Tm;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "tm")]
 use aldis::tm::{
     DataFieldContent, FirstHeaderPointer, TmPhysicalChannelConfig, TmVirtualChannelConfig,
 };
+#[cfg(feature = "uslp")]
 use aldis::uslp::{
     OcfUse, PhysicalChannelConfig as UslpPhysical, SecurityScope, SourceOrDestination,
     TransferFrameType, VcConfig as UslpVcConfig, VcParams, VcfCountLen,
@@ -52,9 +76,11 @@ use super::common::{aldis_link_content, aldis_link_scope};
 use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_MAX_VIRTUAL_CHANNELS};
 use crate::handle::{self, InPlace, Storage};
+#[cfg(feature = "aos")]
+use crate::link::aos_params;
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
-    protocol_tag, qos, unsupported_protocol,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, protocol_tag, qos,
+    unsupported_protocol,
 };
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -83,15 +109,25 @@ handle::engine_enum! {
     /// The `ChannelMux` of the protocol chosen at `aldis_channel_mux_init` (LNK-001).
     #[expect(
         dead_code,
-        clippy::large_enum_variant,
-        reason = "the variants are written in place by the init function, not constructed; the storage holds the largest"
+        reason = "the variants are written in place by the init function, not constructed"
+    )]
+    // The variants differ in size only when there are several (a subset has fewer, GEN-009).
+    #[cfg_attr(
+        all(feature = "tm", feature = "aos", feature = "uslp"),
+        expect(
+            clippy::large_enum_variant,
+            reason = "the variants are written in place by the init function; the storage holds the largest"
+        )
     )]
     pub(crate) enum ChannelMuxState {
         /// TM.
+        #[cfg(feature = "tm")]
         Tm(Mx<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
         /// AOS.
+        #[cfg(feature = "aos")]
         Aos(Mx<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
         /// USLP.
+        #[cfg(feature = "uslp")]
         Uslp(Mx<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -512,6 +548,7 @@ fn policy(value: u32) -> Result<MuxPolicy> {
 ///
 /// # Errors
 /// `InvalidField` for an `aos_edition` that is no `ALDIS_AOS_EDITION_*` constant.
+#[cfg(feature = "aos")]
 fn aos_edition(c: &aldis_channel_mux_config_t) -> Result<AosEdition> {
     let channel = aldis_link_channel_t {
         aos_edition: c.aos_edition,
@@ -576,12 +613,14 @@ impl FlatOffer {
 
 /// The members of a TM VC.
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "tm")]
 struct TmMembers {
     content: DataFieldContent,
     ocf: Option<[u8; OCF_LEN]>,
     fsh: Option<Fsh>,
 }
 
+#[cfg(feature = "tm")]
 impl MxProtocol for Tm {
     type Members = TmMembers;
 
@@ -651,11 +690,13 @@ const fn fsh_len_error() -> Error {
 
 /// The members of an AOS VC.
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "aos")]
 struct AosMembers {
     content: AosContent,
     ocf: Option<[u8; OCF_LEN]>,
 }
 
+#[cfg(feature = "aos")]
 impl MxProtocol for Aos {
     type Members = AosMembers;
 
@@ -728,6 +769,7 @@ impl MxProtocol for Aos {
 
 /// The members of a USLP VC.
 #[derive(Debug, Clone, Copy)]
+#[cfg(feature = "uslp")]
 struct UslpMembers {
     map: MapId<4>,
     qos: Qos,
@@ -736,6 +778,7 @@ struct UslpMembers {
     cop: bool,
 }
 
+#[cfg(feature = "uslp")]
 impl MxProtocol for Uslp {
     type Members = UslpMembers;
 
@@ -829,6 +872,7 @@ fn mx_vc<P: MxProtocol>(channel: &P::Channel, raw: &RawVc<P>) -> Result<VcConfig
 /// `InvalidConfig` (`vc_id`) when VCID 63, the OID VC, is listed on an AOS or USLP channel: the
 /// error those protocols gave before the frame's length, which now comes from the physical
 /// channel's constructor (D6 of the M6 plan).
+#[cfg(any(feature = "aos", feature = "uslp"))]
 fn oid_vc_listed(c: &aldis_channel_mux_config_t) -> Result<()> {
     if c.vcs.iter().take(c.vc_count).any(|vc| vc.vc_id == 63) {
         Err(Error::new(ErrorKind::InvalidConfig).with_field(field::VC_ID))
@@ -1068,18 +1112,21 @@ impl ChannelMuxState {
             .map(|p| p == want)
         };
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 mx_run(e, input, data, area)
             }
+            #[cfg(feature = "aos")]
             Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 mx_run(e, input, data, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -1091,8 +1138,11 @@ impl ChannelMuxState {
 
     const fn status(&self) -> MuxStatus {
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => *e.status(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         }
     }
@@ -1153,9 +1203,18 @@ pub unsafe extern "C" fn aldis_channel_mux_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match parse::<aldis_link_protocol>(cfg.protocol)? {
+                #[cfg(feature = "tm")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => mx_init::<Tm>(storage, &cfg),
+                #[cfg(not(feature = "tm"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+                #[cfg(feature = "aos")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => mx_init::<Aos>(storage, &cfg),
+                #[cfg(not(feature = "aos"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                #[cfg(feature = "uslp")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => mx_init::<Uslp>(storage, &cfg),
+                #[cfg(not(feature = "uslp"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
             }
         })
@@ -1286,7 +1345,7 @@ pub unsafe extern "C" fn aldis_channel_mux_deinit(h: *mut aldis_channel_mux_t) {
     unsafe { handle::deinit(h) }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "aos"))]
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod tests {
     use super::*;

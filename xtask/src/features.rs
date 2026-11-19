@@ -7,6 +7,11 @@
 //! crate has an optional feature the empty set leaves out. `aldis-link` has the subsets of its
 //! packet codecs (GEN-009): a frame protocol alone (`tm`), with either packet codec (`tm,spp`,
 //! `tm,epp`), and USLP with either (`uslp,spp`, `uslp,epp`; USLP's packet engines need `epp`).
+//! `aldis-ffi` has the subsets of [`FFI_SUBSETS`] (GEN-009): the library is built and tested with the
+//! features that the header's functions are grouped by, under the gate's `-D warnings`, and each
+//! test runs only in the subsets that have what it calls (`required-features`); the header stays
+//! whole, and `tests/storage_layout.rs` runs in every subset and checks that every storage struct
+//! keeps the size of the full build.
 //!
 //! A second check covers the facade (GEN-008): `aldis` built and tested with exactly
 //! `link,cop1,tm,tc,spp` and no default features, under the gate's `-D warnings`, must run the
@@ -16,6 +21,16 @@
 use std::process::Command;
 
 use crate::repo;
+
+/// The feature sets of `aldis-ffi` that are built and tested (GEN-009), as `--no-default-features
+/// --features <set>`: the maintainer's matrix, each with `std`, because a `no_std` build runs
+/// no test (the embedded build of the library is the `no-std-<target>` checks, with `full`).
+/// The first has the frame engines of TM and TC and the packet codec `spp` (no AOS, USLP, or
+/// `epp`); the second is the whole library with the embedded feature.
+const FFI_SUBSETS: &[&str] = &["std,core,spp,tm,tc,link,cop1", "std,full,panic-handler"];
+
+/// A test of `aldis-ffi` that runs in every subset (`tests/storage_layout.rs`).
+const FFI_STORAGE_TEST: &str = "oid_generator";
 
 /// Base feature sets a crate's tests run on besides the empty one (a deliberate choice).
 const EXTRA_BASES: &[(&str, &str)] = &[
@@ -91,6 +106,9 @@ pub fn check() -> Result<usize, String> {
         }
     }
     problems += check_facade_engines()?;
+    for set in FFI_SUBSETS {
+        problems += check_ffi_subset(set)?;
+    }
     if problems == 0 {
         println!("features: the tests of {} crates pass", crates.len());
     }
@@ -127,6 +145,41 @@ fn check_facade_engines() -> Result<usize, String> {
     println!(
         "error: GEN-008 aldis: `{FACADE_ENGINE_TEST}` did not pass with {FACADE_ENGINE_FEATURES} \
          (no default features, -D warnings)"
+    );
+    Ok(1)
+}
+
+/// Builds and tests `aldis-ffi` with exactly `set` under `-D warnings` (GEN-009); the number of
+/// problems. The test of [`FFI_STORAGE_TEST`] must have run, so a subset that runs no test of the
+/// library fails.
+fn check_ffi_subset(set: &str) -> Result<usize, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let out = Command::new(cargo)
+        .args([
+            "test",
+            "-p",
+            "aldis-ffi",
+            "--no-default-features",
+            "--features",
+        ])
+        .arg(set)
+        .env("RUSTFLAGS", "-D warnings")
+        .current_dir(repo::root())
+        .output()
+        .map_err(|e| format!("cargo test: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let ran = passed_tests(&stdout)
+        .iter()
+        .any(|t| t.ends_with(FFI_STORAGE_TEST));
+    if out.status.success() && ran {
+        println!("features aldis-ffi: the library builds and its tests pass with `{set}`");
+        return Ok(0);
+    }
+    print!("{stdout}");
+    eprint!("{}", String::from_utf8_lossy(&out.stderr));
+    println!(
+        "error: GEN-009 aldis-ffi: the build or the tests fail with `{set}` (no default features, \
+         -D warnings), or `{FFI_STORAGE_TEST}` of tests/storage_layout.rs did not run"
     );
     Ok(1)
 }

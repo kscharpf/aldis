@@ -22,16 +22,29 @@ use aldis::link::extractor::{
     ExtractorStatus, FieldIn, PacketExtractor, PacketExtractorBuffers, PacketExtractorConfig,
     PacketExtractorHead,
 };
-use aldis::link::protocol::{Aos, PacketProtocol, Tm, TmParams, Uslp};
+#[cfg(feature = "aos")]
+use aldis::link::protocol::Aos;
+use aldis::link::protocol::PacketProtocol;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::Tm;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::TmParams;
+#[cfg(all(feature = "uslp", feature = "epp"))]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "tm")]
 use aldis::tm::FirstHeaderPointer;
 
 use super::common::range;
 use crate::abi::{self, Out, flag};
 use crate::capacities::{ALDIS_LINK_MAX_FRAME_OCTETS, ALDIS_LINK_PACKET_QUEUE_OCTETS};
 use crate::handle::{self, InPlace, Storage};
+#[cfg(feature = "aos")]
+use crate::link::aos_params;
+#[cfg(all(feature = "uslp", feature = "epp"))]
+use crate::link::uslp_params;
 use crate::link::{
-    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, aos_params, protocol,
-    protocol_tag, unsupported_protocol, uslp_params, valid_pvns,
+    aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol, protocol_tag,
+    unsupported_protocol, valid_pvns,
 };
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -63,10 +76,13 @@ handle::engine_enum! {
     )]
     pub(crate) enum PacketExtractorState {
         /// TM.
+        #[cfg(feature = "tm")]
         Tm(Pe<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
         /// AOS.
+        #[cfg(feature = "aos")]
         Aos(Pe<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
         /// USLP.
+        #[cfg(all(feature = "uslp", feature = "epp"))]
         Uslp(Pe<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -300,6 +316,7 @@ unsafe impl<P: PacketProtocol, const NM: usize, const ND: usize> InPlace
 
 /// The First Header Pointer of a TM frame header: an `InvalidField` (`first_header_pointer`) for
 /// a value of more than 11 bits, as for a TM field without one (132.0 §4.1.2.7.6; LNK-060).
+#[cfg(feature = "tm")]
 fn tm_header_pointer(raw: u16) -> Result<FirstHeaderPointer> {
     FirstHeaderPointer::new(raw)
         .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::FIRST_HEADER_POINTER))
@@ -347,18 +364,21 @@ impl PacketExtractorState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 pe_run(e, input, data, Ok(TmParams), tm_header_pointer, area)
             }
+            #[cfg(feature = "aos")]
             Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
                 }
                 pe_run(e, input, data, aos_params(ch), |_| Ok(()), area)
             }
+            #[cfg(all(feature = "uslp", feature = "epp"))]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -370,8 +390,11 @@ impl PacketExtractorState {
 
     const fn status(&self) -> ExtractorStatus {
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => *e.status(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => *e.status(),
+            #[cfg(all(feature = "uslp", feature = "epp"))]
             Self::Uslp(e) => *e.status(),
         }
     }
@@ -438,20 +461,29 @@ pub unsafe extern "C" fn aldis_packet_extractor_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tm")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => handle::init_variant::<_, Pe<Tm>>(
                     storage,
                     Pe::new_head(pe_config(&cfg, TmParams)?)?,
                 ),
+                #[cfg(not(feature = "tm"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+                #[cfg(feature = "aos")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => handle::init_variant::<_, Pe<Aos>>(
                     storage,
                     Pe::new_head(pe_config(&cfg, aos_params(&cfg.channel)?)?)?,
                 ),
+                #[cfg(not(feature = "aos"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                #[cfg(all(feature = "uslp", feature = "epp"))]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Pe<Uslp>>(
                         storage,
                         Pe::new_head(pe_config(&cfg, uslp_params(&cfg.channel)?)?)?,
                     )
                 }
+                #[cfg(not(all(feature = "uslp", feature = "epp")))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
             }
         })

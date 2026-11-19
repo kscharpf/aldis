@@ -5,28 +5,92 @@
 //! the first member of each configuration is an `aldis_link_channel_t`, whose `protocol` is an
 //! `ALDIS_LINK_PROTOCOL_*` constant. The handle holds the engine of that protocol, so one
 //! `aldis_<engine>_t` serves TM, AOS, and USLP (the protocols of the engine; a protocol it does
-//! not serve is `ALDIS_ERR_INVALID_CONFIG` on `protocol`).
+//! not serve is `ALDIS_ERR_INVALID_CONFIG` on `protocol`). A library built with a subset of the
+//! features (GEN-009) has the engines and the protocols of the features it has, and a protocol
+//! whose feature is off is the same error; the constants and the structs of this module are in
+//! every build, because the header is whole.
 
+#[cfg(all(feature = "link", feature = "aos"))]
 use aldis::aos::AosEdition;
+#[cfg(all(feature = "link", feature = "uslp"))]
 use aldis::core::ids::MapId;
+#[cfg(feature = "link")]
 use aldis::core::{Error, ErrorKind, Result, field};
-use aldis::link::common::{IdlePacketKind, IdlePolicy, Occupancy, Qos, ValidPvns};
-use aldis::link::protocol::{AosParams, Protocol, Route, UslpParams};
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
+use aldis::link::common::{IdlePacketKind, ValidPvns};
+#[cfg(feature = "link")]
+use aldis::link::common::{IdlePolicy, Occupancy, Qos};
+#[cfg(all(feature = "link", feature = "aos"))]
+use aldis::link::protocol::AosParams;
+#[cfg(all(feature = "link", feature = "uslp"))]
+use aldis::link::protocol::UslpParams;
+#[cfg(feature = "link")]
+use aldis::link::protocol::{Protocol, Route};
+#[cfg(all(feature = "link", feature = "uslp"))]
 use aldis::uslp::Upid;
 
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 use crate::abi::flag;
+#[cfg(all(feature = "link", feature = "aos"))]
 use crate::aos::aldis_aos_edition;
-use crate::mirror::{mirror, parse};
+use crate::mirror::mirror;
+#[cfg(feature = "link")]
+use crate::mirror::parse;
 
+// The C types of this module are in every build (the header is whole, and `sync` names the
+// protocol constants); the engines and the conversions to the Rust types need `link`, and each
+// engine the frame protocols it serves (GEN-009; c-abi.md, after CABI-060).
+#[cfg(all(
+    feature = "link",
+    any(feature = "tm", feature = "aos", feature = "uslp")
+))]
 pub mod access;
+#[cfg(all(feature = "link", feature = "aos"))]
 pub mod bitstream;
+#[cfg(all(feature = "link", any(feature = "tc", feature = "uslp")))]
 pub mod cltu;
 pub mod common;
+#[cfg(all(
+    feature = "link",
+    any(feature = "spp", feature = "epp"),
+    any(
+        feature = "tm",
+        feature = "aos",
+        all(feature = "uslp", feature = "epp")
+    )
+))]
 pub mod extractor;
+#[cfg(all(
+    feature = "link",
+    any(feature = "spp", feature = "epp"),
+    any(
+        feature = "tm",
+        feature = "aos",
+        all(feature = "uslp", feature = "epp")
+    )
+))]
 pub mod generator;
+#[cfg(all(
+    feature = "link",
+    any(feature = "tm", feature = "aos", feature = "uslp")
+))]
 pub mod mux;
+#[cfg(all(
+    feature = "link",
+    any(feature = "spp", feature = "epp"),
+    any(feature = "tc", feature = "uslp")
+))]
 pub mod reassembler;
+#[cfg(all(
+    feature = "link",
+    any(feature = "tm", feature = "tc", feature = "aos", feature = "uslp")
+))]
 pub mod receiver;
+#[cfg(all(
+    feature = "link",
+    any(feature = "spp", feature = "epp"),
+    any(feature = "tc", feature = "uslp")
+))]
 pub mod segmenter;
 
 /// The frame protocol of a link engine (LNK-001).
@@ -61,6 +125,7 @@ mirror!(pub aldis_link_protocol: u32 {
 
 /// The discriminant of the engine variant of a protocol: the protocol's own constant, so that the
 /// tag of an engine enum is named for the protocol it serves, never numbered by hand (CABI-040).
+#[cfg(feature = "link")]
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
@@ -176,6 +241,7 @@ pub struct aldis_link_occupancy_t {
     pub high_water: usize,
 }
 
+#[cfg(feature = "link")]
 impl From<Occupancy> for aldis_link_occupancy_t {
     fn from(o: Occupancy) -> Self {
         Self {
@@ -186,6 +252,7 @@ impl From<Occupancy> for aldis_link_occupancy_t {
 }
 
 /// The MAP and quality of service a field is sent on, as flat fields of an action (USLP).
+#[cfg(feature = "link")]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct RouteFields {
     /// 1 when the field has a route, else 0.
@@ -196,6 +263,7 @@ pub(crate) struct RouteFields {
     pub(crate) qos: u32,
 }
 
+#[cfg(feature = "link")]
 impl From<Option<Route>> for RouteFields {
     fn from(route: Option<Route>) -> Self {
         route.map_or_else(Self::default, |r| Self {
@@ -211,12 +279,14 @@ impl From<Option<Route>> for RouteFields {
 ///
 /// # Errors
 /// `InvalidField` (no field) for a value that is no `ALDIS_LINK_PROTOCOL_*` constant.
+#[cfg(feature = "link")]
 pub(crate) fn protocol(channel: &aldis_link_channel_t) -> Result<aldis_link_protocol> {
     parse::<aldis_link_protocol>(channel.protocol)
 }
 
 /// The error for a protocol the engine does not serve, or a reconfiguration to another one
 /// (LNK-001, LNK-003).
+#[cfg(feature = "link")]
 pub(crate) const fn unsupported_protocol() -> Error {
     Error::new(ErrorKind::InvalidConfig).with_field(field::LINK_PROTOCOL)
 }
@@ -226,6 +296,7 @@ pub(crate) const fn unsupported_protocol() -> Error {
 ///
 /// # Errors
 /// `OutOfRange` (`vc_id`) above the VCID of the protocol.
+#[cfg(feature = "link")]
 pub(crate) fn vc<P: Protocol>(channel: &aldis_link_channel_t) -> Result<P::Vc> {
     P::Vc::try_from(channel.vc_id)
 }
@@ -234,6 +305,7 @@ pub(crate) fn vc<P: Protocol>(channel: &aldis_link_channel_t) -> Result<P::Vc> {
 ///
 /// # Errors
 /// `InvalidField` for an `aos_edition` that is no `ALDIS_AOS_EDITION_*` constant.
+#[cfg(all(feature = "link", feature = "aos"))]
 pub(crate) fn aos_params(channel: &aldis_link_channel_t) -> Result<AosParams> {
     Ok(AosParams {
         edition: match parse::<aldis_aos_edition>(channel.aos_edition)? {
@@ -248,6 +320,7 @@ pub(crate) fn aos_params(channel: &aldis_link_channel_t) -> Result<AosParams> {
 /// # Errors
 /// `OutOfRange` (`upid`, `map_id`); `InvalidField` for a `uslp_qos` with no constant;
 /// `InvalidConfig` (`upid`) for "Only Idle Data".
+#[cfg(all(feature = "link", feature = "uslp"))]
 pub(crate) fn uslp_params(channel: &aldis_link_channel_t) -> Result<UslpParams> {
     let upid = Upid::from_bits(channel.uslp_upid).ok_or(Error::out_of_range(
         field::UPID,
@@ -262,6 +335,7 @@ pub(crate) fn uslp_params(channel: &aldis_link_channel_t) -> Result<UslpParams> 
 }
 
 /// The `ALDIS_LINK_QOS_*` constant of a quality of service (LNK-043).
+#[cfg(feature = "link")]
 pub(crate) const fn qos_code(qos: Qos) -> u32 {
     match qos {
         Qos::SequenceControlled => ALDIS_LINK_QOS_SEQUENCE_CONTROLLED,
@@ -273,6 +347,7 @@ pub(crate) const fn qos_code(qos: Qos) -> u32 {
 ///
 /// # Errors
 /// `InvalidField` (no field) for a value that is no `ALDIS_LINK_QOS_*` constant.
+#[cfg(feature = "link")]
 pub(crate) fn qos(value: u32) -> Result<Qos> {
     Ok(match parse::<aldis_link_qos>(value)? {
         aldis_link_qos::ALDIS_LINK_QOS_SEQUENCE_CONTROLLED => Qos::SequenceControlled,
@@ -284,11 +359,13 @@ pub(crate) fn qos(value: u32) -> Result<Qos> {
 ///
 /// # Errors
 /// `InvalidField` for a flag that is not 0 or 1; `InvalidConfig` (`valid_pvns`) for neither.
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 pub(crate) fn valid_pvns(space: u8, encapsulation: u8) -> Result<ValidPvns> {
     ValidPvns::new(flag(space)?, flag(encapsulation)?)
 }
 
 /// The idle policy of a C constant (LNK-014).
+#[cfg(feature = "link")]
 pub(crate) fn idle_policy(value: u32) -> Result<IdlePolicy> {
     Ok(match parse::<aldis_link_idle_policy>(value)? {
         aldis_link_idle_policy::ALDIS_LINK_IDLE_POLICY_OID => IdlePolicy::Oid,
@@ -297,6 +374,7 @@ pub(crate) fn idle_policy(value: u32) -> Result<IdlePolicy> {
 }
 
 /// The idle packet kind of a C constant (LNK-013).
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 pub(crate) fn idle_packet(value: u32) -> Result<IdlePacketKind> {
     Ok(match parse::<aldis_link_idle_packet>(value)? {
         aldis_link_idle_packet::ALDIS_LINK_IDLE_PACKET_SPACE_PACKET => IdlePacketKind::SpacePacket,

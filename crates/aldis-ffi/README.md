@@ -80,13 +80,21 @@ On a merge conflict in the header, merge the sources and regenerate ([M2 plan](.
 | Feature | Effect |
 |---|---|
 | `std` (default) | Hosted builds, for ground systems |
+| `full` (default) | Every feature below that names a crate: the library of `include/aldis/aldis.h`. A build with `--no-default-features` takes the features it names, and an embedded build names `full` (`--features panic-handler,full`) |
+| `core` | The CRC, the OCF, and the OID generator. On in every build: the other features and the always-present parts need it |
+| `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `sync` | The C functions of that crate. `spp` brings `time`, which the decoded packet struct holds; `time` itself is a feature of its own for the time codes |
+| `spp-time` | The typed time secondary header of a Space Packet (SPP-008): `aldis_spp_split` with `ALDIS_SPP_SECONDARY_TIME`; without it that layout is `ALDIS_ERR_INVALID_CONFIG` on `time_code` |
+| `link` | The link engines, each with the frame protocols whose features are on: TM, AOS, and USLP engines need `tm`, `aos`, `uslp`; the packet engines need `spp` or `epp`, and over USLP `epp` (GEN-009; LNK-013, LNK-063); the MAP engines `tc` or `uslp`. A protocol whose feature is off is `ALDIS_ERR_INVALID_CONFIG` on `protocol` at `_init` |
+| `cop1` | `aldis_fop1_*` and `aldis_farm1_*`; brings `tc` |
 | `panic-handler` | A `#[panic_handler]` for `no_std` static-library builds. No panic path is reachable (GEN-020, VER-010), so it satisfies the linker; if it ever runs, it executes a trapping instruction (`udf` on Arm, `ebreak` on RISC-V, `brk` on AArch64, `ud2` on x86) and then spins. On a target without stable inline assembly (SPARC V8) it only spins (OI-49; c-abi.md §1) |
 | `panic-unreachable` | A `#[panic_handler]` that calls the undefined `aldis_panic_is_unreachable`, for the exerciser's link check (VER-010). Not for integrators |
+
+**The header is whole.** `include/aldis/aldis.h` is generated from the full build and does not depend on the features of the library that a caller links. A function of a feature that is not built is absent from the library and fails at link time; `aldis_abi_version()` is unchanged, and every struct keeps its size and alignment, in particular every `aldis_*_t` of `uint64_t words[ALDIS_*_WORDS]`, whose literal is that of the full build (`tests/storage_layout.rs`, CABI-031). A subset is built and tested by `cargo xtask features` (GEN-009); in a subset that leaves out what the shared helpers serve, the compiler may report unused code.
 
 A bare-metal static library is built with:
 
 ```sh
-cargo build -p aldis-ffi --no-default-features --features panic-handler \
+cargo build -p aldis-ffi --no-default-features --features panic-handler,full \
             --target thumbv7em-none-eabihf --release
 cargo xtask ffi-imports thumbv7em-none-eabihf   # needs nothing beyond memcpy/memset (CABI-004)
 ```

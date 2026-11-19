@@ -453,8 +453,8 @@ fn rust() -> Vec<Check> {
                 format!(
                 "cargo build --locked -p aldis --no-default-features --features full --target {t}\n\
                  cargo clippy --locked -p aldis --no-default-features --features full --target {t}\n\
-                 cargo build --locked -p aldis-ffi --no-default-features --features panic-handler \
-                 --target {t} --release\n\
+                 cargo build --locked -p aldis-ffi --no-default-features \
+                 --features panic-handler,full --target {t} --release\n\
                  # The C ABI static library needs no heap, threads, or C runtime (CABI-004).\n\
                  cargo xtask ffi-imports {t}\n"
                 ),
@@ -667,8 +667,8 @@ unset RUSTFLAGS
 export CARGO_TARGET_SPARC_UNKNOWN_NONE_ELF_RUSTFLAGS="$host_flags -C target-cpu=leon3"
 cargo +"$nightly" build "${std[@]}" -p aldis --no-default-features --features full --target $t
 cargo +"$nightly" clippy "${std[@]}" -p aldis --no-default-features --features full --target $t
-cargo +"$nightly" build "${std[@]}" -p aldis-ffi --no-default-features --features panic-handler \
-  --target $t --release
+cargo +"$nightly" build "${std[@]}" -p aldis-ffi --no-default-features \
+  --features panic-handler,full --target $t --release
 # CABI-004 is reported, not checked, on this target: the compiler_builtins that build-std makes
 # for 32-bit SPARC refers to the quad-float routines of the SPARC ABI (_Q_add, ...), which
 # nothing in the archive defines (OI-08).
@@ -1082,6 +1082,8 @@ mod tests {
         assert!(s.contains("\nunset RUSTFLAGS\n"));
         assert!(!s.contains(r"export RUSTFLAGS="));
         assert!(s.contains("--no-default-features --features full --target $t"));
+        // The static library keeps every function: `full` is not a default of a `--no-default-features` build.
+        assert!(s.contains("--features panic-handler,full --target $t --release"));
         assert!(s.contains("--features inject-panic"));
         assert!(s.contains("grep -q aldis_panic_is_unreachable"));
         assert!(s.contains(r#"timeout 120 cargo +"$nightly" run "${std[@]}" --release"#));

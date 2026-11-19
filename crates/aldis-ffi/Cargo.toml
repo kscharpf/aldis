@@ -13,7 +13,7 @@ publish = false
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-aldis = { path = "../aldis", default-features = false, features = ["full"] }
+aldis = { path = "../aldis", default-features = false, features = ["core"] }
 
 [dev-dependencies]
 aldis-core = { path = "../aldis-core", default-features = false, features = ["test-hooks"] }
@@ -21,9 +21,45 @@ aldis-testkit = { path = "../aldis-testkit" }
 serde_json = "1.0.154"
 
 [features]
-default = ["std"]
-# Hosted builds (ground). Embedded builds use --no-default-features --features panic-handler.
+default = ["std", "full"]
+# Hosted builds (ground). Embedded builds use
+# --no-default-features --features panic-handler,full.
 std = []
+# The subset features mirror the facade's (GEN-009): each enables the C functions of one crate
+# and the facade feature of that crate. The header stays whole and every storage struct keeps
+# its size in every subset; a function of a feature not built is absent from the library
+# (c-abi.md, after CABI-060). `core` is on in every build (the always-present modules need it),
+# so `core` adds only the CRC, the OCF, and the OID generator.
+core = ["aldis/core"]
+time = ["core", "aldis/time"]
+# The C struct of a decoded packet holds a decoded time code (`aldis_time_decoded_t`), so the
+# Space Packet functions bring the time functions with them; the typed time secondary header
+# itself is `spp-time`.
+spp = ["core", "time", "aldis/spp"]
+spp-time = ["spp", "time", "aldis/spp-time"]
+epp = ["core", "aldis/epp"]
+tm = ["core", "aldis/tm"]
+tc = ["core", "aldis/tc"]
+aos = ["core", "aldis/aos"]
+uslp = ["core", "aldis/uslp"]
+sync = ["core", "aldis/sync"]
+link = ["core", "aldis/link"]
+# COP-1 uses the TC types (FOP-1, FARM-1).
+cop1 = ["core", "tc", "aldis/cop1"]
+full = [
+    "core",
+    "time",
+    "spp",
+    "spp-time",
+    "epp",
+    "tm",
+    "tc",
+    "aos",
+    "uslp",
+    "sync",
+    "link",
+    "cop1",
+]
 # Provides a minimal #[panic_handler] for no_std staticlib builds. GEN-020/VER-010 require
 # that no panic path is reachable, so this handler only satisfies the linker.
 panic-handler = []
@@ -33,4 +69,63 @@ panic-unreachable = []
 
 [lints]
 workspace = true
+
+# Each integration test runs only in a build that has what it calls (GEN-009): a subset library
+# (`cargo xtask features`) runs `storage_layout` and the tests of its features, and the full
+# build runs all of them.
+[[test]]
+name = "abi"
+required-features = ["spp", "time", "epp"]
+
+[[test]]
+name = "action_codes"
+required-features = ["full"]
+
+[[test]]
+name = "aos"
+required-features = ["aos"]
+
+[[test]]
+name = "engines"
+required-features = ["full"]
+
+[[test]]
+name = "link_cltu"
+required-features = ["link", "spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "link_gen"
+required-features = ["link", "spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "link_map"
+required-features = ["link", "spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "link_mux"
+required-features = ["link", "spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "link_rx"
+required-features = ["link", "spp", "epp", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "sync"
+required-features = ["sync", "link", "tm", "tc", "aos", "uslp"]
+
+[[test]]
+name = "tc"
+required-features = ["tc"]
+
+[[test]]
+name = "tm"
+required-features = ["tm"]
+
+[[test]]
+name = "uslp"
+required-features = ["uslp"]
+
+[[test]]
+name = "vectors"
+required-features = ["full"]
 

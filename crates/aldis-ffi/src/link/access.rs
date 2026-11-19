@@ -13,16 +13,24 @@ use aldis::link::access::{
     ACCESS_GENERATOR_MAX_ACTIONS, AccessActions, AccessGenerator, AccessGeneratorBuffers,
     AccessGeneratorConfig, AccessGeneratorHead, AccessInput, AccessOutput, AccessProtocol,
 };
-use aldis::link::protocol::{Aos, Tm, Uslp};
+#[cfg(feature = "aos")]
+use aldis::link::protocol::Aos;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::Tm;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "uslp")]
 use aldis::uslp::LastValidOctet;
 
 use super::common::range;
 use crate::abi::{self, Out};
 use crate::capacities::ALDIS_LINK_PACKET_QUEUE_OCTETS;
 use crate::handle::{self, InPlace, Storage};
+#[cfg(feature = "uslp")]
+use crate::link::uslp_params;
 use crate::link::{
     RouteFields, aldis_link_channel_t, aldis_link_occupancy_t, aldis_link_protocol, protocol,
-    protocol_tag, unsupported_protocol, uslp_params, vc,
+    protocol_tag, unsupported_protocol, vc,
 };
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
@@ -50,10 +58,13 @@ handle::engine_enum! {
     )]
     pub(crate) enum AccessGeneratorState {
         /// TM.
+        #[cfg(feature = "tm")]
         Tm(Ag<Tm>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM),
         /// AOS.
+        #[cfg(feature = "aos")]
         Aos(Ag<Aos>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS),
         /// USLP.
+        #[cfg(feature = "uslp")]
         Uslp(Ag<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -278,18 +289,21 @@ impl AccessGeneratorState {
         data: &[u8],
         area: &mut [u8],
     ) -> Result<aldis_access_generator_actions_t> {
-        let ch = &input.config.channel;
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)?;
                 ag_run(e, input, data, Ok(()), |p| match p {}, area)
             }
+            #[cfg(feature = "aos")]
             Self::Aos(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)?;
                 ag_run(e, input, data, Ok(()), |p| match p {}, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 keeps_protocol(input, aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)?;
+                let ch = &input.config.channel;
                 ag_run(e, input, data, uslp_params(ch), LastValidOctet::raw, area)
             }
         }
@@ -297,8 +311,11 @@ impl AccessGeneratorState {
 
     fn status(&self) -> aldis_access_generator_status_t {
         let s = match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => *e.status(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         };
         aldis_access_generator_status_t {
@@ -381,18 +398,27 @@ pub unsafe extern "C" fn aldis_access_generator_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tm")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
                     handle::init_variant::<_, Ag<Tm>>(storage, Ag::new_head(ag_config(&cfg, ())?)?)
                 }
+                #[cfg(not(feature = "tm"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+                #[cfg(feature = "aos")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
                     handle::init_variant::<_, Ag<Aos>>(storage, Ag::new_head(ag_config(&cfg, ())?)?)
                 }
+                #[cfg(not(feature = "aos"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+                #[cfg(feature = "uslp")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Ag<Uslp>>(
                         storage,
                         Ag::new_head(ag_config(&cfg, uslp_params(&cfg.channel)?)?)?,
                     )
                 }
+                #[cfg(not(feature = "uslp"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
             }
         })

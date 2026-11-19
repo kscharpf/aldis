@@ -10,17 +10,23 @@ use core::num::NonZeroUsize;
 
 use aldis::core::ids::{Apid, SeqCount};
 use aldis::core::{AnomalySet, DecodeMode, Result};
+#[cfg(not(feature = "spp-time"))]
+use aldis::core::{Error, ErrorKind, field};
+#[cfg(feature = "spp-time")]
+use aldis::spp::TimeHeaderLayout;
 use aldis::spp::{
     IdlePacket, OctetStringEncoder, PRIMARY_HEADER_LEN, PacketFields, PacketType,
     SecondaryHeaderLayout, SequenceCounter, SequenceFlags, SpacePacket, SplitPacket, SppAnomaly,
-    SppConfig, TimeHeaderLayout, encode,
+    SppConfig, encode,
 };
 use aldis::time::TimeAnomaly;
 
 use crate::abi::{self, Out, invalid_argument};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
-use crate::time::{aldis_time_decoded_t, aldis_time_format_t, decoded, time_format};
+#[cfg(feature = "spp-time")]
+use crate::time::time_format;
+use crate::time::{aldis_time_decoded_t, aldis_time_format_t, decoded};
 
 /// The Packet Type (133.0 §4.1.3.3.2).
 ///
@@ -242,6 +248,7 @@ pub(crate) fn layout(l: &aldis_spp_secondary_layout_t) -> Result<SecondaryHeader
         aldis_spp_secondary::ALDIS_SPP_SECONDARY_OPAQUE => NonZeroUsize::new(l.opaque_len)
             .map(SecondaryHeaderLayout::Opaque)
             .ok_or_else(invalid_argument),
+        #[cfg(feature = "spp-time")]
         aldis_spp_secondary::ALDIS_SPP_SECONDARY_TIME => {
             let format = time_format(&l.time_format)?;
             let pfield = abi::flag(l.time_pfield)?;
@@ -250,6 +257,12 @@ pub(crate) fn layout(l: &aldis_spp_secondary_layout_t) -> Result<SecondaryHeader
                 pfield,
                 l.ancillary_len,
             )?))
+        }
+        // The typed time secondary header is not built (GEN-009): the layout is a configuration
+        // the library does not serve.
+        #[cfg(not(feature = "spp-time"))]
+        aldis_spp_secondary::ALDIS_SPP_SECONDARY_TIME => {
+            Err(Error::new(ErrorKind::InvalidConfig).with_field(field::TIME_CODE))
         }
     }
 }
@@ -266,12 +279,24 @@ pub(crate) fn packet(
 }
 
 /// Splits the data field of `p` in the given mode, with the anomalies of its time code (SPP-008).
+#[cfg(feature = "spp-time")]
 pub(crate) fn split_by<'a>(
     p: &SpacePacket<'a>,
     mode: DecodeMode,
-    layout: &SecondaryHeaderLayout,
+    layout: SecondaryHeaderLayout,
 ) -> Result<(SplitPacket<'a>, AnomalySet<TimeAnomaly>)> {
-    mode.dispatch(|| p.split(layout), || p.split_lenient(layout))
+    mode.dispatch(|| p.split(&layout), || p.split_lenient(&layout))
+}
+
+/// Splits the data field of `p`; without the feature `spp-time` there is no time code, so the
+/// modes agree and no anomaly is found (SPP-008, GEN-009).
+#[cfg(not(feature = "spp-time"))]
+pub(crate) fn split_by<'a>(
+    p: &SpacePacket<'a>,
+    _mode: DecodeMode,
+    layout: SecondaryHeaderLayout,
+) -> Result<(SplitPacket<'a>, AnomalySet<TimeAnomaly>)> {
+    p.split(&layout).map(|s| (s, AnomalySet::empty()))
 }
 
 fn decode(bytes: &[u8], mode: u32, out: Out<'_, aldis_spp_packet_t>) -> Result<()> {
@@ -289,8 +314,11 @@ fn split(
     let layout = self::layout(layout)?;
     let mode = abi::mode(mode)?;
     let (p, _) = packet(bytes, mode)?;
-    let (s, time_anomalies) = split_by(&p, mode, &layout)?;
+    let (s, time_anomalies) = split_by(&p, mode, layout)?;
+    #[cfg(feature = "spp-time")]
     let time = s.time_code();
+    #[cfg(not(feature = "spp-time"))]
+    let time: Option<aldis::time::Decoded> = None;
     let secondary_len = s.secondary_header().len();
     let end = PRIMARY_HEADER_LEN.saturating_add(secondary_len);
     let ancillary_len = s.ancillary_data().len();

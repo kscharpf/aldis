@@ -78,6 +78,8 @@ The `_step` entry points are thin `extern "C"` functions over the generic dispat
 |---|---|---|---|
 | CABI-060 | The header SHALL define `ALDIS_ABI_VERSION_MAJOR/MINOR/PATCH`. `aldis_abi_version()` SHALL return the library's version as one `uint32_t` (major in bits 31 to 16, minor in bits 15 to 8, patch in bits 7 to 0), which is the header's `ALDIS_ABI_VERSION` when header and library match; a caller SHALL compare the two at start-up, because no call detects a header and a library of different versions. The major version SHALL change on any ABI-breaking change; while the major version is 0 (pre-release, GEN-080), the minor version SHALL change instead, as in Cargo's semantic versioning of 0.x releases. | GEN-080 | T |
 
+A subset library (GEN-009), built with a subset of the features of `aldis-ffi`, keeps the whole header: a function of a feature that is not built is absent from the library and fails at link time, `aldis_abi_version()` is unchanged, and every `#[repr(C)]` type keeps its size and alignment, so that a caller's storage struct is one size for every library it links (CABI-031; maintainer, 2026-11-18).
+
 ## 9. C++ wrapper API (aldis.hpp)
 
 | ID | Requirement | Source | Verif. |
