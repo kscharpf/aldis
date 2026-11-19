@@ -17,7 +17,7 @@
 
 use core::fmt;
 
-use refapp_scenario::{Instant, Node, Output, StepInput};
+use refapp_scenario::{Instant, Node, Output, StepInput, Variant};
 
 pub mod frames_down;
 mod frames_up;
@@ -44,6 +44,11 @@ pub enum GroundError {
     Script(ScriptError),
     /// The telemetry applications cannot be set up.
     Setup(aldis::core::Error),
+    /// The node of this variant is not built at this level: the AOS and USLP nodes come with
+    /// their work packages (A4 WP-4a, WP-4c), and `uslp` exists at the `cop1` level only
+    /// (APP-187). The error catalogue has no kind for it, and the library gains none for the
+    /// application, so the application names its own.
+    Unsupported(Variant),
 }
 
 impl fmt::Display for GroundError {
@@ -51,6 +56,12 @@ impl fmt::Display for GroundError {
         match self {
             Self::Script(e) => write!(f, "ops[{}]: {}", e.index, e.error),
             Self::Setup(e) => write!(f, "ground node setup: {e}"),
+            Self::Unsupported(variant) => {
+                write!(
+                    f,
+                    "the ground node does not support the variant `{variant}`"
+                )
+            }
         }
     }
 }
@@ -88,14 +99,19 @@ impl GroundNode {
     /// step with `tx_slot` one FDU goes out as a Type-BD frame through FOP-1 (APP-133).
     ///
     /// # Errors
-    /// As [`new`](Self::new), and [`GroundError::Setup`] if a scenario value is out of range for
-    /// the engines.
-    pub fn new_frames(script: &[OpsEntry]) -> Result<Self, GroundError> {
-        Ok(Self {
-            downlink: Some(FrameDownlink::new()?),
-            uplink: Some(Uplink::new().map_err(GroundError::Setup)?),
-            ..Self::new(script)?
-        })
+    /// As [`new`](Self::new), [`GroundError::Setup`] if a scenario value is out of range for
+    /// the engines, and [`GroundError::Unsupported`] for [`Variant::Aos`], until the AOS
+    /// downlink exists (A4 WP-4a), and for [`Variant::Uslp`], which exists at the `cop1` level
+    /// only (APP-187).
+    pub fn new_frames(variant: Variant, script: &[OpsEntry]) -> Result<Self, GroundError> {
+        match variant {
+            Variant::TmTc => Ok(Self {
+                downlink: Some(FrameDownlink::new()?),
+                uplink: Some(Uplink::new().map_err(GroundError::Setup)?),
+                ..Self::new(script)?
+            }),
+            Variant::Aos | Variant::Uslp => Err(GroundError::Unsupported(variant)),
+        }
     }
 
     /// As [`new_frames`](Self::new_frames), for a case at the `cop1` level (A3): FOP-1 runs the
@@ -104,12 +120,16 @@ impl GroundNode {
     /// (APP-044, APP-144).
     ///
     /// # Errors
-    /// As [`new_frames`](Self::new_frames).
-    pub fn new_cop1(script: &[OpsEntry]) -> Result<Self, GroundError> {
-        Ok(Self {
-            uplink: Some(Uplink::new_cop1().map_err(GroundError::Setup)?),
-            ..Self::new_frames(script)?
-        })
+    /// As [`new_frames`](Self::new_frames); [`GroundError::Unsupported`] for [`Variant::Aos`]
+    /// and [`Variant::Uslp`] until their work packages (A4 WP-4a, WP-4c).
+    pub fn new_cop1(variant: Variant, script: &[OpsEntry]) -> Result<Self, GroundError> {
+        match variant {
+            Variant::TmTc => Ok(Self {
+                uplink: Some(Uplink::new_cop1().map_err(GroundError::Setup)?),
+                ..Self::new_frames(variant, script)?
+            }),
+            Variant::Aos | Variant::Uslp => Err(GroundError::Unsupported(variant)),
+        }
     }
 
     /// The CLCW of the last downlink frame accepted (reported as `clcw_changed`; at the `cop1`

@@ -11,6 +11,7 @@
 pub mod generated;
 pub mod node;
 pub mod table;
+pub mod variant;
 
 pub use aldis::core::crc::Crc16;
 pub use aldis::core::ids::Apid;
@@ -18,3 +19,4 @@ pub use aldis::core::time::Duration;
 pub use aldis::core::time::Instant;
 pub use node::{Delivered, LinkUnit, Node, Output, StepInput};
 pub use table::{TableId, TableLength};
+pub use variant::Variant;

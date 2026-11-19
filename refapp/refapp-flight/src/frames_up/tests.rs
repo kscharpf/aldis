@@ -14,7 +14,7 @@ use aldis::tc::{
     SegmentHeaderUse, SequenceFlags, TcMapId, TcSpacecraftId, TcVcId, VcConfig, VcTable, encode,
 };
 use refapp_scenario::generated::{SPACECRAFT_ID, apid};
-use refapp_scenario::{Delivered, Instant, Node, StepInput};
+use refapp_scenario::{Delivered, Instant, Node, StepInput, Variant};
 
 use super::{APP_FRAME_REJECTED, APP_SEQUENCE_VIOLATION, APP_UNKNOWN_MAP};
 use crate::FlightNode;
@@ -120,7 +120,7 @@ struct Run {
 impl Run {
     fn new() -> Self {
         Self {
-            node: FlightNode::new_frames().unwrap(),
+            node: FlightNode::new_frames(Variant::TmTc).unwrap(),
             rec: Rec::default(),
         }
     }
@@ -128,7 +128,7 @@ impl Run {
     /// The node at the `cop1` level (A3 on).
     fn new_cop1() -> Self {
         Self {
-            node: FlightNode::new_cop1().unwrap(),
+            node: FlightNode::new_cop1(Variant::TmTc).unwrap(),
             rec: Rec::default(),
         }
     }

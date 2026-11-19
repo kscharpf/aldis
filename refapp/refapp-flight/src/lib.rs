@@ -26,10 +26,11 @@ pub mod table;
 
 mod handler;
 
-use aldis::core::Result;
+use core::fmt;
+
 use aldis::spp::SequenceFlags;
 use aldis::tc::Clcw;
-use refapp_scenario::{Instant, Node, Output, StepInput};
+use refapp_scenario::{Instant, Node, Output, StepInput, Variant};
 
 pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
@@ -41,6 +42,36 @@ use layout::{housekeeping, payload};
 use queue::TimeTagQueue;
 use schedule::Periodic;
 use table::TableStore;
+
+/// Why a flight node cannot be made (APP-187).
+///
+/// The error catalogue of `docs/03-api-model.md` §9 has no kind for a variant that has no node
+/// yet, and the library gains none for the application, so the application names its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlightError {
+    /// An engine rejected the configuration, which the generated constants rule out.
+    Setup(aldis::core::Error),
+    /// The node of this variant is not built at this level: the AOS and USLP nodes come with
+    /// their work packages (A4 WP-3a, WP-3c), and `uslp` exists at the `cop1` level only
+    /// (APP-187).
+    Unsupported(Variant),
+}
+
+impl fmt::Display for FlightError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Setup(e) => write!(f, "flight node setup: {e}"),
+            Self::Unsupported(variant) => {
+                write!(
+                    f,
+                    "the flight node does not support the variant `{variant}`"
+                )
+            }
+        }
+    }
+}
+
+impl core::error::Error for FlightError {}
 
 /// The flight node (APP-010).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -80,14 +111,19 @@ impl FlightNode {
     /// (APP-040…APP-043). [`FlightNode::new`] is the packet level of A1.
     ///
     /// # Errors
-    /// `InvalidConfig` if the scenario values are no valid engine configuration, which the
-    /// generated constants rule out.
-    pub fn new_frames() -> Result<Self> {
-        Ok(Self {
-            frames: Some(FrameDownlink::new()?),
-            uplink: Some(FrameUplink::new()?),
-            ..Self::default()
-        })
+    /// [`FlightError::Setup`] if the scenario values are no valid engine configuration, which the
+    /// generated constants rule out. [`FlightError::Unsupported`] for [`Variant::Aos`], until the
+    /// AOS downlink exists (A4 WP-3a), and for [`Variant::Uslp`], which exists at the `cop1`
+    /// level only (APP-187).
+    pub fn new_frames(variant: Variant) -> Result<Self, FlightError> {
+        match variant {
+            Variant::TmTc => Ok(Self {
+                frames: Some(FrameDownlink::new().map_err(FlightError::Setup)?),
+                uplink: Some(FrameUplink::new().map_err(FlightError::Setup)?),
+                ..Self::default()
+            }),
+            Variant::Aos | Variant::Uslp => Err(FlightError::Unsupported(variant)),
+        }
     }
 
     /// A flight node at the COP-1 level (A3 on, §6.1): as [`FlightNode::new_frames`], with FARM-1
@@ -95,13 +131,17 @@ impl FlightNode {
     /// events 210 and 211 (APP-146, APP-149).
     ///
     /// # Errors
-    /// As [`FlightNode::new_frames`].
-    pub fn new_cop1() -> Result<Self> {
-        Ok(Self {
-            frames: Some(FrameDownlink::new()?),
-            uplink: Some(FrameUplink::new_cop1()?),
-            ..Self::default()
-        })
+    /// [`FlightError::Setup`] as for [`FlightNode::new_frames`]. [`FlightError::Unsupported`] for
+    /// [`Variant::Aos`] and [`Variant::Uslp`], until their work packages land (A4 WP-3a, WP-3c).
+    pub fn new_cop1(variant: Variant) -> Result<Self, FlightError> {
+        match variant {
+            Variant::TmTc => Ok(Self {
+                frames: Some(FrameDownlink::new().map_err(FlightError::Setup)?),
+                uplink: Some(FrameUplink::new_cop1().map_err(FlightError::Setup)?),
+                ..Self::default()
+            }),
+            Variant::Aos | Variant::Uslp => Err(FlightError::Unsupported(variant)),
+        }
     }
 
     /// The CLCW FARM-1 reports now, for the OCF of the downlink (§4.4.1, APP-134); `None` at
@@ -531,6 +571,37 @@ pub(crate) mod tests {
         assert_eq!(next, Some(Instant::from_micros(500_000)));
         let next = node.step(&input(29_000_000), &mut At(29_000_000, &mut rec));
         assert_eq!(next, None);
+    }
+
+    #[test]
+    fn a_variant_without_a_node_is_unsupported() {
+        // req: APP-187
+        use super::{FlightError, Variant};
+        // `tm_tc` builds what the constructors built before the variants.
+        assert_eq!(
+            FlightNode::new_frames(Variant::TmTc).unwrap(),
+            FlightNode::new_frames(Variant::TmTc).unwrap()
+        );
+        assert!(
+            FlightNode::new_cop1(Variant::TmTc)
+                .unwrap()
+                .clcw()
+                .is_some()
+        );
+        // `aos` and `uslp` have no node until their work packages, and `uslp` has none at the
+        // frame level at all.
+        for variant in [Variant::Aos, Variant::Uslp] {
+            assert_eq!(
+                FlightNode::new_frames(variant).unwrap_err(),
+                FlightError::Unsupported(variant)
+            );
+            assert_eq!(
+                FlightNode::new_cop1(variant).unwrap_err(),
+                FlightError::Unsupported(variant)
+            );
+        }
+        let e = FlightNode::new_cop1(Variant::Uslp).unwrap_err();
+        assert!(std::format!("{e}").contains("`uslp`"), "{e}");
     }
 }
 

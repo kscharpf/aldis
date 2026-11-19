@@ -182,3 +182,141 @@ pub mod cop1 {
     /// Repetitions of a control command (APP-136).
     pub const FOP_REPETITIONS_CONTROL: u8 = 1;
 }
+
+/// AOS downlink of the variant `aos` (§4.3.1, APP-189).
+pub mod aos {
+    /// Transfer Frame Length, octets (APP-169).
+    pub const FRAME_LENGTH: u16 = 223;
+
+    /// Frame Header Error Control present (APP-169).
+    pub const FHEC: bool = true;
+
+    /// Frame Error Control Field present (APP-169).
+    pub const FECF: bool = true;
+
+    /// VC of housekeeping and events (APP-170).
+    pub const VCID_REALTIME: u8 = 0;
+
+    /// VC of payload and dump (APP-170).
+    pub const VCID_PAYLOAD: u8 = 1;
+
+    /// VC of the idle `M_PDU`s (APP-170).
+    pub const VCID_IDLE: u8 = 7;
+
+    /// `VC_OCF` present on each VC (APP-173).
+    pub const VC_OCF: bool = true;
+
+    /// Release deadline of the real-time VC, µs (APP-172).
+    pub const RELEASE_DEADLINE_REALTIME_US: u64 = 250_000;
+
+    /// Release deadline of the payload VC, µs (APP-172).
+    pub const RELEASE_DEADLINE_PAYLOAD_US: u64 = 1_000_000;
+
+    /// Maximum Packet Length, octets (APP-172).
+    pub const MAX_PACKET_LENGTH: u16 = 512;
+
+    /// Idle data octet (APP-172).
+    pub const IDLE_PATTERN: u8 = 0;
+
+    /// Valid Packet Version Number (APP-189).
+    pub const PACKET_VERSION: u8 = 0;
+
+    /// Multiplexing priority of the real-time VC (APP-170).
+    pub const PRIORITY_REALTIME: u8 = 1;
+
+    /// Multiplexing priority of the payload VC (APP-170).
+    pub const PRIORITY_PAYLOAD: u8 = 2;
+
+    /// Multiplexing priority of the idle VC (APP-170).
+    pub const PRIORITY_IDLE: u8 = 3;
+
+    /// The extractor delivers incomplete packets (APP-189).
+    pub const DELIVER_INCOMPLETE_PACKETS: bool = false;
+}
+
+/// USLP downlink of the variant `uslp` (§4.3.2, APP-189).
+pub mod uslp_down {
+    /// Transfer Frame Length, octets (APP-175).
+    pub const FRAME_LENGTH: u16 = 223;
+
+    /// Frame Error Control Field present (APP-175).
+    pub const FECF: bool = true;
+
+    /// VC of housekeeping and events (APP-175).
+    pub const VCID_REALTIME: u8 = 0;
+
+    /// VC of payload and dump (APP-175).
+    pub const VCID_PAYLOAD: u8 = 1;
+
+    /// Inclusion of OCF Required of the master channel (APP-175).
+    pub const OCF_REQUIRED: bool = true;
+
+    /// VC Count Length for the Sequence-Controlled service, octets (APP-176).
+    pub const VCF_COUNT_LENGTH_SEQUENCE: u8 = 0;
+
+    /// VC Count Length for the Expedited service, octets (APP-176).
+    pub const VCF_COUNT_LENGTH_EXPEDITED: u8 = 1;
+
+    /// MAP ID of MAP 0 (APP-176).
+    pub const MAP_ID: u8 = 0;
+
+    /// Maximum delay for a TFDF to be completed on the real-time VC, µs (APP-177).
+    pub const RELEASE_DEADLINE_REALTIME_US: u64 = 250_000;
+
+    /// Maximum delay for a TFDF to be completed on the payload VC, µs (APP-177).
+    pub const RELEASE_DEADLINE_PAYLOAD_US: u64 = 1_000_000;
+
+    /// Maximum Packet Length, octets (APP-177).
+    pub const MAX_PACKET_LENGTH: u16 = 512;
+
+    /// Idle data octet (APP-177).
+    pub const IDLE_PATTERN: u8 = 0;
+
+    /// Valid Packet Version Number of the Space Packets (APP-189).
+    pub const PACKET_VERSION: u8 = 0;
+
+    /// Valid Packet Version Number of the Encapsulation Packets (APP-189).
+    pub const ENCAPSULATION_PACKET_VERSION: u8 = 7;
+
+    /// Multiplexing priority of the real-time VC (APP-175).
+    pub const PRIORITY_REALTIME: u8 = 1;
+
+    /// Multiplexing priority of the payload VC (APP-175).
+    pub const PRIORITY_PAYLOAD: u8 = 2;
+
+    /// The extractor delivers incomplete packets (APP-189).
+    pub const DELIVER_INCOMPLETE_PACKETS: bool = false;
+}
+
+/// USLP uplink of the variant `uslp` (§4.3.3, APP-189).
+pub mod uslp_up {
+    /// Maximum Transfer Frame Length, octets (APP-182).
+    pub const MAX_FRAME_LENGTH: u16 = 512;
+
+    /// Frame Error Control Field present (APP-181).
+    pub const FECF: bool = true;
+
+    /// The uplink VC (APP-181).
+    pub const VCID: u8 = 0;
+
+    /// MAP ID of MAP 0 (APP-181).
+    pub const MAP_ID: u8 = 0;
+
+    /// VC Count Length for the Sequence-Controlled service, octets (APP-181).
+    pub const VCF_COUNT_LENGTH_SEQUENCE: u8 = 1;
+
+    /// VC Count Length for the Expedited service, octets (APP-181).
+    pub const VCF_COUNT_LENGTH_EXPEDITED: u8 = 0;
+
+    /// Inclusion of OCF Allowed (APP-181).
+    pub const OCF_ALLOWED: bool = false;
+
+    /// Maximum Packet Length of MAP 0, octets (APP-182).
+    pub const MAX_PACKET_LENGTH: u16 = 501;
+
+    /// MAP 0 permits blocking (APP-181).
+    pub const MAP_BLOCKING: bool = true;
+
+    /// MAP 0 permits segmentation (APP-181).
+    pub const MAP_SEGMENTATION: bool = false;
+}
