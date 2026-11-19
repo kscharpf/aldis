@@ -19,9 +19,11 @@
 //! **Packet codecs (GEN-009).** The packet engines (`generator`, `extractor`, `segmenter`,
 //! `reassembler`) build with `spp`, with `epp`, or with both, and compile no code of a codec not
 //! selected: a packet of its PVN is refused at `SubmitPacket` (`InvalidField`, `packet_version`,
-//! LNK-010) and its PVN or idle kind at configuration (`InvalidConfig`, LNK-078). Those over USLP
-//! need `epp`, because USLP fills a fixed-length TFDZ with an Encapsulation Idle Packet (732.1
-//! §4.1.4.3.4; LNK-013, LNK-063). The frame engines need neither.
+//! LNK-010) and its PVN or idle kind at configuration (`InvalidConfig`, LNK-078). The generator
+//! and the extractor over USLP need `epp`, because USLP fills a fixed-length TFDZ with an
+//! Encapsulation Idle Packet (732.1 §4.1.4.3.4; LNK-013, LNK-063); the segmenter and the
+//! reassembler over USLP serve only variable-length frames and build with `spp` alone. The frame
+//! engines need neither.
 //!
 //! **Status:** the `PacketGenerator` and the `PacketExtractor` (M4 WP-3), the `ChannelMux`, the
 //! `AccessGenerator`, and the `BitstreamGenerator` (M4 WP-4), the `FrameReceiver` (M4 WP-5), and the
