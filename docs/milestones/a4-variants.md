@@ -8,7 +8,7 @@
 | WP | State | PRs | Notes |
 |---|---|---|---|
 | WP-0 Plan | | | This plan, D1–D13, non-strict `--scope a4` trace gate (D1) |
-| WP-1 Scenario additions | | | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code |
+| WP-1 Scenario additions | | | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code. New IDs in the exit table of §4; OI-99 and OI-100 filed and resolved (a) by the maintainer on 2026-11-18; every clause of the checklist read, none wrong |
 | WP-2 Harness, features, variant skeleton | | | `variant` field, features and `refapp/Cargo.lock` once, `Variant` enum and dispatch in both nodes, strict decoding of the new frames |
 | WP-3a Flight `FrameDownlink<P>` and AOS | | | Generic refactor of the flight downlink; AOS arm |
 | WP-3b Flight USLP downlink | | | Stacked on WP-3a |
@@ -24,6 +24,7 @@ A pull request that starts or merges a work package changes only its row ([roadm
 
 History:
 - 2026-11-16: plan drafted by the `planner` agent at `main` `f9a9a0d2`, reviewed independently, and revised once (issue #621); D1–D13 accepted by the maintainer, every recommended option; the scope of the C ABI node for A5 is left to the A5 plan.
+- 2026-11-18: WP-1 (#697): D2 narrowed by the maintainer, `uslp` only at `cop1`; OI-99 (USLP downlink expedited) and OI-100 (one Control Command in a Type-BC TFDZ) resolved (a), both in the maintainer's chat.
 
 ## 1. Starting point
 
@@ -43,7 +44,7 @@ D1 to D13 are accepted (maintainer, 2026-11-16, in chat; every recommended optio
 | # | Decision | Choice | Status |
 |---|---|---|---|
 | D1 | Trace scope | A non-strict `cargo xtask trace --scope a4` in `cargo xtask ci`, the check `spec` and `ci.yml`, added by this plan's pull request; `--strict` replaces it at the exit (WP-7). A3 D1 precedent | Accepted (maintainer, 2026-11-16) |
-| D2 | Variant selector | A per-case `variant` field (`tm_tc` default, `aos`, `uslp`), orthogonal to `level`; the `a4-*` cases use `level: cop1` | Accepted (maintainer, 2026-11-16) |
+| D2 | Variant selector | A per-case `variant` field (`tm_tc` default, `aos`, `uslp`), orthogonal to `level`, except that `uslp` applies only at `cop1` (the harness rejects `uslp` at `packets` and `frames`: its uplink is specified with COP-1 alone); the `a4-*` cases use `level: cop1` | Accepted (maintainer, 2026-11-16); `uslp` only at `cop1`: maintainer, 2026-11-18, #697 review 1 |
 | D3 | Node architecture | Frame modules generic over the protocol type: `FrameDownlink<P>` (`Tm`, `Aos`, `Uslp`), `FrameUplink<P>` (`Tc`, `Uslp`), and a ground uplink generic over `Fop1Format`. A refapp-local trait and a closed `enum Variant`; one copy of the application layer. WP-2 builds the skeleton | Accepted (maintainer, 2026-11-16) |
 | D4 | AOS downlink | 223 octets; FECF and FHEC present; no Insert Zone; VCs {0, 1, 7}, each with `VC_OCF`; M_PDU; SCID `0x155`. VC 7 uses `IdleField`, is offered only when VCs 0 and 1 offer nothing, and has the lowest priority. No OID frames: 732.0 §4.1.4.2.3.4 note 1 (OI-43). The idle-VC ordering is an engine fact (`aldis-link/src/generator.rs:582-588`, `mux.rs:485-487`) | Accepted (maintainer, 2026-11-16) |
 | D5 | USLP downlink | Fixed length, 223 octets; FECF present; no Insert Zone; MC OCF required (OI-76, LNK-033); VCs {0, 1}; rule `000`; UPID by SANA name (OI-06); MAP 0; 1-octet VCF Count; Source-or-Destination = Source; one Encapsulation Idle Packet as idle fill (LNK-013); OID frames on VCID 63. WP-1 confirms the QoS (expedited recommended) and the Source reading | Accepted (maintainer, 2026-11-16) |
@@ -156,17 +157,17 @@ A4 is complete when every item below is green on `main`. The requirements WP-1 a
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Variants exist | APP-045 | |
-| Packet projection | APP-003 for both `a4-*` cases | |
-| AOS downlink | The AOS IDs WP-1 adds; the ID for the CLCW in the `VC_OCF` | |
-| USLP downlink | The USLP downlink IDs WP-1 adds; the ID for the CLCW in the MC OCF | |
-| USLP uplink and COP-1 | The USLP uplink IDs WP-1 adds; APP-044 at `uslp` | |
-| FARM-1 over USLP | The FARM-1-over-USLP ID WP-1 adds | |
-| Events | APP-138 as amended (D10); the `GapDiscard` code if added | |
+| Variants exist | APP-045, APP-187 | |
+| Packet projection | APP-003 for both `a4-*` cases; the cases of APP-188 | |
+| AOS downlink | APP-169…APP-174 (APP-173 is the CLCW in the `VC_OCF`) | |
+| USLP downlink | APP-175…APP-180 (APP-179 is the CLCW in the MC OCF) | |
+| USLP uplink and COP-1 | APP-181…APP-184 (APP-182 is the Maximum Transfer Frame Length with the fit of the 309-octet packet); APP-044 at `uslp` | |
+| FARM-1 over USLP | APP-185 (the flight node's events for the USLP uplink: APP-186) | |
+| Events | APP-138 as amended (D10); APP-186 (the `GapDiscard` code 115) | |
 | Harness | APP-071, APP-075, APP-076, APP-090, APP-100, APP-107 at the variants | |
 | Golden traces | APP-082, APP-083, APP-086 for every `a4-*` trace | |
 | Reproduction in CI | `compare` on every `a4-*` case (APP-106); `cargo xtask trace --scope a4 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
-| New requirements | The IDs WP-1 adds, listed here by its pull request | |
+| New requirements | APP-169…APP-189, added by WP-1 (APP-187 and APP-189 select the variant and place its parameters in the scenario file; the others are in the rows above) | |
 | Follow-up issues | Every A4 `api-feedback` and review follow-up issue closed, or deferred to a named target | |
 | Docs | Roadmap §3 and §4, the READMEs and the A5 entry gate updated | |
 

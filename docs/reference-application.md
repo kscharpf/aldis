@@ -13,6 +13,7 @@
 | Spacecraft ID | `0x155` (341), **fictional**, confirmed by the maintainer (OI-26) | §3.4 |
 | Downlink | TM, 223-octet frames, FECF, MC_OCF with the CLCW, VC 0 (HK, events), VC 1 (payload, dump), VC 7 (OID frames only), fixed-priority mux, 8 frames/s | §4.1 |
 | Uplink | TC, frames ≤ 128 octets, FECF, one VC with Segment Header, MAP 0 commands (blocking), MAP 1 table upload (segmentation); Type-BD in A2; COP-1 from A3 (K = 4, W = 8, T1_Initial = 1 s, Transmission_Limit = 3) | §4.2 |
+| Variants (A4) | A per-case `variant`: `tm_tc` (the default, the two rows above), `aos` (AOS downlink, 223 octets, FHEC and FECF, VCs 0, 1, 7 with VC_OCF, M_PDU, TC uplink as above) and `uslp` (USLP fixed-length downlink, 223 octets, rule `000`, MC OCF, VCs 0 and 1, OID frames on VCID 63; USLP variable-length uplink, frames ≤ 512 octets, VC 0, one MAP, rule `111`, COP-1 over USLP) | §4.3, §4.6, §6.5 |
 | Time | CUC Level 1, 4 coarse + 2 fractional octets, T0 = 2 100 000 000 s, no drift | §5 |
 | Link model | Simulated µs clock from 0; one-way delay 10 ms; downlink slot 125 ms; uplink slot 250 ms; scripted faults by (direction, unit index) | §6 |
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
@@ -21,7 +22,7 @@
 | Interoperability | The A3 nodes against YAMCS 5.14.0 as a black box over a UDP transport driver: managed-parameter table, driver rules, pass criteria | §11 |
 | cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in three phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
 
-**Open items that affect this document:** none. Resolved: OI-86 (order of deliveries and ops entries, §2.2), OI-87 (queue-full check, §2.3), OI-88 and OI-89 (`packet_rejected` of the ground node, APP-130), OI-90 (count of the Idle Packets, §4.4.4), all 2026-11-08; OI-11 (OID frames, §4.1; 2026-11-01), OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
+**Open items that affect this document:** none. Resolved: OI-99 (the quality of service of the USLP downlink, §4.3.2) and OI-100 (the TFDZ of a USLP Type-BC frame, §4.3.3), both 2026-11-18; OI-86 (order of deliveries and ops entries, §2.2), OI-87 (queue-full check, §2.3), OI-88 and OI-89 (`packet_rejected` of the ground node, APP-130), OI-90 (count of the Idle Packets, §4.4.4), all 2026-11-08; OI-11 (OID frames, §4.1; 2026-11-01), OI-23 (golden traces and vectors, §7.5), OI-24 (out-of-process nodes, §8.2), OI-25 (framework trace, §7.5), OI-26 (spacecraft ID, §3.4), OI-06 (SANA registries, §3.1, §4.3). Every protocol value below cites the Blue Book clause it was read from.
 
 **How to read the requirements.** Requirement IDs follow [00 §5](00-introduction.md#5-requirement-conventions), grouped in decades per section. **T** means a golden-trace reproduction test or a harness test in `refapp/` annotated `// req:`, and the header of each golden trace lists the IDs its case verifies (§7.2). **I** means review of this document or of `refapp/`. **A** means a CI check. Requirements name the library requirements they exercise.
 
@@ -315,26 +316,175 @@ Frame layout: primary header 5 ‖ Segment Header 1 ‖ user data ≤ 120 ‖ FE
 
 ### 4.3 AOS and USLP variants (A4)
 
+The `variant` of a case (§6.5) selects the frame protocols of the two links. Packets, applications, slots, and the ops script do not change (APP-002, APP-003). The variant `tm_tc`, the default, is §4.1 and §4.2. Of APP-030 to APP-043, the rules of the TM downlink (APP-030 to APP-036) are those of `tm_tc`, and the downlinks of the two other variants restate what they keep of them (APP-033, APP-035) in §4.3.1 and §4.3.2; the rules of the TC uplink (APP-040 to APP-043) hold in `tm_tc` and `aos`; APP-044 holds in every variant, with the USLP target of FOP-1 in `uslp` (§4.3.3). The variant `uslp` exists only at the level `cop1` (APP-187), because its uplink is specified with COP-1 in effect alone; the variant `aos` exists at `frames` and `cop1`. The two others are fixed by decisions D4 to D7 of the [A4 plan](milestones/a4-variants.md) (accepted 2026-11-16) and are specified in §4.3.1 to §4.3.3; their schedules are in §4.6.
+
 | Variant | Downlink | Uplink | Notes |
 |---|---|---|---|
-| `aos` | AOS, same frame length, VC and mux plan, and OCF use as §4.1 | TC as §4.2 | Parameter table added in A4 |
-| `uslp` | USLP fixed-length frames | USLP variable-length frames, COP-1 over USLP ([cop1.md](standards/cop1.md) §2.1) | No Encapsulation Packet user data until an EPI is available from SANA (OI-06): EPP appears only as Encapsulation Idle Packets (LNK-013) |
+| `tm_tc` | TM, §4.1 | TC, §4.2 | A2 and A3 |
+| `aos` | AOS (732.0-B-5): 223 octets with the FHEC and the FECF, no Insert Zone; VCs 0, 1, and 7, each with a VC_OCF that carries the CLCW; M_PDU; VC 7 carries only idle M_PDUs at the lowest priority; no OID frame (§4.3.1) | TC as §4.2, COP-1 as §4.5 | Schedule of `a4-aos-nominal`: §4.6.2 |
+| `uslp` | USLP (732.1-B-3) fixed-length frames: 223 octets, FECF, no Insert Zone, the CLCW in the MC OCF; VCs 0 and 1 on MAP 0 with rule `000`; one Encapsulation Idle Packet as fill; OID frames on VCID 63 (§4.3.2) | USLP variable-length frames of at most 512 octets: VC 0 and **one MAP (MAP 0)** for the commands and the table upload, blocking permitted, unsegmented (rule `111`); COP-1 over USLP ([cop1.md](standards/cop1.md) §2.1) (§4.3.3) | No Encapsulation Packet user data until an EPI is available from SANA (OI-06): EPP appears only as Encapsulation Idle Packets (LNK-013). Schedule of `a4-uslp-nominal`: §4.6.3 |
+
+**The USLP uplink deviates from the MAP split of §4.2.** The TC uplink puts the commands on MAP 0 (blocking) and the table upload on MAP 1 (segmentation). The USLP uplink has one MAP and no segmentation, because the FOP-1 target for USLP takes one MAP and rule `111` only ([cop1.md](standards/cop1.md) §2.1; D6 of the A4 plan), so that the two MAPs cannot sit behind one FOP-1. Two library questions are the reasons and stay open: a per-request MAP ID and per-FDU TFDF headers (issue #235), and how the segmenter hands a TFDF header to FOP-1, which [OI-71](09-open-issues.md) settled for the TC Segment Header only. The 309-octet table-upload packet fits one frame (APP-182), so the packets and the packet projection do not change (APP-003). The maintainer accepted the deviation with D6 on 2026-11-16; a two-MAP, segmenting USLP uplink is a later change, which would be a new trace version (APP-087).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| APP-030 | The TM physical channel SHALL use version 1 frames of 223 octets with the FECF present, one master channel with the SCID of §3.4. | 132.0 Table 5-1; 131.0 §11.3, §11.6.3, §11.8.2 | T |
-| APP-031 | The master channel SHALL have valid VCIDs {0, 1, 7}, no MC_FSH, and the MC_OCF present in every frame, OID frames included, carrying the latest CLCW of the uplink VC (LNK-033). | 132.0 Table 5-2, §4.1.5.3; 232.0 §4.2.1.1.1 note 3 | T |
+| APP-030 | In the TM/TC variant the TM physical channel SHALL use version 1 frames of 223 octets with the FECF present, one master channel with the SCID of §3.4. | 132.0 Table 5-1; 131.0 §11.3, §11.6.3, §11.8.2 | T |
+| APP-031 | In the TM/TC variant the TM master channel SHALL have valid VCIDs {0, 1, 7}, no MC_FSH, and the MC_OCF present in every frame, OID frames included, carrying the latest CLCW of the uplink VC (LNK-033). | 132.0 Table 5-2, §4.1.5.3; 232.0 §4.2.1.1.1 note 3 | T |
 | APP-032 | VCs 0, 1, and 7 SHALL carry Packets, without VC_FSH or VC_OCF, with the packet-transfer parameters of §4.1. | 132.0 Tables 5-3, 5-4 | T |
 | APP-033 | The downlink SHALL multiplex with a fixed priority, VC 0 before VC 1 (LNK-031), release partly filled data fields after the deadlines of §4.1 (LNK-012), and complete them with Idle Packets (LNK-013, SPP-010). | 132.0 §4.2.2.5, §4.2.4.3 | T |
-| APP-034 | When no data field is released at a frame slot, the flight node SHALL send an OID frame on VC 7 (LNK-030, LNK-014), with one OID generator for the run (CMN-021, LNK-036). | 132.0 §4.1.4.6, §4.2.4.4 | T |
+| APP-034 | In the TM/TC variant, when no data field is released at a frame slot, the flight node SHALL send an OID frame on VC 7 (LNK-030, LNK-014), with one OID generator for the run (CMN-021, LNK-036). | 132.0 §4.1.4.6, §4.2.4.4 | T |
 | APP-035 | MC and VC frame counts SHALL start at 0 when the run starts (LNK-032). | 132.0 §4.1.2.5–6 | T |
 | APP-036 | The ground node SHALL validate every TM frame (TM-001…TM-011), track frame counts and report gaps (LNK-051), extract packets (LNK-060…064), and decode the OCF as a CLCW (LNK-053): in A2 it reports a change as `clcw_changed` (§7.4) and gives nothing to FOP-1 (D2 of the A2 plan), from A3 it feeds the CLCW to FOP-1. | 132.0 §4.3 | T |
-| APP-040 | The TC physical channel SHALL use frames of at most 128 octets with the FECF present, one frame per data unit, and no systematic retransmission. | 232.0 Table 5-1, §2.4.2 | T |
-| APP-041 | The uplink SHALL use VC 0 with a Segment Header, MAPs 0 and 1 configured as §4.2, and a maximum FDU length of 121 octets. | 232.0 Tables 5-2…5-5 | T |
-| APP-042 | Command packets released at one instant SHALL be blocked into one FDU on MAP 0 in release order while they fit (LNK-040, LNK-071); table-upload packets SHALL be segmented on MAP 1 without interleaving (LNK-041, LNK-070). | 232.0 §4.3.1 | T |
+| APP-040 | In the TC uplink (variants `tm_tc` and `aos`) the TC physical channel SHALL use frames of at most 128 octets with the FECF present, one frame per data unit, and no systematic retransmission. | 232.0 Table 5-1, §2.4.2 | T |
+| APP-041 | In the TC uplink (variants `tm_tc` and `aos`) the uplink SHALL use VC 0 with a Segment Header, MAPs 0 and 1 configured as §4.2, and a maximum FDU length of 121 octets. | 232.0 Tables 5-2…5-5 | T |
+| APP-042 | In the TC uplink (variants `tm_tc` and `aos`) command packets released at one instant SHALL be blocked into one FDU on MAP 0 in release order while they fit (LNK-040, LNK-071); table-upload packets SHALL be segmented on MAP 1 without interleaving (LNK-041, LNK-070). | 232.0 §4.3.1 | T |
 | APP-043 | In A2 every FDU SHALL be sent in a Type-BD frame with N(S) = 0, and the flight node's CLCW SHALL report the FARM-B Counter of the accepted Type-B frames (COP-034, COP-035). | 232.0 §4.2.1.9; 232.1 §6.3 | T |
 | APP-044 | From A3 every FDU SHALL be sent on the AD service through FOP-1, with K = 4, T1_Initial = 1 000 000 µs, Transmission_Limit = 3, and Timeout_Type = 0, and FARM-1 SHALL use W = 8 with retransmission allowed (PW = NW = 4). | 232.1 §5.1.9.2, §5.1.10, §5.1.12, §6.1.8.2–3, Tables 7-1, 7-2 | T |
-| APP-045 | The AOS and USLP variants of §4.3 SHALL each have their own golden traces, the same packet projection as the TM/TC nominal case (APP-003), and SHALL exist before A6 exits. Their parameter tables SHALL be added as new requirements in A4. | — | T |
+| APP-045 | The AOS and USLP variants of §4.3 SHALL each have their own golden traces, the same packet projection as the TM/TC nominal case (APP-003), and SHALL exist before A6 exits. Their parameter tables are the requirements of §4.3.1 to §4.3.3 (APP-169 to APP-186), their cases APP-188, and their schedules §4.6. | — | T |
+
+#### 4.3.1 AOS downlink (`aos`)
+
+The AOS Space Data Link Protocol of 732.0-B-5, in the Issue 5 edition (the default of AOS-001): the spacecraft ID of §3.4 has 10 bits, which the 8-bit SCID of Issue 4 and earlier cannot hold (732.0 §4.1.2.2.3 note 1). The uplink is the TC uplink of §4.2 with COP-1 as in §4.5.
+
+| Level | Managed parameter | Value | Source |
+|---|---|---|---|
+| Physical channel | Transfer Frame Length | 223 octets, constant | 732.0 Table 5-1, §4.1.1.2 |
+| | Transfer Frame Version Number | 2 (binary `01`) | 732.0 Table 5-1, §4.1.2.2.2.2 |
+| | Valid Spacecraft IDs | {SCID of §3.4} | 732.0 Table 5-1, §4.1.2.2.3 |
+| | MC Multiplexing Scheme | One master channel | 732.0 Table 5-1 |
+| | Presence of Frame Header Error Control | Present | 732.0 Table 5-1, §4.1.2.6.2–3 |
+| | Presence of Insert Zone | Absent | 732.0 Table 5-1, §4.1.3.2 |
+| | Presence of Frame Error Control | Present | 732.0 Table 5-1, §4.1.6.1.2–3 |
+| Master channel | Spacecraft ID; Valid VCIDs | SCID of §3.4; {0, 1, 7} (63 is always valid) | 732.0 Table 5-2 and note 2 |
+| | VC Multiplexing Scheme | `FixedPriority`: VC 0, then VC 1, then VC 7 | 732.0 Table 5-2, §4.2.5.3 |
+| Virtual channels 0, 1, 7 | Data Field Content | M_PDU | 732.0 Table 5-3, §4.1.4.1.3–4 |
+| | Presence of VC_OCF | Present on each of the three | 732.0 Table 5-3, §4.1.5.2–3 |
+| Packet transfer (VC 0, 1) | Valid PVNs; Maximum Packet Length; incomplete packets delivered | {`000`}; 512 octets; Not required | 732.0 Table 5-4 |
+
+Frame layout: primary header 6 ‖ FHEC 2 ‖ M_PDU header 2 ‖ packet zone **207** ‖ VC_OCF 4 ‖ FECF 2 = 223 octets (732.0 §4.1.1.1, §4.1.2.1, §4.1.4.1.2, §4.1.4.2.1.3, §4.1.5.1, §4.1.6.1.1). The Transfer Frame Data Field is the M_PDU, 209 octets.
+
+| Policy | VC 0 | VC 1 | VC 7 |
+|---|---|---|---|
+| Carries | HK, events | Payload, dump | Idle M_PDUs only; no packet is ever submitted |
+| Mux priority | 1 (highest) | 2 | 3 (lowest): offered only when neither VC 0 nor VC 1 holds a released data field (LNK-014, LNK-031) |
+| Idle policy (LNK-014) | `Oid`: no field is offered until one is releasable | same | `IdleField`: an idle M_PDU is always on offer |
+| Release deadline after the first octet is written (LNK-012) | 250 000 µs | 1 000 000 µs | — |
+| Idle fill (LNK-013) | Space Packet Idle Packet (APID 2047), idle data octets `0x00` (SPP-010). A remainder of fewer than 7 octets is written as the first octets of a 7-octet Idle Packet whose rest starts the next M_PDU of the VC (732.0 §4.2.2.5 and its note) | same | The whole packet zone is idle data, octets `0x00`, with the First Header Pointer "all ones minus one" (732.0 §4.1.4.2.2.5, §4.2.2.6) |
+
+**No OID frame is sent.** VC 7 is an ordinary VC: every frame of it is an M_PDU whose packet zone holds only idle data (732.0 §4.1.4.1.4, §4.1.4.2.3.4), the way to keep the stream and the OCF going when there is no packet (note 1 of §4.1.4.2.3.4). It is not an OID frame (note 3 of §4.1.4.2.3.4). An OID frame, VCID 63, is created only when no frame of any VC is available at release time (732.0 §4.2.5.4, §4.2.6.4), which the idle M_PDU of VC 7 rules out. What an OID frame would carry (no OCF, no SDLS fields) is settled by OI-43; no case sends one.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-169 | In the `aos` variant the downlink physical channel SHALL use AOS Version 2 frames of 223 octets, Issue 5 edition, with the SCID of §3.4, the FHEC and the FECF present and no Insert Zone: primary header 6, FHEC 2, M_PDU header 2, packet zone 207, VC_OCF 4, FECF 2. | 732.0 Table 5-1, §4.1.1.1–2, §4.1.2.1, §4.1.2.2.2–3, §4.1.2.6.2–4, §4.1.3.2, §4.1.4.1.2, §4.1.4.2.1.3, §4.1.6.1; AOS-001, AOS-019 | T |
+| APP-170 | The AOS master channel SHALL have the valid VCIDs {0, 1, 7} and multiplex with a fixed priority, VC 0 before VC 1 before VC 7 (LNK-031). Every VC SHALL carry M_PDUs and the VC_OCF in every frame (LNK-033). VC 7 SHALL carry no packet and SHALL be offered an idle M_PDU at every slot, which is sent only when neither VC 0 nor VC 1 holds a released data field; the flight node SHALL send no OID frame (OI-43). | 732.0 Tables 5-2, 5-3, §4.1.4.1.3–4, §4.1.4.2.3.4 and notes 1, 3, §4.1.5.2–3, §4.2.5.3–5, §4.2.6.4; LNK-014, LNK-030, LNK-031; OI-43 | T |
+| APP-171 | The VC Frame Count SHALL be kept per VC, start at 0 when the run starts (APP-035), increment by 1 for every frame of the VC, the idle M_PDU frames of VC 7 included, and wrap modulo 16 777 216. The Replay Flag SHALL be 0, the VC Frame Count Cycle Use Flag 0, and the cycle field `0000`. The FHEC SHALL be the Reed-Solomon (15, 11) code over the header of 732.0 §4.1.2.6.5, and the FECF the CRC of §4.1.6.2, written in the order of LNK-035. No master-channel count exists. | 732.0 §4.1.2.4, §4.1.2.5.2.3 a, §4.1.2.5.3.2 a, §4.1.2.5.5.3, §4.1.2.6, §4.1.6.2, §4.2.4.1, §4.2.7.3–4; LNK-032, LNK-035; AOS-012, AOS-013 | T |
+| APP-172 | The packet zone SHALL hold the packets of the VC concatenated in submission order, a packet that does not fit being split across the M_PDUs of the VC (LNK-011). The First Header Pointer SHALL be the offset in the packet zone of the first packet that starts in it (the residue of a packet and of an Idle Packet is no start), "all ones" when none starts, and "all ones minus one" in an idle M_PDU. A field released at its deadline (§4.3.1, LNK-012) SHALL be completed with a Space Packet Idle Packet of APID 2047, idle data `0x00`, and count 0 (SPP-010, OI-90), a remainder of fewer than 7 octets spilling into the next M_PDU of the VC (LNK-013). | 732.0 §4.1.4.2.1–3, §4.2.2.2–6, Table 5-4; LNK-010…LNK-014, SPP-010; 133.0 §4.1.3.3.4.4 | T |
+| APP-173 | The OCF of every AOS downlink frame, on VC 0, 1, and 7 alike, SHALL be a Type-1 report (Type Flag 0) that holds the CLCW of FARM-1 for the uplink VC, with the word of APP-134 and APP-147; one OCF source feeds the three VCs, so every frame shows the CLCW of its slot instant whatever its VC. | 732.0 §4.1.5.2–4 a, §4.2.4.2; 232.0 §4.2.1.1.1 note 2, §4.2.1.6; 232.1 §6.2.4; LNK-033; COP-035 | T |
+| APP-174 | In the `aos` variant the ground node SHALL decode every downlink frame with the strict AOS codec (FHEC corrected, FECF checked), give the VC_OCF of every frame of every VC to the CLCW handling of APP-144, extract the packets of VC 0 and VC 1 (LNK-060…LNK-064) and give the idle M_PDUs of VC 7 and the Idle Packets to no application, and output the events of APP-138 as amended: no frame-level event for a frame in sequence. | 732.0 §4.3.2, §4.3.4.2–4, §4.3.5.2–4, §4.3.7.2–3; LNK-050…LNK-053, LNK-060, LNK-063, LNK-064, LNK-080 | T |
+
+#### 4.3.2 USLP downlink (`uslp`)
+
+The Unified Space Data Link Protocol of 732.1-B-3 over fixed-length frames, without SDLS, truncated frames, or Insert Zone. The UPIDs are named as the SANA registry names them ([`specs/sana/uslp_protocol_id.tsv`](../specs/sana/uslp_protocol_id.tsv), OI-06): "Space Packets or Encapsulation packets are contained within the TFDZ" in the TFDF of a data frame, and the UPID that signals that the entire fixed-length TFDZ contains idle data (the "Only Idle Data" of 732.1 §4.1.4.1.9) in an OID frame.
+
+| Level | Managed parameter | Value | Source |
+|---|---|---|---|
+| Physical channel | Physical Channel Transfer Frame Type; Transfer Frame Length | Fixed Length; 223 octets | 732.1 Table 5-1, §4.1.2.7 |
+| | TFVN | `1100` | 732.1 Table 5-1, §4.1.2.2.2.2 |
+| | MC Multiplexing Scheme | One master channel | 732.1 Table 5-1 |
+| | Presence of Insert Zone | Absent | 732.1 Table 5-1, §4.1.3.2 |
+| | Presence of Frame Error Control | Present | 732.1 Table 5-1, §4.1.6.2.1 |
+| | Frames given to the C&S Sublayer as one data unit; maximum Repetitions | 1; 1 | 732.1 Table 5-1 |
+| Master channel | MC Transfer Frame Type; SCID | Fixed Length; SCID of §3.4 (16-bit field) | 732.1 Table 5-2 and note 3 |
+| | VCIDs | {0, 1} (63 is always valid) | 732.1 Table 5-2 and note 2 |
+| | VC Multiplexing Scheme | `FixedPriority`: VC 0, then VC 1; an OID frame on VCID 63 when neither has a released data field | 732.1 Table 5-2, §4.2.8.3, §4.2.10.4 |
+| | Inclusion of OCF Required | True: the MC parameter governs (OI-76); the VC parameter of that name is not configured | 732.1 Table 5-2, §4.1.5.3 |
+| Virtual channels 0 and 1 | VC Transfer Frame Type | Fixed Length | 732.1 Table 5-3 and note 2 |
+| | VC Count Length for Sequence Control QoS; for Expedited QoS | 0 (none); 1 octet (OI-99, decided) | 732.1 Table 5-3, §4.1.2.11.3, Table 4-2 |
+| | COP in Effect | None | 732.1 Table 5-3, §3.3.2.6 note |
+| | MAP IDs; Truncated Transfer Frame Length; SDU Type | {0}; none; CCSDS Packet | 732.1 Table 5-3 |
+| | Maximum delay for a TFDF to be completed, once started | 250 000 µs (VC 0); 1 000 000 µs (VC 1) | 732.1 Table 5-3 and note 4; LNK-012 |
+| MAP 0 | SDU Type; UPID supported | CCSDS Packet; "Space Packets or Encapsulation packets are contained within the TFDZ" | 732.1 Table 5-4 |
+| Packet transfer (MAP 0) | Valid PVNs; Maximum Packet Length; incomplete packets delivered | {`000`, `111`}: Space Packets, and the Encapsulation Packets of the Idle Packets only (OI-06); 512 octets; Not required | 732.1 Table 5-5; 133.1 §4.1.2.2.2 |
+| VCID 63 (OID frames) | VC Count Length | 0 for both QoS: no VCF Count is kept for OID frames | 732.1 §4.1.4.1.10 note 4, §4.2.10.4 note 1 |
+
+Frame layout of a data frame: primary header 7 ‖ VCF Count 1 ‖ TFDF Header 3 (rule, UPID, First Header Pointer) ‖ TFDZ **206** ‖ MC OCF 4 ‖ FECF 2 = 223 octets (732.1 §4.1.2.1.2, §4.1.2.12.2, §4.1.4.1.2–3, §4.1.4.2.1.2, §4.1.4.2.4.1–2, §4.1.5.2, §4.1.6.2.2). An OID frame has no VCF Count: header 7 ‖ TFDF Header 3 ‖ TFDZ **207** ‖ OCF 4 ‖ FECF 2.
+
+| Policy | VC 0 | VC 1 | VCID 63 |
+|---|---|---|---|
+| Carries | HK, events | Payload, dump | OID frames only |
+| Mux priority | 1 (highest) | 2 | none: used only when neither VC has a released data field (LNK-030) |
+| Idle policy (LNK-014) | `Oid` | `Oid` | — |
+| TFDZ Construction Rule; UPID | `000`; "Space Packets or Encapsulation packets" | same | `001`; the idle-data UPID |
+| Quality of service; Bypass/Sequence Control and Protocol Control Command Flags | Expedited, `10` (OI-99, decided) | same | Expedited, `10` (LNK-030, OI-74) |
+| Idle fill (LNK-013) | One Encapsulation Idle Packet of exactly the remainder, idle data octets `0x00`: a 2-octet header for 2 to 255 octets in all, a 1-octet packet when exactly one octet remains (732.1 §4.1.4.3.4, §4.2.2.1.5; 133.1 §4.1.2.3–4, Table 4-2) | same | The TFDZ is the next octets of the OID generator, never restarted (CMN-021, LNK-036) |
+
+The quality of service of the downlink frames is OI-99, decided by the maintainer on 2026-11-18: expedited. 732.1 gives the two Bypass/Sequence Control values their meanings (§4.1.2.8.1.2) and a count length for each (Table 5-3), but the note to §3.3.2.6 says that the QoS of a request has no effect where no COP is in effect, so no clause fixes which the downlink frames carry. They are expedited: Bypass/Sequence Control Flag `1`, a one-octet expedited VCF Count, no sequence-controlled count. The OID frames are expedited in the engine as well (LNK-030). The Source-or-Destination Identifier is settled by 732.1 §4.1.2.3.3 a, which gives the value `0` the meaning that the SCID names the source of the frame, and the spacecraft is the source of every downlink frame (the Green Book 700.1-G-1 §3.2.2.4 says the same, informatively).
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-175 | In the `uslp` variant the downlink SHALL use fixed-length USLP frames (TFVN `1100`) of 223 octets with the FECF present and no Insert Zone, one master channel with the SCID of §3.4, the valid VCIDs {0, 1} and 63 for OID frames, fixed priority VC 0 before VC 1, and the MC parameter "Inclusion of OCF Required" true, so that every frame, OID frames included, carries the OCF (OI-76, LNK-033). The VC parameter of that name SHALL NOT be configured. No master-channel frame count exists. | 732.1 Tables 5-1, 5-2, §4.1.2.2, §4.1.3.2, §4.1.5.3, §4.1.6.2, §4.2.8.3, §4.2.9.2 and note 1, §4.2.10.4; LNK-031, LNK-033; OI-76 | T |
+| APP-176 | Each data frame SHALL have: Source-or-Destination Identifier `0`; the VCID of its VC; MAP ID 0; End of Frame Primary Header Flag 0; Frame Length 222; Bypass/Sequence Control Flag 1 and Protocol Control Command Flag 0 (expedited, user data; OI-99, decided); reserved spares `00`; OCF Flag 1; VCF Count Length `001` and a one-octet VCF Count, kept per VC, from 0 when the run starts (APP-035), incrementing by 1 for each frame of the VC and wrapping modulo 256; a TFDF Header of 3 octets, the rule `000`, the UPID "Space Packets or Encapsulation packets are contained within the TFDZ", and the First Header Pointer; and a TFDZ of 206 octets. | 732.1 §4.1.2.2–12, Tables 4-1, 4-2, §4.1.4.2.1–4, Table 5-3; OI-99 (decided); LNK-032, LNK-076; USLP-004, USLP-005, USLP-016 | T |
+| APP-177 | The TFDZ of a data frame SHALL hold the packets of the VC concatenated in submission order, a packet that does not fit being split across the TFDZs of the VC (LNK-011). The First Header Pointer SHALL be the offset in the TFDZ of the first packet that starts in it (the residue of a packet and of an Idle Packet is no start) and "all ones" when none starts, also when a packet ends in the TFDZ (OI-69). A field released at its deadline (§4.3.2) SHALL be completed with one Encapsulation Idle Packet of exactly the remainder (LNK-013); an Idle Packet is a packet, so the pointer names it when it is the first to start. | 732.1 §4.1.4.2.4.3–4, §4.1.4.3.4, §4.2.2.1.2–5, Table 5-5; 133.1 §4.1.2.2–4, Table 4-2; LNK-010…LNK-014, OI-69 | T |
+| APP-178 | When neither VC 0 nor VC 1 has a released data field at a frame slot, the flight node SHALL send an OID frame: VCID 63, MAP ID 0, Bypass/Sequence Control Flag 1 and Protocol Control Command Flag 0, VCF Count Length `000` (no count), a TFDF Header of 3 octets with the rule `001`, the UPID that signals that the entire fixed-length TFDZ contains idle data, and the Last Valid Octet Pointer at the last octet of the TFDZ (206), a TFDZ of 207 octets from the OID generator, never restarted (CMN-021, LNK-036), the OCF of the MC, and the FECF. No data frame is sent on VCID 63. | 732.1 §4.1.4.1.5–11, §4.2.10.4 and notes, Table 5-1 note 4, §4.1.5.3; USLP-009; LNK-030, LNK-036 | T |
+| APP-179 | The OCF of every USLP downlink frame, OID frames included, SHALL be a Type-1 report (Type Flag 0) that holds the CLCW of FARM-1 for the uplink VC (VCID 0), with the word of APP-134 and APP-147, taken from the one OCF source of the MC. | 732.1 §4.1.5.2.1 a, §4.1.5.3, §4.2.9.2, §4.3.9.2–3; 232.0 §4.2.1.1.1, §4.2.1.6; 232.1 §6.2.4; LNK-033, OI-76; COP-035 | T |
+| APP-180 | In the `uslp` variant the ground node SHALL decode every downlink frame with the strict USLP codec (FECF checked), give the OCF of every frame, OID frames included, to the CLCW handling of APP-144, track the VCF Count of each VC and report a gap or a discontinuity as APP-138 says, extract the packets of VC 0 and VC 1 and the Encapsulation Idle Packets (LNK-060…LNK-064) and give the Idle Packets to no application, discard an OID frame after its OCF (no packet event, no `frame_discarded`), and output the events of APP-138 as amended. | 732.1 §4.3.2.2, §4.3.8.2–3 and note 1, §4.3.9.2–3, §4.3.11.1.2–3; LNK-050…LNK-053, LNK-060, LNK-063, LNK-064, LNK-080 | T |
+
+#### 4.3.3 USLP uplink (`uslp`)
+
+USLP variable-length frames of 732.1-B-3 on VC 0 with COP-1 ([cop1.md](standards/cop1.md) §2.1), for the commands and the table upload. The reading of the Blue Books and the library constraints behind the choices are D6 and D7 of the [A4 plan](milestones/a4-variants.md); the deviation from §4.2 is stated in §4.3.
+
+| Level | Managed parameter | Value | Source |
+|---|---|---|---|
+| Physical channel | Physical Channel Transfer Frame Type; Transfer Frame Length | Variable Length; 512 octets, the maximum (APP-182) | 732.1 Table 5-1 and note 2 |
+| | TFVN | `1100` | 732.1 Table 5-1, §4.1.2.2.2.2 |
+| | MC Multiplexing Scheme | One master channel | 732.1 Table 5-1 |
+| | Presence of Insert Zone | Absent (only a fixed-length channel has one) | 732.1 Table 5-1 note 5, §4.1.3.2.2 |
+| | Presence of Frame Error Control | Present | 732.1 Table 5-1, §4.1.6.2.1 |
+| | Frames given to the C&S Sublayer as one data unit; maximum Repetitions | 1; 1 (no systematic retransmission) | 732.1 Table 5-1, §4.2.11.8 |
+| Master channel | MC Transfer Frame Type; SCID; VCIDs | Variable Length; SCID of §3.4; {0} | 732.1 Table 5-2 |
+| Virtual channel 0 | VC Transfer Frame Type | Variable Length | 732.1 Table 5-3 |
+| | VC Count Length for Sequence Control QoS; for Expedited QoS | 1 octet; 0 (no expedited count, OI-66) | 732.1 Table 5-3, Table 4-2; OI-66 |
+| | COP in Effect; CLCW Version Number; CLCW Reporting Rate | COP-1; 1; 8 per second (every downlink frame, §4.4.1) | 732.1 Table 5-3 |
+| | MAP IDs; Truncated Transfer Frame Length; SDU Type | {0}; none; CCSDS Packet | 732.1 Table 5-3 |
+| | Inclusion of OCF Allowed | False: no OCF on the uplink | 732.1 Table 5-3, §4.1.5.4 |
+| | Repetitions for frames carrying service data on the sequence-controlled service; for frames carrying COP Control Commands | 1; 1 | 732.1 Table 5-3 and note 6 |
+| | Maximum delay for a TFDF to be completed; between releases of frames of the VC | None (a TFDF is whole when requested); 250 000 µs, the uplink slot (§6.1) | 732.1 Table 5-3 and note 4; 232.1 §5.1.9.2 a |
+| MAP 0 | SDU Type; UPID supported | CCSDS Packet; "Space Packets or Encapsulation packets are contained within the TFDZ" and "COP-1 Control Commands are contained within the TFDZ" | 732.1 Table 5-4 |
+| | Blocking; Segmentation | Permitted; Prohibited (no rule `100`, `101`, `110`) | 732.1 §4.2.2.2.8 |
+| Packet transfer (MAP 0) | Valid PVNs; Maximum Packet Length; incomplete packets delivered | {`000`}; 501 octets (APP-182); Not required | 732.1 Table 5-5 |
+| Security | SDLS fields | None | 732.1 §6.6 |
+
+Frame layout: primary header 7 ‖ VCF Count 1 ‖ TFDF Header 1 (rule and UPID; the pointer belongs to the rules `000` to `010` only) ‖ TFDZ ‖ FECF 2, without Insert Zone or OCF. A Type-BC frame has no VCF Count (the expedited count length is 0): header 7 ‖ TFDF Header 1 ‖ Control Command ‖ FECF 2.
+
+| Maximum Transfer Frame Length | Octets | Source |
+|---|---|---|
+| Transfer Frame Primary Header: TFVN 4, SCID 16, Source-or-Destination 1, VCID 6, MAP ID 4, End of Frame Primary Header Flag 1, Frame Length 16, Bypass 1, Protocol Control Command 1, spares 2, OCF Flag 1, VCF Count Length 3 (56 bits) | 7 | 732.1 §4.1.2.1.2, Figure 4-2 |
+| VCF Count, Count Length `001` (sequence-controlled) | 1 | 732.1 §4.1.2.11.3, Table 4-2, §4.1.2.12.2 |
+| Insert Zone | 0 | 732.1 Table 5-1 note 5 |
+| TFDF Header: rule `111` and UPID, no pointer | 1 | 732.1 §4.1.4.2.1.2, §4.1.4.2.4.1 |
+| TFDZ: the table-upload packet of §3.3.6 (300 table octets + 9) | 309 | 732.1 §4.1.4.2.2.2.8 c |
+| OCF | 0 | 732.1 §4.1.5.4, Table 5-3 |
+| FECF | 2 | 732.1 §4.1.6.2.2 |
+| **Frame**; Frame Length field (one fewer, §4.1.2.7.2) | **320**; 319 | 732.1 §4.1.2.7.2–3 |
+
+320 is at most 512, so the table upload needs no segmentation. The longest packet one frame holds is 512 − 7 − 1 − 1 − 2 = 501 octets.
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-181 | In the `uslp` variant the uplink SHALL use variable-length USLP frames with the FECF, without Insert Zone, OCF, truncated frames, or SDLS fields, on VC 0 of the master channel of §3.4 with one MAP (MAP 0) on which blocking is permitted and segmentation prohibited, COP-1 in effect, a one-octet sequence-controlled VCF Count, no expedited count (OI-66), and the Source-or-Destination Identifier `1` (the SCID refers to the destination, the spacecraft), as §4.3.3 lists. Each frame carries one MAP ID, 0, also a Type-BC frame. | 732.1 Tables 5-1…5-5, §4.1.2.3.3 b, §4.1.2.5.2, §4.1.2.11.3, Table 4-2, §4.1.2.12.3–4, §4.1.3.2.2, §4.1.5.4, §4.1.6.2.2, §4.2.2.2.8; OI-66; COP-010; USLP-004 | T |
+| APP-182 | The Maximum Transfer Frame Length of the USLP uplink SHALL be 512 octets: a frame holds a packet of at most 501 octets (primary header 7, VCF Count 1, TFDF Header 1, FECF 2), which SHALL be the Maximum Packet Length of MAP 0, and the 309-octet table-upload packet SHALL be sent in one frame of 320 octets whose Frame Length field is 319. The harness SHALL reject a case that uploads at `uslp` a table whose packet is longer than 501 octets (a table of more than 492 octets; the 503-octet limit of APP-017 holds for `tm_tc` and `aos`). | 732.1 Table 5-1 and note 2, §4.1.2.1.2, §4.1.2.7.2–3, §4.1.2.11.3, §4.1.2.12.2, §4.1.4.2.1.2, §4.1.4.2.4.1, §4.1.6.2.2, Table 5-5 | T |
+| APP-183 | Each USLP uplink frame SHALL have the version `1100`, the SCID of §3.4, the VCID 0, the MAP ID 0, the End of Frame Primary Header Flag 0, the Frame Length one less than its octets, reserved spares `00`, and the OCF Flag 0. A Type-AD frame (Bypass/Sequence Control Flag 0, Protocol Control Command Flag 0, VCF Count Length `001`) SHALL carry the N(S) of FOP-1 as VCF Count and, in a TFDF Header of one octet, the rule `111` and the UPID "Space Packets or Encapsulation packets are contained within the TFDZ", with one or more complete Space Packets as TFDZ. A Type-BC frame (flags `1` and `1`, VCF Count Length `000`) SHALL carry the rule `111`, the UPID "COP-1 Control Commands are contained within the TFDZ", and one Control Command as TFDZ: Unlock (one octet, `00`) or Set V(R) (three octets, 232.0 §4.1.3.3); a TFDZ of any other content makes the frame invalid (OI-100, decided on 2026-11-18, as for TC). | 732.1 §4.1.2.2–12, Tables 4-1, 4-2, §4.1.4.2.2.2.8, §4.1.4.2.3, §4.2.7.4 and notes 2–3; 232.0 §4.1.3.3; COP-010; USLP-013 | T |
+| APP-184 | At the `uslp` variant the ground node SHALL give FOP-1, with the USLP target (VC 0, MAP 0, rule `111`), each FDU as the TFDF of one request, and request, hold, and send as APP-144 says: one frame per uplink slot, in release order. The packets of the commands released at one instant SHALL be blocked into one TFDZ in release order while they fit (APP-042 applies to MAP 0 only); the table-upload packet SHALL be one TFDZ and SHALL NOT be segmented; the TFDF Header of a request SHALL NOT use the rules `100` to `110`. The parameters of FOP-1 are those of APP-044. No Type-BD frame is sent. | 732.1 §4.2.2.2.8, §4.2.7.2–4; 232.1 §5.1.4, §5.1.9.2, §5.1.10, §5.1.12, §5.2; LNK-040…LNK-043; COP-010, COP-011; APP-044, APP-144 | T |
+| APP-185 | At the `uslp` variant the flight node SHALL give FARM-1 every USLP frame of the uplink VC that passed the strict decode and the USLP frame validation checks (the version, the MCID, header values consistent with the features, the length, and the FECF), as a Type-AD frame with N(S) from the VCF Count, a Type-BD frame (flags `1` and `0`), or a Type-BC frame (flags `1` and `1`) with the Control Command of its TFDZ read as 232.0 §4.1.3.3 says, where a TFDZ that is not exactly one Control Command makes the frame invalid (OI-100; E9, APP-186); a frame with the reserved flag combination (`0` and `1`) is rejected by the decode. The delivery buffer, the windows, the discard events, the Unlock, and the CLCW of every downlink frame SHALL be those of APP-146 and APP-147. | 732.1 §4.1.2.8.1–3, Table 4-1, §4.1.2.12.4, §4.2.7.4 notes 2–3, §4.3.7.1–2, §4.3.11.3.4; 232.1 §3.3.2, §6.1.8.3.1, §6.3.2.1–3, Table 6-1; COP-030, COP-031, COP-033, COP-036; USLP-001, USLP-013 | T |
+| APP-186 | For every USLP frame delivered the flight node SHALL output, in this order: `frame_rejected` if the strict decode or the validation fails, with FARM-1 given the invalid-frame input (E9, no change of its state) and nothing further, as for a TC frame (APP-139); `frame_discarded` if the receiver or FARM-1 discards the frame, and nothing further; otherwise, for the TFDF that FARM-1 accepts, the reassembly events in the engine's order (`gap_discard` when a gap in the VCF Count discards an SDU in progress, `sequence_violation`, `unknown_map`, `sdu_too_long`; §7.4) and then, for each packet the MAP reassembler delivers, in order, the handling of A1. `gap_discard` (115) is raised by USLP only; no case of A4 raises it, since FARM-1 lets no gap through and the uplink never segments. A valid frame in sequence raises no frame-level event. | 732.1 §4.3.2.3, §4.3.5, §4.3.7.4, §4.3.11.3.3–4; LNK-050, LNK-070, LNK-071; APP-139 | T |
+
+#### 4.3.4 Selecting a variant and its cases
+
+| ID | Requirement | Source | Verif. |
+|---|---|---|---|
+| APP-187 | Each case of the scenario file SHALL have a `variant`: `tm_tc` (the value when the field is absent), `aos`, or `uslp`, independent of its `level` (§6.5) except as this requirement says. The variant `aos` SHALL apply at the levels `frames` and `cop1`, and `uslp` at the level `cop1`; the harness SHALL reject `aos` at `packets`, `uslp` at `packets` and `frames`, and any other value, and build the flight node and the ground node of a case for the same variant. | D2 of the A4 plan (`uslp` only at `cop1`: maintainer, 2026-11-18) | T |
+| APP-188 | The cases `a4-aos-nominal` and `a4-uslp-nominal` SHALL be those of §6.4 and §4.6, each at the level `cop1` in the scenario file with its golden trace, with the ops script and the end instant (35 s) of `a3-nominal`, no fault, and the packet projection of `a1-nominal` (APP-003); each SHALL have the downlink and uplink schedule, the CLCW words, and the events of §4.6.2 or §4.6.3, and every command SHALL arrive before its execution time (§4.6.4). | D8 of the A4 plan; APP-003 | T |
+| APP-189 | The parameters of §4.3.1 to §4.3.3 that are numbers or flags SHALL be in the sections `aos`, `uslp_down`, and `uslp_up` of the scenario file and in the generated constants, with their ranges checked by the harness, and the nodes of A4 SHALL take them from there; the rows of §4.3 that name an engine policy are choices of the nodes and have no value in the file (APP-107, APP-136). | APP-107, APP-136 | A/I |
 
 ### 4.4 Frame-level behaviour (A2 on)
 
@@ -449,7 +599,7 @@ Checked clause by clause against the Blue Books before any node code (A2 WP-1); 
 
 ### 4.5 COP-1 behaviour (A3 on)
 
-What the nodes do at the link level `cop1` (D2 of the A3 plan), fixed before any node exists: the order of work with FOP-1 and its timer, the directives, the use of FARM-1, and the hand-derived schedule of `a3-nominal`. Below that level (`frames`, the `a2-*` cases) none of it applies: Type-BD frames and the nodes of §4.4 stay as they are (APP-005, APP-043). The fault cases are in §6.8 and the events in §7.4. Every Blue Book value is read from 232.1-B-2 with Cor. 1 and 232.0-B-4; the readings are in §4.5.4.
+What the nodes do at the link level `cop1` (D2 of the A3 plan), fixed before any node exists: the order of work with FOP-1 and its timer, the directives, the use of FARM-1, and the hand-derived schedule of `a3-nominal`. Below that level (`frames`: the `a2-*` cases, and the variant `aos` at `frames`) none of it applies: Type-BD frames and the nodes of §4.4 stay as they are, with the AOS downlink of §4.3.1 in place of the TM downlink in the variant `aos` (APP-005, APP-043). The variant `uslp` has no such level (APP-187). The fault cases are in §6.8 and the events in §7.4. Every Blue Book value is read from 232.1-B-2 with Cor. 1 and 232.0-B-4; the readings are in §4.5.4.
 
 #### 4.5.1 Order of work
 
@@ -558,6 +708,159 @@ Derived by hand from §4.2, §2.4, §4.4.1, §4.4.4, and the rules of §4.5.1 to
 | APP-150 | The golden trace of `a3-nominal` SHALL have the uplink schedule, the CLCW words, the acknowledgements, and the events of §4.5.5, and the packet projection of `a1-nominal` (APP-003). | 232.1 §5.1.9.1, Table 5-1 E2, E5; 232.0 §4.1.2.3.3, §4.2.1; COP-010, COP-011 | T |
 
 
+### 4.6 Schedules of the variants (A4)
+
+What the nodes do in the cases `a4-aos-nominal` and `a4-uslp-nominal`, fixed before any variant node exists: the Blue Book readings, then the downlink and uplink schedule of each case in the shape of §4.4.4 and §4.5.5, then the arrival of the commands. They are derived by hand from §4.3, §2.4, §4.4.1, §4.4.2, §4.5.1 to §4.5.5, and the clauses of §4.6.1 (an independent regeneration is D9 of the A4 plan); the traces reproduce them exactly (APP-188). The packets generated are those of §2.4 (30 HK packets of 44 octets, 10 event packets of 21 octets, 13 payload packets of 412 octets, and 5 dump packets of 140, 140, 140, 140, and 106 octets), and the packet projection is that of `a1-nominal` (APP-003). Times are slot instants; frame *i* is the downlink unit of index *i*, sent at *i* × 125 000 µs, for *i* = 0…279 (end 35 s).
+
+#### 4.6.1 Blue Book readings the A4 nodes rely on
+
+Read clause by clause from 732.0-B-5, 732.1-B-3, 133.1-B-3, 232.0-B-4, and 232.1-B-2 before any variant code (A4 WP-1). The Blue Books settle each reading below except two, which the maintainer decided on 2026-11-18 (OI-99, OI-100).
+
+- **AOS edition and SCID (732.0 §4.1.2.2.3 and note 1).** The Issue 5 SCID has 10 bits, split over bits 2–9 (the 8 least significant) and 42–43 (the 2 most significant) of the header; the scenario's SCID `0x155` (§3.4) needs both parts, so the scenario uses Issue 5 (AOS-001).
+- **The idle VC and the OID frame (732.0 §4.1.4.1.4, §4.1.4.1.5, §4.1.4.2.2.5, §4.1.4.2.3.4 and notes 1 and 3, §4.2.2.6, §4.2.5.4, §4.2.6.4; OI-43).** A VC that transfers M_PDUs has an M_PDU in every frame; an M_PDU of only idle data has the First Header Pointer "all ones minus one" and is how the OCF goes out when there is no packet. An OID frame is made only when no frame of any VC is available, so VC 7's idle M_PDU leaves none (§4.3.1).
+- **An Idle Packet of fewer than 7 octets (732.0 §4.2.2.5 note).** The shortest Space Packet Idle Packet has 7 octets, and a remainder below that spills into the next M_PDU. The payload packet of 412 octets is 207 + 205, so the second M_PDU of every payload packet that starts a pair has 2 octets left: it ends with the first 2 octets of a 7-octet Idle Packet (`07 FF`), and the next M_PDU of the VC starts with its other 5 octets (`C0 00 00 00 00`; the header of an Idle Packet of 7 octets is `07 FF C0 00 00 00` and one idle octet `00`). The pointer of that M_PDU names the first packet that starts in it, so it is 5 (732.0 §4.1.4.2.2.2, LNK-011).
+- **The OCF (732.0 §4.1.5.2–4; 732.1 §4.1.5.2.1, §4.1.5.3, §4.3.9.2–3).** An AOS VC with a VC_OCF carries it in every frame of the VC, and a USLP MC that requires the OCF carries it in every frame of the MC, OID frames included; the Type Flag `0` says the report is a CLCW (232.0 §4.2.1.1.1 note 2), whose VCID field names the uplink VC (§4.2.1.6). The USLP MC reception function extracts the OCF of every frame before the VC demultiplexing discards an OID frame (§4.3.9.3, §4.3.8.3 note 1).
+- **The TFDF Header (732.1 §4.1.4.2.1.2, §4.1.4.2.2.2, §4.1.4.2.3, §4.1.4.2.4.1–4, Table 4-3).** The Header is one octet, the rule in bits 0–2 and the UPID in bits 3–7, and it has the 16-bit pointer only for the rules `000`, `001`, and `010`. The rule `000` needs the First Header Pointer (all ones when no packet starts, OI-69); the rule `001` of an OID frame has the Last Valid Octet Pointer at the last octet of the TFDZ; the rule `111` has no pointer. The five UPID bits are the `upid` column of the SANA table, read by name: `0b00000` for "Space Packets or Encapsulation packets", `0b00001` for "COP-1 Control Commands", `0b11111` for the entire fixed-length TFDZ idle. The first octet of the TFDF Header is therefore `00` (rule `000`, packets), `3F` (rule `001`, idle), `E0` (rule `111`, packets), and `E1` (rule `111`, control commands).
+- **Source-or-Destination Identifier (732.1 §4.1.2.3.3).** `0` when the SCID is the source of the frame, `1` when it is the destination: downlink frames are `0`, uplink frames `1`. The Green Book 700.1-G-1 §3.2.2.4 reads it the same way.
+- **The VCF Count (732.1 §4.1.2.11.3, Table 4-2, §4.1.2.12.2–5, §4.1.4.1.10 note 4, §4.2.10.4 note 1).** The header is 7 octets and the count follows from bit 56, so a one-octet count makes it 8; a VC keeps a count per QoS; a VCF Count of OID frames is optional, and the scenario keeps none (Count Length `000`). A downlink VC without COP-1 uses the expedited QoS (**OI-99**, decided by the maintainer on 2026-11-18); the uplink's is sequence-controlled for the AD frames, whose count is the N(S) of FOP-1 (§4.2.7.4 note 3).
+- **The Encapsulation Idle Packet (133.1 §4.1.2.2–4, §4.1.2.8, Table 4-2; 732.1 §4.1.4.3.4, §4.2.2.1.5).** Version `111`, Encapsulation Protocol ID `000`, Length of Length `01` give the first octet `E1`, followed by one octet with the total length of the packet, for lengths 2 to 255; Length of Length `00` gives the one-octet packet `E0`. The data are idle octets `0x00`.
+- **Rule `111` (732.1 §4.1.4.2.2.2.8 and note 1, §4.1.4.3.2, §4.2.2.2.8).** One TFDZ holds one or more complete packets of one QoS, one MAP, and one UPID, as long as they and the TFDF Header fit the largest TFDF of the VC. A TFDZ of Control Commands under the rule `111` may hold several commands, whereas FARM-1 reads a Type-BC frame as one of the two commands (232.1 §6.3.2.1). The maintainer decided on 2026-11-18 (**OI-100**) that the TFDZ of a USLP Type-BC frame holds exactly one Control Command and that any other TFDZ is an invalid frame (E9), as for TC.
+- **Not in the Blue Books.** The release deadlines (LNK-012), the idle pattern and the idle packet kind of AOS, the sampling instant of the CLCW (§4.4.1), the maximum frame length of 512 and the Maximum Packet Length of 501 of the USLP uplink, the valid PVNs, and the choice of a one-octet count are the scenario's rules.
+
+#### 4.6.2 `a4-aos-nominal`
+
+**Uplink and COP-1.** The uplink is that of `a3-nominal`, unchanged: the eight Type-AD frames of §4.5.5 (`up` index 0 to 7, first octets `01 55`, N(S) 0 to 7, the table upload in three segments), the CLCW words of the table of §4.5.5 (N(R) 1 to 8, `0x01000001` to `0x01000008`), their acknowledgements 135 000 µs after each frame, and the events of the ground node of §4.5.5 (`fop1_directive` and `fop1_state` at 0.0 s, then `clcw_changed` and `fop1_transfer` (3, *n*) for each FDU *n*). The words are in the frames of the same indices as in `a3-nominal` (9, 17, 19, 21, 25, 33, 41, 49); every frame carries the OCF (APP-173), so the one of them that is a data frame (frame 21, on VC 1) shows it as the VC 7 frames do. The flight node raises no frame-level event.
+
+**Frame header fields.** Version `01`, SCID `0x155`, so the first two octets are `55 40` on VC 0, `55 41` on VC 1, and `55 47` on VC 7: the 8 low bits of the SCID, `0101 0101`, are bits 2–9 (six of them in octet 0 after the version `01`, two in octet 1 before the VCID) and its 2 high bits, `01`, are bits 42–43, in octet 5, which is `10` (Replay Flag 0, Cycle Use Flag 0, SCID MSB `01`, cycle `0000`). Octets 2 to 4 are the VC Frame Count. Octets 6 and 7 are the FHEC, which covers octets 0, 1, and 5 only, so it is the same in every frame of a VC: `A5 79` on VC 0, `87 67` on VC 1, `4B 05` on VC 7 (computed with the independent model `test-vectors/models/aos_fhec.py`, not with the codec). The M_PDU header is the First Header Pointer: `00 00` for 0, `FF FF` when no packet starts, `FF FE` for an idle M_PDU, otherwise the offset. Every frame ends with the OCF (§4.4.1) and the FECF.
+
+Frame 0 begins `55 47 00 00 00 10 4B 05 FF FE`, frame 2 `55 40 00 00 00 10 A5 79 00 00`, and frame 4 `55 41 00 00 00 10 87 67 00 00`.
+
+**Totals.** 31 frames on VC 0, 37 on VC 1, and 212 on VC 7. At the end the VC 0 count is 30, the VC 1 count 36, and the VC 7 count 211.
+
+**VC 0.** As in §4.4.4: HK packet *k* is generated at *k* s, so frame 8*k* + 2 (t = *k* + 0.25 s) is released by the deadline, for *k* = 0…29; its packet zone is the event packets of the instant, in generation order, then HK *k*, then one Space Packet Idle Packet that fills the zone to 207 octets, FHP 0. The idle packet is APID 2047, count 0, idle data `0x00`: 163 octets for HK alone (`07 FF C0 00 00 9C`, then 157 octets `00`), 142 with one event (*k* = 6 and 12; `…87`), 121 with two (*k* = 10 and 24; `…72`), and 100 with three (*k* = 20; `…5D`), so 163 octets in the other 25 frames. `DUMP_COMPLETED` (12.5 s) starts a field alone, so frame 102 (12.75 s) holds that event packet and an idle packet of 186 octets (`…B3`), FHP 0. The VC Frame Count is *k* in frame 8*k* + 2 for *k* = 0…12, 13 in frame 102, and *k* + 1 in frame 8*k* + 2 for *k* = 13…29.
+
+**VC 1, payload.** The packet of 412 octets does not fill two M_PDUs of 207 and leaves 2 octets, which a Space Packet Idle Packet cannot fill (§4.6.1), so the payload packets come in two kinds. A packet that finds the VC empty (kind **E**) goes out in two M_PDUs: at T(*n*), octets 0…206, FHP 0; at T(*n*) + 1 s (the deadline of the field that started when the first was released), octets 207…411 and the first 2 octets of a 7-octet Idle Packet, FHP 205. The other 5 octets of that Idle Packet start the next field at the same slot, whose deadline is 1 s later. A packet that arrives while that field waits (kind **O**, at T(*n*) = the deadline of the field, so the packet is submitted before the deadline is signalled, §4.4.2) goes out in three: at T(*n*), the 5 octets `C0 00 00 00 00` and octets 0…201, FHP 5; at T(*n*) + 0.125 s, octets 202…408, FHP all ones; at T(*n*) + 1.125 s, octets 409…411 and an Idle Packet of 204 octets (`07 FF C0 00 00 C5`, then 198 octets `00`), FHP 3. When no packet follows an E packet within a second, the field of the 5 octets is released at its deadline with an Idle Packet of 202 octets (`07 FF C0 00 00 C3`), FHP 5: frames 164 (20.5 s) and 244 (30.5 s). Payload packet 6 is in the window below.
+
+| Payload *n* | T(*n*) (s) | Kind | Frames: index (VC 1 count) |
+|---|---|---|---|
+| 0 | 0.5 | E | 4 (0), 12 (1) |
+| 1 | 2.5 | O | 20 (2), 21 (3), 29 (4) |
+| 2 | 4.5 | E | 36 (5), 44 (6) |
+| 3 | 6.5 | O | 52 (7), 53 (8), 61 (9) |
+| 4 | 8.5 | E | 68 (10), 76 (11) |
+| 5 | 10.5 | O | 84 (12), 85 (13), 93 (14) |
+| 6 | 12.5 | window | 101 (18), 103 (19), 110 (20) |
+| 7 | 14.5 | E | 116 (21), 124 (22) |
+| 8 | 16.5 | O | 132 (23), 133 (24), 141 (25) |
+| 9 | 18.5 | E | 148 (26), 156 (27), then 164 (28) |
+| 10 | 24.5 | E | 196 (29), 204 (30) |
+| 11 | 26.5 | O | 212 (31), 213 (32), 221 (33) |
+| 12 | 28.5 | E | 228 (34), 236 (35), then 244 (36) |
+
+**VC 1, dump and payload packet 6.** The dump packets (12.0 to 12.5 s) and payload packet 6 (12.5 s) are one stream of 1 078 octets on VC 1, six frames, and the multiplexer sends VC 0 first at the slot where both have a field:
+
+| Frame | t (s) | VC | Count | FHP | Packet zone |
+|---|---|---|---|---|---|
+| 97 | 12.125 | 1 | 15 | 0 | dump 0 (140), first 67 octets of dump 1 |
+| 98 | 12.250 | 0 | 12 | 0 | the event of 12.0 s, HK 12, an idle packet of 142 |
+| 99 | 12.375 | 1 | 16 | 73 | last 73 of dump 1, first 134 of dump 2 |
+| 100 | 12.500 | 1 | 17 | 6 | last 6 of dump 2, dump 3 (140), first 61 of dump 4 |
+| 101 | 12.625 | 1 | 18 | 45 | last 45 of dump 4, first 162 of payload 6 |
+| 102 | 12.750 | 0 | 13 | 0 | `DUMP_COMPLETED`, an idle packet of 186 |
+| 103 | 12.875 | 1 | 19 | all ones | octets 162…368 of payload 6 |
+| 110 | 13.750 | 1 | 20 | 43 | last 43 of payload 6, an idle packet of 164 |
+
+At slot 102 both VCs have a field: VC 0 goes first (LNK-031), the full VC 1 field waits in the multiplexer and goes at slot 103, and the 43 octets left start a field at slot 102, whose deadline is 13.75 s (slot 110); the previous payload packet (5, kind O) ended with its third frame at 11.625 s, so none of the window's fields is a residue. The dump packets arrive complete at 12.135 s (dump 0), 12.385 s (dump 1), 12.510 s (dumps 2 and 3), and 12.635 s (dump 4), and the ground node reports `dump_reassembled` (65 536, 600, 32 936) at 12.635 s.
+
+**VC 7.** Every slot that is not listed above (VC 0: 31 frames; VC 1: 37) is a VC 7 frame: the M_PDU header `FF FE`, 207 octets `00`, and the OCF; the *m*-th VC 7 frame has the count *m*. There is no OID frame.
+
+#### 4.6.3 `a4-uslp-nominal`
+
+**Frame header fields.** A data frame is primary header 8 ‖ TFDF Header 3 ‖ TFDZ 206 ‖ OCF 4 ‖ FECF 2. Octets 0 to 5 are `C0 15 50 00 00 DE` on VC 0 and `C0 15 50 20 00 DE` on VC 1 (version `1100`, the SCID `0x0155` in bits 4–19, Source-or-Destination `0`, the VCID, MAP ID 0, End of Frame Primary Header Flag 0, Frame Length 222); octet 6 is `89` (Bypass 1, Protocol Control Command 0, spares `00`, OCF Flag 1, VCF Count Length `001`); octet 7 is the VCF Count. The TFDF Header is `00` and the pointer: `00 00 00` for FHP 0, `00 FF FF` for none, `00` and the offset otherwise. An OID frame is `C0 15 57 E0 00 DE 88` (VCID 63, VCF Count Length `000`, no count) ‖ `3F 00 CE` (rule `001`, the idle-data UPID, Last Valid Octet Pointer 206) ‖ 207 octets of the OID generator ‖ OCF 4 ‖ FECF 2. Every frame ends with the OCF (§4.4.1) and the FECF.
+
+Frame 0 is an OID frame, `C0 15 57 E0 00 DE 88 3F 00 CE FF FF FF FF 6D B6 D8 61 45 1F …`; frame 2 begins `C0 15 50 00 00 DE 89 00 00 00 00`, frame 4 `C0 15 50 20 00 DE 89 00 00 00 00`, and frame 5 `C0 15 50 20 00 DE 89 01 00 FF FF`.
+
+**Totals.** 61 data frames (31 on VC 0, 30 on VC 1) and 219 OID frames. At the end the VCF Count is 30 on VC 0 and 29 on VC 1; OID frames have no count.
+
+**VC 0.** As in the AOS case, with the zone of 206 octets and Encapsulation Idle Packets: the field of frame 8*k* + 2 is the events of the instant, HK *k*, and an idle packet of 162 octets for HK alone (`E1 A2`, then 160 octets `00`), 141 with one event (`E1 8D`), 120 with two (`E1 78`), 99 with three (`E1 63`), and 185 in frame 102 (`E1 B9`), FHP 0 (frame 8*k* + 2 for *k* = 6 and 12, 10 and 24, and 20 as in §4.6.2). The VCF Count is *k* in frame 8*k* + 2 for *k* = 0…12, 13 in frame 102, and *k* + 1 for *k* = 13…29.
+
+**VC 1, payload.** The payload packet of 412 octets is exactly two TFDZs of 206 octets. The first field is full when the packet is submitted and the second is full as soon as the first is released, so neither waits for a deadline, and the multiplexer sends one per slot: for every payload packet *n* except 6, frame T(*n*) / 0.125 s carries octets 0…205, FHP 0, and the next frame octets 206…411, FHP all ones (the packet ends at the last octet of the TFDZ and none starts, OI-69). No field is left open after a payload packet, so no deadline releases one.
+
+| Payload *n* | T(*n*) (s) | Frames: index (VC 1 count) |
+|---|---|---|
+| 0 | 0.5 | 4 (0), 5 (1) |
+| 1 | 2.5 | 20 (2), 21 (3) |
+| 2 | 4.5 | 36 (4), 37 (5) |
+| 3 | 6.5 | 52 (6), 53 (7) |
+| 4 | 8.5 | 68 (8), 69 (9) |
+| 5 | 10.5 | 84 (10), 85 (11) |
+| 6 | 12.5 | 101 (15), 103 (16), 110 (17) |
+| 7 | 14.5 | 116 (18), 117 (19) |
+| 8 | 16.5 | 132 (20), 133 (21) |
+| 9 | 18.5 | 148 (22), 149 (23) |
+| 10 | 24.5 | 196 (24), 197 (25) |
+| 11 | 26.5 | 212 (26), 213 (27) |
+| 12 | 28.5 | 228 (28), 229 (29) |
+
+**VC 1, dump and payload packet 6.** As in §4.6.2, with the zone of 206 octets:
+
+| Frame | t (s) | VC | Count | FHP | TFDZ |
+|---|---|---|---|---|---|
+| 97 | 12.125 | 1 | 12 | 0 | dump 0 (140), first 66 octets of dump 1 |
+| 98 | 12.250 | 0 | 12 | 0 | the event of 12.0 s, HK 12, an idle packet of 141 |
+| 99 | 12.375 | 1 | 13 | 74 | last 74 of dump 1, first 132 of dump 2 |
+| 100 | 12.500 | 1 | 14 | 8 | last 8 of dump 2, dump 3 (140), first 58 of dump 4 |
+| 101 | 12.625 | 1 | 15 | 48 | last 48 of dump 4, first 158 of payload 6 |
+| 102 | 12.750 | 0 | 13 | 0 | `DUMP_COMPLETED`, an idle packet of 185 |
+| 103 | 12.875 | 1 | 16 | all ones | octets 158…363 of payload 6 |
+| 110 | 13.750 | 1 | 17 | 48 | last 48 of payload 6, an idle packet of 158 |
+
+The dump packets arrive complete at the same instants as in §4.6.2, and the ground node reports `dump_reassembled` (65 536, 600, 32 936) at 12.635 s.
+
+**OID frames.** Every other slot, 219 in all, is an OID frame: frames 0 and 1, then every slot not listed above. Its TFDZ is the next 207 octets of the OID generator, which is never restarted (CMN-021, LNK-036): the *m*-th OID frame carries octets 207*m* to 207*m* + 206 of the sequence, and the TFDZ of frame 0 begins `FF FF FF FF 6D B6 D8 61 45 1F` (732.1 §4.1.4.1.10; CMN-020).
+
+**Uplink frames** (`up` index 0 to 5). Each is a Type-AD frame (octets 0 to 5 `C0 15 58 …`: Source-or-Destination `1`, VCID 0, MAP ID 0; octet 6 `01`: Bypass 0, Protocol Control Command 0, OCF Flag 0, VCF Count Length `001`), with N(S) = V(S) of FOP-1 as the VCF Count (octet 7), a TFDF Header `E0`, and the packets as TFDZ. The commands released at 5.0 s share one frame. FARM-1 accepts every frame with E1.
+
+| Index | t (s) | N(S) | TFDZ | Frame (octets) | First nine octets |
+|---|---|---|---|---|---|
+| 0 | 1.0 | 0 | `NOOP`, seq 0 (14) | 25 | `C0 15 58 00 00 18 01 00 E0` |
+| 1 | 2.0 | 1 | table upload (309) | 320 | `C0 15 58 00 01 3F 01 01 E0` |
+| 2 | 3.0 | 2 | `ACTIVATE_TABLE`, seq 1 (17) | 28 | `C0 15 58 00 00 1B 01 02 E0` |
+| 3 | 4.0 | 3 | `DUMP_MEMORY`, seq 2 (20) | 31 | `C0 15 58 00 00 1E 01 03 E0` |
+| 4 | 5.0 | 4 | `SET_PAYLOAD_MODE` (off), seq 3 (15), and `NOOP`, seq 4 (14) | 40 | `C0 15 58 00 00 27 01 04 E0` |
+| 5 | 6.0 | 5 | `SET_PAYLOAD_MODE` (on), seq 5 (15) | 26 | `C0 15 58 00 00 19 01 05 E0` |
+
+Frame octets = TFDZ + 8 + 1 + 2; the Frame Length field is one fewer. The window never fills (at most one frame is unacknowledged), and each timer is cancelled 135 000 µs after it starts (§4.5.4).
+
+**CLCW.** The OCF is `0x01000000` until the frame of index 0 arrives, with FARM-B Counter 0 and the flags 0 throughout, and N(R) = V(R) = the number of frames accepted. The word changes in exactly these downlink frames, the first slot after each arrival, and the ground node reports each change as `clcw_changed` at the arrival instant of the downlink frame; FOP-1 acknowledges the frame at the same instant (E2). The slots between repeat the last word.
+
+| Downlink frame | t (s) | N(R) | OCF word | `clcw_changed` (decimal) | At | Acknowledges | Margin to the timer |
+|---|---|---|---|---|---|---|---|
+| 9 | 1.125 | 1 | `0x01000001` | 16 777 217 | 1.135 | FDU 0 (index 0) | 865 000 µs |
+| 17 | 2.125 | 2 | `0x01000002` | 16 777 218 | 2.135 | FDU 1 (index 1) | 865 000 µs |
+| 25 | 3.125 | 3 | `0x01000003` | 16 777 219 | 3.135 | FDU 2 (index 2) | 865 000 µs |
+| 33 | 4.125 | 4 | `0x01000004` | 16 777 220 | 4.135 | FDU 3 (index 3) | 865 000 µs |
+| 41 | 5.125 | 5 | `0x01000005` | 16 777 221 | 5.135 | FDU 4 (index 4) | 865 000 µs |
+| 49 | 6.125 | 6 | `0x01000006` | 16 777 222 | 6.135 | FDU 5 (index 5) | 865 000 µs |
+
+**Application events of the ground node** (the flight node raises no frame-level event: no discard, no change of state, no Unlock, no `gap_discard`). At 0.0 s, in this order: `fop1_directive` (1, 1, 0) and (3, 1, 0), then `fop1_state` (1), as in §4.5.5. At each instant of the table above, after the frame's `clcw_changed`: `fop1_transfer` (3, *n*) for the FDU *n* in the row. FOP-1 sends no retransmission, raises no Alert, and no `Timeout` is given.
+
+#### 4.6.4 Arrival of the commands
+
+Every command arrives, with the one-way delay of 10 000 µs, before its execution time, and the table upload before the command that activates it. The ops script is that of §2.4, released at the instants below, all uplink slots, so each frame leaves at its release instant (§4.5.1).
+
+| Command (sequence) | Released and sent (s) | Arrives, `aos` (s) | Arrives, `uslp` (s) | Executes (s) | Margin, `aos` and `uslp` (s) |
+|---|---|---|---|---|---|
+| `NOOP` (0) | 1.0 | 1.010 | 1.010 | 6.0 | 4.990 |
+| Table upload | 2.0 (`aos`: 2.0, 2.25, 2.5) | 2.510 (last segment) | 2.010 | stored before `ACTIVATE_TABLE` arrives at 3.010 | 0.500 and 1.000 |
+| `ACTIVATE_TABLE` (1) | 3.0 | 3.010 | 3.010 | 10.0 | 6.990 |
+| `DUMP_MEMORY` (2) | 4.0 | 4.010 | 4.010 | 12.0 | 7.990 |
+| `SET_PAYLOAD_MODE` off (3) | 5.0 | 5.010 | 5.010 | 20.0 | 14.990 |
+| `NOOP` (4) | 5.0, in the frame of the command above | 5.010 | 5.010 | 20.0 | 14.990 |
+| `SET_PAYLOAD_MODE` on (5) | 6.0 | 6.010 | 6.010 | 24.0 | 17.990 |
+
+The smallest margin is 4.990 s, so no command is rejected at delivery (APP-012) and the on-board packets do not depend on the uplink (APP-003, APP-014). The flight node raises `cmd_received` at each arrival and `table_received` (1, 300) at 2.510 s (`aos`) and 2.010 s (`uslp`).
+
 ## 5. Time
 
 | Item | Value | Source |
@@ -584,8 +887,8 @@ Every on-board time stamp and every execution time in the scenario falls on a mu
 | Item | A1 (packets) | A2 on (frames) |
 |---|---|---|
 | Clock | Simulated `Instant` from 0 µs (API-003), owned by the harness | same |
-| Downlink unit | Each Space Packet the flight node outputs, sent at its output instant | One TM frame per **frame slot**, every 125 000 µs from t = 0; the flight node must supply one (LNK-030) |
-| Uplink unit | Each Space Packet the ground node outputs, sent at its output instant | At most one TC frame per **uplink slot**, every 250 000 µs from t = 0 |
+| Downlink unit | Each Space Packet the flight node outputs, sent at its output instant | One downlink frame (TM; AOS or USLP in the variants of §4.3) per **frame slot**, every 125 000 µs from t = 0; the flight node must supply one (LNK-030) |
+| Uplink unit | Each Space Packet the ground node outputs, sent at its output instant | At most one uplink frame (TC; USLP in the variant `uslp`) per **uplink slot**, every 250 000 µs from t = 0 |
 | One-way delay | 10 000 µs, both directions | same |
 | Run | From t = 0 to the case's end instant, exclusive | same |
 
@@ -631,9 +934,10 @@ Faults are **scripted** per case, not seeded: each entry addresses one link unit
 | `a3-uplink-disorder` | A3 | `duplicate`, `delay`, and `flip` of uplink frames | Reordering through the FARM-1 window (E3, E4) and the FECF path (E9) under COP-1; §6.8 |
 | `a3-uplink-lockout` | A3 | `drop` of one downlink frame; directives *Terminate AD Service*, *Set V(S)*, *Initiate AD Service* | A lockout (E5), Alert[Lockout], and its recovery with Unlock; §6.8 |
 | `a3-uplink-limit` | A3 | `drop` of one frame and its two retransmissions; directives *Set V(S)*, *Initiate AD Service (with CLCW check)* | Transmission_Limit reached, Alert[T1], the negative confirms, and a recovery; §6.8 |
-| `a4-aos-nominal`, `a4-uslp-nominal` | A4 | none | Variants (§4.3) |
+| `a4-aos-nominal` | A4 (`cop1`, variant `aos`) | none | The ops script of `a3-nominal` (end 35 s) over the AOS downlink and the TC uplink with COP-1; the schedule of §4.6.2; frozen at bless (APP-087) |
+| `a4-uslp-nominal` | A4 (`cop1`, variant `uslp`) | none | The ops script of `a3-nominal` (end 35 s) over the USLP downlink and the USLP uplink with COP-1; the schedule of §4.6.3; frozen at bless (APP-087) |
 
-The fault scripts of the A2 and A3 cases are fixed by the milestone that adds them (APP-005).
+The fault scripts of the A2 and A3 cases are fixed by the milestone that adds them (APP-005). The A4 cases have none: the fault cases of the variants are not part of A4 (D8 of the A4 plan).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
@@ -649,6 +953,11 @@ The fault scripts of the A2 and A3 cases are fixed by the milestone that adds th
 ### 6.5 Script entries in the scenario file
 
 A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file; this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
+
+| Case field | Values | Meaning |
+|---|---|---|
+| `level` | `packets`, `frames`, `cop1` | The link level of the case (§1, §6.1) |
+| `variant` | `tm_tc` (the value when the field is absent), `aos`, `uslp` | The frame protocols of the case (§4.3), independent of `level` except as the next sentences say (D2 of the A4 plan, APP-187). `tm_tc` is TM down and TC up (§4.1, §4.2); `aos` is AOS down (§4.3.1) and TC up; `uslp` is USLP down (§4.3.2) and USLP up (§4.3.3). The variant `aos` applies at the levels `frames` and `cop1`, and `uslp` at the level `cop1`; the harness rejects `aos` at `packets`, `uslp` at `packets` and `frames`, and any other value. The `a4-*` cases are at `cop1` |
 
 | Ops entry `kind` | Parameters | Meaning |
 |---|---|---|
@@ -1016,7 +1325,7 @@ Library-internal events and step instants are **not** recorded, so an implementa
 
 ### 7.4 Application events
 
-A closed vocabulary with stable codes, mapped by each node from library events and its own state, in the spirit of API-080. Codes are never renumbered or reused. A2 adds frame-level codes in 100–199, A3 COP-1 codes (FOP-1 notifications and alerts, FARM-1 state) in 200–299: 200 to 203 of the ground node, 210 and 211 of the flight node.
+A closed vocabulary with stable codes, mapped by each node from library events and its own state, in the spirit of API-080. Codes are never renumbered or reused. A2 adds frame-level codes in 100–199, A3 COP-1 codes (FOP-1 notifications and alerts, FARM-1 state) in 200–299: 200 to 203 of the ground node, 210 and 211 of the flight node. A4 adds the code 115 (USLP only) and amends 100 for the variants (D10 of the A4 plan).
 
 | Code | `name` | Node | `args` |
 |---|---|---|---|
@@ -1028,7 +1337,7 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | 6 | `packet_rejected` | either | error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue) |
 | 20 | `cmd_received` | flight | function code, command sequence count |
 | 21 | `table_received` | flight | table ID, length |
-| 100 | `frame_gap` | ground | scope (0 master channel, 1 virtual channel), VCID (0 for scope 0), missing count |
+| 100 | `frame_gap` | ground | scope (0 master channel, 1 virtual channel; scope 0 exists in TM only, AOS and USLP have no master-channel count), VCID (0 for scope 0), missing count (modulo the width of the frame count) |
 | 101 | `frame_discontinuity` | ground | scope, VCID |
 | 102 | `frame_rejected` | either | error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue) |
 | 103 | `frame_discarded` | either | layer (1 frame receiver, 2 FARM-1), reason (layer 1: 1 `UnknownChannel`, 2 `NotServed`; layer 2: the number of the FARM-1 event whose cell discards the frame: E1 in Lockout, E2 to E5, and E9; 232.1 Table 6-1); the ground node also raises it with layer 1, reason 2 for a data frame on the OID VC (APP-138) |
@@ -1040,6 +1349,7 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | 112 | `sdu_too_long` | flight | MAP ID |
 | 113 | `downlink_refused` | flight | error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue), and the VCID of the packet when a generator refused one (absent when a slot failed) |
 | 114 | `uplink_refused` | ground | stage (1 submit to the segmenter, 2 request for the next FDU, 3 FOP-1 input), error code of the catalogue in [03 §9](03-api-model.md#9-error-catalogue), MAP ID (stage 1 when the APID has a MAP; 0 when it has none, which is error `UnknownChannel`, and for the other stages) |
+| 115 | `gap_discard` | flight | MAP ID (the MAP whose SDU in progress a gap in the VCF Count discarded, or the first MAP that had one; USLP only) |
 | 200 | `fop1_alert` | ground | reason (1 Limit, 2 T1, 3 Lockout, 4 Synch, 5 NN(R), 6 CLCW, 7 LLIF, 8 Term: the Alert reasons of 232.1 Table 4-4 in that order), the number of the FOP-1 event that caused it (1 to 46, 101 to 104, the E of Table 5-1), the FOP-1 state before it (1 to 6 for S1 to S6) |
 | 201 | `fop1_transfer` | ground | notification (2 Reject, 3 Positive Confirm, 4 Negative Confirm: the order of 232.1 Table 4-6, whose Accept, 1, is not an event), request identifier of the FDU (§6.8) |
 | 202 | `fop1_directive` | ground | notification (1 Accept, 2 Reject, 3 Positive Confirm, 4 Negative Confirm: 232.1 Table 4-2), Directive Type (the code of §4.5.2), Qualifier (V\*(S) of *Set V(S)*; 0 when there is none) |
@@ -1047,11 +1357,11 @@ A closed vocabulary with stable codes, mapped by each node from library events a
 | 210 | `farm1_state` | flight | the new FARM-1 state (1 Open, 2 Wait, 3 Lockout; 232.1 §6.1.2) |
 | 211 | `farm1_unlock` | flight | none |
 
-The frame-level events are raised on a change or an error, never per frame, so that a trace of 280 frames stays readable. `frame_gap` and `frame_discontinuity` are the `FrameGap` and `CountDiscontinuity` actions of the `FrameReceiver` (LNK-051): a count ahead of the expected one, with the number missing (modulo 256), and a count that repeats or goes back, which resets the expectation to the count received plus one. `frame_rejected` is a failure of the strict codec, including the FECF (TM-005, TC-006); the `CallerDiscard` that the node gives the receiver for a FECF failure (LNK-080) counts it, and the node does not map the `FrameDiscarded` action it returns to `frame_discarded`. `frame_discarded` is a frame that the codec accepted and an engine discards: no case of A2 raises it (the VCs and MAPs of the codec and the engines agree, and Type-BD frames are always accepted), and A3 gives it its FARM-1 reasons. `clcw_changed` is raised when the OCF word of a frame differs from that of the last frame decoded (initially `0x01000000`, §4.4.1): a CLCW or any other OCF; a frame that is rejected leaves it as it was. `partial_discarded` is the `Discarded` action of the extractor, a packet in progress thrown away because the VC count had a gap or a discontinuity (LNK-061); only a gap of the VC's own count is flagged on its data field, since a frame lost by another VC cuts none of its packets. The reassembly events are those of `ReassemblyEvent` (LNK-070) that TC can raise; `GapDiscard` is USLP's. `downlink_refused` is the flight node's error of the downlink: a generator refused a packet that was built, or an engine failed in a slot and no frame was output (APP-142). The COP-1 events are raised on a notification, an Alert, or a change of state, never per frame (APP-149). A change of state is raised after the other events of the cell that caused it, which is when 232.1 §5.3.1 and §6.3.1 update the State variable; an Alert is raised after the Negative Confirms and Rejects it causes (232.1 §5.2.15). The Accept of an FDU, whether FOP-1 takes it at once or later from its Wait_Queue, is not an event, so that there is one `fop1_transfer` for each FDU that is rejected or confirmed; the Accept of a directive is `fop1_directive` (1, …). A retransmission is no event: it is a `unit_sent` of the uplink. The codes of the reasons, notifications, directives, and states are this scenario's numbering of the Blue Book's names (§4.5.2, §4.5.4), which the Blue Books do not number.
+The frame-level events are raised on a change or an error, never per frame, so that a trace of 280 frames stays readable. `frame_gap` and `frame_discontinuity` are the `FrameGap` and `CountDiscontinuity` actions of the `FrameReceiver` (LNK-051): a count ahead of the expected one, with the number missing modulo the width of the count (256 for the TM frame counts and the one-octet USLP VCF Count, 16 777 216 for the AOS VC Frame Count; D10 of the A4 plan), and a count that repeats or goes back, which resets the expectation to the count received plus one. Scope 0, the master-channel count, exists in TM only: AOS and USLP have none (732.0 §4.1.2.4; 732.1 §4.2.9.2 note 1), so their events have scope 1. `frame_rejected` is a failure of the strict codec, including the FECF (TM-005, TC-006); the `CallerDiscard` that the node gives the receiver for a FECF failure (LNK-080) counts it, and the node does not map the `FrameDiscarded` action it returns to `frame_discarded`. `frame_discarded` is a frame that the codec accepted and an engine discards: no case of A2 raises it (the VCs and MAPs of the codec and the engines agree, and Type-BD frames are always accepted), and A3 gives it its FARM-1 reasons. `clcw_changed` is raised when the OCF word of a frame differs from that of the last frame decoded (initially `0x01000000`, §4.4.1): a CLCW or any other OCF; a frame that is rejected leaves it as it was. `partial_discarded` is the `Discarded` action of the extractor, a packet in progress thrown away because the VC count had a gap or a discontinuity (LNK-061); only a gap of the VC's own count is flagged on its data field, since a frame lost by another VC cuts none of its packets. The reassembly events are those of `ReassemblyEvent` (LNK-070) that TC can raise (110 to 112); `GapDiscard` is USLP's and is code 115 of the flight node (APP-186): it names the MAP of the SDU that a gap in the VCF Count discarded, and no case of A4 raises it. `downlink_refused` is the flight node's error of the downlink: a generator refused a packet that was built, or an engine failed in a slot and no frame was output (APP-142). The COP-1 events are raised on a notification, an Alert, or a change of state, never per frame (APP-149). A change of state is raised after the other events of the cell that caused it, which is when 232.1 §5.3.1 and §6.3.1 update the State variable; an Alert is raised after the Negative Confirms and Rejects it causes (232.1 §5.2.15). The Accept of an FDU, whether FOP-1 takes it at once or later from its Wait_Queue, is not an event, so that there is one `fop1_transfer` for each FDU that is rejected or confirmed; the Accept of a directive is `fop1_directive` (1, …). A retransmission is no event: it is a `unit_sent` of the uplink. The codes of the reasons, notifications, directives, and states are this scenario's numbering of the Blue Book's names (§4.5.2, §4.5.4), which the Blue Books do not number.
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
-| APP-138 | For every TM frame delivered the ground node SHALL output, in this order: `frame_rejected` if the strict decode or the validation fails, and nothing further; otherwise the receiver's actions in the engine's order: the `frame_gap` or `frame_discontinuity` of the master channel, then that of the VC, `clcw_changed` if the OCF word changed, and, for a data frame on VC 0 or 1, the extractor's `partial_discarded` or `extraction_error` and then, for every packet extracted in order, the events of APP-130 (`packet_rejected` or `packet_in` and what follows it); an OID frame gives no data and no packet event; a data frame on the OID VC (VC 7), which carries OID frames only (§4.1) and has no extractor, is delivered by the receiver and discarded by the node, which outputs `frame_discarded` (layer 1, reason 2, "not served") as the last output of the frame, since no application serves the VC; `frame_discarded` is the last output of a frame that the receiver discards, but not for the discard that the node reports for a FECF failure. The codes and arguments are those of §7.4. | LNK-051, LNK-052, LNK-060…LNK-064, LNK-080; 132.0 §4.3 | T |
+| APP-138 | For every downlink frame delivered (a TM frame; in the variants of §4.3, an AOS or a USLP frame) the ground node SHALL output, in this order: `frame_rejected` if the strict decode or the validation fails, and nothing further; otherwise the receiver's actions in the engine's order: the `frame_gap` or `frame_discontinuity` of the master channel (TM only), then that of the VC, `clcw_changed` if the OCF word changed, and, for a data frame on VC 0 or 1, the extractor's `partial_discarded` or `extraction_error` and then, for every packet extracted in order, the events of APP-130 (`packet_rejected` or `packet_in` and what follows it); an OID frame gives no data and no packet event; in TM, a data frame on the OID VC (VC 7), which carries OID frames only (§4.1) and has no extractor, is delivered by the receiver and discarded by the node, which outputs `frame_discarded` (layer 1, reason 2, "not served") as the last output of the frame, since no application serves the VC; `frame_discarded` is the last output of a frame that the receiver discards, but not for the discard that the node reports for a FECF failure. In the variants (§4.3): AOS and USLP have no master-channel count, so no event has scope 0, and the gap and the discontinuity are those of the count of the VC (the 24-bit VC Frame Count, the VCF Count of the VC's QoS), the missing number taken modulo the width of that count (D10 of the A4 plan); on AOS, VC 7 has an extractor, so its idle M_PDUs give no event, `frame_discarded` included; on USLP an OID frame (VCID 63) gives `clcw_changed` if its OCF changed and no other event (APP-180). The codes and arguments are those of §7.4. | LNK-051, LNK-052, LNK-060…LNK-064, LNK-080; 132.0 §4.3; 732.0 §4.3.2, §4.3.5; 732.1 §4.3.2, §4.3.8; D10 of the A4 plan | T |
 | APP-139 | For every TC frame delivered the flight node SHALL output, in this order: `frame_rejected` if the strict decode or the validation fails (TC-021, TC-023), with FARM-1 given the invalid-frame input (E9, no change of its state), whose discard is not mapped to `frame_discarded`, and nothing further; `frame_discarded` if the receiver or FARM-1 discards the frame, and nothing further; otherwise, for the FDU that FARM-1 accepts, the reassembly events in the engine's order (`sequence_violation`, `unknown_map`, `sdu_too_long`; a valid frame whose MAP ID is not configured is accepted and counted by FARM-1 and gives `unknown_map`, OI-98) and then, for each packet the MAP reassembler delivers, in order, the handling of A1 (`cmd_received`, `table_received`, or `packet_rejected`, APP-129, APP-131); an FDU that the MAP reassembler refuses gives `packet_rejected` with the error code. A valid frame in sequence raises no frame-level event. | LNK-050, LNK-070, LNK-071; 232.0 §4.4.1, §4.4.5, §4.4.9; 232.1 Table 6-1 | T |
 | APP-142 | When a generator of the flight node refuses a downlink packet that was built (for example `WouldBlock`, the field and the queue cannot take it), the node SHALL count the failure and raise `downlink_refused` (§7.4) with the error code and the VCID, in the step in which it happened; the `packet_out` record of the packet stays. When an engine fails in a step with `tx_slot`, the node SHALL count the failure, raise `downlink_refused` with the error code alone, and output no frame for that slot. This extends APP-131 to the frame level on the transmit side; `frame_rejected` stays the receive-side failure of APP-138 and APP-139. | LNK-015, LNK-076; API-083 | T |
 
