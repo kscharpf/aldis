@@ -8,8 +8,8 @@
 )]
 
 use aldis_cop1::{
-    Directive, Fop1, Fop1Config, Fop1Event, Fop1Input, Fop1Output, Fop1State, Fop1Target,
-    FrameKind, TimeoutType, fop1_max_actions,
+    Directive, DirectiveNotification, Fop1, Fop1Config, Fop1Event, Fop1Input, Fop1Output,
+    Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ids::FrameSeqNum;
 use aldis_core::time::{Duration, Instant};
@@ -380,7 +380,7 @@ fn run_file(name: &str) -> (usize, Vec<String>) {
 
 #[test]
 fn the_action_bound_target_and_classification_at_run_time() {
-    // req: COP-006, COP-010, API-058
+    // req: COP-006, COP-010, COP-014, COP-015, API-058
     assert_eq!(fop1_max_actions(core::hint::black_box(Q)), N);
     let plain = Fop1Target::tc(
         TcSpacecraftId::new(1).unwrap(),
@@ -408,6 +408,23 @@ fn the_action_bound_target_and_classification_at_run_time() {
     let actions = g.decide(Fop1Input::Timeout, at, &mut out).unwrap().commit();
     assert_eq!(actions.len(), 0);
     assert_eq!(g, f);
+    // A Set K above the Sent_Queue is E40, a Reject, and changes nothing (COP-015, COP-014). K = 0
+    // is not a value of the type, so a directive of 0 never reaches the classification.
+    let above = Directive::SetSlidingWindowWidth {
+        width: NonZeroU8::MIN.saturating_add(4),
+    };
+    let input = Fop1Input::Directive {
+        handle: 3,
+        directive: above,
+    };
+    let mut h = f.clone();
+    let actions = h.decide(input, at, &mut out).unwrap().commit();
+    assert_eq!(actions.len(), 1);
+    assert!(matches!(
+        actions.get(0),
+        Some(Fop1Output::Directive(n)) if n.handle == 3 && n.status == DirectiveNotification::Reject
+    ));
+    assert_eq!(h, f);
     // An FDU longer than the frame allows is refused before any cell runs.
     let long = [0; F];
     for input in [
