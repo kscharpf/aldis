@@ -161,7 +161,7 @@ fn outputs<P: ReassemblerProtocol>(o: &ReassemblerOutput<P>, area: &[u8]) -> Vec
                 .into_iter()
                 .map(|p| {
                     json!({"deliver": {
-                        "kind": "Packet", "vc": Into::<u8>::into(vc), "map": Into::<u8>::into(map), "pvn": PacketRun::pvn(p).unwrap(),
+                        "kind": "Packet", "vc": Into::<u8>::into(vc), "map": Into::<u8>::into(map), "pvn": PacketRun::pvn(p).unwrap().get(),
                         "data_hex": hex::encode(p), "incomplete": false,
                     }})
                 })

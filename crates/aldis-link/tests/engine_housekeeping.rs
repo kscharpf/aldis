@@ -12,7 +12,7 @@
 use aldis_aos::{AosEdition, PacketPointer};
 use aldis_core::ErrorKind;
 use aldis_core::field;
-use aldis_core::ids::{MapId, VcId};
+use aldis_core::ids::{MapId, PacketVersion, VcId};
 use aldis_core::time::{Duration, Instant};
 use aldis_link::common::{IdlePacketKind, IdlePolicy, Qos, ValidPvns};
 use aldis_link::extractor::{
@@ -809,7 +809,10 @@ fn the_extractor_resynchronises_in_the_cases_the_vectors_leave_open() {
     let a = e.step(gap, &mut out).unwrap();
     assert!(matches!(
         a.get(0),
-        Some(ExtractorOutput::IncompletePacket { pvn: 0, .. })
+        Some(ExtractorOutput::IncompletePacket {
+            pvn: PacketVersion::SPACE_PACKET,
+            ..
+        })
     ));
     assert_eq!(
         (
@@ -851,7 +854,10 @@ fn an_encapsulation_packet_with_a_four_octet_length_field_is_delimited() {
     };
     assert_eq!(*count, 1);
     assert_eq!(PacketRun::new(*run, &area).unwrap().next(), Some(&p[..]));
-    assert_eq!((PacketRun::pvn(&p), PacketRun::pvn(&[])), (Some(7), None));
+    assert_eq!(
+        (PacketRun::pvn(&p), PacketRun::pvn(&[])),
+        (Some(PacketVersion::ENCAPSULATION), None)
+    );
     // The header is split across two fields (3 and 5 octets), and the length is known at the
     // eighth.
     let mut e = TmExt::new(ext_config()).unwrap();

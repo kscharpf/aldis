@@ -103,6 +103,16 @@ impl<const BITS: u32> SpacecraftId<BITS> {
     }
 }
 
+impl PacketVersion {
+    /// The version in a field of exactly 3 bits: the mask of the field is the range of the type,
+    /// so no value is out of range and nothing falls back (API-001, RS-020). Used by
+    /// [`Field::packet_version`](crate::bits::Field::packet_version), which checks the width when
+    /// the code is compiled.
+    pub(crate) const fn from_field(value: u8) -> Self {
+        Self(value & Self::MAX)
+    }
+}
+
 impl<const BITS: u32> VcId<BITS> {
     /// The identifier of a field of exactly `BITS` bits: the mask of the field is the range of
     /// the type, so no value is out of range and nothing falls back (API-001, API-002, RS-020).
