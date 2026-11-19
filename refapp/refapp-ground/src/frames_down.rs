@@ -1,9 +1,9 @@
-//! Downlink frames: strict TM or AOS decoding, the `FrameReceiver`, one `PacketExtractor` per data
+//! Downlink frames: strict TM, AOS, or USLP decoding, the `FrameReceiver`, one `PacketExtractor` per data
 //! VC, the CLCW, and the frame-level events.
 //!
-//! Specification: `docs/reference-application.md` §2.2, §4.1, §4.3.1, §4.4.1, §4.4.3, §7.4;
-//! APP-011, APP-036, APP-133, APP-136, APP-138, APP-169…APP-174. The downlink is generic over the
-//! protocol type ([`DownlinkProtocol`]: `Tm`, `Aos`; D3 of the A4 plan), with one copy of the
+//! Specification: `docs/reference-application.md` §2.2, §4.1, §4.3.1, §4.3.2, §4.4.1, §4.4.3, §7.4;
+//! APP-011, APP-036, APP-133, APP-136, APP-138, APP-169…APP-180. The downlink is generic over the
+//! protocol type ([`DownlinkProtocol`]: `Tm`, `Aos`, `Uslp`; D3 of the A4 plan), with one copy of the
 //! receiver, extractor, and event logic. The packets the extractors hand out go to the telemetry
 //! path of A1 unchanged ([`Telemetry`]). The OCF is decoded as a CLCW and reported when it
 //! changes; at the `cop1` level (A3) it also goes to FOP-1 (D3 a).
@@ -13,7 +13,7 @@ use aldis::core::{Error, ErrorKind};
 use aldis::link::extractor::{
     ExtractionError, ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketRun,
 };
-use aldis::link::protocol::{Aos, Tm};
+use aldis::link::protocol::{Aos, Tm, Uslp};
 use aldis::link::receiver::{
     CallerDiscardReason, ChannelScope, DiscardReason, FrameReceiver, ReceiverInput, ReceiverOutput,
 };
@@ -58,7 +58,7 @@ const REASON_NOT_SERVED: u64 = 2;
 /// The assembly buffer of an extractor: the Maximum Packet Length (§4.1, APP-172).
 const ASSEMBLY: usize = 512;
 /// The longest data field an extractor takes: the 211 octets of a TM frame (§4.1); the `M_PDU`
-/// of an AOS frame is 209 (§4.3.1).
+/// of an AOS frame is 209 (§4.3.1), the TFDF of a USLP frame 209 (§4.3.2).
 const FIELD: usize = 211;
 /// The output area of an extractor: `max_packet_len - 1` plus the zone (LNK-075).
 const EXTRACT_AREA: usize = ASSEMBLY - 1 + FIELD;
@@ -89,20 +89,20 @@ pub(crate) enum Downlink {
     Tm(Box<FrameDownlink<Tm>>),
     /// The AOS downlink (§4.3.1).
     Aos(Box<FrameDownlink<Aos>>),
+    /// The USLP downlink (§4.3.2).
+    Uslp(Box<FrameDownlink<Uslp>>),
 }
 
 impl Downlink {
     /// The downlink of `variant`.
     ///
     /// # Errors
-    /// [`GroundError::Setup`] if the constants do not form a configuration;
-    /// [`GroundError::Unsupported`] for the variant whose downlink is not built yet (`uslp`: A4
-    /// WP-4b).
+    /// [`GroundError::Setup`] if the constants do not form a configuration.
     pub(crate) fn new(variant: Variant) -> Result<Self, GroundError> {
         match variant {
             Variant::TmTc => FrameDownlink::new().map(|down| Self::Tm(Box::new(down))),
             Variant::Aos => FrameDownlink::new().map(|down| Self::Aos(Box::new(down))),
-            Variant::Uslp => Err(GroundError::Unsupported(variant)),
+            Variant::Uslp => FrameDownlink::new().map(|down| Self::Uslp(Box::new(down))),
         }
     }
 
@@ -111,6 +111,7 @@ impl Downlink {
         match self {
             Self::Tm(down) => down.clcw(),
             Self::Aos(down) => down.clcw(),
+            Self::Uslp(down) => down.clcw(),
         }
     }
 
@@ -126,6 +127,7 @@ impl Downlink {
         match self {
             Self::Tm(down) => down.receive(unit, telemetry, uplink, now, out),
             Self::Aos(down) => down.receive(unit, telemetry, uplink, now, out),
+            Self::Uslp(down) => down.receive(unit, telemetry, uplink, now, out),
         }
     }
 }
@@ -375,7 +377,7 @@ fn caller_discard(kind: ErrorKind) -> Option<CallerDiscardReason> {
 }
 
 /// The scope and VCID arguments of `frame_gap` and `frame_discontinuity`. A scope of the master
-/// channel comes from TM only: AOS has no master-channel count (APP-138, D10).
+/// channel comes from TM only: AOS and USLP have no master-channel count (APP-138, D10).
 fn scope_args<V: Into<u8>>(scope: ChannelScope<V>) -> (u64, u64) {
     match scope {
         ChannelScope::MasterChannel => (SCOPE_MC, 0),
@@ -402,3 +404,5 @@ mod tests;
 mod tests_aos;
 #[cfg(test)]
 mod tests_cop1;
+#[cfg(test)]
+mod tests_uslp;
