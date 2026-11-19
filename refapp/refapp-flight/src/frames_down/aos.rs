@@ -40,6 +40,10 @@ const MPDU: usize = 209;
 
 const _: () = assert!(6 + 2 + MPDU + 4 + 2 == super::FRAME);
 
+/// The geometry above has the FHEC, the `VC_OCF`, and the FECF; the node builds only with the
+/// scenario's `aos.fhec`, `aos.vc_ocf`, and `aos.fecf` true (APP-189, D4).
+const _: () = assert!(aos::FHEC && aos::VC_OCF && aos::FECF);
+
 /// The VCs that carry data are the VCs of TM, so that `vc_of` serves both (§4.1, §4.3.1).
 const _: () = {
     assert!(aos::VCID_REALTIME == tm::VCID_REALTIME);
@@ -50,12 +54,7 @@ const _: () = {
 fn vc(scid: SpacecraftId<10>, id: u8, rank: u8) -> Result<VcConfig<Aos>> {
     let config =
         AosVirtualChannelConfig::new(scid, VcId::<6>::try_from(id)?, DataFieldContent::Mpdu)?;
-    let config = if aos::VC_OCF {
-        config.with_ocf()
-    } else {
-        config
-    };
-    let params = AosVc::new(config).with_initial_ocf(tm::OCF_INITIAL.to_be_bytes())?;
+    let params = AosVc::new(config.with_ocf()).with_initial_ocf(tm::OCF_INITIAL.to_be_bytes())?;
     Ok(VcConfig::<Aos>::new(params).with_priority(mux_priority(rank)))
 }
 

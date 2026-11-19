@@ -693,8 +693,8 @@ fn aos_frames_have_the_geometry_and_decode_strictly_with_fhec_and_fecf() {
         assert_eq!(frame.insert_zone(), []);
         // Version 01 (`0b01` in the top bits), the SCID, and the VCID: octets 0 and 1.
         assert_eq!(octets[0] >> 6, 0b01);
-        // The FHEC is the code of §4.1.2.6.5 over octets 0 to 5, computed after the header was
-        // final, and the FECF the CRC over the whole frame, FHEC included: LNK-035.
+        // The FHEC is the code of §4.1.2.6.5 over octets 0, 1, and 5 (not the VCF Count),
+        // computed after the header was final, and the FECF the CRC over the whole frame, FHEC included: LNK-035.
         let header: [u8; 6] = octets[..6].try_into().unwrap();
         assert_eq!(octets[6..8], fhec::encode(&header));
         verify_fecf(octets).unwrap();
