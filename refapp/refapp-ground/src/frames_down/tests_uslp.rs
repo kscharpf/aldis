@@ -406,7 +406,7 @@ fn the_enum_builds_the_downlink_of_the_variant_and_the_node_does_not_yet() {
         Downlink::new(Variant::Uslp),
         Ok(Downlink::Uslp(_))
     ));
-    // The node of the variant is not built before WP-4c.
+    // `uslp` exists at the `cop1` level only (APP-187): the node refuses it at `frames`.
     assert!(matches!(
         crate::GroundNode::new_frames(Variant::Uslp, &[]),
         Err(GroundError::Unsupported(Variant::Uslp))

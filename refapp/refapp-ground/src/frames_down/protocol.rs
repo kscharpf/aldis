@@ -59,7 +59,9 @@ pub(crate) trait DownlinkProtocol:
     /// the OID frames in USLP (APP-175), which has no entry in the receiver's table.
     const VCID_IDLE: u8;
     /// Whether the third VC has an extractor of its own: AOS (APP-138), whose idle `M_PDU`s
-    /// give no event. In TM and USLP it has none and a data frame on it is not served.
+    /// give no event. In TM it has none and a data frame on it is not served; in USLP the
+    /// strict decode rejects a data frame on VCID 63 and the receiver passes on no data field
+    /// of an OID frame.
     const IDLE_VC_EXTRACTED: bool;
     /// The OCF word before the first frame (§4.4.1).
     const OCF_INITIAL: u32;
@@ -318,7 +320,8 @@ impl DownlinkProtocol for Uslp {
         managed: &Self::Managed,
         unit: &'a [u8],
     ) -> Result<<Self as ReceiveProtocol>::Plain<'a>, Error> {
-        // The strict decode with the FECF and the Frame Validation Checks (732.1 §4.3.11.3).
+        // The strict decode of APP-180: the FECF (732.1 §4.3.11.1.2) and the checks of
+        // §4.3.11.3.4, which the Blue Book mandates only under TC coding (§4.3.11.3.1).
         uslp::check_frame(unit, managed, DecodeMode::Strict)?
             .into_view()
             .into_frame()
