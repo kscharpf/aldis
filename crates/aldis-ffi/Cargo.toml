@@ -28,8 +28,9 @@ std = []
 # The subset features mirror the facade's (GEN-009): each enables the C functions of one crate
 # and the facade feature of that crate. The header stays whole and every storage struct keeps
 # its size in every subset; a function of a feature not built is absent from the library
-# (c-abi.md, after CABI-060). `core` is on in every build (the always-present modules need it),
-# so `core` adds only the CRC, the OCF, and the OID generator.
+# (c-abi.md, after CABI-060). The dependency's `aldis/core` is always on, so the feature `core`
+# adds only the CRC, the OCF, and the OID generator; every other feature that names a crate
+# brings it.
 core = ["aldis/core"]
 time = ["core", "aldis/time"]
 # The C struct of a decoded packet holds a decoded time code (`aldis_time_decoded_t`), so the

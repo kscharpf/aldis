@@ -81,7 +81,7 @@ On a merge conflict in the header, merge the sources and regenerate ([M2 plan](.
 |---|---|
 | `std` (default) | Hosted builds, for ground systems |
 | `full` (default) | Every feature below that names a crate: the library of `include/aldis/aldis.h`. A build with `--no-default-features` takes the features it names, and an embedded build names `full` (`--features panic-handler,full`) |
-| `core` | The CRC, the OCF, and the OID generator. On in every build: the other features and the always-present parts need it |
+| `core` | The CRC, the OCF, and the OID generator. Every other feature that names a crate brings it; a build that names none (`--no-default-features --features panic-handler`) has none of these functions |
 | `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `sync` | The C functions of that crate. `spp` brings `time`, which the decoded packet struct holds; `time` itself is a feature of its own for the time codes |
 | `spp-time` | The typed time secondary header of a Space Packet (SPP-008): `aldis_spp_split` with `ALDIS_SPP_SECONDARY_TIME`; without it that layout is `ALDIS_ERR_INVALID_CONFIG` on `time_code` |
 | `link` | The link engines, each with the frame protocols whose features are on: TM, AOS, and USLP engines need `tm`, `aos`, `uslp`; the packet engines need `spp` or `epp`, and over USLP `epp` (GEN-009; LNK-013, LNK-063); the MAP engines `tc` or `uslp`. A protocol whose feature is off is `ALDIS_ERR_INVALID_CONFIG` on `protocol` at `_init` |
