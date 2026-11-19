@@ -3,14 +3,19 @@
 //! The C form of an output range (API-061), the receiver constants the extractor, the receiver,
 //! and the mux share, and the MAP constants the segmenter and the reassembler share.
 
+#[cfg(any(feature = "link", feature = "sync"))]
 use aldis::core::engine::OutRange;
+#[cfg(feature = "link")]
 use aldis::core::{Error, ErrorKind, Result, field};
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 use aldis::link::segmenter::Framing;
 
 use crate::mirror::mirror;
+#[cfg(any(feature = "link", feature = "sync"))]
 use crate::range::aldis_range_t;
 
 /// The C form of a range of `out`.
+#[cfg(any(feature = "link", feature = "sync"))]
 pub(crate) const fn range(r: OutRange) -> aldis_range_t {
     aldis_range_t {
         offset: r.start(),
@@ -197,6 +202,7 @@ mirror!(pub aldis_map_framing: u32 {
     ALDIS_MAP_FRAMING_STREAM
 });
 
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 pub(super) const fn framing_code(framing: Framing) -> u32 {
     match framing {
         Framing::Whole => ALDIS_MAP_FRAMING_WHOLE,
@@ -208,6 +214,7 @@ pub(super) const fn framing_code(framing: Framing) -> u32 {
 }
 
 /// The error for a MAP service the protocol does not have (LNK-040, LNK-070).
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 pub(super) const fn wrong_service() -> Error {
     Error::new(ErrorKind::InvalidConfig).with_field(field::DATA_FIELD_CONTENT)
 }
@@ -216,6 +223,7 @@ pub(super) const fn wrong_service() -> Error {
 ///
 /// # Errors
 /// The error of `entry`; `CapacityExceeded` (`map_id`) for a `count` above the capacity.
+#[cfg(all(feature = "link", any(feature = "spp", feature = "epp")))]
 pub(super) fn listed<T: Copy, C: Copy, const N: usize>(
     entries: &[C; N],
     count: usize,

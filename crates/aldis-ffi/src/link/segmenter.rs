@@ -21,15 +21,26 @@
 //! (LNK-015), and the segmenter serves `ALDIS_LINK_MAX_MAP_CHANNELS` MAPs (CABI-030). It is built
 //! in place (`crate::handle::place`, OI-91), so the queue is not on the stack.
 
-use aldis::core::time::{Duration, Instant};
+#[cfg(feature = "uslp")]
+use aldis::core::time::Duration;
+use aldis::core::time::Instant;
 use aldis::core::{Error, ErrorKind, Result, field};
-use aldis::link::protocol::{Tc, Uslp};
+#[cfg(feature = "tc")]
+use aldis::link::protocol::Tc;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "tc")]
+use aldis::link::segmenter::TcSegmenterParams;
+#[cfg(feature = "uslp")]
+use aldis::link::segmenter::UslpSegmenterParams;
 use aldis::link::segmenter::{
     MAP_SEGMENTER_MAX_ACTIONS, MapEntry, MapSegmenter, MapSegmenterBuffers, MapSegmenterConfig,
     MapSegmenterHead, SegmenterActions, SegmenterInput, SegmenterOutput, SegmenterProtocol,
-    SegmenterService, SegmenterStatus, TcSegmenterParams, UslpSegmenterParams,
+    SegmenterService, SegmenterStatus,
 };
+#[cfg(feature = "tc")]
 use aldis::tc::{MAX_FRAME_LEN as TC_MAX_FRAME_LEN, PhysicalChannelConfig as TcPhysical};
+#[cfg(feature = "uslp")]
 use aldis::uslp::{TransferFrameType, Upid, VcParams, VcfCountLen};
 
 use super::common::{aldis_map_service, framing_code, listed, range, wrong_service};
@@ -69,8 +80,10 @@ handle::engine_enum! {
     )]
     pub(crate) enum MapSegmenterState {
         /// TC.
+        #[cfg(feature = "tc")]
         Tc(Sg<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
         /// USLP.
+        #[cfg(feature = "uslp")]
         Uslp(Sg<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -307,6 +320,7 @@ fn sg_entry<P: SegmenterProtocol>(
     Ok(entry)
 }
 
+#[cfg(feature = "tc")]
 impl SgProtocol for Tc {
     fn channel(c: &aldis_map_segmenter_config_t) -> Result<TcSegmenterParams> {
         // The configuration gives the FECF and no frame length, and the segmenter reads only
@@ -336,10 +350,12 @@ impl SgProtocol for Tc {
 ///
 /// # Errors
 /// `OutOfRange` (`upid`) above 31.
+#[cfg(feature = "uslp")]
 fn upid(bits: u8) -> Result<Upid> {
     Upid::from_bits(bits).ok_or(Error::out_of_range(field::UPID, 31, u64::from(bits)))
 }
 
+#[cfg(feature = "uslp")]
 impl SgProtocol for Uslp {
     fn channel(c: &aldis_map_segmenter_config_t) -> Result<UslpSegmenterParams> {
         let mut vc = VcParams::new(TransferFrameType::Variable);
@@ -457,12 +473,14 @@ impl MapSegmenterState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 sg_run(e, input, data, now, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -474,14 +492,18 @@ impl MapSegmenterState {
 
     const fn status(&self) -> SegmenterStatus {
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         }
     }
 
     fn next_deadline(&self) -> Option<Instant> {
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => e.next_deadline(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => e.next_deadline(),
         }
     }
@@ -550,16 +572,22 @@ pub unsafe extern "C" fn aldis_map_segmenter_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tc")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Sg<Tc>>(
                     storage,
                     Sg::new_head(sg_config::<Tc>(&cfg)?)?,
                 ),
+                #[cfg(not(feature = "tc"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+                #[cfg(feature = "uslp")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Sg<Uslp>>(
                         storage,
                         Sg::new_head(sg_config::<Uslp>(&cfg)?)?,
                     )
                 }
+                #[cfg(not(feature = "uslp"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
                 | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }

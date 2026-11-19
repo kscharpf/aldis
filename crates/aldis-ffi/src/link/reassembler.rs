@@ -19,14 +19,21 @@
 //! `ALDIS_LINK_MAX_FRAME_OCTETS` octets, the longest SDU of a MAP (LNK-073; CABI-030). It is
 //! built in place (`crate::handle::place`, OI-91), so the buffers are not on the stack.
 
+#[cfg(feature = "uslp")]
 use aldis::core::ids::MapId;
 use aldis::core::{Error, ErrorKind, Result, field};
-use aldis::link::protocol::{Tc, Uslp};
+#[cfg(feature = "tc")]
+use aldis::link::protocol::Tc;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "tc")]
+use aldis::link::reassembler::TcReassemblerParams;
+#[cfg(feature = "uslp")]
+use aldis::link::reassembler::UslpFdu;
 use aldis::link::reassembler::{
     FduIn, MAP_REASSEMBLER_MAX_ACTIONS, MapReassembler, MapReassemblerBuffers,
     MapReassemblerConfig, MapReassemblerHead, ReassemblerActions, ReassemblerInput, ReassemblerMap,
     ReassemblerOutput, ReassemblerProtocol, ReassemblerStatus, ReassemblyEvent,
-    TcReassemblerParams, UslpFdu,
 };
 
 use super::common::{aldis_map_service, listed, range, wrong_service};
@@ -66,8 +73,10 @@ handle::engine_enum! {
     )]
     pub(crate) enum MapReassemblerState {
         /// TC.
+        #[cfg(feature = "tc")]
         Tc(Ra<Tc>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC),
         /// USLP.
+        #[cfg(feature = "uslp")]
         Uslp(Ra<Uslp>) = protocol_tag(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP),
     }
 }
@@ -298,6 +307,7 @@ trait RaProtocol: ReassemblerProtocol {
     fn meta(input: &aldis_map_reassembler_input_t) -> Result<Self::Meta>;
 }
 
+#[cfg(feature = "tc")]
 impl RaProtocol for Tc {
     fn channel(c: &aldis_map_reassembler_config_t) -> Result<TcReassemblerParams> {
         Ok(if flag(c.tc_segment_header)? {
@@ -314,6 +324,7 @@ impl RaProtocol for Tc {
     }
 }
 
+#[cfg(feature = "uslp")]
 impl RaProtocol for Uslp {
     fn channel(_: &aldis_map_reassembler_config_t) -> Result<()> {
         Ok(())
@@ -422,12 +433,14 @@ impl MapReassemblerState {
         // A reconfiguration keeps the protocol of the engine (LNK-003).
         let same = |want| protocol(ch).map(|p| p == want);
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 ra_run(e, input, data, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -439,7 +452,9 @@ impl MapReassemblerState {
 
     const fn status(&self) -> ReassemblerStatus {
         match self {
+            #[cfg(feature = "tc")]
             Self::Tc(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         }
     }
@@ -545,16 +560,22 @@ pub unsafe extern "C" fn aldis_map_reassembler_init(
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
             match protocol(&cfg.channel)? {
+                #[cfg(feature = "tc")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => handle::init_variant::<_, Ra<Tc>>(
                     storage,
                     Ra::new_head(ra_config::<Tc>(&cfg)?)?,
                 ),
+                #[cfg(not(feature = "tc"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+                #[cfg(feature = "uslp")]
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
                     handle::init_variant::<_, Ra<Uslp>>(
                         storage,
                         Ra::new_head(ra_config::<Uslp>(&cfg)?)?,
                     )
                 }
+                #[cfg(not(feature = "uslp"))]
+                aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
                 aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM
                 | aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
             }

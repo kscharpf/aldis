@@ -256,7 +256,7 @@ The toolchain is pinned to stable Rust 1.100.0 by `rust-toolchain.toml`. rustup 
 cargo check --workspace                                                     # hosted
 cargo clippy --workspace --all-features                                     # lint set (VER-001)
 cargo check -p aldis --no-default-features --features full --target thumbv7em-none-eabihf   # bare metal (GEN-005)
-cargo build -p aldis-ffi --no-default-features --features panic-handler \
+cargo build -p aldis-ffi --no-default-features --features panic-handler,full \
             --target thumbv7em-none-eabihf --release                        # C static library for bare metal
 ```
 

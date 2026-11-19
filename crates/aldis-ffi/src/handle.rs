@@ -321,7 +321,8 @@ pub(crate) unsafe trait Variant<E>: Sized {
 }
 
 /// Declares a `repr(u8)` sum of engines and its [`Variant`] impls. The discriminant of each variant
-/// is its `tag` expression (a `u8` constant), written once.
+/// is its `tag` expression (a `u8` constant), written once. A variant exists only with the feature
+/// of its protocol: put `#[cfg(feature = "…")]` on it, and its impl follows (GEN-009).
 macro_rules! engine_enum {
     (
         $(#[$meta:meta])*
@@ -335,6 +336,8 @@ macro_rules! engine_enum {
             $($(#[$vmeta])* $variant($engine) = $tag),+
         }
         $(
+            // The attributes of the variant (its docs and its `cfg`) go to its impl too.
+            $(#[$vmeta])*
             #[expect(unsafe_code, reason = "asserts the layout of the enum (GEN-071)")]
             // SAFETY: `$name` is the `repr(u8)` enum just declared, and the discriminant of the
             // variant holding the `$engine` is `$tag`, the same expression.

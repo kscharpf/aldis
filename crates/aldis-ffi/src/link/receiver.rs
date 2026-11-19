@@ -21,25 +21,58 @@
 //!
 //! The receiver holds `ALDIS_LINK_MAX_VIRTUAL_CHANNELS` VC entries (CABI-030).
 
+#[cfg(feature = "aos")]
 use aldis::aos::{AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig};
-use aldis::core::ids::{MapId, SpacecraftId, VcId};
+#[cfg(feature = "aos")]
+use aldis::core::ids::SpacecraftId;
+use aldis::core::ids::{MapId, VcId};
 use aldis::core::security::NoSecurity;
 use aldis::core::{Error, ErrorKind, Result, SecuritySlices, field};
-use aldis::link::protocol::{Aos, Protocol, Tc, Tm, Uslp};
+#[cfg(feature = "aos")]
+use aldis::link::protocol::Aos;
+use aldis::link::protocol::Protocol;
+#[cfg(feature = "tc")]
+use aldis::link::protocol::Tc;
+#[cfg(feature = "tm")]
+use aldis::link::protocol::Tm;
+#[cfg(feature = "uslp")]
+use aldis::link::protocol::Uslp;
+#[cfg(feature = "aos")]
+use aldis::link::receiver::AosChannel;
+#[cfg(feature = "aos")]
+use aldis::link::receiver::AosContent;
+#[cfg(feature = "aos")]
+use aldis::link::receiver::AosVc;
+#[cfg(feature = "uslp")]
+use aldis::link::receiver::MapSet;
+#[cfg(feature = "tc")]
+use aldis::link::receiver::TcChannel;
+#[cfg(feature = "tc")]
+use aldis::link::receiver::TcVc;
+#[cfg(feature = "tm")]
+use aldis::link::receiver::TmChannel;
+#[cfg(feature = "tm")]
+use aldis::link::receiver::TmVc;
+#[cfg(feature = "uslp")]
+use aldis::link::receiver::UslpChannel;
+#[cfg(feature = "uslp")]
+use aldis::link::receiver::UslpVc;
 use aldis::link::receiver::{
-    AosChannel, AosContent, AosVc, CallerDiscardReason, ChannelScope, DeliveryService,
-    DiscardReason, FRAME_RECEIVER_MAX_ACTIONS, FrameReceiver, FrameReceiverConfig, MapSet,
-    ReceiveProtocol, ReceiverInput, ReceiverOutput, ReceiverStatus, TcChannel, TcVc, TmChannel,
-    TmVc, UslpChannel, UslpVc, VcEntry,
+    CallerDiscardReason, ChannelScope, DeliveryService, DiscardReason, FRAME_RECEIVER_MAX_ACTIONS,
+    FrameReceiver, FrameReceiverConfig, ReceiveProtocol, ReceiverInput, ReceiverOutput,
+    ReceiverStatus, VcEntry,
 };
+#[cfg(feature = "tc")]
 use aldis::tc::{
     MapConfig as TcMapConfig, PhysicalChannelConfig as TcPhysical, TcFrame, TcMapId,
     TcSpacecraftId, TcVcId, VcConfig as TcVcConfig,
 };
+#[cfg(feature = "tm")]
 use aldis::tm::{
     DataFieldContent, FirstHeaderPointer, FshLen, TmFrame, TmPhysicalChannelConfig,
     TmVirtualChannelConfig,
 };
+#[cfg(feature = "uslp")]
 use aldis::uslp::{
     MapConfig as UslpMapConfig, PhysicalChannelConfig as UslpPhysical, TransferFrameType,
     UslpFrame, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig as UslpVcConfig,
@@ -54,7 +87,11 @@ use super::common::{
 use crate::abi::{self, Out, flag};
 use crate::capacities::ALDIS_LINK_MAX_VIRTUAL_CHANNELS;
 use crate::handle::{self, Storage};
-use crate::link::{aldis_link_channel_t, aldis_link_protocol, aos_params, unsupported_protocol};
+#[cfg(feature = "aos")]
+use crate::link::aldis_link_channel_t;
+#[cfg(feature = "aos")]
+use crate::link::aos_params;
+use crate::link::{aldis_link_protocol, unsupported_protocol};
 use crate::mirror::{mirror, parse};
 use crate::range::aldis_range_t;
 
@@ -78,12 +115,16 @@ type Fr<P> = FrameReceiver<P, V>;
 /// The receiver holds no octet buffer, so its state is small and is placed by value.
 pub(crate) enum FrameReceiverState {
     /// TM.
+    #[cfg(feature = "tm")]
     Tm(Fr<Tm>),
     /// TC.
+    #[cfg(feature = "tc")]
     Tc(Fr<Tc>),
     /// AOS.
+    #[cfg(feature = "aos")]
     Aos(Fr<Aos>),
     /// USLP.
+    #[cfg(feature = "uslp")]
     Uslp(Fr<Uslp>),
 }
 
@@ -347,6 +388,7 @@ pub struct aldis_frame_receiver_status_t {
 ///
 /// # Errors
 /// `InvalidField` for an `aos_edition` that is no `ALDIS_AOS_EDITION_*` constant.
+#[cfg(feature = "aos")]
 fn aos_edition(c: &aldis_frame_receiver_config_t) -> Result<AosEdition> {
     let channel = aldis_link_channel_t {
         aos_edition: c.aos_edition,
@@ -431,6 +473,7 @@ where
     config.with_raw_frames(flag(c.raw_frames)?)
 }
 
+#[cfg(feature = "tm")]
 impl RxProtocol for Tm {
     fn raw_header_pointer(pointer: FirstHeaderPointer) -> u16 {
         pointer.get()
@@ -473,8 +516,10 @@ impl RxProtocol for Tm {
 
 /// A lookup that holds no AOS virtual channel. Correct because the receiver lays the frame out
 /// itself from its own configuration (`plain_octets`); the codec only checks FECF, FHEC, and length.
+#[cfg(feature = "aos")]
 struct NoAosVcs;
 
+#[cfg(feature = "aos")]
 impl aldis::core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs {
     type Vc = AosVirtualChannelConfig;
 
@@ -487,6 +532,7 @@ impl aldis::core::lookup::ChannelLookup<SpacecraftId<10>, VcId<6>> for NoAosVcs 
     }
 }
 
+#[cfg(feature = "aos")]
 impl RxProtocol for Aos {
     fn raw_header_pointer((): ()) -> u16 {
         0
@@ -526,8 +572,10 @@ impl RxProtocol for Aos {
 }
 
 /// A lookup that holds no TC channel: as for AOS, the receiver reads the octets itself.
+#[cfg(feature = "tc")]
 struct NoTcChannels(TcPhysical);
 
+#[cfg(feature = "tc")]
 impl aldis::core::lookup::PhysicalLookup for NoTcChannels {
     type Physical = TcPhysical;
 
@@ -536,6 +584,7 @@ impl aldis::core::lookup::PhysicalLookup for NoTcChannels {
     }
 }
 
+#[cfg(feature = "tc")]
 impl aldis::core::lookup::ChannelLookup<TcSpacecraftId, TcVcId> for NoTcChannels {
     type Vc = TcVcConfig;
 
@@ -548,6 +597,7 @@ impl aldis::core::lookup::ChannelLookup<TcSpacecraftId, TcVcId> for NoTcChannels
     }
 }
 
+#[cfg(feature = "tc")]
 impl aldis::core::lookup::MapLookup<TcSpacecraftId, TcVcId, TcMapId> for NoTcChannels {
     type Map = TcMapConfig;
 
@@ -556,6 +606,7 @@ impl aldis::core::lookup::MapLookup<TcSpacecraftId, TcVcId, TcMapId> for NoTcCha
     }
 }
 
+#[cfg(feature = "tc")]
 impl RxProtocol for Tc {
     fn raw_header_pointer((): ()) -> u16 {
         0
@@ -588,8 +639,10 @@ impl RxProtocol for Tc {
 }
 
 /// A lookup that holds no USLP channel: as for AOS, the receiver reads the octets itself.
+#[cfg(feature = "uslp")]
 struct NoUslpChannels(UslpPhysical);
 
+#[cfg(feature = "uslp")]
 impl aldis::core::lookup::PhysicalLookup for NoUslpChannels {
     type Physical = UslpPhysical;
 
@@ -598,6 +651,7 @@ impl aldis::core::lookup::PhysicalLookup for NoUslpChannels {
     }
 }
 
+#[cfg(feature = "uslp")]
 impl aldis::core::lookup::ChannelLookup<UslpSpacecraftId, UslpVcId> for NoUslpChannels {
     type Vc = UslpVcConfig;
 
@@ -610,6 +664,7 @@ impl aldis::core::lookup::ChannelLookup<UslpSpacecraftId, UslpVcId> for NoUslpCh
     }
 }
 
+#[cfg(feature = "uslp")]
 impl aldis::core::lookup::MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for NoUslpChannels {
     type Map = UslpMapConfig;
 
@@ -619,6 +674,7 @@ impl aldis::core::lookup::MapLookup<UslpSpacecraftId, UslpVcId, UslpMapId> for N
 }
 
 /// The set of MAP IDs of a bit mask.
+#[cfg(feature = "uslp")]
 fn map_set(mask: u16) -> Result<MapSet> {
     let set_bits = || (0..16u8).filter(move |bit| (mask >> bit) & 1 != 0);
     let Some(first) = set_bits().next() else {
@@ -632,6 +688,7 @@ fn map_set(mask: u16) -> Result<MapSet> {
     Ok(MapSet::new(&ids))
 }
 
+#[cfg(feature = "uslp")]
 impl RxProtocol for Uslp {
     fn raw_header_pointer((): ()) -> u16 {
         0
@@ -867,20 +924,32 @@ where
 }
 
 fn rx_state(c: &aldis_frame_receiver_config_t) -> Result<FrameReceiverState> {
-    Ok(match parse::<aldis_link_protocol>(c.protocol)? {
+    match parse::<aldis_link_protocol>(c.protocol)? {
+        #[cfg(feature = "tm")]
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => {
-            FrameReceiverState::Tm(Fr::new(rx_config::<Tm>(c)?))
+            Ok(FrameReceiverState::Tm(Fr::new(rx_config::<Tm>(c)?)))
         }
+        #[cfg(not(feature = "tm"))]
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM => Err(unsupported_protocol()),
+        #[cfg(feature = "tc")]
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => {
-            FrameReceiverState::Tc(Fr::new(rx_config::<Tc>(c)?))
+            Ok(FrameReceiverState::Tc(Fr::new(rx_config::<Tc>(c)?)))
         }
+        #[cfg(not(feature = "tc"))]
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC => Err(unsupported_protocol()),
+        #[cfg(feature = "aos")]
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => {
-            FrameReceiverState::Aos(Fr::new(rx_config::<Aos>(c)?))
+            Ok(FrameReceiverState::Aos(Fr::new(rx_config::<Aos>(c)?)))
         }
+        #[cfg(not(feature = "aos"))]
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS => Err(unsupported_protocol()),
+        #[cfg(feature = "uslp")]
         aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => {
-            FrameReceiverState::Uslp(Fr::new(rx_config::<Uslp>(c)?))
+            Ok(FrameReceiverState::Uslp(Fr::new(rx_config::<Uslp>(c)?)))
         }
-    })
+        #[cfg(not(feature = "uslp"))]
+        aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP => Err(unsupported_protocol()),
+    }
 }
 
 impl FrameReceiverState {
@@ -898,18 +967,21 @@ impl FrameReceiverState {
             parse::<aldis_link_protocol>(input.config.protocol).map(|p| p == want)
         };
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TM)? {
                     return Err(unsupported_protocol());
                 }
                 rx_run(e, input, data, area)
             }
+            #[cfg(feature = "tc")]
             Self::Tc(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_TC)? {
                     return Err(unsupported_protocol());
                 }
                 rx_run(e, input, data, area)
             }
+            #[cfg(feature = "aos")]
             Self::Aos(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_AOS)? {
                     return Err(unsupported_protocol());
@@ -920,6 +992,7 @@ impl FrameReceiverState {
                 }
                 rx_run(e, input, data, area)
             }
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => {
                 if reconfigure && !same(aldis_link_protocol::ALDIS_LINK_PROTOCOL_USLP)? {
                     return Err(unsupported_protocol());
@@ -931,9 +1004,13 @@ impl FrameReceiverState {
 
     const fn status(&self) -> ReceiverStatus {
         match self {
+            #[cfg(feature = "tm")]
             Self::Tm(e) => *e.status(),
+            #[cfg(feature = "tc")]
             Self::Tc(e) => *e.status(),
+            #[cfg(feature = "aos")]
             Self::Aos(e) => *e.status(),
+            #[cfg(feature = "uslp")]
             Self::Uslp(e) => *e.status(),
         }
     }

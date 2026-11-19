@@ -166,7 +166,7 @@ fn foreign_imports(defined: &str, undefined: &str) -> Vec<String> {
 }
 
 /// `xtask ffi-imports <target>`: the `no_std` static library `aldis-ffi` builds for a
-/// bare-metal target (`--no-default-features --features panic-handler --release`) needs
+/// bare-metal target (`--no-default-features --features panic-handler,full --release`) needs
 /// nothing from the integrator beyond `memcpy`/`memset` equivalents: no heap, threads, or C
 /// runtime (CABI-004). Expects the library built.
 pub fn ffi_imports(target: &str) -> Result<usize, String> {
@@ -180,7 +180,7 @@ pub fn ffi_imports(target: &str) -> Result<usize, String> {
     if !lib.is_file() {
         return Err(format!(
             "{} not found; build it with `cargo build -p aldis-ffi --no-default-features \
-             --features panic-handler --target {target} --release`",
+             --features panic-handler,full --target {target} --release`",
             repo::rel(&lib)
         ));
     }

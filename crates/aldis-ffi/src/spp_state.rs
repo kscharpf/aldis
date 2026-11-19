@@ -697,7 +697,7 @@ pub unsafe extern "C" fn aldis_spp_reassembler_push(
             let buf = abi::bytes_mut(buf, buf_len, &[(packet, packet_len), h.range()])?;
             let mode = abi::mode(mode)?;
             let (p, _) = crate::spp::packet(bytes, mode)?;
-            let user_data = crate::spp::split_by(&p, mode, &layout)?.0.user_data();
+            let user_data = crate::spp::split_by(&p, mode, layout)?.0.user_data();
             let mut r = h.load().resume(buf)?;
             let outcome = r.push(&p.header(), user_data)?;
             h.store(r.suspend());
