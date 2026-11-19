@@ -4,7 +4,7 @@ For the coordinator: the main Claude session that relays between the maintainer 
 
 ## Planning
 
-- **The planner chooses the work** (maintainer decision, 2026-11-16). Do not choose the next task or split a goal into tasks yourself. Dispatch `planner` (Fable, [`.claude/agents/planner.md`](../../.claude/agents/planner.md)) with the maintainer's question or goal and the scope, never a preferred answer: "what next?" returns one task with its brief, a goal returns the full ordered set of tasks.
+- **The planner chooses the work** (maintainer decision, 2026-11-16). Do not choose the next task or split a goal into tasks yourself. Dispatch `planner` (Opus, [`.claude/agents/planner.md`](../../.claude/agents/planner.md)) with the maintainer's question or goal and the scope, never a preferred answer: "what next?" returns one task with its brief, a goal returns the full ordered set of tasks.
 - **Relay.** Give the maintainer the planner's task or task set and its questions unchanged in substance, and dispatch only what the maintainer accepts. Send the planner's brief to `wp-implementer` as written, adding only decisions made in chat since. A maintainer's change to the plan goes back to `planner`, not into a brief you rewrite.
 - **A planner counts** toward the limit of 2 subagents ([Dispatch](#dispatch)).
 

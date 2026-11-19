@@ -57,7 +57,7 @@ Follow-ups #364 (on #362) and #370 (on #366) were nitpick findings that outlived
 
 ### Planning
 
-- **Models by role (maintainer, 2026-11-16).** The coordinator relays between the maintainer and three agents, so it runs on Haiku at high effort (`.claude/settings.json`); the judgement of what to work on next, and of which tasks meet a goal, moved to `planner` (Fable, medium effort; low effort since 2026-11-19, by the maintainer). `wp-implementer` stays on Sonnet and `reviewer` on Opus.
+- **Models by role (maintainer, 2026-11-16).** The coordinator relays between the maintainer and three agents, so it runs on Haiku at high effort (`.claude/settings.json`); the judgement of what to work on next, and of which tasks meet a goal, moved to `planner` (Fable, medium effort; Opus at low effort since 2026-11-19, by the maintainer). `wp-implementer` stays on Sonnet and `reviewer` on Opus.
 
 ### Dispatch
 
