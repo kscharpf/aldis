@@ -1,7 +1,8 @@
-//! The protocol types of the ground downlink: [`Tm`] (§4.1) and [`Aos`] (§4.3.1) behind one
-//! refapp-local trait (D3 of the A4 plan).
+//! The protocol types of the ground downlink: [`Tm`] (§4.1), [`Aos`] (§4.3.1), and [`Uslp`]
+//! (§4.3.2) behind one refapp-local trait (D3 of the A4 plan).
 //!
-//! Specification: `docs/reference-application.md` §4.1, §4.3.1; APP-030…APP-036, APP-169…APP-174.
+//! Specification: `docs/reference-application.md` §4.1, §4.3.1, §4.3.2; APP-030…APP-036,
+//! APP-169…APP-180.
 //! Each impl builds the managed parameters of its protocol from the generated scenario constants
 //! (APP-136, APP-189) and takes a frame to the `Plain` frame the receiver accepts (LNK-050).
 
@@ -11,27 +12,34 @@ use aldis::aos::{
     AosEdition, AosFrame, AosPhysicalChannelConfig, AosVirtualChannelConfig,
     DataFieldContent as AosContentKind, VcTable,
 };
-use aldis::core::ids::{SpacecraftId, VcId};
-use aldis::core::security::NoSecurity;
-use aldis::core::{Check, Error, ErrorKind, SecuritySlices};
-use aldis::link::common::ValidPvns;
+use aldis::core::ids::{MapId, SpacecraftId, VcId};
+use aldis::core::security::{NoSecurity, SecurityLayout};
+use aldis::core::{Check, DecodeMode, Error, ErrorKind, SecuritySlices};
+use aldis::link::common::{Qos, ValidPvns};
 use aldis::link::extractor::PacketExtractorConfig;
-use aldis::link::protocol::{Aos, AosParams, PacketProtocol, Tm, TmParams};
+use aldis::link::protocol::{Aos, AosParams, PacketProtocol, Tm, TmParams, Uslp, UslpParams};
 use aldis::link::receiver::{
-    AosChannel, AosContent, AosVc, DeliveryService, FrameReceiverConfig, ReceiveProtocol,
-    TmChannel, TmVc, VcEntry,
+    AosChannel, AosContent, AosVc, DeliveryService, FrameReceiverConfig, MapSet, ReceiveProtocol,
+    TmChannel, TmVc, UslpChannel, UslpVc, VcEntry,
 };
 use aldis::tm::{
     DataFieldContent, TmFrame, TmMasterChannelConfig, TmPhysicalChannelConfig,
     TmVirtualChannelConfig,
 };
-use refapp_scenario::generated::{SPACECRAFT_ID, aos, tm};
+use aldis::uslp;
+use refapp_scenario::generated::{SPACECRAFT_ID, aos, tm, uslp_down};
 
 /// Capacity of the receiver's VC table: VC 0, 1, and 7.
 pub(super) const VC_CAPACITY: usize = 3;
 
 /// The idle `M_PDU`s of VC 7 and the Idle Packets go to no application (APP-174).
 const AOS_DELIVER_IDLE_PACKETS: bool = false;
+
+/// The Encapsulation Idle Packets of the TFDZs go to no application (APP-180).
+const USLP_DELIVER_IDLE_PACKETS: bool = false;
+
+/// Capacity of the managed MAPs: MAP 0 of VC 0 and of VC 1 (APP-176).
+const USLP_MAPS: usize = 2;
 
 /// A protocol the ground downlink serves: the frame protocol of a downlink variant.
 ///
@@ -47,15 +55,17 @@ pub(crate) trait DownlinkProtocol:
     const VCID_REALTIME: u8;
     /// VC of payload and dump (APP-032, APP-170).
     const VCID_PAYLOAD: u8;
-    /// The third VC: OID frames in TM (APP-034), idle `M_PDU`s in AOS (APP-170).
+    /// The third VC: OID frames in TM (APP-034), idle `M_PDU`s in AOS (APP-170), the VCID 63 of
+    /// the OID frames in USLP (APP-175), which has no entry in the receiver's table.
     const VCID_IDLE: u8;
     /// Whether the third VC has an extractor of its own: AOS (APP-138), whose idle `M_PDU`s
-    /// give no event. In TM it has none and a data frame on it is not served.
+    /// give no event. In TM and USLP it has none and a data frame on it is not served.
     const IDLE_VC_EXTRACTED: bool;
     /// The OCF word before the first frame (§4.4.1).
     const OCF_INITIAL: u32;
 
-    /// The three VCIDs, in the order of the receiver's table.
+    /// The three VCIDs, in the order of the receiver's table (TM and AOS: USLP builds its table
+    /// of the two data VCs, and VCID 63 is valid without an entry).
     #[must_use]
     fn vcids() -> [u8; VC_CAPACITY] {
         [Self::VCID_REALTIME, Self::VCID_PAYLOAD, Self::VCID_IDLE]
@@ -219,6 +229,119 @@ impl DownlinkProtocol for Aos {
             .into_frame()
             .into_plain(NoSecurity)
     }
+}
+
+impl DownlinkProtocol for Uslp {
+    type Managed = uslp::VcTable<VC_CAPACITY, USLP_MAPS>;
+
+    const VCID_REALTIME: u8 = uslp_down::VCID_REALTIME;
+    const VCID_PAYLOAD: u8 = uslp_down::VCID_PAYLOAD;
+    const VCID_IDLE: u8 = uslp::OID_VCID;
+    const IDLE_VC_EXTRACTED: bool = false;
+    // As in AOS: the CLCW of FARM-1 for the uplink VC, the same COP-1 uplink (APP-179).
+    const OCF_INITIAL: u32 = tm::OCF_INITIAL;
+
+    fn managed() -> Result<Self::Managed, Error> {
+        let scid = uslp_scid()?;
+        let count_len = |octets: u8| uslp::VcfCountLen::new(octets);
+        let ocf = if uslp_down::OCF_REQUIRED {
+            uslp::OcfUse::Required
+        } else {
+            uslp::OcfUse::Absent
+        };
+        let data = uslp::VcParams {
+            vcf_count_len_sequence: count_len(uslp_down::VCF_COUNT_LENGTH_SEQUENCE)?,
+            vcf_count_len_expedited: count_len(uslp_down::VCF_COUNT_LENGTH_EXPEDITED)?,
+            ocf,
+            ..uslp::VcParams::new(uslp::TransferFrameType::Fixed)
+        };
+        // An entry for VCID 63 gives the OID frames the OCF of the master channel and no VCF
+        // Count (732.1 Table 5-2 note 2, §4.1.4.1.10 note 4).
+        let oid = uslp::VcParams {
+            ocf,
+            ..uslp::VcParams::new(uslp::TransferFrameType::Fixed)
+        };
+        let vc = |id: u8, params: uslp::VcParams| uslp::VcConfig::new(scid, uslp_vc(id)?, params);
+        let map = |id: u8| {
+            Ok::<_, Error>(uslp::MapConfig::new(
+                scid,
+                uslp_vc(id)?,
+                uslp::UslpMapId::new(uslp_down::MAP_ID).ok_or_else(invalid)?,
+                SecurityLayout::NONE,
+            ))
+        };
+        let [realtime, payload, oid_vc] = Self::vcids();
+        uslp::VcTable::new(
+            physical_uslp()?,
+            &[vc(realtime, data)?, vc(payload, data)?, vc(oid_vc, oid)?],
+            &[map(realtime)?, map(payload)?],
+        )
+    }
+
+    fn receiver_config() -> Result<FrameReceiverConfig<Self, VC_CAPACITY>, Error> {
+        let maps = MapSet::new(&[MapId::<4>::new(uslp_down::MAP_ID).ok_or_else(invalid)?]);
+        // The COP is not in effect on the downlink: the receiver counts the frames of the VC
+        // (LNK-051).
+        let entry = |id: u8| -> Result<VcEntry<Self>, Error> {
+            Ok(VcEntry::new(
+                VcId::<6>::new(id).ok_or_else(invalid)?,
+                UslpVc::new(maps, false, true),
+            ))
+        };
+        let [realtime, payload, _] = Self::vcids();
+        FrameReceiverConfig::new(
+            UslpChannel::new(physical_uslp()?, DeliveryService::Mc)?,
+            &[entry(realtime)?, entry(payload)?],
+        )
+    }
+
+    fn extractor_config() -> Result<PacketExtractorConfig<Self>, Error> {
+        Ok(PacketExtractorConfig::new(
+            UslpParams::new(
+                uslp::Upid::Packets,
+                MapId::<4>::new(uslp_down::MAP_ID).ok_or_else(invalid)?,
+                Qos::Expedited,
+            )?,
+            ValidPvns::from_versions(&[
+                uslp_down::PACKET_VERSION,
+                uslp_down::ENCAPSULATION_PACKET_VERSION,
+            ])?,
+            usize::from(uslp_down::MAX_PACKET_LENGTH),
+        )?
+        .with_delivery(
+            uslp_down::DELIVER_INCOMPLETE_PACKETS,
+            USLP_DELIVER_IDLE_PACKETS,
+        ))
+    }
+
+    fn decode<'a>(
+        managed: &Self::Managed,
+        unit: &'a [u8],
+    ) -> Result<<Self as ReceiveProtocol>::Plain<'a>, Error> {
+        // The strict decode with the FECF and the Frame Validation Checks (732.1 §4.3.11.3).
+        uslp::check_frame(unit, managed, DecodeMode::Strict)?
+            .into_view()
+            .into_frame()
+            .into_plain(NoSecurity)
+    }
+}
+
+fn uslp_scid() -> Result<uslp::UslpSpacecraftId, Error> {
+    uslp::UslpSpacecraftId::new(SPACECRAFT_ID).ok_or_else(invalid)
+}
+
+fn uslp_vc(id: u8) -> Result<uslp::UslpVcId, Error> {
+    uslp::UslpVcId::new(id).ok_or_else(invalid)
+}
+
+/// The physical channel of §4.3.2: fixed length, 223 octets, no Insert Zone, FECF (APP-175).
+fn physical_uslp() -> Result<uslp::PhysicalChannelConfig, Error> {
+    uslp::PhysicalChannelConfig::new(
+        uslp::TransferFrameType::Fixed,
+        usize::from(uslp_down::FRAME_LENGTH),
+        0,
+        uslp_down::FECF,
+    )
 }
 
 /// The physical channel of §4.3.1: 223 octets, FHEC and FECF, no Insert Zone, Issue 5
