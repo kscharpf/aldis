@@ -124,6 +124,22 @@ pub struct ValidPvns {
     encapsulation: bool,
 }
 
+/// Whether the requested set is non-empty and holds only PVNs whose codec is compiled in
+/// (GEN-009). Selected by `#[cfg]`, not `cfg!`, so a build has no constant operand in a runtime
+/// condition.
+#[cfg(all(feature = "spp", feature = "epp"))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    space || encapsulation
+}
+#[cfg(all(feature = "spp", not(feature = "epp")))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    space && !encapsulation
+}
+#[cfg(all(not(feature = "spp"), feature = "epp"))]
+const fn acceptable(space: bool, encapsulation: bool) -> bool {
+    encapsulation && !space
+}
+
 #[cfg(any(feature = "spp", feature = "epp"))]
 impl ValidPvns {
     /// Space Packets only (feature `spp`).
@@ -159,9 +175,7 @@ impl ValidPvns {
     /// not compiled in: Space Packets need the feature `spp`, Encapsulation Packets `epp`
     /// (LNK-078, GEN-009).
     pub const fn new(space: bool, encapsulation: bool) -> Result<Self> {
-        let compiled =
-            (!space || cfg!(feature = "spp")) && (!encapsulation || cfg!(feature = "epp"));
-        if (space || encapsulation) && compiled {
+        if acceptable(space, encapsulation) {
             Ok(Self {
                 space,
                 encapsulation,
