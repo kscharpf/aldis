@@ -6,10 +6,13 @@
     reason = "test arithmetic on small literals"
 )]
 
-use super::tests::{CRC_MISMATCH, HK, PAYLOAD, Rec, Recorder, UNKNOWN_CHANNEL, event, packet};
+use super::tests::{
+    CRC_MISMATCH, HK, PAYLOAD, Rec, Recorder, UNKNOWN_CHANNEL, event, field as tm_field,
+    frame as tm_frame, packet,
+};
 use super::{
-    CLCW_CHANGED, EXTRACTION_ERROR, FRAME_DISCARDED, FRAME_DISCONTINUITY, FRAME_GAP,
-    FRAME_REJECTED, FrameDownlink, PARTIAL_DISCARDED,
+    CLCW_CHANGED, EXTRACTION_ERROR, FRAME_DISCONTINUITY, FRAME_GAP, FRAME_REJECTED, FrameDownlink,
+    PARTIAL_DISCARDED,
 };
 use crate::{Call, Execution, Fop1Directive, GroundNode, OpsEntry};
 use aldis::aos::{
@@ -156,7 +159,7 @@ fn a_data_frame_gives_its_packets_to_the_telemetry_path() {
 
 #[test]
 fn a_packet_that_spans_two_frames_is_delivered_with_the_second() {
-    // req: APP-174, APP-172, LNK-060, LNK-062
+    // req: APP-174, APP-172, LNK-060
     let hk = packet(HK, 0, 32);
     let long = packet(PAYLOAD, 0, 300);
     let (head, tail) = long.split_at(ZONE_LEN - hk.len());
@@ -193,9 +196,9 @@ fn vc_0_and_vc_1_are_extracted_independently() {
 
 #[test]
 fn an_idle_m_pdu_of_vc_7_gives_no_packet_and_no_event() {
-    // req: APP-174, APP-138, LNK-063
-    // VC 7 has an extractor: the frame is delivered and gives nothing, `frame_discarded`
-    // included, in sequence or not (D10).
+    // req: APP-174, APP-138, LNK-064
+    // VC 7 has an extractor: an idle M_PDU in sequence is delivered and gives nothing,
+    // `frame_discarded` included (APP-138, D10).
     let mut n = node();
     let outs = deliver(
         &mut n,
@@ -306,19 +309,25 @@ fn the_idle_vc_has_its_own_count_and_gaps_in_it_are_reported() {
 #[test]
 fn the_missing_number_is_counted_modulo_the_width_of_the_count() {
     // req: APP-138, APP-171, LNK-051
-    // The VC Frame Count has 24 bits (APP-171): 0xFFFFFE to 0x000001 is two frames missing.
+    // The VC Frame Count has 24 bits (APP-171): 0xFFFFFF to 0 is in sequence.
     let outs = deliver(
         &mut node(),
         &[
-            idle_frame(0x00FF_FFFE, INITIAL_OCF),
             idle_frame(0x00FF_FFFF, INITIAL_OCF),
             idle_frame(0, INITIAL_OCF),
-            idle_frame(0x0000_0003, INITIAL_OCF),
         ],
     );
     assert_eq!(outs[1], vec![]);
-    assert_eq!(outs[2], vec![]);
-    assert_eq!(outs[3], vec![event(FRAME_GAP, &[1, 7, 2])]);
+    // From 0xFFFFF0 to 0x000110 the missing frames are 0xFFFFF1 to 0x00010F: 15 + 272 = 287,
+    // which a count of 8 bits would give as 31.
+    let outs = deliver(
+        &mut node(),
+        &[
+            idle_frame(0x00FF_FFF0, INITIAL_OCF),
+            idle_frame(0x0000_0110, INITIAL_OCF),
+        ],
+    );
+    assert_eq!(outs[1], vec![event(FRAME_GAP, &[1, 7, 287])]);
 }
 
 #[test]
@@ -365,7 +374,7 @@ fn a_gap_makes_the_extractor_drop_the_partial_packet_and_resynchronise() {
 
 #[test]
 fn a_packet_with_a_bad_pvn_is_an_extraction_error() {
-    // req: APP-138, LNK-064
+    // req: APP-138, LNK-062
     let mut bad = packet(HK, 0, 32);
     bad[0] |= 0x20;
     let hk = packet(HK, 1, 32);
@@ -612,5 +621,10 @@ fn the_tm_node_does_not_take_aos_frames_and_the_reverse() {
         outs[0].as_slice(),
         [Rec::Event(FRAME_REJECTED, _)]
     ));
-    assert_eq!(FRAME_DISCARDED, 103);
+    let tm_unit = tm_frame(0, 0, 0, 0, &tm_field(&[&hk]), INITIAL_OCF);
+    let outs = deliver(&mut node(), &[tm_unit]);
+    assert!(matches!(
+        outs[0].as_slice(),
+        [Rec::Event(FRAME_REJECTED, _)]
+    ));
 }

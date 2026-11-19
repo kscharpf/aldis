@@ -78,7 +78,7 @@ pub(super) fn packet(apid: u16, count: u16, user_len: usize) -> Vec<u8> {
 }
 
 /// The data field that holds `parts`, filled with one Idle Packet (APID 2047, §4.1).
-fn field(parts: &[&[u8]]) -> Vec<u8> {
+pub(super) fn field(parts: &[&[u8]]) -> Vec<u8> {
     let mut data: Vec<u8> = parts.concat();
     let rest = DATA_LEN - data.len();
     let fields = PacketFields {
@@ -96,7 +96,7 @@ fn field(parts: &[&[u8]]) -> Vec<u8> {
 }
 
 /// A frame of the scenario's master channel.
-fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Vec<u8> {
+pub(super) fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Vec<u8> {
     let down = FrameDownlink::<Tm>::new().unwrap();
     let fields = TmFrameFields::new(
         VcId::new(vc).unwrap(),
