@@ -651,18 +651,18 @@ fn a_variant_without_a_node_is_unsupported() {
     // `tm_tc` builds the nodes of A2 and A3.
     assert!(GroundNode::new_frames(Variant::TmTc, &[]).is_ok());
     assert!(GroundNode::new_cop1(Variant::TmTc, &[]).is_ok());
-    // `aos` and `uslp` have no node until their work packages, and `uslp` has none at the frame
-    // level at all.
-    for variant in [Variant::Aos, Variant::Uslp] {
-        assert_eq!(
-            GroundNode::new_frames(variant, &[]).unwrap_err(),
-            GroundError::Unsupported(variant)
-        );
-        assert_eq!(
-            GroundNode::new_cop1(variant, &[]).unwrap_err(),
-            GroundError::Unsupported(variant)
-        );
-    }
-    let e = GroundNode::new_cop1(Variant::Aos, &[]).unwrap_err();
-    assert!(e.to_string().contains("`aos`"), "{e}");
+    // `aos` has the nodes of A4 WP-4a at both levels; `uslp` has none until its work packages,
+    // and none at the frame level at all.
+    assert!(GroundNode::new_frames(Variant::Aos, &[]).is_ok());
+    assert!(GroundNode::new_cop1(Variant::Aos, &[]).is_ok());
+    assert_eq!(
+        GroundNode::new_frames(Variant::Uslp, &[]).unwrap_err(),
+        GroundError::Unsupported(Variant::Uslp)
+    );
+    assert_eq!(
+        GroundNode::new_cop1(Variant::Uslp, &[]).unwrap_err(),
+        GroundError::Unsupported(Variant::Uslp)
+    );
+    let e = GroundNode::new_cop1(Variant::Uslp, &[]).unwrap_err();
+    assert!(e.to_string().contains("`uslp`"), "{e}");
 }

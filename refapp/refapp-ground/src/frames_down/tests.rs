@@ -6,13 +6,14 @@
 )]
 
 use super::{
-    CLCW_CHANGED, EXTRACTION_ERROR, FRAME_DISCARDED, FRAME_DISCONTINUITY, FRAME_GAP,
+    CLCW_CHANGED, Downlink, EXTRACTION_ERROR, FRAME_DISCARDED, FRAME_DISCONTINUITY, FRAME_GAP,
     FRAME_REJECTED, FrameDownlink, PARTIAL_DISCARDED,
 };
 use crate::{GroundNode, telemetry};
 use aldis::core::ids::{Apid, SeqCount, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::oid::OidGenerator;
+use aldis::link::protocol::Tm;
 use aldis::spp::{PacketFields, PacketType, SequenceFlags, SppConfig, encode as spp_encode};
 use aldis::tm::{
     DataFieldStatus, McFrameCount, PacketOffset, PacketPointer, TmFrameContent, TmFrameFields,
@@ -22,13 +23,13 @@ use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, Variant};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Rec {
+pub(super) enum Rec {
     PacketIn(u16, Vec<u8>),
     Event(u16, Vec<u64>),
 }
 
 #[derive(Default)]
-struct Recorder(Vec<Rec>);
+pub(super) struct Recorder(pub(super) Vec<Rec>);
 
 impl Output for Recorder {
     fn unit(&mut self, _: &[u8]) {}
@@ -41,21 +42,21 @@ impl Output for Recorder {
     }
 }
 
-const HK: u16 = 16;
-const PAYLOAD: u16 = 32;
+pub(super) const HK: u16 = 16;
+pub(super) const PAYLOAD: u16 = 32;
 const INITIAL_OCF: [u8; 4] = [0x01, 0, 0, 0];
 const DATA_LEN: usize = 211;
 
 /// Catalogue codes of docs/03-api-model.md §9.
-const CRC_MISMATCH: u64 = 8;
-const UNKNOWN_CHANNEL: u64 = 10;
+pub(super) const CRC_MISMATCH: u64 = 8;
+pub(super) const UNKNOWN_CHANNEL: u64 = 10;
 
-fn event(code: u16, args: &[u64]) -> Rec {
+pub(super) fn event(code: u16, args: &[u64]) -> Rec {
     Rec::Event(code, args.to_vec())
 }
 
 /// A telemetry packet with the implicit-P-field CUC secondary header (§3.2).
-fn packet(apid: u16, count: u16, user_len: usize) -> Vec<u8> {
+pub(super) fn packet(apid: u16, count: u16, user_len: usize) -> Vec<u8> {
     let mut secondary = (2_100_000_000_u32 + u32::from(count))
         .to_be_bytes()
         .to_vec();
@@ -77,7 +78,7 @@ fn packet(apid: u16, count: u16, user_len: usize) -> Vec<u8> {
 }
 
 /// The data field that holds `parts`, filled with one Idle Packet (APID 2047, §4.1).
-fn field(parts: &[&[u8]]) -> Vec<u8> {
+pub(super) fn field(parts: &[&[u8]]) -> Vec<u8> {
     let mut data: Vec<u8> = parts.concat();
     let rest = DATA_LEN - data.len();
     let fields = PacketFields {
@@ -95,8 +96,8 @@ fn field(parts: &[&[u8]]) -> Vec<u8> {
 }
 
 /// A frame of the scenario's master channel.
-fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Vec<u8> {
-    let down = FrameDownlink::new().unwrap();
+pub(super) fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Vec<u8> {
+    let down = FrameDownlink::<Tm>::new().unwrap();
     let fields = TmFrameFields::new(
         VcId::new(vc).unwrap(),
         McFrameCount::new(mc),
@@ -116,7 +117,7 @@ fn frame(vc: u8, mc: u8, vcc: u8, pointer: u16, data: &[u8], ocf: [u8; 4]) -> Ve
 }
 
 fn oid_frame(mc: u8, vcc: u8, ocf: [u8; 4]) -> Vec<u8> {
-    let down = FrameDownlink::new().unwrap();
+    let down = FrameDownlink::<Tm>::new().unwrap();
     let mut out = vec![0; 223];
     let n = encode_oid(
         &down.channel,
@@ -153,6 +154,14 @@ fn deliver(node: &mut GroundNode, frames: &[Vec<u8>]) -> Vec<Vec<Rec>> {
             out.0
         })
         .collect()
+}
+
+/// The TM downlink of a node made for `tm_tc`.
+fn tm_downlink(node: &GroundNode) -> &FrameDownlink<Tm> {
+    match node.downlink.as_ref() {
+        Some(Downlink::Tm(down)) => down,
+        _ => panic!("not a TM downlink"),
+    }
 }
 
 fn node() -> GroundNode {
@@ -218,7 +227,7 @@ fn an_oid_frame_gives_no_packet_and_no_event() {
     let mut n = node();
     let outs = deliver(&mut n, &[oid_frame(0, 0, INITIAL_OCF)]);
     assert_eq!(outs, vec![vec![]]);
-    let rx = &n.downlink.as_ref().unwrap().receiver;
+    let rx = &tm_downlink(&n).receiver;
     assert_eq!(rx.status().oid_frames.get(), 1);
 }
 
@@ -267,7 +276,7 @@ fn a_wrong_fecf_is_rejected_and_counted_without_other_events() {
     let mut n = node();
     let outs = deliver(&mut n, &[bad]);
     assert_eq!(outs, vec![vec![event(FRAME_REJECTED, &[CRC_MISMATCH])]]);
-    let status = n.downlink.as_ref().unwrap().receiver.status();
+    let status = tm_downlink(&n).receiver.status();
     assert_eq!(status.crc_mismatch.get(), 1);
 }
 
@@ -304,7 +313,7 @@ fn frame_with(vc: u8, data: &[u8], tweak: impl FnOnce(&mut Vec<u8>)) -> Vec<u8> 
     use aldis::tm::{
         DataFieldContent, TmMasterChannelConfig, TmPhysicalChannelConfig, TmVirtualChannelConfig,
     };
-    let base = FrameDownlink::new().unwrap();
+    let base = FrameDownlink::<Tm>::new().unwrap();
     let channel = TmMasterChannelConfig::new(
         TmPhysicalChannelConfig::new(223, true).unwrap(),
         base.channel.scid(),
