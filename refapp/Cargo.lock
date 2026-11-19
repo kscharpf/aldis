@@ -6,6 +6,7 @@ version = 4
 name = "aldis"
 version = "0.7.0"
 dependencies = [
+ "aldis-aos",
  "aldis-cop1",
  "aldis-core",
  "aldis-epp",
@@ -14,6 +15,14 @@ dependencies = [
  "aldis-tc",
  "aldis-time",
  "aldis-tm",
+ "aldis-uslp",
+]
+
+[[package]]
+name = "aldis-aos"
+version = "0.7.0"
+dependencies = [
+ "aldis-core",
 ]
 
 [[package]]
@@ -22,6 +31,7 @@ version = "0.7.0"
 dependencies = [
  "aldis-core",
  "aldis-tc",
+ "aldis-uslp",
 ]
 
 [[package]]
@@ -39,11 +49,13 @@ dependencies = [
 name = "aldis-link"
 version = "0.7.0"
 dependencies = [
+ "aldis-aos",
  "aldis-core",
  "aldis-epp",
  "aldis-spp",
  "aldis-tc",
  "aldis-tm",
+ "aldis-uslp",
 ]
 
 [[package]]
@@ -70,6 +82,13 @@ dependencies = [
 
 [[package]]
 name = "aldis-tm"
+version = "0.7.0"
+dependencies = [
+ "aldis-core",
+]
+
+[[package]]
+name = "aldis-uslp"
 version = "0.7.0"
 dependencies = [
  "aldis-core",

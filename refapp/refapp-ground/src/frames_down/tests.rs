@@ -18,7 +18,7 @@ use aldis::tm::{
     DataFieldStatus, McFrameCount, PacketOffset, PacketPointer, TmFrameContent, TmFrameFields,
     VcFrameCount, encode, encode_oid,
 };
-use refapp_scenario::{Delivered, Instant, Node, Output, StepInput};
+use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, Variant};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,7 +156,7 @@ fn deliver(node: &mut GroundNode, frames: &[Vec<u8>]) -> Vec<Vec<Rec>> {
 }
 
 fn node() -> GroundNode {
-    GroundNode::new_frames(&[]).unwrap()
+    GroundNode::new_frames(Variant::TmTc, &[]).unwrap()
 }
 
 #[test]

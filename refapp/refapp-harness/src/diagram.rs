@@ -181,7 +181,8 @@ pub fn rows(scenario: &Scenario, text: &str) -> Result<Vec<Row>, String> {
     let case_id = header["case"]
         .as_str()
         .ok_or("line 1: header without a case")?;
-    let level = scenario.case(case_id)?.level;
+    let case = scenario.case(case_id)?;
+    let (level, variant) = (case.level, case.variant);
     if !level.has_frames() {
         return Err(format!("case `{case_id}` has no frames to draw"));
     }
@@ -236,7 +237,7 @@ pub fn rows(scenario: &Scenario, text: &str) -> Result<Vec<Row>, String> {
         let octets = unhex(r["hex"].as_str().ok_or("unit_sent without hex")?)?;
         match dir {
             Dir::Up => {
-                let frame = decode_frame(scenario, level, dir, &octets)
+                let frame = decode_frame(scenario, level, variant, dir, &octets)
                     .map_err(|e| format!("uplink unit {index}: {e}"))?;
                 let retransmission = match (frame.frame_type, frame.sequence) {
                     (Some(FrameType::Ad), Some(n)) => {
@@ -255,7 +256,7 @@ pub fn rows(scenario: &Scenario, text: &str) -> Result<Vec<Row>, String> {
                     }
                     continue;
                 }
-                let frame = decode_frame(scenario, level, dir, &octets)
+                let frame = decode_frame(scenario, level, variant, dir, &octets)
                     .map_err(|e| format!("downlink unit {index}: {e}"))?;
                 let report = frame.clcw.as_ref().map(Report::of);
                 if report.is_some() && report != last_report {

@@ -12,7 +12,7 @@ use aldis::core::ids::{Apid, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::oid::OidGenerator;
 use aldis::tm::{McFrameCount, TmFrameFields, VcFrameCount, encode_oid};
-use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, TableId, TableLength};
+use refapp_scenario::{Delivered, Instant, Node, Output, StepInput, TableId, TableLength, Variant};
 
 /// One output of a step, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,7 +89,7 @@ impl Rig {
     fn new(entries: &[(u64, OpsEntry)]) -> Self {
         let script: Vec<OpsEntry> = entries.iter().map(|(_, e)| *e).collect();
         Self {
-            node: GroundNode::new_cop1(&script).unwrap(),
+            node: GroundNode::new_cop1(Variant::TmTc, &script).unwrap(),
             at: entries.iter().map(|(t, _)| *t).collect(),
             down: FrameDownlink::new().unwrap(),
             mc: 0,

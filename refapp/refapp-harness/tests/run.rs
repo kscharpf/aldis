@@ -3,7 +3,7 @@
 use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
 use refapp_harness::scenario::{
-    Call, Case, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario,
+    Call, Case, Direction, Execution, Fault, FaultEntry, Level, OpsEntry, Scenario, Variant,
     generated_files, refapp_dir,
 };
 use refapp_harness::sim;
@@ -15,6 +15,7 @@ fn case(level: Level, end_us: u64) -> Case {
     Case {
         id: "test".to_owned(),
         level,
+        variant: Variant::TmTc,
         end_us: Micros::new(end_us),
         trace_version: Ranged::new(1).unwrap(),
         requirements: vec![],
