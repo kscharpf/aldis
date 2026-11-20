@@ -241,9 +241,10 @@ fn golden_traces_decode_with_the_strict_codecs() {
                 .to_string_lossy()
                 .starts_with("a4-")
             {
-                // A variant trace: its frames are decoded with the codec of the variant; the
-                // packets inside are the work of A4 WP-6, so none is counted yet.
+                // A variant trace: its frames are decoded with the codec of the variant, and the
+                // packets inside go through the engines of the variant (A4 WP-6).
                 assert!(d.frames > 0, "{}", path.display());
+                assert!(d.framed_packets > 0, "{}", path.display());
                 variant_traces += 1;
             } else if d.frames > 0 {
                 // A frame-level trace: its frames and the packets inside were decoded.
@@ -525,4 +526,97 @@ fn an_uplink_fault_without_an_index_fails_the_strict_decode() {
     // The canonical check refuses the record first; the decoder's own guard for a missing index
     // (a second guard in `trace.rs`) is not reached.
     assert!(e.contains("keys of `fault` must be exactly"), "{e}");
+}
+
+#[test]
+fn a_planted_wrong_fecf_fails_the_strict_decode_of_the_a4_traces() {
+    // req: APP-086, APP-183
+    // The last octet of a frame is the last octet of its FECF (732.0 §4.1.6; 732.1 §4.1.6). One
+    // bit of it breaks the FECF of the first AOS downlink frame, of the first USLP downlink
+    // frame, and of the first USLP uplink frame.
+    let scenario = Scenario::load().unwrap();
+    for (case, dir, what) in [
+        ("a4-aos-nominal", "down", "not a strict AOS frame"),
+        ("a4-uslp-nominal", "down", "not a strict USLP frame"),
+        ("a4-uslp-nominal", "up", "not a strict USLP frame"),
+    ] {
+        let good = std::fs::read_to_string(refapp_harness::golden_path(case)).unwrap();
+        assert!(decode_strict(&scenario, &good).is_ok(), "{case}");
+        let bad = with_unit_changed(case, dir, |o| {
+            if let Some(last) = o.last_mut() {
+                *last ^= 1;
+            }
+            true
+        });
+        let e = decode_strict(&scenario, &bad).unwrap_err();
+        assert!(e.contains(what), "{case} {dir}: {e}");
+        assert!(e.contains("CrcMismatch"), "{case} {dir}: {e}");
+    }
+}
+
+#[test]
+fn a_planted_uncorrectable_fhec_fails_the_strict_decode_of_an_aos_frame() {
+    // req: APP-086, APP-169
+    // The FHEC is octets 6 and 7 of the AOS frame (732.0 §4.1.2.6). It is a Reed-Solomon (10,6)
+    // code (the Reed-Solomon (15,11) code shortened by five, §4.1.2.6.5) that corrects up to two
+    // symbol errors (§4.1.2.6.5 b, note 3); a pattern of more is not correctable. The decoder
+    // corrects the header and then checks the FECF, which covers the header as sent, so a
+    // corrected error leaves the FECF as it was. For the uncorrectable one the FECF is
+    // recomputed over the corrupted frame, so a failure is the FHEC's alone. The Master Channel
+    // ID and VCID are unchanged, so no other check can reject the frame.
+    let scenario = Scenario::load().unwrap();
+    let case = "a4-aos-nominal";
+    let good = std::fs::read_to_string(refapp_harness::golden_path(case)).unwrap();
+    assert!(decode_strict(&scenario, &good).is_ok());
+    let planted = |xor: [u8; 2], fix_fecf: bool| {
+        with_unit_changed(case, "down", |o| {
+            o[6] ^= xor[0];
+            o[7] ^= xor[1];
+            if fix_fecf {
+                o.truncate(o.len() - 2);
+                *o = with_fecf(std::mem::take(o));
+            }
+            true
+        })
+    };
+    // One symbol error, in the low nibble of octet 7: corrected, so the trace still decodes
+    // (APP-174: "FHEC corrected").
+    decode_strict(&scenario, &planted([0x00, 0x01], false)).unwrap();
+    // Two symbol errors: still corrected (the limit of the code).
+    decode_strict(&scenario, &planted([0x10, 0x01], false)).unwrap();
+    // Four symbol errors, every nibble of the FHEC: more than the code corrects.
+    let e = decode_strict(&scenario, &planted([0xFF, 0xFF], true)).unwrap_err();
+    assert!(e.contains("not a strict AOS frame"), "{e}");
+    assert!(e.contains("HeaderUncorrectable"), "{e}");
+    // Without the fixed-up FECF the frame fails too, as one whose header is wrong.
+    let unfixed = with_unit_changed(case, "down", |o| {
+        o[6] ^= 0xFF;
+        o[7] ^= 0xFF;
+        true
+    });
+    assert!(decode_strict(&scenario, &unfixed).is_err());
+}
+
+#[test]
+fn the_flight_nodes_records_must_match_the_packets_reassembled_from_the_a4_uplinks() {
+    // req: APP-086, APP-129, APP-185, APP-187
+    // The first `cmd_received` of each `a4-*` trace is removed: the packets FARM-1 and the
+    // reassembler deliver (the TC chain at `aos`, the USLP chain at `uslp`) are then more than the
+    // node says it handled.
+    let scenario = Scenario::load().unwrap();
+    for case in ["a4-aos-nominal", "a4-uslp-nominal"] {
+        let text = std::fs::read_to_string(refapp_harness::golden_path(case)).unwrap();
+        let mut seen = false;
+        let dropped: String = text
+            .split_inclusive('\n')
+            .filter(|l| {
+                let hit = !seen && l.contains("\"cmd_received\"");
+                seen |= hit;
+                !hit
+            })
+            .collect();
+        assert_ne!(dropped, text, "{case}");
+        let e = decode_strict(&scenario, &dropped).unwrap_err();
+        assert!(e.contains("cmd_received"), "{case}: {e}");
+    }
 }
