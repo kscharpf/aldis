@@ -38,3 +38,15 @@ A2 D8(c), TV-023. Regenerates every `unit_sent` record of `a2-nominal`: the 280 
 `--self-check` asserts the counts, First Header Pointers, VC counts, OCF changes, and uplink headers that §4.4.4 lists, so the model agrees with the hand derivation, and the first payload octets of §3.3.3, before any golden trace exists. `--compare` compares the model's records with the `unit_sent` records of a golden trace in order, and exits 1 on a difference.
 
 Valid for `a2-nominal` only: no faults, no rejected command, no immediate command, no idle remainder below 7 octets. The result is recorded in `docs/verification/cross-checks.md` §7.2.
+
+## `a4_cases.py`: the frames of `a4-aos-nominal` and `a4-uslp-nominal`
+
+A4 D9, TV-023. Regenerates every `unit_sent` record of both cases: the 280 AOS or USLP downlink frames and the TC or USLP uplink frames, in trace order. Written blind, from `docs/reference-application.md`, `docs/milestones/a4-variants.md` D4 to D10, `docs/standards/`, and the Blue Books, with no scenario file and no implementation path read. Python 3, standard library only; no CI step.
+
+    python3 -I refapp/model/a4_cases.py <case>                               # print the unit_sent records
+    python3 -I refapp/model/a4_cases.py --self-check                         # the figures of sections 4.6.2 to 4.6.4
+    python3 -I refapp/model/a4_cases.py --compare <golden.jsonl> <case>      # every differing record
+
+The golden copy is local, for example `git show origin/a4/wp-5-golden:refapp/golden/a4-aos-nominal.jsonl > refapp/model/.golden-a4-aos-nominal.jsonl` (ignored by git).
+
+Only the FOP-1 and FARM-1 cells the two cases reach are implemented; anything else raises `NotModelled`. Not covered: records other than `unit_sent`, faults, and the cells above. The result is recorded in `docs/verification/cross-checks.md` §7.4.
