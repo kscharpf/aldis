@@ -15,8 +15,8 @@ use aldis::link::common::ValidPvns;
 use aldis::link::extractor::{
     ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
 };
-use aldis::link::protocol::Tm;
 use aldis::link::protocol::TmParams;
+use aldis::link::protocol::{Tc, Tm};
 use aldis::spp::{PacketType, SequenceFlags, SpacePacket};
 use aldis::tc::{
     Clcw, ControlCommand, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame,
@@ -596,7 +596,7 @@ pub struct FramedPackets {
     realtime: Extractor,
     payload: Extractor,
     extract_area: Vec<u8>,
-    uplink: FrameUplink,
+    uplink: FrameUplink<Tc>,
     /// An uplink unit was dropped or corrupted and no packet has come out since.
     up_loss: bool,
 }

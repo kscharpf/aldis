@@ -361,7 +361,7 @@ pub enum Frames {
     Tm(FrameDownlink<Tm>),
     /// AOS frames (§4.3.1), the variant `aos`.
     Aos(FrameDownlink<Aos>),
-    /// USLP frames (§4.3.2), the variant `uslp`. No node selects it until A4 WP-3c.
+    /// USLP frames (§4.3.2), the variant `uslp`.
     Uslp(FrameDownlink<Uslp>),
 }
 
