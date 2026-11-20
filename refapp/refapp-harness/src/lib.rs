@@ -48,7 +48,7 @@ use crate::scenario::Scenario;
 /// others there, APP-187).
 ///
 /// # Errors
-/// If the node does not build, as it does not for a variant that has no node yet.
+/// If the node does not build.
 pub fn flight_node(case: &scenario::Case) -> Result<FlightNode, String> {
     let variant = case.variant.to_node();
     match case.level {
@@ -63,8 +63,7 @@ pub fn flight_node(case: &scenario::Case) -> Result<FlightNode, String> {
 /// (APP-187).
 ///
 /// # Errors
-/// If an ops entry does not convert or the node does not build, as it does not for a variant
-/// that has no node yet.
+/// If an ops entry does not convert or the node does not build.
 pub fn ground_node(case: &scenario::Case) -> Result<GroundNode, String> {
     let script = case
         .ops
