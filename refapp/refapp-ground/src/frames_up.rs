@@ -91,7 +91,7 @@ const ACTIONS: usize = fop1_max_actions(SENT);
 pub(crate) struct FrameUplink<P: UplinkProtocol, const M: usize, const F: usize> {
     segmenter: MapSegmenter<P, M, QUEUE>,
     fop: Fop1<SENT, F, ACTIONS, P>,
-    /// The octets of the longest FDU the segmenter hands out (the target's).
+    /// The octets of the longest FDU the segmenter hands out: the target's, with `P::HEADER_LEN` octets in front.
     fdu_len: usize,
     /// The handle of the next request (API-054).
     next_handle: u32,

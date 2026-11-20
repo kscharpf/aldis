@@ -56,8 +56,8 @@ pub(crate) trait UplinkProtocol: SegmenterProtocol + Fop1Format {
     #[must_use]
     fn request_data(fdu: &[u8]) -> Option<&[u8]>;
 
-    /// The configuration of the segmenter, whose FDUs are the longest of `target` (APP-136,
-    /// APP-182).
+    /// The configuration of the segmenter, whose longest FDU is the longest of `target` with
+    /// [`HEADER_LEN`](Self::HEADER_LEN) octets in front (APP-136, APP-182).
     ///
     /// # Errors
     /// As [`target`](Self::target); `InvalidConfig` if `M` is not [`MAPS`](Self::MAPS) or the

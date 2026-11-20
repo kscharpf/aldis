@@ -138,7 +138,7 @@ fn a_type_ad_frame_has_the_fields_of_the_schedule() {
     assert_eq!(out.frames.len(), 2);
     for (n, (frame, packet)) in out.frames.iter().zip([&first, &second]).enumerate() {
         // Primary Header: version `1100`, SCID 341, Destination, VCID 0, MAP ID 0, End of Frame
-        // Primary Header Flag 0 (732.1 Fig. 4-1), then the Frame Length, one less than the octets.
+        // Primary Header Flag 0 (732.1 Fig. 4-2), then the Frame Length, one less than the octets.
         assert_eq!(frame[..4], [0xC0, 0x15, 0x58, 0x00], "frame {n}");
         let length = u16::from_be_bytes([frame[4], frame[5]]);
         assert_eq!(usize::from(length) + 1, frame.len(), "frame {n}");
@@ -327,7 +327,7 @@ fn the_type_bc_frame_of_the_unlock_goes_out_before_any_type_ad_frame() {
 
 #[test]
 fn the_node_of_uslp_is_built_at_cop1_only() {
-    // req: APP-187, APP-044
+    // req: APP-187
     assert!(GroundNode::new_cop1(Variant::Uslp, &[]).is_ok());
     assert!(GroundNode::new_frames(Variant::Uslp, &[]).is_err());
 }
