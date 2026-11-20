@@ -8,15 +8,15 @@
 //! which the check over the golden traces uses.
 
 use aldis::core::DecodeMode;
+use aldis::core::ids::MapId;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::ocf::Ocf;
 use aldis::core::security::SecurityLayout;
-use aldis::link::common::ValidPvns;
+use aldis::link::common::{Qos, ValidPvns};
 use aldis::link::extractor::{
     ExtractorInput, ExtractorOutput, FieldIn, PacketExtractor, PacketExtractorConfig, PacketRun,
 };
-use aldis::link::protocol::TmParams;
-use aldis::link::protocol::{Tc, Tm};
+use aldis::link::protocol::{Aos, AosParams, PacketProtocol, Tc, Tm, TmParams, Uslp, UslpParams};
 use aldis::spp::{PacketType, SequenceFlags, SpacePacket};
 use aldis::tc::{
     Clcw, ControlCommand, FrameType, MapConfig, PhysicalChannelConfig, SegmentHeaderUse, TcFrame,
@@ -28,7 +28,7 @@ use refapp_flight::FrameUplink;
 use refapp_flight::command::parse;
 use refapp_flight::event::{APP_CMD_RECEIVED, APP_PACKET_REJECTED, APP_TABLE_RECEIVED};
 use refapp_flight::frames_up::{
-    APP_FRAME_REJECTED, APP_SDU_TOO_LONG, APP_SEQUENCE_VIOLATION, APP_UNKNOWN_MAP,
+    APP_FRAME_REJECTED, APP_GAP_DISCARD, APP_SDU_TOO_LONG, APP_SEQUENCE_VIOLATION, APP_UNKNOWN_MAP,
 };
 use refapp_scenario::generated::apid;
 use refapp_scenario::{Apid, Instant, Output};
@@ -77,6 +77,10 @@ pub struct DecodedFrame {
     pub count: Option<u64>,
     /// USLP: an OID frame, on VCID 63 (732.1 §4.1.4.1.5).
     pub oid: bool,
+    /// AOS and USLP downlink: the data field as the `PacketExtractor` takes it, the `M_PDU` (its
+    /// header and the packet zone) or the TFDF (its header and the TFDZ) (docs/04-engines.md
+    /// §3.1).
+    pub field: Vec<u8>,
 }
 
 impl DecodedFrame {
@@ -292,6 +296,7 @@ fn decode_aos(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, String
         data,
         clcw: clcw_of(frame.ocf(), "an AOS frame")?,
         packet_pointer,
+        field: frame.data_field().to_vec(),
         count: Some(u64::from(frame.vc_frame_count().get())),
         ..DecodedFrame::default()
     })
@@ -343,6 +348,17 @@ fn uslp_full<'a, 'f>(
     frame
         .full()
         .ok_or_else(|| "a truncated USLP frame in a case without truncated frames".to_owned())
+}
+
+/// The TFDF as the extractor takes it: the header, then the TFDZ (docs/04-engines.md §3.1).
+fn tfdf_field(header: uslp::TfdfHeader, zone: &[u8]) -> Result<Vec<u8>, String> {
+    let mut field = header
+        .octets()
+        .get(..header.len())
+        .ok_or("the TFDF Header is longer than its array")?
+        .to_vec();
+    field.extend_from_slice(zone);
+    Ok(field)
 }
 
 /// A fixed-length USLP frame of the downlink (§4.3.2): FECF checked, the SCID that of the
@@ -442,9 +458,11 @@ fn decode_uslp_down(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, 
         ));
     }
     let count = header.vcf_count();
+    let field = tfdf_field(tfdf, full.tfdz())?;
     Ok(DecodedFrame {
         vcid,
         data: full.tfdz().to_vec(),
+        field,
         clcw: clcw_of(full.ocf(), "a USLP frame")?,
         tfdf: Some(tfdf),
         map_id: Some(header.map_id().get()),
@@ -558,8 +576,8 @@ fn decode_uslp_up(scenario: &Scenario, octets: &[u8]) -> Result<DecodedFrame, St
     })
 }
 
-/// The extractor of a downlink VC (the sizes of the ground node: §4.1).
-type Extractor = PacketExtractor<Tm, ASSEMBLY, FIELD>;
+/// The extractor of a downlink VC of the protocol `P` (the sizes of the ground node: §4.1).
+type Extractor<P> = PacketExtractor<P, ASSEMBLY, FIELD>;
 /// The assembly buffer of an extractor: the Maximum Packet Length (§4.1).
 const ASSEMBLY: usize = 512;
 /// The longest data field an extractor takes (§4.1).
@@ -582,49 +600,141 @@ impl Output for Tap {
     }
 }
 
-/// The packets inside the frames of a trace (APP-086; WP-6 of the A2 and A3 plans).
+/// The extractors of the downlink VCs of a variant (§4.1, §4.3.1, §4.3.2).
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one value per trace check; boxing the extractors would only add indirection"
+)]
+enum Down {
+    /// TM: VC 0 and VC 1; the OID frames of VC 7 carry idle data only.
+    Tm {
+        realtime: Extractor<Tm>,
+        payload: Extractor<Tm>,
+    },
+    /// AOS: VC 0, VC 1, and the idle VC 7 (APP-170, APP-174).
+    Aos {
+        realtime: Extractor<Aos>,
+        payload: Extractor<Aos>,
+        idle: Extractor<Aos>,
+    },
+    /// USLP: VC 0 and VC 1; the OID frames of VCID 63 carry idle data only (APP-175, APP-180).
+    Uslp {
+        realtime: Extractor<Uslp>,
+        payload: Extractor<Uslp>,
+    },
+}
+
+/// The uplink receive chain of a variant: the TC chain at `tm_tc` and `aos` (APP-187), the USLP
+/// chain at `uslp` (APP-181…APP-185).
+enum Up {
+    Tc(FrameUplink<Tc>),
+    Uslp(FrameUplink<Uslp>),
+}
+
+/// The packets inside the frames of a trace (APP-086; WP-6 of the A2, A3, and A4 plans).
 ///
-/// Downlink: one `PacketExtractor` for each of VC 0 and VC 1 (LNK-060), over the frames in
-/// trace order as a clean link. Uplink: the receive chain of the flight node
-/// ([`FrameUplink`]: FARM-1, then the `MapReassembler` with the two MAPs, LNK-070), over the
-/// frames **as received**, since only the Type-BD frames and the Type-AD frames that FARM-1
-/// accepts reach the reassembler (APP-146, §4.5.3); a retransmitted or duplicated Type-AD frame
-/// is discarded by FARM-1 and gives no packet, and a reordered one gives its packet when FARM-1
-/// later accepts it. Idle packets are dropped, as the
-/// extractor does (LNK-063). A partial packet at the end of the trace is no fault.
+/// Downlink: one `PacketExtractor` for each data VC (LNK-060), over the frames in trace order as
+/// a clean link: VC 0 and VC 1 at `tm_tc`; VC 0, VC 1, and 7 at `aos`; VC 0 and VC 1 at `uslp`.
+/// Uplink: the receive chain of the flight node ([`FrameUplink`]: FARM-1, then the
+/// `MapReassembler`, LNK-070), over the frames **as received**, since only the Type-BD frames
+/// and the Type-AD frames that FARM-1 accepts reach the reassembler (APP-146, §4.5.3); a
+/// retransmitted or duplicated Type-AD frame is discarded by FARM-1 and gives no packet, and a
+/// reordered one gives its packet when FARM-1 later accepts it. The chain is that of TC at
+/// `tm_tc` and `aos` (the two MAPs), and that of USLP at `uslp` (MAP 0, blocked). Idle packets
+/// are dropped, as the extractor does (LNK-063). A partial packet at the end of the trace is no
+/// fault.
 pub struct FramedPackets {
-    realtime: Extractor,
-    payload: Extractor,
+    down: Down,
     extract_area: Vec<u8>,
-    uplink: FrameUplink<Tc>,
+    uplink: Up,
     /// An uplink unit was dropped or corrupted and no packet has come out since.
     up_loss: bool,
 }
 
 impl FramedPackets {
-    /// The extractors and the uplink chain for the managed parameters of `scenario`.
+    /// The extractors and the uplink chain of the variant `tm_tc` for the managed parameters of
+    /// `scenario`.
     ///
     /// # Errors
     /// If the scenario does not form a configuration.
     pub fn new(scenario: &Scenario) -> Result<Self, String> {
+        Self::for_variant(scenario, Variant::TmTc)
+    }
+
+    /// The extractors and the uplink chain of `variant` for the managed parameters of `scenario`.
+    ///
+    /// # Errors
+    /// If the scenario does not form a configuration.
+    pub fn for_variant(scenario: &Scenario, variant: Variant) -> Result<Self, String> {
         let bad = |e: aldis::core::Error| format!("packet engines of the scenario: {e:?}");
-        let config = PacketExtractorConfig::<Tm>::new(
-            TmParams,
-            ValidPvns::from_versions(&[refapp_scenario::generated::tm::PACKET_VERSION])
-                .map_err(bad)?,
-            ASSEMBLY,
-        )
-        .map_err(bad)?;
-        if !scenario.tc.segment_header {
-            return Err(
-                "a TC channel without a Segment Header has no MAPs to reassemble".to_owned(),
-            );
-        }
+        let tc_up = || -> Result<Up, String> {
+            if !scenario.tc.segment_header {
+                return Err(
+                    "a TC channel without a Segment Header has no MAPs to reassemble".to_owned(),
+                );
+            }
+            Ok(Up::Tc(FrameUplink::new_cop1().map_err(bad)?))
+        };
+        let (down, uplink) = match variant {
+            Variant::TmTc => {
+                let config = PacketExtractorConfig::<Tm>::new(
+                    TmParams,
+                    ValidPvns::from_versions(&[refapp_scenario::generated::tm::PACKET_VERSION])
+                        .map_err(bad)?,
+                    ASSEMBLY,
+                )
+                .map_err(bad)?;
+                let down = Down::Tm {
+                    realtime: Extractor::new(config).map_err(bad)?,
+                    payload: Extractor::new(config).map_err(bad)?,
+                };
+                (down, tc_up()?)
+            }
+            Variant::Aos => {
+                use refapp_scenario::generated::aos as a;
+                // Idle Packets and the idle `M_PDU`s of VC 7 go to no one (APP-174).
+                let config = PacketExtractorConfig::<Aos>::new(
+                    AosParams {
+                        edition: aos::AosEdition::Issue5,
+                    },
+                    ValidPvns::from_versions(&[a::PACKET_VERSION]).map_err(bad)?,
+                    usize::from(a::MAX_PACKET_LENGTH),
+                )
+                .map_err(bad)?
+                .with_delivery(a::DELIVER_INCOMPLETE_PACKETS, false);
+                let down = Down::Aos {
+                    realtime: Extractor::new(config).map_err(bad)?,
+                    payload: Extractor::new(config).map_err(bad)?,
+                    idle: Extractor::new(config).map_err(bad)?,
+                };
+                (down, tc_up()?)
+            }
+            Variant::Uslp => {
+                use refapp_scenario::generated::uslp_down as u;
+                // The SPP and Encapsulation PVNs are valid; Encapsulation Idle Packets go to no
+                // one (APP-180).
+                let map = MapId::<4>::new(u::MAP_ID)
+                    .ok_or_else(|| "USLP MAP ID of the scenario is out of range".to_owned())?;
+                let config = PacketExtractorConfig::<Uslp>::new(
+                    UslpParams::new(aldis::uslp::Upid::Packets, map, Qos::Expedited)
+                        .map_err(bad)?,
+                    ValidPvns::from_versions(&[u::PACKET_VERSION, u::ENCAPSULATION_PACKET_VERSION])
+                        .map_err(bad)?,
+                    usize::from(u::MAX_PACKET_LENGTH),
+                )
+                .map_err(bad)?
+                .with_delivery(u::DELIVER_INCOMPLETE_PACKETS, false);
+                let down = Down::Uslp {
+                    realtime: Extractor::new(config).map_err(bad)?,
+                    payload: Extractor::new(config).map_err(bad)?,
+                };
+                (down, Up::Uslp(FrameUplink::new_cop1().map_err(bad)?))
+            }
+        };
         Ok(Self {
-            realtime: Extractor::new(config).map_err(bad)?,
-            payload: Extractor::new(config).map_err(bad)?,
+            down,
             extract_area: vec![0; EXTRACT_AREA],
-            uplink: FrameUplink::new_cop1().map_err(bad)?,
+            uplink,
             up_loss: false,
         })
     }
@@ -645,71 +755,86 @@ impl FramedPackets {
     /// If an engine refuses the frame or reports an error, a discard, or an incomplete packet
     /// (a clean link has none), or a packet is not a strict Space Packet.
     pub fn take_down(&mut self, frame: &DecodedFrame) -> Result<usize, String> {
-        let extractor = match frame.vcid {
-            0 => &mut self.realtime,
-            1 => &mut self.payload,
-            // The OID frames of VC 7 carry idle data only (§4.1).
-            _ => return Ok(0),
-        };
-        let field = FieldIn {
-            field: &frame.data,
-            header_pointer: frame.pointer,
-            gap: false,
-        };
-        let actions = extractor
-            .step(ExtractorInput::DataField(field), &mut self.extract_area)
-            .map_err(|e| format!("extractor of VC {}: {e:?}", frame.vcid))?;
-        let mut packets = 0;
-        for action in actions.iter() {
-            match *action {
-                ExtractorOutput::Packets { run, .. } => {
-                    let run = PacketRun::new(run, &self.extract_area)
-                        .ok_or("extractor run outside its area")?;
-                    for packet in run {
-                        strict_packet(packet, "packet in a TM frame")?;
-                        packets += 1;
-                    }
-                }
-                ExtractorOutput::Discarded { octets } => {
-                    return Err(format!(
-                        "VC {}: {octets} octet(s) of a partial packet discarded",
-                        frame.vcid
-                    ));
-                }
-                ExtractorOutput::Error(e) => {
-                    return Err(format!("extraction error on VC {}: {e:?}", frame.vcid));
-                }
-                ExtractorOutput::IncompletePacket { .. } => {
-                    return Err(format!("incomplete packet on VC {}", frame.vcid));
-                }
+        let area = &mut self.extract_area;
+        let vcid = frame.vcid;
+        match &mut self.down {
+            Down::Tm { realtime, payload } => {
+                let extractor = match vcid {
+                    0 => realtime,
+                    1 => payload,
+                    // The OID frames of VC 7 carry idle data only (§4.1).
+                    _ => return Ok(0),
+                };
+                let field = FieldIn {
+                    field: &frame.data,
+                    header_pointer: frame.pointer,
+                    gap: false,
+                };
+                extract(extractor, field, area, vcid, "packet in a TM frame")
+            }
+            Down::Aos {
+                realtime,
+                payload,
+                idle,
+            } => {
+                let extractor = match vcid {
+                    0 => realtime,
+                    1 => payload,
+                    // The idle `M_PDU`s of VC 7 give no packet (APP-170, APP-174).
+                    7 => idle,
+                    _ => return Err(format!("AOS frame on VC {vcid}, which has no extractor")),
+                };
+                let field = FieldIn {
+                    field: &frame.field,
+                    header_pointer: None,
+                    gap: false,
+                };
+                extract(extractor, field, area, vcid, "packet in an AOS frame")
+            }
+            Down::Uslp { realtime, payload } => {
+                let extractor = match vcid {
+                    0 => realtime,
+                    1 => payload,
+                    // The OID frames carry only idle data (APP-175).
+                    _ if frame.oid => return Ok(0),
+                    _ => return Err(format!("USLP frame on VC {vcid}, which has no extractor")),
+                };
+                let field = FieldIn {
+                    field: &frame.field,
+                    header_pointer: None,
+                    gap: false,
+                };
+                extract(extractor, field, area, vcid, "packet in a USLP frame")
             }
         }
-        Ok(packets)
     }
 
-    /// Gives a TC frame as the flight node received it, at `now_us` microseconds, to the
+    /// Gives an uplink frame as the flight node received it, at `now_us` microseconds, to the
     /// uplink chain and decodes the packets the reassembler delivers. Returns them.
     ///
     /// A frame that FARM-1 discards, as a retransmitted or an out-of-order Type-AD frame, is no
     /// fault and gives no packet (APP-146). The check of the trace decodes the frame first
     /// ([`decode_frame`]).
     ///
-    /// The chain reports no rejected frame, unknown MAP, or too long SDU. After a loss
-    /// ([`note_up_loss`](Self::note_up_loss)) and until a packet comes out, a sequence violation
-    /// and a rejected packet are tolerated; on a clean link, or once a packet has come out,
-    /// they are errors too.
+    /// The chain reports no rejected frame, unknown MAP, too long SDU, or gap discard. After a
+    /// loss ([`note_up_loss`](Self::note_up_loss)) and until a packet comes out, a sequence
+    /// violation and a rejected packet are tolerated; on a clean link, or once a packet has
+    /// come out, they are errors too.
     ///
     /// # Errors
     /// If the chain reports an event it may not, or a packet is not a strict Space Packet.
     pub fn receive_up(&mut self, now_us: u64, octets: &[u8]) -> Result<Vec<Vec<u8>>, String> {
         let mut tap = Tap::default();
         let mut packets = Vec::new();
-        self.uplink.accept(
-            Instant::from_micros(now_us),
-            octets,
-            &mut tap,
-            &mut |packet, _| packets.push(packet.to_vec()),
-        );
+        let now = Instant::from_micros(now_us);
+        match &mut self.uplink {
+            Up::Tc(up) => up.accept(now, octets, &mut tap, &mut |packet, _| {
+                packets.push(packet.to_vec());
+            }),
+            Up::Uslp(up) => up.accept(now, octets, &mut tap, &mut |packet, _| {
+                packets.push(packet.to_vec());
+            }),
+        }
         for (code, args) in &tap.events {
             let loss_explains = matches!(*code, APP_PACKET_REJECTED | APP_SEQUENCE_VIOLATION);
             let unexpected = matches!(
@@ -719,19 +844,58 @@ impl FramedPackets {
                     | APP_SEQUENCE_VIOLATION
                     | APP_UNKNOWN_MAP
                     | APP_SDU_TOO_LONG
+                    | APP_GAP_DISCARD
             );
             if unexpected && !(self.up_loss && loss_explains) {
                 return Err(format!("uplink event {code} {args:?} on a received frame"));
             }
         }
         for packet in &packets {
-            strict_packet(packet, "packet in a TC frame")?;
+            strict_packet(packet, "packet in an uplink frame")?;
         }
         if !packets.is_empty() {
             self.up_loss = false;
         }
         Ok(packets)
     }
+}
+
+/// Gives `field` to `extractor` and checks every packet it completes with [`strict_packet`];
+/// returns how many. A discard, an error, or an incomplete packet is a fault on a clean link.
+fn extract<P: PacketProtocol>(
+    extractor: &mut Extractor<P>,
+    field: FieldIn<'_, P>,
+    area: &mut [u8],
+    vcid: u8,
+    what: &str,
+) -> Result<usize, String> {
+    let actions = extractor
+        .step(ExtractorInput::DataField(field), area)
+        .map_err(|e| format!("extractor of VC {vcid}: {e:?}"))?;
+    let mut packets = 0;
+    for action in actions.iter() {
+        match *action {
+            ExtractorOutput::Packets { run, .. } => {
+                let run = PacketRun::new(run, area).ok_or("extractor run outside its area")?;
+                for packet in run {
+                    strict_packet(packet, what)?;
+                    packets += 1;
+                }
+            }
+            ExtractorOutput::Discarded { octets } => {
+                return Err(format!(
+                    "VC {vcid}: {octets} octet(s) of a partial packet discarded"
+                ));
+            }
+            ExtractorOutput::Error(e) => {
+                return Err(format!("extraction error on VC {vcid}: {e:?}"));
+            }
+            ExtractorOutput::IncompletePacket { .. } => {
+                return Err(format!("incomplete packet on VC {vcid}"));
+            }
+        }
+    }
+    Ok(packets)
 }
 
 /// The flight node's own record of the packets it handled, set against the packets the strict
