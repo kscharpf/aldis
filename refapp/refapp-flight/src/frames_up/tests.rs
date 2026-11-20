@@ -133,6 +133,14 @@ impl Run {
         }
     }
 
+    /// The node of the variant `uslp`, which exists at the `cop1` level (A4 WP-3c).
+    fn new_uslp() -> Self {
+        Self {
+            node: FlightNode::new_cop1(Variant::Uslp).unwrap(),
+            rec: Rec::default(),
+        }
+    }
+
     /// Delivers `frames` in one step at `now` µs.
     fn deliver(&mut self, now: u64, frames: &[Vec<u8>]) {
         let refs: Vec<&[u8]> = frames.iter().map(Vec::as_slice).collect();
@@ -408,3 +416,4 @@ fn a_packet_that_is_not_a_command_is_rejected_like_at_packet_level() {
 }
 
 mod cop1;
+mod uslp;
