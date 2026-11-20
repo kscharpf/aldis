@@ -400,6 +400,42 @@
         {"dir": "up", "index": 8, "fault": {"kind": "drop"}},
         {"dir": "up", "index": 9, "fault": {"kind": "drop"}}
       ]
+    },
+    {
+      "id": "a4-aos-nominal",
+      "level": "cop1",
+      "variant": "aos",
+      "end_us": 35000000,
+      "trace_version": 1,
+      "requirements": ["APP-003", "APP-045", "APP-082", "APP-083", "APP-106", "APP-169", "APP-170", "APP-171", "APP-172", "APP-173", "APP-174", "APP-188"],
+      "ops": [
+        {"kind": "fop1_directive", "at_us": 0, "directive": "initiate_ad_without_clcw"},
+        {"kind": "command", "at_us": 1000000, "execution": {"mode": "time_tagged", "exec_us": 6000000}, "call": {"function": "noop"}},
+        {"kind": "table_upload", "at_us": 2000000, "table_id": 1, "length": 300},
+        {"kind": "command", "at_us": 3000000, "execution": {"mode": "time_tagged", "exec_us": 10000000}, "call": {"function": "activate_table", "table_id": 1, "crc": 3151}},
+        {"kind": "command", "at_us": 4000000, "execution": {"mode": "time_tagged", "exec_us": 12000000}, "call": {"function": "dump_memory", "address": 65536, "length": 600}},
+        {"kind": "command", "at_us": 5000000, "execution": {"mode": "time_tagged", "exec_us": 20000000}, "call": {"function": "set_payload_mode", "mode": 0}},
+        {"kind": "command", "at_us": 5000000, "execution": {"mode": "time_tagged", "exec_us": 20000000}, "call": {"function": "noop"}},
+        {"kind": "command", "at_us": 6000000, "execution": {"mode": "time_tagged", "exec_us": 24000000}, "call": {"function": "set_payload_mode", "mode": 1}}
+      ]
+    },
+    {
+      "id": "a4-uslp-nominal",
+      "level": "cop1",
+      "variant": "uslp",
+      "end_us": 35000000,
+      "trace_version": 1,
+      "requirements": ["APP-003", "APP-045", "APP-082", "APP-083", "APP-106", "APP-175", "APP-176", "APP-177", "APP-178", "APP-179", "APP-180", "APP-181", "APP-182", "APP-183", "APP-184", "APP-185", "APP-186", "APP-188"],
+      "ops": [
+        {"kind": "fop1_directive", "at_us": 0, "directive": "initiate_ad_without_clcw"},
+        {"kind": "command", "at_us": 1000000, "execution": {"mode": "time_tagged", "exec_us": 6000000}, "call": {"function": "noop"}},
+        {"kind": "table_upload", "at_us": 2000000, "table_id": 1, "length": 300},
+        {"kind": "command", "at_us": 3000000, "execution": {"mode": "time_tagged", "exec_us": 10000000}, "call": {"function": "activate_table", "table_id": 1, "crc": 3151}},
+        {"kind": "command", "at_us": 4000000, "execution": {"mode": "time_tagged", "exec_us": 12000000}, "call": {"function": "dump_memory", "address": 65536, "length": 600}},
+        {"kind": "command", "at_us": 5000000, "execution": {"mode": "time_tagged", "exec_us": 20000000}, "call": {"function": "set_payload_mode", "mode": 0}},
+        {"kind": "command", "at_us": 5000000, "execution": {"mode": "time_tagged", "exec_us": 20000000}, "call": {"function": "noop"}},
+        {"kind": "command", "at_us": 6000000, "execution": {"mode": "time_tagged", "exec_us": 24000000}, "call": {"function": "set_payload_mode", "mode": 1}}
+      ]
     }
   ]
 }

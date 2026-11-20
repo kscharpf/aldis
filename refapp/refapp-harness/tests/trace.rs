@@ -227,6 +227,7 @@ fn golden_traces_decode_with_the_strict_codecs() {
     let scenario = Scenario::load().unwrap();
     let mut traces = 0;
     let mut frame_traces = 0;
+    let mut variant_traces = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|x| x == "jsonl") {
@@ -234,7 +235,17 @@ fn golden_traces_decode_with_the_strict_codecs() {
             let d = decode_strict(&scenario, &text)
                 .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             traces += 1;
-            if d.frames > 0 {
+            if path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("a4-")
+            {
+                // A variant trace: its frames are decoded with the codec of the variant; the
+                // packets inside are the work of A4 WP-6, so none is counted yet.
+                assert!(d.frames > 0, "{}", path.display());
+                variant_traces += 1;
+            } else if d.frames > 0 {
                 // A frame-level trace: its frames and the packets inside were decoded.
                 assert!(d.framed_packets > 0, "{}", path.display());
                 frame_traces += 1;
@@ -245,6 +256,10 @@ fn golden_traces_decode_with_the_strict_codecs() {
     assert_eq!(
         frame_traces, 9,
         "the four a2-* and the five a3-* traces are decoded as frames"
+    );
+    assert_eq!(
+        variant_traces, 2,
+        "the two a4-* traces are decoded as frames"
     );
 }
 

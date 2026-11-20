@@ -2110,6 +2110,10 @@ mod tests {
                         doc["uslp_down"]["vcf_count_length_expedited"] = 0.into();
                     }
                     "/uslp_up/max_frame_length" | "/uslp_up/max_packet_length" => {
+                        // The extremes of the uplink limits do not fit the table upload of
+                        // the case `a4-uslp-nominal` (APP-182); the range is what is tested.
+                        let cases = doc["cases"].as_array_mut().unwrap();
+                        cases.retain(|c| c["variant"] != "uslp");
                         doc["uslp_up"]["fecf"] = false.into();
                         doc["uslp_up"]["vcf_count_length_sequence"] = 0.into();
                         if pointer == "/uslp_up/max_frame_length" {
@@ -2119,6 +2123,10 @@ mod tests {
                         }
                     }
                     "/uslp_up/vcf_count_length_sequence" => {
+                        doc["cases"]
+                            .as_array_mut()
+                            .unwrap()
+                            .retain(|c| c["variant"] != "uslp");
                         doc["uslp_up"]["max_packet_length"] = 7.into();
                     }
                     _ => {}
@@ -2603,10 +2611,21 @@ mod tests {
     #[test]
     fn an_absent_variant_is_tm_tc_and_an_unknown_one_is_rejected() {
         // req: APP-187
-        // None of the cases of A0 to A3 names a variant: all are `tm_tc`.
-        assert!(!super::SCENARIO_JSON.contains("\"variant\""));
+        // None of the cases of A0 to A3 names a variant: all are `tm_tc`; the two `a4-*` cases
+        // name theirs.
         let s = Scenario::load().unwrap();
-        assert!(s.cases.iter().all(|c| c.variant == super::Variant::TmTc));
+        for c in &s.cases {
+            let named = c.id.starts_with("a4-");
+            let doc: serde_json::Value = serde_json::from_str(super::SCENARIO_JSON).unwrap();
+            let in_file = doc["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["id"] == c.id.as_str())
+                .unwrap();
+            assert_eq!(in_file.get("variant").is_some(), named, "{}", c.id);
+            assert_eq!(c.variant == super::Variant::TmTc, !named, "{}", c.id);
+        }
         assert_eq!(
             with_variant("cop1", None).unwrap().cases[0].variant,
             super::Variant::TmTc
