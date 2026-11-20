@@ -10,6 +10,8 @@
 //! which only the ground node uses.
 //! **A2 WP-3a:** the downlink at frame level ([`frames_down`]): generators, multiplexer, OCF, and
 //! TM frames, selected by [`FlightNode::new_frames`], which also selects the uplink at frame level (APP-030…APP-035, APP-090, APP-132).
+//! **A4 WP-3c:** the uplink generic over the frame protocol ([`frames_up`]) with FARM-1 over USLP, so
+//! that [`FlightNode::new_cop1`] builds the node of the variant `uslp` (APP-181…APP-186).
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -36,7 +38,7 @@ pub use downlink::{Downlink, Stream, onboard_time};
 use dump::Dump;
 pub use event::Event;
 use frames_down::Frames;
-pub use frames_up::FrameUplink;
+pub use frames_up::{FrameUplink, Uplink};
 pub use layout::{PayloadMode, Status};
 use layout::{housekeeping, payload};
 use queue::TimeTagQueue;
@@ -51,8 +53,8 @@ use table::TableStore;
 pub enum FlightError {
     /// An engine rejected the configuration, which the generated constants rule out.
     Setup(aldis::core::Error),
-    /// The node of this variant is not built at this level: the USLP node comes with its work
-    /// packages (A4 WP-3b, WP-3c), and `uslp` exists at the `cop1` level only (APP-187).
+    /// The node of this variant is not built at this level: `uslp` exists at the `cop1` level
+    /// only (APP-187), so [`FlightNode::new_frames`] has no node for it.
     Unsupported(Variant),
 }
 
@@ -94,7 +96,7 @@ pub struct FlightNode {
     /// Packets that could not be built; 0 in a correctly configured run.
     build_failures: u32,
     /// The uplink at frame level (A2 on), `None` at packet level.
-    uplink: Option<FrameUplink>,
+    uplink: Option<Uplink>,
 }
 
 impl FlightNode {
@@ -111,21 +113,20 @@ impl FlightNode {
     ///
     /// # Errors
     /// [`FlightError::Setup`] if the scenario values are no valid engine configuration, which the
-    /// generated constants rule out. [`FlightError::Unsupported`] for [`Variant::Uslp`], which exists
-    /// at the `cop1` level only (APP-187). [`Variant::Aos`] has the AOS downlink (A4 WP-3a) and
+    /// generated constants rule out. [`FlightError::Unsupported`] for [`Variant::Uslp`], which
+    /// never exists at this level: its uplink is specified with COP-1 in effect alone (APP-187), so
+    /// the node is [`FlightNode::new_cop1`]'s. [`Variant::Aos`] has the AOS downlink (A4 WP-3a) and
     /// the TC uplink.
-    /// The USLP downlink exists since A4 WP-3b ([`Frames::uslp`]); the arm stays `Unsupported`
-    /// until WP-3c adds the uplink.
     pub fn new_frames(variant: Variant) -> Result<Self, FlightError> {
         match variant {
             Variant::TmTc => Ok(Self {
                 frames: Some(Frames::tm().map_err(FlightError::Setup)?),
-                uplink: Some(FrameUplink::new().map_err(FlightError::Setup)?),
+                uplink: Some(Uplink::tc().map_err(FlightError::Setup)?),
                 ..Self::default()
             }),
             Variant::Aos => Ok(Self {
                 frames: Some(Frames::aos().map_err(FlightError::Setup)?),
-                uplink: Some(FrameUplink::new().map_err(FlightError::Setup)?),
+                uplink: Some(Uplink::tc().map_err(FlightError::Setup)?),
                 ..Self::default()
             }),
             Variant::Uslp => Err(FlightError::Unsupported(variant)),
@@ -134,24 +135,31 @@ impl FlightNode {
 
     /// A flight node at the COP-1 level (A3 on, §6.1): as [`FlightNode::new_frames`], with FARM-1
     /// seeing the Type-AD and Type-BC frames and its state changes and Unlock raised as the
-    /// events 210 and 211 (APP-146, APP-149).
+    /// events 210 and 211 (APP-146, APP-149). [`Variant::Uslp`] has its node here only: the USLP
+    /// downlink (A4 WP-3b, [`Frames::uslp`]) with the MC OCF the CLCW of FARM-1 (APP-179), and the
+    /// USLP uplink (A4 WP-3c, [`Uplink::uslp_cop1`]) of variable-length frames through the
+    /// receiver, FARM-1, and the MAP reassembler (APP-181…APP-186).
     ///
     /// # Errors
-    /// [`FlightError::Setup`] as for [`FlightNode::new_frames`]. [`FlightError::Unsupported`] for
-    /// [`Variant::Uslp`], until its work packages land (A4 WP-3b, WP-3c).
+    /// [`FlightError::Setup`] as for [`FlightNode::new_frames`]. No variant is
+    /// [`FlightError::Unsupported`] at this level since A4 WP-3c.
     pub fn new_cop1(variant: Variant) -> Result<Self, FlightError> {
         match variant {
             Variant::TmTc => Ok(Self {
                 frames: Some(Frames::tm().map_err(FlightError::Setup)?),
-                uplink: Some(FrameUplink::new_cop1().map_err(FlightError::Setup)?),
+                uplink: Some(Uplink::tc_cop1().map_err(FlightError::Setup)?),
                 ..Self::default()
             }),
             Variant::Aos => Ok(Self {
                 frames: Some(Frames::aos().map_err(FlightError::Setup)?),
-                uplink: Some(FrameUplink::new_cop1().map_err(FlightError::Setup)?),
+                uplink: Some(Uplink::tc_cop1().map_err(FlightError::Setup)?),
                 ..Self::default()
             }),
-            Variant::Uslp => Err(FlightError::Unsupported(variant)),
+            Variant::Uslp => Ok(Self {
+                frames: Some(Frames::uslp().map_err(FlightError::Setup)?),
+                uplink: Some(Uplink::uslp_cop1().map_err(FlightError::Setup)?),
+                ..Self::default()
+            }),
         }
     }
 
@@ -159,7 +167,7 @@ impl FlightNode {
     /// packet level, which has no FARM-1. The downlink converts it with `Clcw::to_ocf`.
     #[must_use]
     pub fn clcw(&self) -> Option<Clcw> {
-        self.uplink.as_ref().map(FrameUplink::clcw)
+        self.uplink.as_ref().map(Uplink::clcw)
     }
 
     /// The status housekeeping reports (§3.3.1).
@@ -607,17 +615,19 @@ pub(crate) mod tests {
                 .is_some()
         );
         assert!(FlightNode::new_cop1(Variant::Aos).unwrap().clcw().is_some());
-        // `uslp` has no node until its work packages, and none at the frame level at all.
+        // `uslp` never has a node at the frame level (APP-187), and has one at `cop1` (A4 WP-3c).
         assert_eq!(
             FlightNode::new_frames(Variant::Uslp).unwrap_err(),
             FlightError::Unsupported(Variant::Uslp)
         );
-        assert_eq!(
-            FlightNode::new_cop1(Variant::Uslp).unwrap_err(),
-            FlightError::Unsupported(Variant::Uslp)
-        );
-        let e = FlightNode::new_cop1(Variant::Uslp).unwrap_err();
+        let e = FlightNode::new_frames(Variant::Uslp).unwrap_err();
         assert!(std::format!("{e}").contains("`uslp`"), "{e}");
+        assert!(
+            FlightNode::new_cop1(Variant::Uslp)
+                .unwrap()
+                .clcw()
+                .is_some()
+        );
     }
 }
 
