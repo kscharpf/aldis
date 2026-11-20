@@ -530,7 +530,7 @@ fn an_uplink_fault_without_an_index_fails_the_strict_decode() {
 
 #[test]
 fn a_planted_wrong_fecf_fails_the_strict_decode_of_the_a4_traces() {
-    // req: APP-086, APP-174, APP-180, APP-183
+    // req: APP-086, APP-183
     // The last octet of a frame is the last octet of its FECF (732.0 §4.1.6; 732.1 §4.1.6). One
     // bit of it breaks the FECF of the first AOS downlink frame, of the first USLP downlink
     // frame, and of the first USLP uplink frame.
@@ -556,7 +556,7 @@ fn a_planted_wrong_fecf_fails_the_strict_decode_of_the_a4_traces() {
 
 #[test]
 fn a_planted_uncorrectable_fhec_fails_the_strict_decode_of_an_aos_frame() {
-    // req: APP-086, APP-169, APP-174
+    // req: APP-086, APP-169
     // The FHEC is octets 6 and 7 of the AOS frame (732.0 §4.1.2.6). It is a Reed-Solomon (10,6)
     // code (the Reed-Solomon (15,11) code shortened by five, §4.1.2.6.5) that corrects up to two
     // symbol errors (§4.1.2.6.5 b, note 3); a pattern of more is not correctable. The decoder
