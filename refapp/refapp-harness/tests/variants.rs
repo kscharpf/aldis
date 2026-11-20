@@ -1,5 +1,5 @@
 //! The harness and the variants (docs/reference-application.md §4.3, §6.5; A4 WP-2): the node pair
-//! is built for the case's variant, and a variant whose node does not exist yet is an error.
+//! is built for the case's variant.
 
 use refapp_harness::micros::Micros;
 use refapp_harness::ranged::Ranged;
@@ -42,13 +42,19 @@ fn the_node_pair_is_built_for_the_variant_of_the_case() {
 }
 
 #[test]
-fn the_shipped_cases_all_run_with_the_nodes_of_tm_tc() {
+fn the_shipped_cases_all_build_a_node_pair_for_their_variant() {
     // req: APP-187, APP-189
-    // The scenario holds the sections of the variants and no case of them yet (A4 WP-5): every
-    // case builds a node pair, and `run_case` still reproduces `a0-empty`.
+    // The cases of §6.4 have the variant of their name: `aos` and `uslp` for the two `a4-*`
+    // cases, `tm_tc` for every other. Every case builds a node pair, and `run_case` still
+    // reproduces `a0-empty`.
     let s = Scenario::load().unwrap();
     for c in &s.cases {
-        assert_eq!(c.variant, Variant::TmTc, "{}", c.id);
+        let want = match c.id.as_str() {
+            "a4-aos-nominal" => Variant::Aos,
+            "a4-uslp-nominal" => Variant::Uslp,
+            _ => Variant::TmTc,
+        };
+        assert_eq!(c.variant, want, "{}", c.id);
         assert!(flight_node(c).is_ok() && ground_node(c).is_ok(), "{}", c.id);
     }
     assert!(run_case("a0-empty").is_ok());
