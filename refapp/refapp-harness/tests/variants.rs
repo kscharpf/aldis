@@ -34,19 +34,15 @@ fn the_node_pair_is_built_for_the_variant_of_the_case() {
         assert!(flight_node(&c).is_ok(), "{level:?}/aos");
         assert!(ground_node(&c).is_ok(), "{level:?}/aos");
     }
-    // `uslp` has no node until its work packages: an error that names the case and the variant,
-    // from the flight node and from the ground node.
-    for (level, variant) in [(Level::Cop1, Variant::Uslp)] {
-        let c = case(level, variant);
-        let flight = flight_node(&c).unwrap_err();
-        let ground = ground_node(&c).unwrap_err();
-        for e in [flight, ground] {
-            assert!(
-                e.contains("case `test`") && e.contains(&format!("`{variant}`")),
-                "{level:?}/{variant}: {e}"
-            );
-        }
-    }
+    // The ground node of `uslp` (A4 WP-4c) builds at `cop1`. The flight node (A4 WP-3c) is not
+    // built yet: its error names the case and the variant.
+    let c = case(Level::Cop1, Variant::Uslp);
+    assert!(ground_node(&c).is_ok(), "cop1/uslp");
+    let flight = flight_node(&c).unwrap_err();
+    assert!(
+        flight.contains("case `test`") && flight.contains("`uslp`"),
+        "cop1/uslp: {flight}"
+    );
 }
 
 #[test]

@@ -6,16 +6,20 @@
 )]
 
 use super::super::{AD_REPETITIONS, BC_REPETITIONS, WINDOW};
-use super::Uplink;
+use crate::frames_up::FrameUplink;
 use crate::ops::Fop1Directive;
 use aldis::cop1::{Fop1, Fop1Config, Fop1Target, FrameKind, HeldKind, TimeoutType};
 use aldis::core::ErrorKind;
 use aldis::core::ids::{SpacecraftId, VcId};
 use aldis::core::time::{Duration, Instant};
+use aldis::link::protocol::Tc;
 use aldis::tc::PhysicalChannelConfig;
 use core::num::NonZeroU8;
 use refapp_scenario::generated::{SPACECRAFT_ID, apid, cop1, tc};
 use refapp_scenario::{Apid, Output};
+
+/// The TC uplink (§4.2), whose fields these tests reach.
+type Uplink = FrameUplink<Tc, 2, 128>;
 
 #[derive(Default)]
 struct Recorder {
