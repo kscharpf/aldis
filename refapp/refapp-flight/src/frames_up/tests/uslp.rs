@@ -56,6 +56,19 @@ fn sender() -> VcTable<2, 3> {
 
 /// A USLP uplink frame of `kind` on `vc` and `map`, with the rule `111` and `upid` (APP-183).
 fn frame(kind: FrameKind, vc: u8, map: u8, count: u64, upid: Upid, tfdz: &[u8]) -> Vec<u8> {
+    frame_with_rule(kind, vc, map, count, TfdzRule::NoSegmentation, upid, tfdz)
+}
+
+/// As [`frame`], with the TFDZ Construction Rule `rule` in place of `111`.
+fn frame_with_rule(
+    kind: FrameKind,
+    vc: u8,
+    map: u8,
+    count: u64,
+    rule: TfdzRule,
+    upid: Upid,
+    tfdz: &[u8],
+) -> Vec<u8> {
     let fields = FrameFields {
         spacecraft_id: UslpSpacecraftId::new(SPACECRAFT_ID).unwrap(),
         source_or_destination: SourceOrDestination::Destination,
@@ -65,10 +78,7 @@ fn frame(kind: FrameKind, vc: u8, map: u8, count: u64, upid: Upid, tfdz: &[u8]) 
         vcf_count: count,
     };
     let content = FrameContent {
-        tfdf: TfdfHeader {
-            rule: TfdzRule::NoSegmentation,
-            upid,
-        },
+        tfdf: TfdfHeader { rule, upid },
         insert_zone: &[],
         ocf: None,
     };
@@ -295,6 +305,40 @@ fn a_bc_frame_with_another_tfdz_is_e9_and_changes_nothing() {
         frame(FrameKind::ProtocolControl, 0, 0, 0, Upid::Packets, &[0]),
     ];
     for (i, other) in others.into_iter().enumerate() {
+        run.deliver(1_260_000 + 250_000 * u64::try_from(i).unwrap(), &[other]);
+        assert_eq!(
+            run.app_events(),
+            [rejected(ErrorKind::ReservedValue)],
+            "{i}"
+        );
+        assert_eq!(run.ocf_word(), 0x0100_0001, "{i}");
+    }
+}
+
+#[test]
+fn a_bc_frame_whose_rule_is_not_111_is_rejected() {
+    // req: APP-183, APP-185, APP-186
+    let mut run = Run::new_uslp();
+    run.deliver(1_010_000, &[ad_noop(0)]);
+    run.app_events();
+    // An Unlock under every rule but `111`: the Control Command is not the whole TFDZ of a
+    // frame of that rule (732.1 §4.1.4.2.2.2.8 d).
+    let rules = [
+        TfdzRule::OctetStream,
+        TfdzRule::StartingSegment,
+        TfdzRule::ContinuingSegment,
+        TfdzRule::LastSegment,
+    ];
+    for (i, rule) in rules.into_iter().enumerate() {
+        let other = frame_with_rule(
+            FrameKind::ProtocolControl,
+            0,
+            0,
+            0,
+            rule,
+            Upid::Cop1ControlCommands,
+            &[0],
+        );
         run.deliver(1_260_000 + 250_000 * u64::try_from(i).unwrap(), &[other]);
         assert_eq!(
             run.app_events(),

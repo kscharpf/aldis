@@ -31,8 +31,9 @@ use aldis::link::receiver::{
 };
 use aldis::tc::{ControlCommand, TcVcId};
 use aldis::uslp::{
-    FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, Reason, TransferFrameType, Upid,
-    UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, check_frame,
+    FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, Reason, TfdfHeader, TfdzRule,
+    TransferFrameType, Upid, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
+    VcfCountLen, check_frame,
 };
 use refapp_scenario::generated::{SPACECRAFT_ID, uslp_up as up};
 
@@ -162,7 +163,7 @@ impl UpProtocol for Uslp {
             FrameKind::Expedited => Farm1Frame::Bd { data: tfdf },
             FrameKind::ProtocolControl => Farm1Frame::Bc {
                 command: Some(
-                    control_command(full.tfdf_header().upid, full.tfdz())
+                    control_command(full.tfdf_header(), full.tfdz())
                         .ok_or_else(|| refuse(ErrorKind::ReservedValue))?,
                 ),
             },
@@ -194,9 +195,10 @@ impl UpProtocol for Uslp {
 }
 
 /// The Control Command of a Type-BC frame: the TFDZ is exactly one COP-1 Control Command under
-/// the UPID of that name (232.0 §4.1.3.3; OI-100 (a), APP-183); `None` for any other content.
-fn control_command(upid: Upid, tfdz: &[u8]) -> Option<ControlCommand> {
-    if upid == Upid::Cop1ControlCommands {
+/// the UPID of that name and the rule `111`, no segmentation (232.0 §4.1.3.3; 732.1
+/// §4.1.4.2.2.2.8 d; OI-100 (a); APP-183, APP-185); `None` for any other content.
+fn control_command(header: TfdfHeader, tfdz: &[u8]) -> Option<ControlCommand> {
+    if header.upid == Upid::Cop1ControlCommands && header.rule == TfdzRule::NoSegmentation {
         ControlCommand::parse(tfdz)
     } else {
         None
