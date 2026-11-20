@@ -25,6 +25,7 @@ A pull request that starts or merges a work package changes only its row ([roadm
 History:
 - 2026-11-16: plan drafted by the `planner` agent at `main` `f9a9a0d2`, reviewed independently, and revised once (issue #621); D1–D13 accepted by the maintainer, every recommended option; the scope of the C ABI node for A5 is left to the A5 plan.
 - 2026-11-18: WP-1 (#697): D2 narrowed by the maintainer, `uslp` only at `cop1`; OI-99 (USLP downlink expedited) and OI-100 (one Control Command in a Type-BC TFDZ) resolved (a), both in the maintainer's chat.
+- 2026-11-19: WP-3c follows WP-3b and WP-4c follows WP-4b, because they share `lib.rs` and the `Variant` arm switch (maintainer, in chat).
 
 ## 1. Starting point
 
