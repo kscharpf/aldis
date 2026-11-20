@@ -3,7 +3,7 @@
 //!
 //! Specification: `docs/reference-application.md` §4.5.1 (order of work), §4.5.2 (directives),
 //! §7.4 (events 200 to 203); APP-036, APP-044, APP-071, APP-090, APP-143, APP-144, APP-145,
-//! APP-148, APP-149; COP-004, COP-006, COP-010, COP-011, COP-013.
+//! APP-148, APP-149, APP-181…APP-184; COP-004, COP-006, COP-010, COP-011, COP-013.
 //!
 //! The node is the caller of 232.1 §3.2.2 and nothing more: FOP-1 decides, the node moves its
 //! inputs and outputs. A transmit request that FOP-1 returns is **held** (at most one for each
@@ -24,7 +24,7 @@ use aldis::link::common::Qos;
 use aldis::tc::Clcw;
 use refapp_scenario::Output;
 
-use super::{FDU, FRAME, STAGE_FOP1, STAGE_NEXT_FDU, Uplink};
+use super::{FrameUplink, STAGE_FOP1, STAGE_NEXT_FDU, UplinkProtocol};
 use crate::ops::Fop1Directive;
 
 /// Application event `fop1_alert` (§7.4).
@@ -48,11 +48,11 @@ pub(super) struct Ad {
     directives: Vec<Fop1Directive>,
 }
 
-impl Uplink {
-    /// As [`new`](Uplink::new), for the `cop1` level: Type-AD and Type-BC frames through FOP-1.
+impl<P: UplinkProtocol, const M: usize, const F: usize> FrameUplink<P, M, F> {
+    /// As [`new`](Self::new), for the `cop1` level: Type-AD and Type-BC frames through FOP-1.
     ///
     /// # Errors
-    /// As [`new`](Uplink::new).
+    /// As [`new`](Self::new).
     pub(crate) fn new_cop1() -> Result<Self, Error> {
         Ok(Self {
             ad: Some(Ad::default()),
@@ -121,7 +121,7 @@ impl Uplink {
         };
         if !ad.unanswered {
             let handle = ad.next_request;
-            let mut area = [0_u8; FDU];
+            let mut area = vec![0_u8; self.fdu_len];
             if let Some(fdu) = self.take_fdu(handle, Qos::SequenceControlled, now, &mut area, out)
                 && let Some(ad) = &mut self.ad
             {
@@ -172,7 +172,7 @@ impl Uplink {
     /// Returns `false` if the engine refused the input with an error (`uplink_refused`).
     fn drive(&mut self, input: Fop1Input<'_>, now: Instant, out: &mut dyn Output) -> bool {
         let before = self.fop.state();
-        let mut area = [0_u8; FRAME];
+        let mut area = [0_u8; F];
         let decision = match self.fop.decide(input, now, &mut area) {
             Ok(decision) => decision,
             Err(error) => {
@@ -247,7 +247,7 @@ impl Uplink {
         handle: u32,
         qos: Qos,
         now: Instant,
-        area: &mut [u8; FDU],
+        area: &mut [u8],
         out: &mut dyn Output,
     ) -> Option<Vec<u8>> {
         use aldis::link::segmenter::{SegmenterInput, SegmenterOutput};
@@ -269,7 +269,12 @@ impl Uplink {
             self.refuse(out, STAGE_NEXT_FDU, Error::new(ErrorKind::OutOfRange), 0);
             return None;
         };
-        Some(octets.to_vec())
+        // The data FOP-1 takes: for USLP the TFDZ, since FOP-1 writes the TFDF Header itself.
+        let Some(data) = P::request_data(octets) else {
+            self.refuse(out, STAGE_NEXT_FDU, Error::new(ErrorKind::InternalError), 0);
+            return None;
+        };
+        Some(data.to_vec())
     }
 }
 

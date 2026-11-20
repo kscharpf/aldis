@@ -7,8 +7,8 @@
 //! | Module | Contents | Requirements |
 //! |---|---|---|
 //! | [`ops`] | The ops script: command and table-upload packets built from the scenario's entries | APP-011, APP-024, APP-126 |
-//! | [`frames_down`] | Downlink frames, generic over the protocol type (TM, AOS): strict decoding, `FrameReceiver`, `PacketExtractor`, CLCW (to FOP-1 at `cop1`), frame events | APP-036, APP-138, APP-144, APP-169…APP-174 |
-//! | `frames_up` (private) | The uplink at frame level: segmenter, FOP-1 (`RequestBd` at `frames`; at `cop1` `RequestAd`, CLCW, `Timeout`, directives, held transmit requests (read from FOP-1, no copy), events 200 to 203), TC frame | APP-040…APP-043, APP-044, APP-071, APP-090, APP-133, APP-143…APP-145, APP-148, APP-149; LNK-040…LNK-043; COP-010; TC-008 |
+//! | [`frames_down`] | Downlink frames, generic over the protocol type (TM, AOS, USLP): strict decoding, `FrameReceiver`, `PacketExtractor`, CLCW (to FOP-1 at `cop1`), frame events | APP-036, APP-138, APP-144, APP-169…APP-174 |
+//! | `frames_up` (private) | The uplink at frame level, generic over the protocol type (TC, USLP): segmenter, FOP-1 (`RequestBd` at `frames`; at `cop1` `RequestAd`, CLCW, `Timeout`, directives, held transmit requests (read from FOP-1, no copy), events 200 to 203), TC frame | APP-040…APP-043, APP-044, APP-071, APP-090, APP-133, APP-143…APP-145, APP-148, APP-149, APP-181…APP-184; LNK-040…LNK-043; COP-010; TC-008 |
 //! | [`telemetry`] | Strict decoding, sequence tracking, time stamps, dump reassembly, the application events | APP-011, APP-018, APP-130 |
 //!
 //! Per step the node handles the delivered units in delivery order, then releases the due ops
@@ -44,8 +44,8 @@ pub enum GroundError {
     Script(ScriptError),
     /// The telemetry applications cannot be set up.
     Setup(aldis::core::Error),
-    /// The node of this variant is not built at this level: the USLP node comes with its work
-    /// packages (A4 WP-4b, WP-4c), and `uslp` exists at the `cop1` level only (APP-187). The error catalogue has no kind for it, and the library gains none for the
+    /// The node of this variant is not built at this level: `uslp` exists at the `cop1` level
+    /// only (APP-187). The error catalogue has no kind for it, and the library gains none for the
     /// application, so the application names its own.
     Unsupported(Variant),
 }
@@ -100,7 +100,7 @@ impl GroundNode {
     /// # Errors
     /// As [`new`](Self::new), [`GroundError::Setup`] if a scenario value is out of range for
     /// the engines, and [`GroundError::Unsupported`] for [`Variant::Uslp`], which exists at the
-    /// `cop1` level only (APP-187) and whose nodes come with A4 WP-4b and WP-4c.
+    /// `cop1` level only (APP-187).
     pub fn new_frames(variant: Variant, script: &[OpsEntry]) -> Result<Self, GroundError> {
         match variant {
             Variant::TmTc | Variant::Aos => Ok(Self {
@@ -115,20 +115,25 @@ impl GroundNode {
     /// As [`new_frames`](Self::new_frames), for a case at the `cop1` level (A3): FOP-1 runs the
     /// AD service (`RequestAd`, the CLCW of every delivered frame, `Timeout`, the directives of
     /// the script) and one Type-AD or Type-BC frame goes out in a step with `tx_slot`
-    /// (APP-044, APP-144).
+    /// (APP-044, APP-144). The uplink of [`Variant::Aos`] is the TC uplink with COP-1 of
+    /// [`Variant::TmTc`] (APP-040…APP-044); that of [`Variant::Uslp`] is the USLP uplink on VC 0
+    /// and MAP 0 with the USLP target of FOP-1 (APP-181…APP-184, A4 WP-4c).
     ///
     /// # Errors
-    /// As [`new_frames`](Self::new_frames); [`GroundError::Unsupported`] for [`Variant::Uslp`]
-    /// until its work packages (A4 WP-4b, WP-4c). The uplink of [`Variant::Aos`] is the TC uplink
-    /// with COP-1 of [`Variant::TmTc`] (APP-040…APP-044).
+    /// As [`new_frames`](Self::new_frames); `uslp` is built here only, since it exists at the
+    /// `cop1` level alone (APP-187).
     pub fn new_cop1(variant: Variant, script: &[OpsEntry]) -> Result<Self, GroundError> {
-        match variant {
-            Variant::TmTc | Variant::Aos => Ok(Self {
-                uplink: Some(Uplink::new_cop1().map_err(GroundError::Setup)?),
-                ..Self::new_frames(variant, script)?
-            }),
-            Variant::Uslp => Err(GroundError::Unsupported(variant)),
-        }
+        let base = match variant {
+            Variant::TmTc | Variant::Aos => Self::new_frames(variant, script)?,
+            Variant::Uslp => Self {
+                downlink: Some(Downlink::new(variant)?),
+                ..Self::new(script)?
+            },
+        };
+        Ok(Self {
+            uplink: Some(Uplink::cop1(variant).map_err(GroundError::Setup)?),
+            ..base
+        })
     }
 
     /// The CLCW of the last downlink frame accepted (reported as `clcw_changed`; at the `cop1`
