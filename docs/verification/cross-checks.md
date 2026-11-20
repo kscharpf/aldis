@@ -418,3 +418,22 @@ A3 D8(c): the blind model `file:refapp/model/a3_cases.py` (TV-023) regenerates e
 No correction followed the comparison; the model needed two fixes to its own self-check before it, both mistakes in the check's expected values (a malformed head comparison and a wrong CLCW word), found by the self-check.
 
 Not covered: `fault`, `unit_delivered`, `packet_out`, `packet_in`, and `app_event` records; the other three A3 cases (`a3-uplink-disorder`, `a3-uplink-lockout`, `a3-uplink-limit`) and every FOP-1 cell they need (Alerts, Lockout, Unlock and the Type-BC frame, Wait, *Set V(S)*, *Terminate*, the T1 limit); Type-BD frames and FARM-B counting; the strict decode of frames. The model shares the schedule of `docs/reference-application.md` §4.5.5 and §6.8 as input to its self-check, so it is independent of the code but not of the document's reading of the slot model (a held frame leaves in the next slot, one `RequestAd` outstanding, `Timeout` before ops entries); a mistake in those rules is in both.
+
+### 7.4 A4: the frames of `a4-aos-nominal` and `a4-uslp-nominal`
+
+A4 D9: the blind model `file:refapp/model/a4_cases.py` (TV-023) regenerates every `unit_sent` record of `a4-aos-nominal` and `a4-uslp-nominal`: the 280 AOS or USLP downlink frames of each case (packet generators, fixed-priority multiplexing, idle M_PDUs on VC 7 or OID frames, the Space Packet or Encapsulation idle fill, the FHEC, the CLCW in the OCF from FARM-1, FECF) and the TC or USLP uplink frames (Type-AD, N(S) from FOP-1, blocking, segmentation on the TC uplink, FECF), in trace order. It was written from `docs/reference-application.md`, `docs/milestones/a4-variants.md` D4 to D10, `docs/standards/`, and the Blue Books, without sight of any crate, refapp node, harness, scenario file, existing model, or golden trace; the golden traces were read only as the comparison target, after the model and its `--self-check` were committed. Like §7.3 it reads no scenario file: every value is taken from the document tables. It implements FOP-1 and FARM-1 only in the cells the two cases reach (FOP-1: Initiate AD without CLCW check, request, transmit, a CLCW that acknowledges nothing or every outstanding frame; FARM-1: a Type-AD frame in sequence); any other cell raises `NotModelled`. Its `--self-check` asserts the figures of §4.6.2 to §4.6.4 (frame heads, FHEC values, counts, First Header Pointers, idle-packet heads, CLCW changes, uplink frames, command arrivals), not the golden traces.
+
+| Item | Value |
+|---|---|
+| Run | `python3 -I refapp/model/a4_cases.py --compare refapp/model/.golden-<case>.jsonl <case>` (Python 3, standard library; no CI step) |
+| Date | 2026-11-20 |
+| Golden files | `refapp/golden/a4-aos-nominal.jsonl` and `a4-uslp-nominal.jsonl`, as on branch `a4/wp-5-golden` (#725) at `09327bb9` |
+
+| Case | Model records | Golden `unit_sent` records | Mismatches | Result |
+|---|---|---|---|---|
+| `a4-aos-nominal` | 288 (280 down, 8 up) | 288 | 0 | **Match** |
+| `a4-uslp-nominal` | 286 (280 down, 6 up) | 286 | 0 | **Match** |
+
+No correction followed the comparison, and the self-check passed on its first run.
+
+Not covered: `fault`, `unit_delivered`, `packet_out`, `packet_in`, and `app_event` records (the maintainer limited the model to `unit_sent`, 2026-11-20); every FOP-1 and FARM-1 cell beyond those named above (Alerts, Lockout, Unlock and the Type-BC frame, Wait, Type-BD frames, T1 expiry, retransmission); the fault cases of the variants; AOS B_PDU and VCA, USLP truncated frames and the Insert Zone; the strict decode of frames beyond the model's own receive checks. The model shares the document's reading of the slot model (§4.5.1, §4.6): a held frame leaves in its request slot, one `RequestAd` outstanding, a field started at the slot step in which the previous one was released, the OCF sampled at the slot after the deliveries; a mistake in those rules is in both.
