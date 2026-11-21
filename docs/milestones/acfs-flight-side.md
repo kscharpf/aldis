@@ -3,7 +3,7 @@
 **Goal:** a second flight node for the reference application, built from NASA Core Flight System (cFS) applications that call Aldis through the C ABI (`include/aldis/aldis.h`), and that reproduces the golden traces of the Rust flight node byte for byte, phase by phase as the C ABI grows: packets (A1, P1; the M1 codecs only), frames (A2, P2), and COP-1 (A3, P3), the last two through the link engine handles. It shows Aldis integrated the way most integrators will use it, inside a flight framework with heritage, and gives interoperability evidence for cFS.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** A1–A3 and the C ABI of M2–M4 (§4) · **Specification:** [reference-application.md](../reference-application.md) §10 (APP-110…APP-125) · **Track:** A, owns `refapp/`; the code goes in `refapp/cfs/` (D2)
 
-**Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (2026-11-07, [plan](a1-packets.md)) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). That of P2: P1, A2 exited (2026-11-10, [plan](a2-frames.md)), the M4 engine handles in the C ABI, and M6 WP-3 (merged, #593; WP-3 lands before A5 and ACFS P2, #490 D-b). That of P3: P2, A3 exited (2026-11-11, [plan](a3-cop1.md)), and the M3 FARM-1 handle. `aldis-ffi` is frozen (#490 D-a; M6 is complete), and new C ABI surface is added only when an ACFS phase needs it. WP-2 is merged (#596); WP-1 and WP-3 to WP-7 are planned and start when their entry gates are met. How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
+**Status: plan approved (2026-10-21).** Decisions D1–D19 accepted by the maintainer 2026-10-21 (#78), as recommended. Entry gate of P1, the first phase: A1 exited (2026-11-07, [plan](a1-packets.md)) and the M1 codecs' C ABI (M2 WP-0c, merged in #72). That of P2: P1, A2 exited (2026-11-10, [plan](a2-frames.md)), the M4 engine handles in the C ABI, and M6 WP-3 (merged, #593; WP-3 lands before ACFS P2, #490 D-b). That of P3: P2, A3 exited (2026-11-11, [plan](a3-cop1.md)), and the M3 FARM-1 handle. `aldis-ffi` is frozen (#490 D-a; M6 is complete), and new C ABI surface is added only when an ACFS phase needs it. WP-2 is merged (#596); WP-1 and WP-3 to WP-7 are planned and start when their entry gates are met. How many of the §4 requirements are traced is reported by `cargo xtask trace --scope acfs`, not quoted here.
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -27,8 +27,8 @@ History:
 |---|---|
 | The scenario, cases, golden-trace format, and node protocol ([reference-application.md](../reference-application.md) §2–§8) | The cFS flight node, its build, and its nightly job |
 | The M1 codecs' C ABI: `aldis_time_*`, `aldis_spp_*` (with the tracker, segmenter, and reassembler in caller storage), `aldis_epp_*`; the generated `include/aldis/aldis.h`, valid C99 (CABI-003); `libaldis_ffi.a` for every target (CABI-001) (M2 WP-0c, #72) | The frame C ABI (M2 WP-1 to WP-3), the FARM-1 handle (M3), and the engine handles (M4) |
-| `refapp-harness`: scheduler, link model, trace writer, comparator; `a0-empty` reproduced | The node protocol (§8.2), planned for A5; a TCP transport; a launcher for `core-cpu1` |
-| `refapp/scenario/scenario.json` with generated Rust constants (APP-107) | A generated C header (planned for A5 as a C++ header) |
+| `refapp-harness`: scheduler, link model, trace writer, comparator; `a0-empty` reproduced | The node protocol (§8.2), planned for A5, after v1.0; a TCP transport; a launcher for `core-cpu1` |
+| `refapp/scenario/scenario.json` with generated Rust constants (APP-107) | A generated C header (planned for A5, after v1.0, as a C++ header) |
 | `cargo xtask trace` scans `.rs` files in `refapp/` and golden-trace headers | A scan of the C sources in `refapp/cfs/` (APP-125) |
 | The cFE `MSG` cross-check (track R), being written on branch `m2/crosscheck-cfe`; not pushed when this plan was written | One cFS pin shared by both (D4) |
 
@@ -82,6 +82,8 @@ Plan and scope decisions for the maintainer ([decision rights](../process/decisi
 | D17 | Scenario values in C | **A C header generated from `refapp/scenario/scenario.json`** by the harness's generator, checked current in CI (APP-120), built in WP-3 ahead of A5's C++ header, which can then reuse it. Alternative: hand-written C constants (they would drift from the scenario file) | Accepted (2026-10-21) |
 | D18 | Node protocol before A5 | **WP-2 implements the harness side of the node protocol** (§8.2), which the A0 plan places in A5, with both transports, so P1 can run; A5 then uses it as built. Moving work between milestones is the maintainer's (OI-38). Alternative: P1 waits for A5 (P1 then starts after M5, and the cFS evidence comes last) | Accepted (2026-10-21) |
 | D19 | Releases | **ACFS gates no release**: v1.0 stays gated on M5 and A6 (roadmap §5), and a phase that lags does not hold the v1.0 tag. Alternative: P4 as a v1.0 gate (stronger integration evidence at v1.0, but ties the release to a framework outside the project) | Accepted (2026-10-21) |
+
+**Status note (2026-11-21).** The maintainer deferred A5 past v1.0 (roadmap §3, §7). For v1.0 the C ABI is backed by its C test harness under sanitizers, the `aldis.hpp` C++ tests in `crates/aldis-ffi/tests/cpp/` (CABI-072) and the shared vectors; ACFS gives the end-to-end proof when it exits and gates no release (D19). D17 and D18 stand as accepted: the C header and the node protocol are built here, and A5 will reuse them after v1.0.
 
 ## 3. Work packages
 
