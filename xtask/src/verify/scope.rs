@@ -962,17 +962,10 @@ mod tests {
     // req: VER-056
     #[test]
     fn github_configuration_runs_spec_only() {
-        // #95: GitHub Actions version bumps of the composite actions.
-        let dependabot = changed(&[
-            ".github/actions/setup-rust/action.yml",
-            ".github/actions/get-xtask/action.yml",
-        ]);
-        assert_eq!(running(&dependabot, Force::default()), ["spec"]);
         for path in [
             ".github/pull_request_template.md",
             ".github/CODEOWNERS",
             ".github/dependabot.yml",
-            ".github/actions/setup-cpp/action.yml",
         ] {
             assert_eq!(
                 running(&changed(&[path]), Force::default()),
@@ -1000,6 +993,10 @@ mod tests {
             ".github/workflows/nightly.yml",
             ".github/workflows/verify.yml",
             ".github/zizmor.yml",
+            // #95: version bumps of the composite actions, whose inputs actionlint checks.
+            ".github/actions/setup-rust/action.yml",
+            ".github/actions/get-xtask/action.yml",
+            ".github/actions/setup-cpp/action.yml",
         ] {
             assert_eq!(
                 running(&changed(&[path]), Force::default()),

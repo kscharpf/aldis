@@ -78,9 +78,10 @@ jobs:
       container: ${{ steps.plan.outputs.container }}
       image: ${{ steps.image.outputs.ref }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The checkout keeps its credentials: `git fetch origin main` below needs them if the
+      # repository is ever private.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
         with:
-          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
       # Before anything else: a head behind main cannot merge, so stop within seconds.
