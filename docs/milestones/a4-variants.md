@@ -18,7 +18,7 @@
 | WP-4c Ground uplink generic over `Fop1Format`, FOP-1 USLP target | merged | #720 | Generic refactor of the ground uplink; USLP arm |
 | WP-5 Golden traces | merged | #724, #725 | `a4-*` blessed and frozen, hand check, blind model |
 | WP-6 Strict decoding of `a4-*` traces | merged | #728 | APP-086 for the variants |
-| WP-7 Exit | in progress | #731 | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
+| WP-7 Exit | merged | #731, #735 | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
