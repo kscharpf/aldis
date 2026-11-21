@@ -18,7 +18,7 @@
 | WP-4c Ground uplink generic over `Fop1Format`, FOP-1 USLP target | merged | #720 | Generic refactor of the ground uplink; USLP arm |
 | WP-5 Golden traces | merged | #724, #725 | `a4-*` blessed and frozen, hand check, blind model |
 | WP-6 Strict decoding of `a4-*` traces | merged | #728 | APP-086 for the variants |
-| WP-7 Exit | in progress | #731 | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
+| WP-7 Exit | merged | #731, #735 | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
@@ -196,3 +196,5 @@ Each finding is a GitHub issue labelled `api-feedback` (APP-101). A4 plans no en
 These three stay open as out-of-scope library findings with the dispositions above; the small follow-ups were swept in #735.
 
 Not covered by A4: the C ABI FOP-1 handle with the USLP target (A5 plan); per-FDU TFDF headers and a per-request MAP ID (#235); EPP user data (OI-06); USLP truncated frames, the Insert Zone, AOS B_PDU and VCA; fault cases for the variants.
+
+Update (2026-11-21): with A5 deferred past v1.0, #718 is retargeted to v1.0 and #719 to v1.1 with #235 (maintainer, 2026-11-21).

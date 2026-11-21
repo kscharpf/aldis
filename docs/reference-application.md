@@ -17,7 +17,7 @@
 | Time | CUC Level 1, 4 coarse + 2 fractional octets, T0 = 2 100 000 000 s, no drift | §5 |
 | Link model | Simulated µs clock from 0; one-way delay 10 ms; downlink slot 125 ms; uplink slot 250 ms; scripted faults by (direction, unit index) | §6 |
 | Golden traces | Canonical JSON Lines in `refapp/golden/<case>.jsonl`; header line + one record per observable event; byte comparison | §7 |
-| Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep protocol for the A5 C++ and A6 QEMU flight nodes over stdin/stdout (OI-24) and for the cFS node over loopback TCP (§10.6) | §8 |
+| Node interface | `step(now, inputs) -> outputs + next deadline`; in-process for Rust, a lockstep protocol for the A6 QEMU flight node and the A5 C++ flight node (after v1.0) over stdin/stdout (OI-24) and for the cFS node over loopback TCP (§10.6) | §8 |
 | Code rules | `aldis` facade only; flight node `no_std`, no heap, flight lint set; `forbid(unsafe_code)` everywhere | §9 |
 | Interoperability | The A3 nodes against YAMCS 5.14.0 as a black box over a UDP transport driver: managed-parameter table, driver rules, pass criteria | §11 |
 | cFS flight side | A second flight node: cFS apps on cFE, OSAL, and the pc-linux PSP calling Aldis through `aldis.h`, in lockstep with the harness, reproducing the A1–A3 golden traces in three phases; plan [ACFS](milestones/acfs-flight-side.md), decisions accepted 2026-10-21 | §10 |
@@ -36,7 +36,7 @@ The reference application shows an integrator how the libraries fit together end
 | A2 | Frames: TM down, TC Type-BD up, through the `aldis-link` engines | Downlink and uplink fault cases |
 | A3 | COP-1: FOP-1 on the ground, FARM-1 on board, through the COP-1 engines | Uplink faults; the link-level trace is frozen from here on |
 | A4 | AOS and USLP variants, on the same engines | Nothing on the TM/TC link |
-| A5 | C++ flight node over `aldis.hpp` (engine handles) and `aldis.h` (codecs), Rust-backed and native | Nothing |
+| A5 | C++ flight node over `aldis.hpp` (engine handles) and `aldis.h` (codecs), Rust-backed and native, after v1.0 (roadmap §7) | Nothing |
 | A6 | Flight node bare-metal under QEMU, with the application's own run loop (the `aldis-framework` stacks come after SDLS and TM coding, roadmap §7) | Nothing |
 
 Not covered: synchronization and channel coding, SDLS, CFDP, and time correlation (00 §2.1).
@@ -952,7 +952,7 @@ The fault scripts of the A2 and A3 cases are fixed by the milestone that adds th
 
 ### 6.5 Script entries in the scenario file
 
-A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file; this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node reads the same file and the script cannot disagree with the packet layouts.
+A case's **ops script** (`ops`) and **fault script** (`faults`) are arrays in the scenario file; both are optional and empty by default. The JSON Schema generated from the harness's scenario model (`refapp/scenario/scenario.schema.json`) describes the field names and ranges, and the harness enforces the ranges of the script entries, with the rules below, when it parses the file; this section says what the entries mean. An entry holds **parameters, not octets**: the ground node builds the packet from them (§3.3.5, §3.3.6), so the A5 C++ node (after v1.0) reads the same file and the script cannot disagree with the packet layouts.
 
 | Case field | Values | Meaning |
 |---|---|---|
@@ -1402,9 +1402,9 @@ step(now, input) -> outputs, next_deadline
 
 At A1, `tx_slot` is true in every step and a node may output any number of units. From A2, the flight node outputs exactly one unit when `tx_slot` is true and none otherwise; the ground node outputs at most one unit when `tx_slot` is true and none otherwise. `next_deadline` is the earliest instant after `now` at which the node needs a step, or none; a deadline not after `now` breaks the contract and ends the run with an error. Rust nodes (A1–A4) implement this as a trait in-process.
 
-### 8.2 Node protocol (A5, A6; OI-24)
+### 8.2 Node protocol (A6, and A5 after v1.0; OI-24)
 
-The A5 C++ flight node and the A6 bare-metal flight node under QEMU run as child processes and speak this protocol in lockstep over stdin/stdout, so the link, clock, faults, and trace writer stay in the harness. Each message is a 4-octet big-endian body length followed by the body; all integers are big-endian.
+The A6 bare-metal flight node under QEMU and the A5 C++ flight node (after v1.0) run as child processes and speak this protocol in lockstep over stdin/stdout, so the link, clock, faults, and trace writer stay in the harness. Each message is a 4-octet big-endian body length followed by the body; all integers are big-endian.
 
 | Type | Direction | Body after the type octet |
 |---|---|---|
@@ -1415,7 +1415,7 @@ The A5 C++ flight node and the A6 bare-metal flight node under QEMU run as child
 | `0x82` STEP_RESULT | node → harness | output count (u16) ‖ each: kind (u8: 1 unit, 2 packet_out, 3 packet_in, 4 app_event) ‖ unit: length (u16) ‖ octets; packet: APID (u16) ‖ length (u16) ‖ octets; event: code (u16) ‖ count (u8) ‖ u64 each; then `next_deadline` (u64, all ones = none) |
 | `0x83` END_ACK | node → harness | — |
 
-The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The harness side of the protocol, with both transports, is implemented in ACFS WP-2, before A5 (ACFS D18, OI-38); it may be refined in A5, before any trace depends on it. The cFS flight node (§10) carries the same messages over a loopback TCP stream instead (§10.6).
+The harness sends one message and waits for its answer; it never reads the wall clock (CI job timeouts bound a hung node). A malformed message, an unexpected type, or a closed stream ends the run with an error and no trace. The harness side of the protocol, with both transports, is implemented in ACFS WP-2, before A5, which comes after v1.0 (ACFS D18, OI-38); it may be refined in A5 or A6, before any trace depends on it. The cFS flight node (§10) carries the same messages over a loopback TCP stream instead (§10.6).
 
 | ID | Requirement | Source | Verif. |
 |---|---|---|---|
