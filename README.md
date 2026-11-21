@@ -180,8 +180,8 @@ The [aldis-ffi README](crates/aldis-ffi/README.md) has the conventions, the bare
 | COP-1 (FOP-1 and FARM-1) and frame synchronization | Released |
 | Link engines: packet and frame generators, multiplexing, reception, segmentation, CLTU packing | Released |
 | C ABI and C++ header over all of the above | Released |
-| Reference application: flight and ground nodes with packets, TM and TC frames, and COP-1 over a lossy link, golden traces | Complete |
-| Reference application: AOS and USLP variants, C and C++ flight side, bare-metal target | Planned |
+| Reference application: flight and ground nodes with packets, TM and TC frames, COP-1 over a lossy link, and the AOS and USLP variants, golden traces | Complete |
+| Reference application: C and C++ flight side, bare-metal target | Planned |
 | Simplifying the crate architecture | Complete (no release yet) |
 | Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete (no release; no new vectors or hazards) |
 
