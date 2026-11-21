@@ -7,18 +7,18 @@
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
-| WP-0 Plan | | | This plan, D1–D13, non-strict `--scope a4` trace gate (D1) |
-| WP-1 Scenario additions | | | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code. New IDs in the exit table of §4; OI-99 and OI-100 filed and resolved (a) by the maintainer on 2026-11-18; every clause of the checklist read, none wrong |
-| WP-2 Harness, features, variant skeleton | | | `variant` field, features and `refapp/Cargo.lock` once, `Variant` enum and dispatch in both nodes, strict decoding of the new frames |
-| WP-3a Flight `FrameDownlink<P>` and AOS | | | Generic refactor of the flight downlink; AOS arm |
-| WP-3b Flight USLP downlink | | | Stacked on WP-3a |
-| WP-3c Flight `FrameUplink<P>` and FARM-1 over USLP | | | Generic refactor of the flight uplink; USLP arm |
-| WP-4a Ground downlink generic and AOS | | | Generic refactor of the ground downlink; AOS arm |
-| WP-4b Ground USLP downlink | | | Stacked on WP-4a |
-| WP-4c Ground uplink generic over `Fop1Format`, FOP-1 USLP target | | | Generic refactor of the ground uplink; USLP arm |
-| WP-5 Golden traces | | | `a4-*` blessed and frozen, hand check, blind model |
-| WP-6 Strict decoding of `a4-*` traces | | | APP-086 for the variants |
-| WP-7 Exit | | | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
+| WP-0 Plan | merged | #624 | This plan, D1–D13, non-strict `--scope a4` trace gate (D1) |
+| WP-1 Scenario additions | merged | #697 | Docs only: §4.3 rows rewritten, AOS, USLP downlink and USLP uplink requirement tables, FARM-1 over USLP, CLCW in the AOS and USLP OCF, APP-138 amendment, §4.6 schedules; no code. New IDs in the exit table of §4; OI-99 and OI-100 filed and resolved (a) by the maintainer on 2026-11-18; every clause of the checklist read, none wrong |
+| WP-2 Harness, features, variant skeleton | merged | #699 | `variant` field, features and `refapp/Cargo.lock` once, `Variant` enum and dispatch in both nodes, strict decoding of the new frames |
+| WP-3a Flight `FrameDownlink<P>` and AOS | merged | #706 | Generic refactor of the flight downlink; AOS arm |
+| WP-3b Flight USLP downlink | merged | #715 | Stacked on WP-3a |
+| WP-3c Flight `FrameUplink<P>` and FARM-1 over USLP | merged | #721 | Generic refactor of the flight uplink; USLP arm |
+| WP-4a Ground downlink generic and AOS | merged | #707 | Generic refactor of the ground downlink; AOS arm |
+| WP-4b Ground USLP downlink | merged | #716 | Stacked on WP-4a |
+| WP-4c Ground uplink generic over `Fop1Format`, FOP-1 USLP target | merged | #720 | Generic refactor of the ground uplink; USLP arm |
+| WP-5 Golden traces | merged | #724, #725 | `a4-*` blessed and frozen, hand check, blind model |
+| WP-6 Strict decoding of `a4-*` traces | merged | #728 | APP-086 for the variants |
+| WP-7 Exit | in progress | #731 | `trace --scope a4 --strict`, follow-ups dispositioned, roadmap and READMEs |
 
 A pull request that starts or merges a work package changes only its row ([roadmap](../08-roadmap.md) §6 rule 1).
 
