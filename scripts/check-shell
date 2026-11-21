@@ -1,36 +1,51 @@
 #!/usr/bin/env bash
 # The `shell` check of the verification run (VER-071): lint, line width, and tests of the shell
-# scripts. No network, no gh, no container engine.
+# scripts, and the lint of the GitHub Actions workflows. No network, no gh, no container engine.
 #
 # Usage: scripts/check-shell [--check-tool]
-#   --check-tool only checks that the installed shellcheck is the pinned version.
+#   --check-tool only checks that the installed shellcheck, actionlint, and zizmor are the pinned
+#   versions.
 # Checks, in order, all of them run and every failure is printed:
 #   1. shellcheck (severity: style, the default) on every tracked shell file: a file whose first
 #      line is a shell shebang, or whose name ends in `.sh`.
 #   2. No line of those files is longer than 100 bytes.
 #   3. Every scripts/test-* runs and exits 0.
+#   4. actionlint and zizmor (offline, configured by .github/zizmor.yml) report nothing on
+#      .github/workflows/. actionlint runs shellcheck on the `run:` scripts too. Silence a finding
+#      in the workflow (`# shellcheck disable=...`, `# zizmor: ignore[...]`) with its reason.
 # A shell file outside scripts/, .claude/hooks/, specs/fetch.sh and xtask/ fails the check: the
 # paths of those are the inputs of the check (SHELL_INPUTS in xtask/src/verify/checks.rs), and a
 # change elsewhere would not run it. Add the path to the inputs, or move the file.
-# Exit status: 0 when all hold, 1 otherwise, 2 when shellcheck is not installed or is not the
+# Exit status: 0 when all hold, 1 otherwise, 2 when one of the tools is not installed or is not the
 # pinned version.
 set -uo pipefail
 
-# The version of shellcheck that the verification image installs (xtask/verify/Containerfile):
+# The versions of the tools that the verification image installs (xtask/verify/Containerfile):
 # another version reports other findings, so the check refuses it.
 pinned=0.11.0
+pinned_actionlint=1.7.12
+pinned_zizmor=1.32.0
 
 cd "$(dirname "$0")/.." || exit 2
-if ! command -v shellcheck >/dev/null 2>&1; then
-    echo "shellcheck $pinned is not installed" >&2
-    exit 2
-fi
-have="$(shellcheck --version | sed -n 's/^version: //p')"
-if [ "$have" != "$pinned" ]; then
-    echo "shellcheck $have is installed, but this check needs $pinned (the version of the" \
-        "verification image): install that release from github.com/koalaman/shellcheck" >&2
-    exit 2
-fi
+# $1: tool, $2: pinned version, $3: installed version, $4: where releases are
+require() {
+    if [ -z "$3" ]; then
+        echo "$1 $2 is not installed" >&2
+        return 1
+    elif [ "$3" != "$2" ]; then
+        echo "$1 $3 is installed, but this check needs $2 (the version of the verification" \
+            "image): install that release from $4" >&2
+        return 1
+    fi
+}
+have="$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')"
+have_actionlint="$(actionlint --version 2>/dev/null | sed -n '1p')"
+have_zizmor="$(zizmor --version 2>/dev/null | sed -n 's/^zizmor //p')"
+tools=0
+require shellcheck "$pinned" "$have" github.com/koalaman/shellcheck || tools=2
+require actionlint "$pinned_actionlint" "$have_actionlint" github.com/rhysd/actionlint || tools=2
+require zizmor "$pinned_zizmor" "$have_zizmor" github.com/zizmorcore/zizmor || tools=2
+[ "$tools" = 0 ] || exit "$tools"
 [ "${1:-}" != --check-tool ] || exit 0
 
 files=()
@@ -60,6 +75,11 @@ for f in "${files[@]}"; do
         length($0) > 100 { printf "%s:%d: %d bytes (max 100)\n", f, NR, length($0); bad = 1 }
         END { exit bad }' "$f" || status=1
 done
+
+echo "workflows: actionlint, zizmor"
+# -pyflakes=: no Python check, which would differ with the Python tools of the machine.
+actionlint -pyflakes= || status=1
+zizmor --offline --config .github/zizmor.yml .github/workflows || status=1
 
 for t in scripts/test-*; do
     echo "== $t"

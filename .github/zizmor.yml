@@ -1,0 +1,8 @@
+# Configuration of zizmor, which `scripts/check-shell` runs on .github/workflows/ (VER-071).
+rules:
+  # Every job reaches its composite actions as `./.github/actions/<name>` (a documented, widely
+  # used form that the local checkout resolves). The rule asks for GitHub's `$/` self-repository
+  # prefix, a rewrite across 25 steps that changes which action files a run resolves; the
+  # maintainer has not decided it, so the rule is off until then.
+  self-repository:
+    disable: true
