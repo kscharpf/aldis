@@ -12,7 +12,10 @@
 # origin/main do not matter, but a PR with no review, an unanswered review, a reply that does not
 # name the current head, a force-push of the head branch after the reply, or the label
 # `needs-maintainer`, or a head that conflicts with origin/main (but not only in a Cargo.lock) is
-# NOT READY; the flag may stand anywhere.
+# NOT READY; the flag may stand anywhere. With --label: READY FOR TRAIN adds READY_FOR_TRAIN and
+# removes NOT_READY, NOT READY the reverse, a train/* PR and a closed PR get neither (both
+# removed), an unchanged label causes no gh write, a label that cannot be set exits 2, and without
+# --label no gh write happens at all.
 # Exit status: 0 when every case holds, 1 otherwise.
 set -uo pipefail
 
@@ -50,6 +53,16 @@ cat >"$work/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 filter=""
 args=("$@")
+for a in "$@"; do
+    case "$a" in
+    --method) echo "api $*" >>"$STUB/writes.log"; [ ! -e "$STUB/write.fail" ] || exit 1; exit 0 ;;
+    esac
+done
+if [ "$1" = label ]; then
+    echo "$*" >>"$STUB/writes.log"
+    [ ! -e "$STUB/write.fail" ] || exit 1
+    exit 0
+fi
 for ((i = 0; i < ${#args[@]}; i++)); do
     [ "${args[i]}" = --jq ] && filter="${args[i + 1]}"
 done
@@ -267,6 +280,81 @@ expect "NOT READY" "a constituent head that cannot be fetched" \
 touch "$STUB/pr-8.fail"
 expect "NOT READY" "a constituent that gh cannot read" "cannot read constituent #8"
 rm "$STUB/pr-8.fail"
+
+# --label: the labels mirror the verdict (docs/process/coordinator.md, Merge trains).
+FLAG=
+lab() { # lab <case> <exit> <log must contain; "-": no write at all> [args]
+    local name="$1" want_rc="$2" want="$3" rc out
+    shift 3
+    : >"$STUB/writes.log"
+    out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 7 2>&1)"
+    rc=$?
+    log="$(cat "$STUB/writes.log")"
+    ok=1
+    [ "$rc" -eq "$want_rc" ] || ok=0
+    if [ "$want" = - ]; then
+        [ -z "$log" ] || ok=0
+    else
+        for w in $want; do grep -Fq -- "$w" <<<"$log" || ok=0; done
+    fi
+    if [ "$ok" -eq 1 ]; then
+        echo "ok: $name"
+    else
+        echo "FAIL: $name (exit $rc)"
+        printf '%s\n%s\n' "$out" "$log" | tail -n 8
+        failures=$((failures + 1))
+    fi
+}
+nolog() { # nolog <case> <string the log must not contain>: checked on the last lab run
+    if grep -Fq -- "$2" "$STUB/writes.log"; then
+        echo "FAIL: $1"
+        cat "$STUB/writes.log"
+        failures=$((failures + 1))
+    else
+        echo "ok: $1"
+    fi
+}
+ready() { pr "$current" "[$review]" "[$(named "$current")]" feature "" "$1"; }
+rm -f "$STUB/write.fail"
+ready ""
+lab "--label: READY FOR TRAIN adds READY_FOR_TRAIN" 0 "POST labels[]=READY_FOR_TRAIN" --label
+nolog "--label: READY FOR TRAIN removes nothing absent" DELETE
+ready "NOT_READY,docs"
+lab "--label: READY FOR TRAIN removes NOT_READY" 0 \
+    "POST labels[]=READY_FOR_TRAIN DELETE repos/{owner}/{repo}/issues/7/labels/NOT_READY" --label
+if grep -Fq "label create READY_FOR_TRAIN --force" "$STUB/writes.log" &&
+    grep -Fq "label create NOT_READY --force" "$STUB/writes.log"; then
+    echo "ok: --label creates the labels"
+else
+    echo "FAIL: --label creates the labels"
+    failures=$((failures + 1))
+fi
+pr "$current" "[$review]" "[]" feature "" "READY_FOR_TRAIN"
+lab "--label: NOT READY adds NOT_READY, removes READY_FOR_TRAIN" 0 \
+    "POST labels[]=NOT_READY DELETE repos/{owner}/{repo}/issues/7/labels/READY_FOR_TRAIN" --label
+pr "$current" "[$review]" "[$(named "$current")]" "train/2026-11-21-1" "" \
+    "NOT_READY,READY_FOR_TRAIN"
+lab "--label: a train/* PR loses both labels" 0 \
+    "DELETE repos/{owner}/{repo}/issues/7/labels/NOT_READY labels/READY_FOR_TRAIN" --label
+nolog "--label: a train/* PR gets no label added" POST
+ready "READY_FOR_TRAIN"
+jq '.state = "CLOSED"' "$STUB/pr.json" >"$STUB/pr.tmp" && mv "$STUB/pr.tmp" "$STUB/pr.json"
+lab "--label: a closed PR loses its label" 0 \
+    "DELETE repos/{owner}/{repo}/issues/7/labels/READY_FOR_TRAIN" --label
+nolog "--label: a closed PR gets no label added" POST
+ready "READY_FOR_TRAIN"
+lab "--label: unchanged label, no gh write" 0 - --label
+pr "$current" "[$review]" "[]" feature "" "NOT_READY"
+lab "--label: unchanged NOT_READY, no gh write" 0 - --label
+ready "NOT_READY"
+touch "$STUB/write.fail"
+lab "--label: a failing label write exits 2" 2 "label create" --label
+rm -f "$STUB/write.fail"
+ready ""
+lab "--label after the number" 0 "POST labels[]=READY_FOR_TRAIN" --label --train
+ready "NOT_READY"
+lab "without --label no gh write" 0 - --train
+lab "without --label, default verdict, no gh write" 0 -
 
 [ "$failures" -eq 0 ] || exit 1
 echo "all cases hold"
