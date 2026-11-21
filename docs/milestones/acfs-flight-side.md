@@ -83,7 +83,7 @@ Plan and scope decisions for the maintainer ([decision rights](../process/decisi
 | D18 | Node protocol before A5 | **WP-2 implements the harness side of the node protocol** (§8.2), which the A0 plan places in A5, with both transports, so P1 can run; A5 then uses it as built. Moving work between milestones is the maintainer's (OI-38). Alternative: P1 waits for A5 (P1 then starts after M5, and the cFS evidence comes last) | Accepted (2026-10-21) |
 | D19 | Releases | **ACFS gates no release**: v1.0 stays gated on M5 and A6 (roadmap §5), and a phase that lags does not hold the v1.0 tag. Alternative: P4 as a v1.0 gate (stronger integration evidence at v1.0, but ties the release to a framework outside the project) | Accepted (2026-10-21) |
 
-**Status note (2026-11-21).** The maintainer deferred A5 past v1.0 (roadmap §3, §7). ACFS P1–P3 is the C ABI's end-to-end proof for v1.0. D17 and D18 stand as accepted: the C header and the node protocol are built here, and A5 will reuse them after v1.0.
+**Status note (2026-11-21).** The maintainer deferred A5 past v1.0 (roadmap §3, §7). For v1.0 the C ABI is backed by its C test harness under sanitizers, the `aldis.hpp` C++ tests in `crates/aldis-ffi/tests/cpp/` (CABI-072) and the shared vectors; ACFS gives the end-to-end proof when it exits and gates no release (D19). D17 and D18 stand as accepted: the C header and the node protocol are built here, and A5 will reuse them after v1.0.
 
 ## 3. Work packages
 
