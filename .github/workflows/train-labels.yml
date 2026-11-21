@@ -1,0 +1,77 @@
+# Labels READY_FOR_TRAIN / NOT_READY on pull requests: a mirror of the verdict of
+# `scripts/pr-status --train <n>` (docs/process/coordinator.md, Merge trains), kept current
+# without anyone running a command. The labels are advisory: scripts/train and
+# scripts/pr-status compute the verdict themselves and never read them.
+#
+# Security: PR changes and PR comments use `pull_request_target` and `issue_comment`, which
+# have the token of the base repository, so this workflow checks out the default branch only
+# (never the code of a pull request) and runs the script of that branch. A review uses
+# `pull_request_review`, which runs the workflow file of the PR's merge ref and, for a PR from
+# a fork, has a read-only token: its label write then fails and the next PR comment corrects
+# the label. Nothing from the pull request is used as code; the PR number is passed as an
+# argument.
+# A label change made with GITHUB_TOKEN starts no workflow run, so the labels cannot loop.
+#
+# Per pull request: a change of the PR (also its closing, which removes the labels), a review, a PR comment (a reply to a review).
+# Every open pull request: a push to main (it changes who conflicts) and a manual run.
+name: train-labels
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
+      - edited
+      - closed
+  pull_request_review:
+    types: [submitted, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: >-
+    train-labels-${{ github.event.pull_request.number || github.event.issue.number || 'all' }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: label
+    # An issue_comment on a plain issue is not a pull request: skip it.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          # `git fetch origin` in the script needs credentials for a private repository.
+          git config --global credential.helper \
+            '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
+          if [ -n "$PR_NUMBER" ]; then
+            scripts/pr-status --label "$PR_NUMBER"
+          else
+            numbers="$(gh pr list --state open --limit 200 --json number --jq '.[].number')"
+            # shellcheck disable=SC2086  # one argument per number
+            [ -z "$numbers" ] || scripts/pr-status --label $numbers
+          fi
