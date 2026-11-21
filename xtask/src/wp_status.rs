@@ -215,7 +215,7 @@ fn derive(plan: &str, id: &str, plans: &[String], prs: &[Pr]) -> Result<Derived,
     let mine: Vec<(&Pr, String)> = prs
         .iter()
         .filter(|p| p.open || p.merged)
-        .filter_map(|p| locate(p, plans).filter(|(m, _)| m == id).map(|(_, t)| (p, t)))
+        .filter_map(|p| Some((p, locate(p, plans).filter(|(m, _)| m == id)?.1)))
         .collect();
     // The row that takes a token: the row of the token, else the row of its work package.
     let target = |token: &str| -> Option<String> {
@@ -364,7 +364,9 @@ mod tests {
     use super::{Pr, cell_numbers, derive, locate, parse_prs, wp_token};
 
     fn plans() -> Vec<String> {
-        ["a4", "acfs", "aint", "m2", "m3"].map(String::from).to_vec()
+        ["a4", "acfs", "aint", "m2", "m3"]
+            .map(String::from)
+            .to_vec()
     }
 
     fn pr(number: u64, title: &str, branch: &str, state: &str) -> Pr {
@@ -425,7 +427,10 @@ mod tests {
         let some = |m: &str, w: &str| Some((m.to_owned(), w.to_owned()));
         // The branch names no work package: the title decides.
         assert_eq!(
-            loc("feat(a4/wp-3b): Flight USLP downlink", "a4/flight-uslp-down"),
+            loc(
+                "feat(a4/wp-3b): Flight USLP downlink",
+                "a4/flight-uslp-down"
+            ),
             some("a4", "WP-3b")
         );
         assert_eq!(loc("feat(aint/wp-2): x", "aint/x"), some("aint", "WP-2"));
