@@ -26,7 +26,7 @@ History:
 - 2026-11-16: plan drafted by the `planner` agent at `main` `f9a9a0d2`, reviewed independently, and revised once (issue #621); D1–D13 accepted by the maintainer, every recommended option; the scope of the C ABI node for A5 is left to the A5 plan.
 - 2026-11-18: WP-1 (#697): D2 narrowed by the maintainer, `uslp` only at `cop1`; OI-99 (USLP downlink expedited) and OI-100 (one Control Command in a Type-BC TFDZ) resolved (a), both in the maintainer's chat.
 - 2026-11-19: WP-3c follows WP-3b and WP-4c follows WP-4b, because they share `lib.rs` and the `Variant` arm switch (maintainer, in chat).
-- 2026-11-20: WP-7 (exit): `trace --scope a4 --strict` replaces the non-strict run; APP-076 traced by an inspection record; §4 results filled; A4 exited. §6 dispositions of #718, #719 and #708 given by the maintainer in chat. The process metrics were reviewed (VER-063: no threshold of `cargo xtask metrics --since 2026-11-16` crossed; the top friction item is opened as #733). No release.
+- 2026-11-20: WP-7 (exit): `trace --scope a4 --strict` replaces the non-strict run; APP-076 traced by an inspection record; §4 results filled; A4 exited. §6 dispositions of #718, #719 and #708 given by the maintainer in chat. The process metrics were reviewed (VER-063: no threshold of `cargo xtask metrics --since 2026-11-16` crossed; the top friction item is opened as #733). No release. Follow-ups swept: #732 fixed in #735; #729 and #621 closed by this PR; #718, #719 and #708 deferred as out-of-scope findings (§6); #733 stays open for the maintainer's review at the exit (VER-063).
 
 ## 1. Starting point
 
@@ -192,5 +192,7 @@ Each finding is a GitHub issue labelled `api-feedback` (APP-101). A4 plans no en
 | #718 | WP-3c | `Farm1Input::from_uslp` is missing; the node builds `Farm1Frame` by hand (D7) | Deferred to the A5 plan (maintainer, 2026-11-20) |
 | #719 | WP-3c, WP-4c | `Fop1Target::uslp` takes a single MAP (D6); #235 and OI-71 are the open library questions | Deferred to the A5 plan, naming #235 (USLP segmentation) (maintainer, 2026-11-20) |
 | #708 | WP-4a | `FrameReceiver<Aos>` routes on the uncorrected Primary Header, not the FHEC-corrected one; found in #707 | Deferred as a track-R library finding to the next track-R milestone, or post-v1 if none is planned (maintainer, 2026-11-20) |
+
+These three stay open as out-of-scope library findings with the dispositions above; the small follow-ups were swept in #735.
 
 Not covered by A4: the C ABI FOP-1 handle with the USLP target (A5 plan); per-FDU TFDF headers and a per-request MAP ID (#235); EPP user data (OI-06); USLP truncated frames, the Insert Zone, AOS B_PDU and VCA; fault cases for the variants.
