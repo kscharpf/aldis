@@ -3,7 +3,7 @@
 **Goal:** the reference application runs the two variants of [reference-application.md](../reference-application.md) §4.3 on the same engines and the same application layer. `aos` is an AOS downlink with the TC uplink and COP-1 as in A3. `uslp` is a USLP fixed-length downlink and a USLP variable-length uplink, with COP-1 over USLP per [cop1.md](../standards/cop1.md) §2.1. Each variant has its own golden trace (`a4-aos-nominal`, `a4-uslp-nominal`), reproduced in CI, whose packet projection equals that of `a1-nominal` (APP-003, APP-045). Packets and the `a0-*` to `a3-*` traces do not change (APP-002, APP-005). A4 adds no C ABI surface and cuts no release.
 **Roadmap entry:** [08-roadmap.md](../08-roadmap.md) §3 (track A) · **Builds on:** [A3](a3-cop1.md) (COP-1 nodes and traces), [A2](a2-frames.md), [M4](m4-link-engines.md) (`v0.5.0-m4`: the `aldis-link` engines) · **Specification:** [reference-application.md](../reference-application.md) (area APP) · **Track:** A, owns `refapp/`; cuts no release (roadmap §5) · **Review of the proposal:** issue #621
 
-**Status: plan accepted.** Decisions D1–D13 (§2) accepted by the maintainer on 2026-11-16, in chat, each with its recommended option. Entry gate: met. A3 exited 2026-11-11 ([a3-cop1.md](a3-cop1.md)) and M4 exited 2026-11-04 (`v0.5.0-m4`, [roadmap](../08-roadmap.md) §1). A track-A milestone cuts no release. The non-strict `cargo xtask trace --scope a4` runs in `cargo xtask ci`, `ci.yml`, and the check `spec` from this plan's pull request (D1).
+**Status: exited (2026-11-20, WP-7).** Decisions D1–D13 (§2) accepted by the maintainer on 2026-11-16, in chat, each with its recommended option. Entry gate: met. A3 exited 2026-11-11 ([a3-cop1.md](a3-cop1.md)) and M4 exited 2026-11-04 (`v0.5.0-m4`, [roadmap](../08-roadmap.md) §1). A track-A milestone cuts no release. Every exit criterion of §4 is met, and `cargo xtask trace --scope a4 --strict` passes in `cargo xtask ci`, `ci.yml`, and the check `spec` (D1).
 
 | WP | State | PRs | Notes |
 |---|---|---|---|
@@ -26,6 +26,7 @@ History:
 - 2026-11-16: plan drafted by the `planner` agent at `main` `f9a9a0d2`, reviewed independently, and revised once (issue #621); D1–D13 accepted by the maintainer, every recommended option; the scope of the C ABI node for A5 is left to the A5 plan.
 - 2026-11-18: WP-1 (#697): D2 narrowed by the maintainer, `uslp` only at `cop1`; OI-99 (USLP downlink expedited) and OI-100 (one Control Command in a Type-BC TFDZ) resolved (a), both in the maintainer's chat.
 - 2026-11-19: WP-3c follows WP-3b and WP-4c follows WP-4b, because they share `lib.rs` and the `Variant` arm switch (maintainer, in chat).
+- 2026-11-20: WP-7 (exit): `trace --scope a4 --strict` replaces the non-strict run; APP-076 traced by an inspection record; §4 results filled; A4 exited. §6 dispositions of #718, #719 and #708 given by the maintainer in chat. No release.
 
 ## 1. Starting point
 
@@ -158,19 +159,19 @@ A4 is complete when every item below is green on `main`. The requirements WP-1 a
 
 | Area | Criteria | Results / evidence |
 |---|---|---|
-| Variants exist | APP-045, APP-187 | |
-| Packet projection | APP-003 for both `a4-*` cases; the cases of APP-188 | |
-| AOS downlink | APP-169…APP-174 (APP-173 is the CLCW in the `VC_OCF`) | |
-| USLP downlink | APP-175…APP-180 (APP-179 is the CLCW in the MC OCF) | |
-| USLP uplink and COP-1 | APP-181…APP-184 (APP-182 is the Maximum Transfer Frame Length with the fit of the 309-octet packet); APP-044 at `uslp` | |
-| FARM-1 over USLP | APP-185 (the flight node's events for the USLP uplink: APP-186) | |
-| Events | APP-138 as amended (D10); APP-186 (the `GapDiscard` code 115) | |
-| Harness | APP-071, APP-075, APP-076, APP-090, APP-100, APP-107 at the variants | |
-| Golden traces | APP-082, APP-083, APP-086 for every `a4-*` trace | |
-| Reproduction in CI | `compare` on every `a4-*` case (APP-106); `cargo xtask trace --scope a4 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | |
-| New requirements | APP-169…APP-189, added by WP-1 (APP-187 and APP-189 select the variant and place its parameters in the scenario file; the others are in the rows above) | |
-| Follow-up issues | Every A4 `api-feedback` and review follow-up issue closed, or deferred to a named target | |
-| Docs | Roadmap §3 and §4, the READMEs and the A5 entry gate updated | |
+| Variants exist | APP-045, APP-187 | Met. `refapp/refapp-harness/tests/variants.rs` (the `variant` field, its ranges and rejections, WP-2 #699); `refapp-harness/tests/a4_golden.rs` (APP-045, APP-188 packet projection); the `variant` entries of `refapp/scenario/scenario.json:407` and `:425` |
+| Packet projection | APP-003 for both `a4-*` cases; the cases of APP-188 | Met. `refapp-harness/tests/a4_golden.rs` (projection of both `a4-*` cases equals `a1-nominal`; `packet_out` instants equal `a3-nominal`; WP-5 #725) |
+| AOS downlink | APP-169…APP-174 (APP-173 is the CLCW in the `VC_OCF`) | Met. `refapp/refapp-flight/src/frames_down/aos.rs` (WP-3a #706), `refapp-ground/src/frames_down/tests_aos.rs` (WP-4a #707); `refapp-harness/tests/a4_golden.rs`; golden trace `a4-aos-nominal` |
+| USLP downlink | APP-175…APP-180 (APP-179 is the CLCW in the MC OCF) | Met. `refapp/refapp-flight/src/frames_down/uslp.rs` (WP-3b #715), `refapp-ground/src/frames_down/tests_uslp.rs` (WP-4b #716); `refapp-harness/tests/a4_golden.rs`; golden trace `a4-uslp-nominal` |
+| USLP uplink and COP-1 | APP-181…APP-184 (APP-182 is the Maximum Transfer Frame Length with the fit of the 309-octet packet); APP-044 at `uslp` | Met. `refapp/refapp-ground/src/frames_up/tests_uslp.rs` (WP-4c #720: FOP-1 USLP target, blocking, whole-SDU upload, retransmission); `refapp-flight/src/frames_up/tests/uslp.rs` (WP-3c #721); golden trace `a4-uslp-nominal` |
+| FARM-1 over USLP | APP-185 (the flight node's events for the USLP uplink: APP-186) | Met. `refapp/refapp-flight/src/frames_up/uslp.rs` and its tests `frames_up/tests/uslp.rs` (WP-3c #721); golden trace `a4-uslp-nominal` |
+| Events | APP-138 as amended (D10); APP-186 (the `GapDiscard` code 115) | Met. `refapp-ground/src/frames_down/tests_aos.rs` and `tests_uslp.rs` (APP-138 as amended); `refapp-flight/src/frames_up/tests/uslp.rs` (APP-186, code 115) |
+| Harness | APP-071, APP-075, APP-076, APP-090, APP-100, APP-107 at the variants | Met. `refapp-harness/tests/variants.rs`, `variant_frames.rs`; the case list inspected against `scenario.json` ([record](../verification/records/APP-076.md), added by WP-7); `refapp-deps` for APP-100 ([record](../verification/records/APP-100.md)) |
+| Golden traces | APP-082, APP-083, APP-086 for every `a4-*` trace | Met. `refapp/golden/a4-aos-nominal.jsonl` and `a4-uslp-nominal.jsonl`, blessed and frozen (WP-5 #725); `refapp-harness/tests/trace.rs` decodes every `unit_sent` strictly, with a planted bad USLP FECF and a planted bad AOS FHEC failing the check (WP-6 #728); the blind model `refapp/model/a4_cases.py` matches every record of both cases ([cross-checks.md](../verification/cross-checks.md) §7.4, #724) |
+| Reproduction in CI | `compare` on every `a4-*` case (APP-106); `cargo xtask trace --scope a4 --strict` passes; the `thumbv7em-none-eabihf` build of `refapp-flight` is green | Met. `cargo run -p refapp-harness --locked -- compare` matches all 17 golden cases, both `a4-*` among them, with no trace, vector or scenario change in WP-7 (verify check `refapp compare`, APP-106); `cargo xtask trace --scope a4 --strict` reports every in-scope requirement traced and replaces the non-strict run in `cargo xtask ci`, `ci.yml`, and the check `spec`; `cargo build -p refapp-flight --target thumbv7em-none-eabihf --locked` is green (WP-7, 2026-11-20), and the bare-metal build and clippy are in the `refapp` job of `ci.yml` |
+| New requirements | APP-169…APP-189, added by WP-1 (APP-187 and APP-189 select the variant and place its parameters in the scenario file; the others are in the rows above) | Met. APP-169…APP-189 added by WP-1 (#697); each is in `cargo xtask trace --scope a4 --strict`, which lists the artefacts of every one |
+| Follow-up issues | Every A4 `api-feedback` and review follow-up issue closed, or deferred to a named target | Met. The `api-feedback` issues of A4 (#718, #719, #708) have a disposition in §6 (maintainer, 2026-11-20); #712 and #713 are follow-ups of reviews of #709 and #710, track-R work, not A4 issues |
+| Docs | Roadmap §3 and §4, the READMEs and the A5 entry gate updated | Met. This plan, roadmap §3 and §4, the A5 entry gate, `docs/README.md`, the root `README.md` status and `refapp/README.md` updated by WP-7 |
 
 ## 5. Risks
 
@@ -184,11 +185,12 @@ A4 is complete when every item below is green on `main`. The requirements WP-1 a
 
 ## 6. API feedback found
 
-Each finding is a GitHub issue labelled `api-feedback` (APP-101). A4 plans no engine change.
+Each finding is a GitHub issue labelled `api-feedback` (APP-101). A4 plans no engine change. #712 and #713 are not A4 issues: they come from reviews of #709 and #710, which are track-R work.
 
 | Issue | Found in | Finding | Disposition |
 |---|---|---|---|
-| | WP-3c | `Farm1Input::from_uslp` is missing; the node builds `Farm1Frame` by hand (D7) | To be filed in WP-3c |
-| | WP-3c, WP-4c | `Fop1Target::uslp` takes a single MAP (D6); #235 and OI-71 are the open library questions | To be filed in WP-3c |
+| #718 | WP-3c | `Farm1Input::from_uslp` is missing; the node builds `Farm1Frame` by hand (D7) | Deferred to the A5 plan (maintainer, 2026-11-20) |
+| #719 | WP-3c, WP-4c | `Fop1Target::uslp` takes a single MAP (D6); #235 and OI-71 are the open library questions | Deferred to the A5 plan, naming #235 (USLP segmentation) (maintainer, 2026-11-20) |
+| #708 | WP-4a | `FrameReceiver<Aos>` routes on the uncorrected Primary Header, not the FHEC-corrected one; found in #707 | Deferred as a track-R library finding to the next track-R milestone, or post-v1 if none is planned (maintainer, 2026-11-20) |
 
 Not covered by A4: the C ABI FOP-1 handle with the USLP target (A5 plan); per-FDU TFDF headers and a per-request MAP ID (#235); EPP user data (OI-06); USLP truncated frames, the Insert Zone, AOS B_PDU and VCA; fault cases for the variants.
