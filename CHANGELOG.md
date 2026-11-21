@@ -6,7 +6,54 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
 
-<!-- changelog-base: d1b7be8305e163803c468cc3b89d72670b9750a1 -->
+<!-- changelog-base: c15c046a32bd17e07bfd0ec6deba2de5050a62e5 -->
+
+## [0.8.0-a4] — 2026-11-21
+
+Interim release of the Rust crates after the A4 exit (track A cuts no release otherwise; [roadmap §5](docs/08-roadmap.md#5-releases)). Six breaking API changes since 0.7.0-m6, marked below.
+
+### Added
+- cop1: expose the frame FOP-1 holds for a Type-AD or Type-BC transmit request (#505) (#666)
+- core: name the codec-facing tier of aldis-core and refuse it in refapp (GEN-082) (#674)
+- time: make Day and CalendarDate::day public, and read the C ABI's date through it (#679)
+- xtask: extend the rs020 check to aldis-link, aldis-cop1 and aldis-sync (#687)
+- Implement the variant field, the facade features, and the Variant skeleton of the nodes (#699)
+- Make the flight downlink generic and add the AOS downlink (#706)
+- Make the ground downlink generic and add the AOS downlink (#707)
+- ffi: Subset the C ABI library by the facade's Cargo features (#710)
+- Flight USLP downlink (#715)
+- Ground USLP downlink (#716)
+- Generic flight uplink and FARM-1 over USLP (#721)
+- Ground uplink generic over Fop1Format and FOP-1 USLP target (#720)
+- Bless the a4-* golden traces and check their invariants (#725)
+- Strictly decode the a4-* golden traces (#728)
+- Exit A4 (#731)
+
+### Changed
+- link: move the mux protocol implementations into submodules (#638)
+- cop1: split fop1.rs by phase and remove control from Fop1Format::begin (#643)
+- core: decode masked SCID and VCID fields through an infallible typed getter (#650)
+- **Breaking:** tm: take the OID frame fields as a struct and give the TM frame counts their own types (#651)
+- refapp: follow the TM frame-count types (#652)
+- core: decode TC and USLP identifier fields through the typed getters (#656)
+- core: decode the SPP APID and Sequence Count through typed getters (#657)
+- **Breaking:** cop1: tie the FOP-1 decision to its engine, which owns its store (#659)
+- refapp: follow the FOP-1 decide/commit API of #254 (#660)
+- time: build valid-by-construction time values without fallbacks (#667)
+- **Breaking:** link: give the VC, MAP and pointer fields of the engine data units their types (#669)
+- refapp: follow the typed link fields (#672)
+- cop1: take a Type-AD or Type-BC kind in Fop1::held_frame (#505) (#673)
+- refapp: hold FOP-1 frames through the engine (#505) (#671)
+- **Breaking:** cop1: type the FOP-1 sliding window width (#683)
+- refapp: follow the typed FOP-1 window width (#684)
+- **Breaking:** link: type the Packet Version Number of an incomplete packet as PacketVersion (#689)
+- xtask: one source for the codec and engine crate lists of rs020 and restricted (#694)
+- **Breaking:** link: Build the packet engines with any of spp and epp (#709)
+
+### Fixed
+- xtask: keep the standing paragraph under Unreleased in changelog release (#614)
+- crosscheck: ignore the chrono unmaintained advisory RUSTSEC-2026-0543 (#632)
+- Read a track-A title scope in status-table (#732) (#735)
 
 ## [0.7.0-m6] — 2026-11-14
 

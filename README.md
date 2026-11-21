@@ -149,11 +149,11 @@ verdict: the run matches refapp/golden/a3-uplink-loss.jsonl
 
 ## Using it
 
-The crates are not on crates.io. From Rust, depend on the facade crate `aldis` from git, and enable only the features you use (none is on by default, and with none it builds for a `no_std` target). The features are `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `spp-time`, `sync`, `link`, `cop1`, and `full`. The tag is a release of a [milestone](docs/08-roadmap.md#5-releases):
+The crates are not on crates.io. From Rust, depend on the facade crate `aldis` from git, and enable only the features you use (none is on by default, and with none it builds for a `no_std` target). The features are `core`, `time`, `spp`, `epp`, `tm`, `tc`, `aos`, `uslp`, `spp-time`, `sync`, `link`, `cop1`, and `full`. The tag is a [release](docs/08-roadmap.md#5-releases):
 
 ```toml
 [dependencies]
-aldis = { git = "https://github.com/kscharpf/aldis", tag = "v0.7.0-m6", default-features = false, features = ["core", "spp"] }
+aldis = { git = "https://github.com/kscharpf/aldis", tag = "v0.8.0-a4", default-features = false, features = ["core", "spp"] }
 ```
 
 From C or C++, build the static library `libaldis_ffi.a` from a clone of the repository; Cargo writes it to `target/release/`. The header `include/aldis/aldis.h` is generated and committed, and `include/aldis/aldis.hpp` is the header-only C++ wrapper of the engine handles. Add `include/` to the include path and link the library:
@@ -182,7 +182,7 @@ The [aldis-ffi README](crates/aldis-ffi/README.md) has the conventions, the bare
 | C ABI and C++ header over all of the above | Released |
 | Reference application: flight and ground nodes with packets, TM and TC frames, COP-1 over a lossy link, and the AOS and USLP variants, golden traces | Complete |
 | Reference application: C and C++ flight side, bare-metal target | Planned |
-| Simplifying the crate architecture | Complete (no release yet) |
+| Simplifying the crate architecture | Released |
 | Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete (no release; no new vectors or hazards) |
 
 Each released row has its tests, test vectors, and hazard analysis. The [roadmap](docs/08-roadmap.md) has the milestone detail, and its [coverage table](docs/08-roadmap.md#9-ccsds-document-coverage) lists the CCSDS documents and sections covered.

@@ -6,7 +6,7 @@
 # digest, the shared tools come from toolchains.lock through setup_cpp.py, and Rust
 # from rust-toolchain.toml and tooling-nightly (RS-001, RS-002). The LEON3 linker and QEMU
 # machine are Ubuntu packages whose upstream versions are asserted where they are installed;
-# shellcheck (the `shell` check, VER-071) is a pinned release binary. The other Ubuntu packages
+# shellcheck, actionlint, and zizmor (the `shell` check, VER-071) are pinned release binaries. The other Ubuntu packages
 # are utilities (git, Python,
 # archivers, jq and procps for the tests of scripts/); their versions are listed in
 # every evidence record.
@@ -95,6 +95,30 @@ RUN case "$TARGETARCH" in \
  && install -m 0755 /tmp/shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck \
  && rm -rf /tmp/shellcheck.tar.xz /tmp/shellcheck-v0.11.0 \
  && shellcheck --version | grep -q '^version: 0\.11\.0$'
+
+# actionlint 1.7.12 and zizmor 1.32.0 for the check shell (VER-071; both MIT, tools, not linked),
+# the upstream release binaries checked against SHA-256 (the checksums file of the actionlint
+# release; the digest GitHub records for the zizmor asset). scripts/check-shell refuses other
+# versions. zizmor runs offline there.
+RUN case "$TARGETARCH" in \
+      amd64) al=amd64; alsha=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8; zz=x86_64; zzsha=bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b ;; \
+      arm64) al=arm64; alsha=325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6; zz=aarch64; zzsha=cb152b207f815116d7fa1c1ee4614f61578803351395052908095e79adfd9fd0 ;; \
+      *) echo "unsupported architecture $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && mkdir /tmp/wl \
+ && curl -fsSL -o /tmp/wl/actionlint.tar.gz \
+      "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_$al.tar.gz" \
+ && echo "$alsha  /tmp/wl/actionlint.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/wl/actionlint.tar.gz -C /tmp/wl actionlint \
+ && install -m 0755 /tmp/wl/actionlint /usr/local/bin/actionlint \
+ && curl -fsSL -o /tmp/wl/zizmor.tar.gz \
+      "https://github.com/zizmorcore/zizmor/releases/download/v1.32.0/zizmor-$zz-unknown-linux-gnu.tar.gz" \
+ && echo "$zzsha  /tmp/wl/zizmor.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/wl/zizmor.tar.gz -C /tmp/wl zizmor \
+ && install -m 0755 /tmp/wl/zizmor /usr/local/bin/zizmor \
+ && rm -rf /tmp/wl \
+ && actionlint --version | head -n 1 | grep -qx '1\.7\.12' \
+ && zizmor --version | grep -qx 'zizmor 1\.32\.0'
 
 # Kani for the non-gating check kani (OI-42, docs/verification/formal-verification.md §8). The release
 # bundle (kani-compiler and CBMC) is checked against the SHA-256 that GitHub records for the

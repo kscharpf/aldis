@@ -24,7 +24,9 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value, json};
 
-use super::checks::{Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SCRIPTS, SPEC_ONLY};
+use super::checks::{
+    Check, DOCS, GITHUB, Inputs, NIGHTLY_ONLY, ROOT_CONFIG, SCRIPTS, SPEC_ONLY, WORKFLOWS,
+};
 use super::record::Outcome;
 use super::{git_bytes, git_in, publish, record};
 
@@ -656,6 +658,7 @@ pub fn to_json(plan: &Plan, checks: &[Check]) -> Value {
         "github": GITHUB.patterns,
         "root_config": ROOT_CONFIG.patterns,
         "scripts": SCRIPTS.patterns,
+        "workflows": WORKFLOWS.patterns,
         "every": plan.every,
         "inputs": inputs,
     })
@@ -959,21 +962,10 @@ mod tests {
     // req: VER-056
     #[test]
     fn github_configuration_runs_spec_only() {
-        // #95: GitHub Actions version bumps.
-        let dependabot = changed(&[
-            ".github/actions/setup-rust/action.yml",
-            ".github/actions/get-xtask/action.yml",
-            ".github/workflows/ci.yml",
-            ".github/workflows/nightly.yml",
-        ]);
-        assert_eq!(running(&dependabot, Force::default()), ["spec"]);
         for path in [
             ".github/pull_request_template.md",
             ".github/CODEOWNERS",
             ".github/dependabot.yml",
-            ".github/workflows/cpp.yml",
-            ".github/workflows/verify.yml",
-            ".github/actions/setup-cpp/action.yml",
         ] {
             assert_eq!(
                 running(&changed(&[path]), Force::default()),
@@ -990,6 +982,28 @@ mod tests {
             ),
             names(|c| !c.nightly)
         );
+    }
+
+    // req: VER-056, VER-071
+    #[test]
+    fn workflows_run_shell_and_spec_only() {
+        let shell_spec = names(|c| c.name == "shell" || c.name == "spec");
+        for path in [
+            ".github/workflows/ci.yml",
+            ".github/workflows/nightly.yml",
+            ".github/workflows/verify.yml",
+            ".github/zizmor.yml",
+            // #95: version bumps of the composite actions, whose inputs actionlint checks.
+            ".github/actions/setup-rust/action.yml",
+            ".github/actions/get-xtask/action.yml",
+            ".github/actions/setup-cpp/action.yml",
+        ] {
+            assert_eq!(
+                running(&changed(&[path]), Force::default()),
+                shell_spec,
+                "{path}"
+            );
+        }
     }
 
     // req: VER-056
