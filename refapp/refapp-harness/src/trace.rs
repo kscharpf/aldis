@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::frame::{FlightIntake, FramedPackets, decode_frame};
 use crate::micros::Micros;
-use crate::scenario::{Scenario, Variant};
+use crate::scenario::Scenario;
 
 /// Which node a record belongs to (§7.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -566,8 +566,9 @@ fn check_packet(kind: &str, v: &Value, octets: &[u8]) -> Result<(), String> {
 /// into the `MapReassembler`. Every complete packet they hand out is decoded strictly too, and
 /// the packets the uplink gives are set against the flight node's own intake records
 /// ([`FlightIntake`]). Returns what was decoded. In a case of the variant `aos` or `uslp` the
-/// frames are decoded with the codec of the variant and the engines are not run: the packets
-/// inside those frames are the work of A4 WP-6.
+/// frames are decoded with the codec of the variant, and the engines are those of the variant:
+/// the extractors of its VCs, and for `uslp` the flight node's USLP chain (FARM-1 and the
+/// `MapReassembler` of MAP 0); the `aos` uplink is the TC chain (APP-187).
 ///
 /// # Errors
 /// If `text` is not canonical (APP-080), its case is not in `scenario`, or the first record
@@ -583,12 +584,10 @@ pub fn decode_strict(scenario: &Scenario, text: &str) -> Result<Decoded, String>
         .ok_or_else(|| "line 1: header without a case".to_owned())?;
     let case = scenario.case(case_id)?;
     let (level, variant) = (case.level, case.variant);
-    // The engines behind the frames, the extractors and FARM-1, are those of TM and TC; the packets
-    // inside the AOS and USLP frames are checked with the strict decode of A4 WP-6, so until then
-    // the frames of those variants are decoded and no further.
-    let engines = level.has_frames() && variant == Variant::TmTc;
+    // The engines behind the frames, the extractors and FARM-1, are those of the variant.
+    let engines = level.has_frames();
     let mut decoded = Decoded::default();
-    let mut framed = FramedPackets::new(scenario)?;
+    let mut framed = FramedPackets::for_variant(scenario, variant)?;
     // The uplink units as sent, by index, the indices a fault dropped or corrupted, and whether
     // any was.
     let mut sent_up: BTreeMap<u64, Vec<u8>> = BTreeMap::new();
