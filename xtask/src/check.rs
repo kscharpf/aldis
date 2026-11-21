@@ -300,7 +300,8 @@ struct Tools {
     qemu_arm: bool,
     /// `cbindgen` is installed.
     cbindgen: bool,
-    /// `shellcheck` is installed at the version of the image (`scripts/check-shell --check-tool`).
+    /// `shellcheck`, `actionlint`, and `zizmor` are installed at the versions of the image
+    /// (`scripts/check-shell --check-tool`).
     shellcheck: bool,
 }
 
@@ -512,10 +513,11 @@ fn plan(t: &Touched, tools: Tools, mode: Mode) -> Plan {
             skipped.push(Skip {
                 step: "shell",
                 check: "shell",
-                short: "shellcheck 0.11.0 not installed",
-                reason: "shellcheck 0.11.0 not installed (the version of the image; \
-                         scripts/check-shell --check-tool says what is installed; release \
-                         binaries: github.com/koalaman/shellcheck)"
+                short: "shellcheck, actionlint, or zizmor not installed",
+                reason: "shellcheck 0.11.0, actionlint 1.7.12, or zizmor 1.32.0 not installed \
+                         (the versions of the image; scripts/check-shell --check-tool says \
+                         which; release binaries: github.com/koalaman/shellcheck, \
+                         github.com/rhysd/actionlint, github.com/zizmorcore/zizmor)"
                     .into(),
             });
         }

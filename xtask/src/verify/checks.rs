@@ -224,7 +224,8 @@ pub const DOCS: PathList = PathList {
 /// The GitHub configuration that no check reads but `spec` (which reads every path: spec lint
 /// scans the workflows for requirement IDs, `consistency` reads `nightly.yml`, and `links` the
 /// pull-request template), so that a change to these paths alone runs only `spec`, as
-/// documentation does: the workflows, the definitions of the composite actions, the pull-request
+/// documentation does (except the workflows, `.github/zizmor.yml`, and the `action.yml` files,
+/// which `shell` also reads: `WORKFLOWS`): the workflows, the definitions of the composite actions, the pull-request
 /// template, the code owners, and the Dependabot configuration. A check takes its tools from the
 /// image and gives the same result on a contributor's machine, which never reads these files, as
 /// in `verify.yml` (VER-060); the nightly runs, which use the workflows, run every check
@@ -234,6 +235,7 @@ pub const GITHUB: PathList = PathList {
     name: "github",
     patterns: &[
         ".github/workflows/**",
+        ".github/zizmor.yml",
         ".github/actions/setup-rust/**",
         ".github/actions/get-xtask/**",
         ".github/actions/setup-cpp/action.yml",
@@ -268,12 +270,25 @@ pub const README_DIAGRAM: PathList = PathList {
 /// the other checks run `cargo xtask` and the commands of their own scripts, and the image does
 /// not contain them. `spec` reads every path, so a script that names a requirement or a link is
 /// still checked. `xtask/verify/entrypoint.sh` is in `RUN`. A tracked shell file anywhere else
-/// would be outside the inputs of `shell` (under `crates/` or `.github/workflows/` it is in the
-/// lists of other checks, or of `spec` only), so `scripts/check-shell` fails on it until its
-/// path is added here.
+/// would not be in `SCRIPTS` (under `crates/` it is in the lists of other checks, under
+/// `.github/` in `WORKFLOWS` or the lists of `spec` only), so `scripts/check-shell` fails on it
+/// until its path is added here.
 pub const SCRIPTS: PathList = PathList {
     name: "scripts",
     patterns: &["scripts/**", ".claude/hooks/**", "specs/fetch.sh"],
+};
+
+/// The GitHub Actions workflows, the configuration of the linter that reads them, and the
+/// definitions of the composite actions that `actionlint` checks their `with:` inputs against:
+/// `shell` runs `actionlint` and `zizmor` on them (VER-071). Also in `GITHUB`, so a change to
+/// them runs `spec` too.
+pub const WORKFLOWS: PathList = PathList {
+    name: "workflows",
+    patterns: &[
+        ".github/workflows/**",
+        ".github/zizmor.yml",
+        ".github/actions/*/action.yml",
+    ],
 };
 
 /// The lists that `spec` alone reads (VER-056): documentation, the GitHub configuration, and the
@@ -334,7 +349,7 @@ const SANITIZER_INPUTS: Inputs = Inputs::Paths(&[&RUN, &C_SANITIZERS_LIST]);
 const MIRI_INPUTS: Inputs = Inputs::Paths(&[&RUN, &FFI_MIRI_LIST]);
 const STACK_INPUTS: Inputs = Inputs::Paths(&[&RUN, &STACK]);
 const REFAPP_INPUTS: Inputs = Inputs::Paths(&[&RUN, &RUST, &README_DIAGRAM]);
-const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS]);
+const SHELL_INPUTS: Inputs = Inputs::Paths(&[&RUN, &SCRIPTS, &WORKFLOWS]);
 
 /// One check of the verification run.
 #[derive(Clone, Debug)]
@@ -470,7 +485,8 @@ fn rust() -> Vec<Check> {
             ),
         ),
         grouped(Group::Cross, check("layers", c, false, 1, LAYERS)),
-        // The shell scripts: shellcheck, 100 bytes a line, and their own tests (VER-071). The
+        // The shell scripts: shellcheck, 100 bytes a line, and their own tests, and the workflows:
+        // actionlint and zizmor (VER-071). The
         // duration is the local one until the hosted runs measure it.
         grouped(
             Group::Cross,
@@ -808,7 +824,8 @@ cargo xtask unsafe-forbid
 ";
 
 const SHELL: &str = "\
-# shellcheck, at most 100 bytes a line, and every scripts/test-* (VER-071).
+# shellcheck, at most 100 bytes a line, every scripts/test-*, and actionlint and zizmor on the
+# workflows (VER-071).
 scripts/check-shell
 ";
 
@@ -1137,7 +1154,7 @@ mod tests {
                 continue;
             }
             if c.name == "shell" {
-                assert_eq!(lists, [&RUN, &SCRIPTS]);
+                assert_eq!(lists, [&RUN, &SCRIPTS, &WORKFLOWS]);
                 continue;
             }
             assert_eq!(lists.contains(&&CPP), c.cpp, "{}", c.name);
