@@ -67,7 +67,7 @@ This directory holds the specification for a family of libraries that add CCSDS 
 | [AINT Interoperability](milestones/aint-interoperability.md) | The Rust flight node against an independent ground system run as a black box (complete; no release) |
 | [ACFS cFS flight side](milestones/acfs-flight-side.md) | Reference application: a cFS flight side over the C ABI, reproducing the golden traces in three phases (plan approved; decisions D1–D19 accepted) |
 
-A5 (C and C++ flight side) and A6 (bare-metal target) have no plan yet; the roadmap ([§3](08-roadmap.md)) lists them. Track-A milestones cut no release; the tags `v0.N.0-mN` mark the track-R milestones.
+A5 (C and C++ flight side) and A6 (bare-metal target) have no plan yet; the roadmap ([§3](08-roadmap.md)) lists them. Track-A milestones cut no release, except the interim `v0.8.0-a4` after A4 ([roadmap §5](08-roadmap.md#5-releases)); the tags `v0.N.0-mN` mark the track-R milestones.
 
 ### Per-standard specifications ([`standards/`](standards/))
 
