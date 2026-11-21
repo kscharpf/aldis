@@ -80,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
       # Before anything else: a head behind main cannot merge, so stop within seconds.
@@ -184,14 +185,18 @@ jobs:
           IMAGE: ${{ needs.prepare.outputs.image }}
         run: |
           rm -f "$RUNNER_TEMP/image-pulled"
+          # shellcheck disable=SC2016  # $IMAGE and $RUNNER_TEMP expand in the inner bash
           setsid bash -c 'docker pull "$IMAGE" > "$RUNNER_TEMP/pull.log" 2>&1; touch "$RUNNER_TEMP/image-pulled"' > /dev/null 2>&1 < /dev/null &
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
       - uses: ./.github/actions/get-xtask
       - name: Room for the image, and the pull
         if: needs.prepare.outputs.container == 'true'
+        env:
+          IMAGE: ${{ needs.prepare.outputs.image }}
         run: |
           # A hosted runner of 2026-10 has about 86 GB free; clear the preinstalled SDKs (one to two
           # minutes) only when a runner has less than the image (about 8 GB) and the build cache need.
@@ -201,7 +206,7 @@ jobs:
             sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           fi
           df -h /
-          if [ -n "${{ needs.prepare.outputs.image }}" ]; then
+          if [ -n "$IMAGE" ]; then
             # bound: 300 rounds of 2 s; the loop leaves as soon as the background pull has ended
             for _ in $(seq 300); do
               [ -e "$RUNNER_TEMP/image-pulled" ] && break
@@ -231,7 +236,8 @@ jobs:
       contents: write # push refs/notes/verify
       statuses: write # set aldis/verify
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # This job pushes refs/notes/verify with the credentials that checkout keeps in .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
           fetch-tags: true
