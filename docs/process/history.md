@@ -101,6 +101,8 @@ Decision of 2026-11-06.
 
 ## decision-rights.md
 
+- **Review follow-up issues (maintainer, 2026-11-21).** 41 issues were open, many of them one-line leftovers of reviews (#640, #678, #686, #712, #713, #732). Nits no longer become issues, a non-blocking finding becomes one only when its fix is out of scope, the milestone exit sweeps the small ones in one pull request, and the process-metrics issue stays for the maintainer's review at each exit.
+
 Examples that followed the tables of section 2:
 
 - **2.1.** OI-35 items 1 and 8 (notes only; 231.0 against 732.1) and AOS-018's limits went to the maintainer; items 2, 3, and 5-7 were answered from the text in the same PR (#61).
