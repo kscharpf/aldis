@@ -17,6 +17,7 @@
 name: train-labels
 
 on:
+  # zizmor: ignore[dangerous-triggers] -- only the default branch is checked out; no PR code runs
   pull_request_target:
     types:
       - opened
@@ -30,16 +31,14 @@ on:
       - closed
   pull_request_review:
     types: [submitted, dismissed]
+  # zizmor: ignore[dangerous-triggers] -- only the default branch is checked out; no PR code runs
   issue_comment:
     types: [created, edited, deleted]
   push:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+permissions: {}
 
 concurrency:
   group: >-
@@ -52,6 +51,10 @@ jobs:
     # An issue_comment on a plain issue is not a pull request: skip it.
     if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # check out the default branch
+      pull-requests: write # read pull requests; label writes need issues: write
+      issues: write # add and remove labels (gh api issues/N/labels), create labels
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,6 +69,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
           # `git fetch origin` in the script needs credentials for a private repository.
+          # shellcheck disable=SC2016  # $GH_TOKEN expands in the helper when git runs it
           git config --global credential.helper \
             '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
           if [ -n "$PR_NUMBER" ]; then
