@@ -196,3 +196,5 @@ Each finding is a GitHub issue labelled `api-feedback` (APP-101). A4 plans no en
 These three stay open as out-of-scope library findings with the dispositions above; the small follow-ups were swept in #735.
 
 Not covered by A4: the C ABI FOP-1 handle with the USLP target (A5 plan); per-FDU TFDF headers and a per-request MAP ID (#235); EPP user data (OI-06); USLP truncated frames, the Insert Zone, AOS B_PDU and VCA; fault cases for the variants.
+
+Update (2026-11-21): the maintainer deferred A5 past v1.0, so the "A5 plan" target of #718 and #719 now lies after v1.0; the maintainer's retargeting of both is pending.

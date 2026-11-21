@@ -12,7 +12,7 @@ v1 is built in two active tracks against one specification (Track C, native C++,
 
 ## 1. Track R — Rust reference (M0–M6)
 
-`aldis-ffi` is frozen ([#490](https://github.com/kscharpf/aldis/issues/490) D-a): it stays in this repository, keeps compiling and passing its tests, and migrates with every core API change. New **C ABI** surface (codec functions in `aldis.h`, engine handles) is added only when a consumer milestone, A5 or an ACFS phase, needs it.
+`aldis-ffi` is frozen ([#490](https://github.com/kscharpf/aldis/issues/490) D-a): it stays in this repository, keeps compiling and passing its tests, and migrates with every core API change. New **C ABI** surface (codec functions in `aldis.h`, engine handles) is added only when a consumer milestone, an ACFS phase (or A5, after v1.0), needs it.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
@@ -32,7 +32,7 @@ Track C (native C++, C0–C5) was retired from v1 and deferred to roadmap Phase 
 
 ## 3. Track A — Reference application (A0–A6, AINT, ACFS)
 
-The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its scenario is specified in [reference-application.md](reference-application.md) (area APP). Its flight and ground sides talk over a loopback link owned by a harness: the Rust nodes run in-process, and the A5 C++ and A6 QEMU flight nodes run as child processes over a lockstep node protocol ([OI-24](09-open-issues.md), [reference-application.md](reference-application.md) §8.2), as does the ACFS cFS flight node, over the same protocol on a loopback TCP stream (APP-118, [reference-application.md](reference-application.md) §10.6, [OI-38](09-open-issues.md)). The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
+The reference application lives in its own workspace, `refapp/`, and uses only the public APIs, as an integrator would. Its scenario is specified in [reference-application.md](reference-application.md) (area APP). Its flight and ground sides talk over a loopback link owned by a harness: the Rust nodes run in-process, and the A6 QEMU flight node, and the A5 C++ flight node after v1.0, run as child processes over a lockstep node protocol ([OI-24](09-open-issues.md), [reference-application.md](reference-application.md) §8.2), as does the ACFS cFS flight node, over the same protocol on a loopback TCP stream (APP-118, [reference-application.md](reference-application.md) §10.6, [OI-38](09-open-issues.md)). The engines are deterministic (GEN-030), so each run of a scenario produces a **golden trace** of every data unit exchanged. Each implementation must reproduce the trace byte for byte.
 
 | Milestone | Content | Entry gate | Exit criteria |
 |---|---|---|---|
@@ -41,8 +41,8 @@ The reference application lives in its own workspace, `refapp/`, and uses only t
 | **A2 Frames** | Downlink TM frames and uplink TC frames, multiplexed and demultiplexed by the `aldis-link` engines (frame engines and multiplexers; [D3](milestones/a1-packets.md)) | A1; M4 | Trace reproduced in CI; API issues found are filed (exited 2026-11-10; [plan](milestones/a2-frames.md)) |
 | **A3 COP-1** ([plan](milestones/a3-cop1.md)) | FOP-1 on the ground, FARM-1 on the flight side, CLCW in the OCF, through the COP-1 engines; injected frame loss exercises retransmission | A2; M4 | Trace reproduced in CI, including the fault cases (exited 2026-11-11; [plan](milestones/a3-cop1.md)) |
 | **A4 Variants** ([plan](milestones/a4-variants.md)) | The AOS and USLP variants of [reference-application.md](reference-application.md) §4.3, on the same engines. The engines are used from A2 on, so A4 no longer replaces loops | A3; M4 | `a4-*` traces reproduced in CI, with the packet projection of the nominal case (APP-003) (exited 2026-11-20; [plan](milestones/a4-variants.md)) |
-| **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | A4 (exited 2026-11-20); M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
-| **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay is after v1 (§7) | A5 | End-to-end ground↔flight demo; figures included in the v1.0 tables |
+| **A5 C and C++** | A C++ flight side using `aldis.hpp` for the engine handles and the C header for the codecs, built against the Rust-backed library (`aldis-ffi`) | Deferred past v1.0 (maintainer, 2026-11-21); see §7. Gate when taken up: A4 (exited 2026-11-20); M5 | The Rust and Rust-via-C-ABI builds reproduce the same golden trace |
+| **A6 Target** | The flight side runs bare-metal under QEMU; footprint, stack, and timing figures published. The application keeps its own run loop; the move onto `aldis-framework` stacks and trace/replay is after v1 (§7) | A4 (exited 2026-11-20) | End-to-end ground↔flight demo; figures included in the v1.0 tables |
 | **AINT Interoperability** ([plan](milestones/aint-interoperability.md)) | The A3 Rust flight node exchanges TM and TC frames and COP-1 (FOP-1 on the ground system's side, FARM-1 on the flight side) with an independent ground system run as a black box, over a real transport driver that steps the node against a socket and a clock, outside the crates (the only new I/O; the crates stay sans-I/O, GEN-030–032). Candidate implementations: YAMCS (recommended) or OSDLP; the plan's D1 chooses, after checking the licence against VER-055 (YAMCS is AGPL-3.0: used as a black box, never read at source level, [decision-rights](process/decision-rights.md) §2.8). Every discrepancy is filed as an open issue or reported upstream by the maintainer. The plan is written before the milestone starts (§6 rule 1): `docs/milestones/aint-interoperability.md`, trace scope `aint` | A3 (exited 2026-11-11) | The nominal and lossy-link COP-1 cases pass against the independent implementation; every discrepancy filed. Gates no release (exited 2026-11-12, YAMCS 5.14.0; [plan](milestones/aint-interoperability.md)) |
 | **ACFS cFS flight side** ([plan](milestones/acfs-flight-side.md)) | A second flight side: NASA cFS apps (cFE, OSAL, pc-linux PSP) that call Aldis through `aldis.h`, run in lockstep with the harness, and reproduce the Rust flight side's golden traces ([reference-application.md](reference-application.md) §10). Three phases, below | Per phase, below | Every phase's traces reproduced in the nightly job; gates no release |
 
@@ -53,7 +53,7 @@ ACFS phases ([plan](milestones/acfs-flight-side.md) D1). Each phase follows one 
 | Phase | Content | Entry gate | Exit criteria |
 |---|---|---|---|
 | **P1 Packets** | cFS apps exchange Space Packets with the harness; command ingest and telemetry output through the M1 codecs' C ABI | A1; the M1 codecs' C ABI (M2 WP-0c, #72) | `a1-*` traces reproduced in nightly CI |
-| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI; M6 WP-3 (merged, #593; it lands before A5 and ACFS P2, #490 D-b) | `a2-*` traces reproduced in nightly CI |
+| **P2 Frames** | TM and TC frames through the C ABI handles of the `aldis-link` engines | P1; A2; the M4 engine handles in the C ABI; M6 WP-3 (merged, #593; it lands before ACFS P2, #490 D-b) | `a2-*` traces reproduced in nightly CI |
 | **P3 COP-1** | FARM-1 through its C ABI handle | P2 (so M4); A3 (exited 2026-11-11); the M3 FARM-1 handle | `a3-*` traces reproduced in nightly CI, fault cases included |
 
 The alternative to one milestone with phases is three milestones, one per row; the plan's D1 compares them.
@@ -79,9 +79,11 @@ Order of work (maintainer, 2026-11-10):
 | 5 | M5 (complete, `v0.6.0-m5`) | A2 (complete) |
 | 6 | M6 Phases 1–2 (complete) | A3 (complete) |
 | 7 | | AINT (complete) |
-| 8 | M6 Phase 3 and exit (complete) | A4 (complete), then A5 |
+| 8 | M6 Phase 3 and exit (complete) | A4 (complete) |
 | 9 | | A6 |
 | 10 | v1.0 release (M6 and A6 exited) | |
+
+ACFS P1–P3 is the C ABI's end-to-end proof for v1.0, and `aldis.hpp` ships in v1.0 on its existing C++ tests (CABI-072); A5 is deferred past v1.0 (maintainer, 2026-11-21).
 
 ## 5. Releases
 
@@ -113,6 +115,7 @@ After v1, SDLS comes before the framework (maintainer, 2026-11-06). The TM codes
 
 | Release | Standards | Rationale |
 |---|---|---|
+| after v1.0 | A5 C and C++ (track A): the C++ flight node over `aldis.hpp` and `aldis.h`, Rust-backed and native, reproducing the golden trace; the first post-v1 item (maintainer, 2026-11-21). The A4 findings #718 and #719 wait for its plan | Deferred from the v1.0 track-A path: ACFS P1–P3 proves the C ABI end to end, and `aldis.hpp` ships on its C++ tests (CABI-072). Its entry gate is A4 (exited 2026-11-20) and M5 |
 | v1.1 | Minimal TC sync/coding: CLTU (BCH) build/parse and the TC randomizer (231.0 §3, §5–6); the TM part (ASM, randomizer) is in M5 (OI-12), and the UTC/TAI leap-second table trait | Lets v1 frames reach real radios without an external modem library |
 | v1.1 | 355.0 SDLS baseline: the 355.0 procedures with the 352.0 baseline algorithms (AES-GCM authenticated encryption). Cryptography goes through a pluggable provider trait: no third-party runtime dependency in Layers 0–2 (GEN-001), a test provider for the vectors, real providers outside the core. Scope and provider boundary: OI-84, OI-85 | Maintainer decision 2026-11-06: SDLS before the framework. Hooks already reserved in v1 (API-070…075) |
 | v1.1 | Carry-overs from M4: the FOP-1 hand-off of Segment Header FDUs and per-FDU TFDF headers ([#235](https://github.com/kscharpf/aldis/issues/235)); the `FrameReceiver` stripping the SDLS Security Header and Trailer ([#230](https://github.com/kscharpf/aldis/issues/230)); the `scripts/test-reverify` flake ([#261](https://github.com/kscharpf/aldis/issues/261)); the `cargo xtask metrics` review count ([#287](https://github.com/kscharpf/aldis/issues/287)); from the M5 retrospective: the C vector harness beyond CRC-16, SPP, EPP, TM, FARM-1 and sync ([#289](https://github.com/kscharpf/aldis/issues/289)), CERT C++ analysis of `aldis.hpp` ([#278](https://github.com/kscharpf/aldis/issues/278)), the rise of the verify run time ([#290](https://github.com/kscharpf/aldis/issues/290)), agent-worktree cleanup ([#295](https://github.com/kscharpf/aldis/issues/295)), a guard against pushing to a merged PR's branch ([#291](https://github.com/kscharpf/aldis/issues/291)) | #235 was planned for M4 WP-7 and did not land. #230 is done with the SDLS baseline (row above). #261 is fixed before v1.1 work starts |
