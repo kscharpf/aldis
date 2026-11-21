@@ -290,6 +290,7 @@ lab() { # lab <case> <exit> <log must contain; "-": no write at all> [args]
     out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" "$@" 7 2>&1)"
     rc=$?
     log="$(cat "$STUB/writes.log")"
+    last_out="$out"
     ok=1
     [ "$rc" -eq "$want_rc" ] || ok=0
     if [ "$want" = - ]; then
@@ -322,6 +323,14 @@ nolog "--label: READY FOR TRAIN removes nothing absent" DELETE
 ready "NOT_READY,docs"
 lab "--label: READY FOR TRAIN removes NOT_READY" 0 \
     "POST labels[]=READY_FOR_TRAIN DELETE repos/{owner}/{repo}/issues/7/labels/NOT_READY" --label
+# The summary line lists each change once.
+if grep -Fxq "labels: changed: +READY_FOR_TRAIN -NOT_READY" <<<"$last_out"; then
+    echo "ok: --label summary lists the changes once"
+else
+    echo "FAIL: --label summary lists the changes once"
+    printf '%s\n' "$last_out" | tail -n 3
+    failures=$((failures + 1))
+fi
 if grep -Fq "label create READY_FOR_TRAIN --force" "$STUB/writes.log" &&
     grep -Fq "label create NOT_READY --force" "$STUB/writes.log"; then
     echo "ok: --label creates the labels"
@@ -351,7 +360,16 @@ touch "$STUB/write.fail"
 lab "--label: a failing label write exits 2" 2 "label create" --label
 rm -f "$STUB/write.fail"
 ready ""
-lab "--label after the number" 0 "POST labels[]=READY_FOR_TRAIN" --label --train
+lab "--label with --train" 0 "POST labels[]=READY_FOR_TRAIN" --label --train
+# --label stands after the number too.
+ready ""
+out="$(cd "$repo" && PATH="$work/bin:$PATH" "$script" 7 --label 2>&1)"
+if grep -Fq "labels: changed: +READY_FOR_TRAIN" <<<"$out"; then
+    echo "ok: --label after the number"
+else
+    echo "FAIL: --label after the number"
+    failures=$((failures + 1))
+fi
 ready "NOT_READY"
 lab "without --label no gh write" 0 - --train
 lab "without --label, default verdict, no gh write" 0 -

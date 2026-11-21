@@ -3,13 +3,16 @@
 # without anyone running a command. The labels are advisory: scripts/train and
 # scripts/pr-status compute the verdict themselves and never read them.
 #
-# Security: the events that run for a pull request use `pull_request_target`, which has the
-# token of the base repository, so this workflow checks out the default branch only (never the
-# code of a pull request) and runs the script of that branch. Nothing from the pull request
-# is used as code; the PR number is passed as an argument.
+# Security: PR changes and PR comments use `pull_request_target` and `issue_comment`, which
+# have the token of the base repository, so this workflow checks out the default branch only
+# (never the code of a pull request) and runs the script of that branch. A review uses
+# `pull_request_review`, which runs the workflow file of the PR's merge ref and, for a PR from
+# a fork, has a read-only token: its label write then fails and the next PR comment corrects
+# the label. Nothing from the pull request is used as code; the PR number is passed as an
+# argument.
 # A label change made with GITHUB_TOKEN starts no workflow run, so the labels cannot loop.
 #
-# Per pull request: a change of the PR, a review, a PR comment (a reply to a review).
+# Per pull request: a change of the PR (also its closing, which removes the labels), a review, a PR comment (a reply to a review).
 # Every open pull request: a push to main (it changes who conflicts) and a manual run.
 name: train-labels
 
@@ -24,6 +27,7 @@ on:
       - labeled
       - unlabeled
       - edited
+      - closed
   pull_request_review:
     types: [submitted, dismissed]
   issue_comment:

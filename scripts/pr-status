@@ -138,7 +138,11 @@ set_labels() {
         echo "#$n: could not set the labels (wanted: ${want})" >&2
         return 1
     fi
-    echo "labels: ${changes:+changed:$changes}${changes:-unchanged (${want})}"
+    if [ -n "$changes" ]; then
+        echo "labels: changed:$changes"
+    else
+        echo "labels: unchanged ($want)"
+    fi
 }
 
 status_one() {
