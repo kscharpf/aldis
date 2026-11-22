@@ -6,7 +6,6 @@
 #![expect(
     clippy::too_many_lines,
     clippy::large_stack_arrays,
-    clippy::unnecessary_box_returns,
     clippy::many_single_char_names,
     reason = "test-only harness: one long call sequence per contract, and the 18 KB storage a C caller declares (RS-018)"
 )]
@@ -43,7 +42,10 @@ fn fop1_storage() -> Box<aldis_fop1_t> {
 
 const fn farm1_config() -> aldis_farm1_config_t {
     aldis_farm1_config_t {
+        scid: 42,
         vc_id: 1,
+        fecf: 0,
+        max_frame_len: 64,
         status: 0,
         retransmission_allowed: 1,
         window: 8,
@@ -67,17 +69,26 @@ const fn fop1_config() -> aldis_fop1_config_t {
     }
 }
 
-const fn farm1_ad(n_s: u8, data: &[u8]) -> aldis_farm1_input_t {
+fn tc_wire(flags: u8, vc_id: u8, n_s: u8, payload: &[u8]) -> Vec<u8> {
+    let total = 5usize.saturating_add(payload.len());
+    let len_minus_1 = u16::try_from(total.saturating_sub(1)).unwrap_or(0);
+    let vc_len = (u16::from(vc_id) << 10) | len_minus_1;
+    let [hi, lo] = vc_len.to_be_bytes();
+    let mut out = Vec::with_capacity(total);
+    // SCID = 42 (0x02A): upper 2 bits 0, lower 8 bits 0x2A.
+    out.extend_from_slice(&[flags, 42, hi, lo, n_s]);
+    out.extend_from_slice(payload);
+    out
+}
+
+const fn farm1_frame_input(wire: &[u8]) -> aldis_farm1_input_t {
     aldis_farm1_input_t {
-        kind: ALDIS_FARM1_INPUT_FRAME_AD,
-        sequence_number: n_s,
-        v_star: 0,
-        vc_id: 1,
+        kind: ALDIS_FARM1_INPUT_FRAME,
         buffer_available: 1,
         no_rf_available: 0,
         no_bit_lock: 0,
-        data: data.as_ptr(),
-        data_len: data.len(),
+        data: wire.as_ptr(),
+        data_len: wire.len(),
     }
 }
 
@@ -199,7 +210,11 @@ fn configurations_are_checked_once() {
     // SAFETY: every pointer is to a live local.
     unsafe {
         for (cfg, want) in [
+            (farm(|c| c.scid = 1024), ALDIS_ERR_OUT_OF_RANGE),
             (farm(|c| c.vc_id = 64), ALDIS_ERR_OUT_OF_RANGE),
+            (farm(|c| c.fecf = 2), ALDIS_ERR_INVALID_FIELD),
+            (farm(|c| c.max_frame_len = 5), ALDIS_ERR_INVALID_CONFIG),
+            (farm(|c| c.max_frame_len = 1025), ALDIS_ERR_INVALID_CONFIG),
             (farm(|c| c.status = 8), ALDIS_ERR_OUT_OF_RANGE),
             (farm(|c| c.window = 7), ALDIS_ERR_INVALID_CONFIG),
             (
@@ -276,7 +291,8 @@ fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
     unsafe {
         assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
         // E1: Accept, V(R) := 1.
-        let input = farm1_ad(0, &data);
+        let wire0 = tc_wire(0x00, 1, 0, &data);
+        let input = farm1_frame_input(&wire0);
         assert_eq!(
             aldis_farm1_step(
                 &raw mut *s,
@@ -307,7 +323,8 @@ fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
             count: 77,
             ..Default::default()
         };
-        let input = farm1_ad(1, &data);
+        let wire1 = tc_wire(0x00, 1, 1, &data);
+        let input = farm1_frame_input(&wire1);
         assert_eq!(
             aldis_farm1_step(
                 &raw mut *s,
@@ -346,7 +363,7 @@ fn a_farm1_step_returns_its_actions_and_leaves_the_state_on_error() {
         let flags = aldis_farm1_input_t {
             kind: ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS,
             no_rf_available: 1,
-            ..farm1_ad(0, &[])
+            ..farm1_frame_input(&[])
         };
         assert_eq!(
             aldis_farm1_step(
@@ -398,18 +415,17 @@ fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
             )
         };
         // Every frame kind of VC 2 is refused, with the field named, and nothing happens.
-        for kind in [
-            ALDIS_FARM1_INPUT_FRAME_AD,
-            ALDIS_FARM1_INPUT_FRAME_BD,
-            ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK,
-            ALDIS_FARM1_INPUT_FRAME_BC_SET_VR,
-            ALDIS_FARM1_INPUT_FRAME_BC_OTHER,
+        let unlock = [0x00_u8];
+        let set_vr = [0x82_u8, 0x00, 0x05];
+        let unknown = [0xFF_u8];
+        for wire in [
+            tc_wire(0x00, 2, 0, &data),
+            tc_wire(0x20, 2, 0, &data),
+            tc_wire(0x30, 2, 0, &unlock),
+            tc_wire(0x30, 2, 0, &set_vr),
+            tc_wire(0x30, 2, 0, &unknown),
         ] {
-            let input = aldis_farm1_input_t {
-                kind,
-                vc_id: 2,
-                ..farm1_ad(0, &data)
-            };
+            let input = farm1_frame_input(&wire);
             assert_eq!(
                 step(&mut s, input, &mut out, &mut actions, &mut d),
                 ALDIS_ERR_UNKNOWN_CHANNEL
@@ -419,24 +435,29 @@ fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
                 (ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_FIELD_VC_ID)
             );
         }
-        // A VCID above 63 is out of range.
-        let wide = aldis_farm1_input_t {
-            vc_id: 64,
-            ..farm1_ad(0, &data)
-        };
+        // A frame with a bad FECF on a FECF-enabled channel is refused (TC-021, TC-023).
+        let mut s_fecf = farm1_storage();
+        let cfg_fecf = aldis_farm1_config_t { fecf: 1, ..cfg };
         assert_eq!(
-            step(&mut s, wide, &mut out, &mut actions, &mut d),
-            ALDIS_ERR_OUT_OF_RANGE
+            aldis_farm1_init(&raw mut *s_fecf, &raw const cfg_fecf, null_mut()),
+            0
         );
+        let bad_fecf = tc_wire(0x00, 1, 0, &[9, 8, 7, 0x00, 0x00]);
         assert_eq!(
-            (d.kind, d.field),
-            (ALDIS_ERR_OUT_OF_RANGE, ALDIS_FIELD_VC_ID)
+            step(
+                &mut s_fecf,
+                farm1_frame_input(&bad_fecf),
+                &mut out,
+                &mut actions,
+                &mut d
+            ),
+            ALDIS_ERR_CRC_MISMATCH
         );
-        // The other kinds do not read the field.
+        aldis_farm1_deinit(&raw mut *s_fecf);
+        // The other kinds do not read the frame bytes.
         let release = aldis_farm1_input_t {
             kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
-            vc_id: 99,
-            ..farm1_ad(0, &data)
+            ..farm1_frame_input(&[])
         };
         assert_eq!(step(&mut s, release, &mut out, &mut actions, &mut d), 0);
         // The state is unchanged: V(R) 0, FARM-B Counter 0, and the frame of VC 1 is accepted.
@@ -445,8 +466,15 @@ fn a_farm1_step_refuses_a_frame_of_another_virtual_channel() {
             0
         );
         assert_eq!((status.v_r, status.farm_b_counter), (0, 0));
+        let ok_wire = tc_wire(0x00, 1, 0, &data);
         assert_eq!(
-            step(&mut s, farm1_ad(0, &data), &mut out, &mut actions, &mut d),
+            step(
+                &mut s,
+                farm1_frame_input(&ok_wire),
+                &mut out,
+                &mut actions,
+                &mut d
+            ),
             0
         );
     }
@@ -465,7 +493,8 @@ fn a_farm1_step_checks_every_argument() {
     // that is rejected before any access through it.
     unsafe {
         assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
-        let good = farm1_ad(0, &data);
+        let wire = tc_wire(0x00, 1, 0, &data);
+        let good = farm1_frame_input(&wire);
         let call = |s: *mut aldis_farm1_t,
                     input: *const aldis_farm1_input_t,
                     out: *mut u8,
@@ -915,7 +944,8 @@ fn handles_on_distinct_storage_run_on_different_threads_at_once() {
                 unsafe {
                     assert_eq!(aldis_farm1_init(&raw mut *s, &raw const cfg, null_mut()), 0);
                     for i in 0..(u32::from(n) * 50) {
-                        let input = farm1_ad(u8::try_from(i % 256).unwrap(), &data);
+                        let wire = tc_wire(0x00, 1, u8::try_from(i % 256).unwrap(), &data);
+                        let input = farm1_frame_input(&wire);
                         assert_eq!(
                             aldis_farm1_step(
                                 &raw mut *s,
