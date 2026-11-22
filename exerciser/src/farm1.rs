@@ -141,7 +141,11 @@ fn uslp_group(t: &mut Tally) {
             vc_id: vc,
             map_id: map,
             kind,
-            vcf_count: bb(7),
+            vcf_count: if kind == u::FrameKind::SequenceControlled {
+                bb(7)
+            } else {
+                bb(0)
+            },
         };
         let content = u::FrameContent {
             tfdf: header,
@@ -158,29 +162,52 @@ fn uslp_group(t: &mut Tally) {
             continue;
         };
         let checked = checked.into_view();
-        let frame = Farm1Frame::from_uslp(&checked);
-        t.check(match (kind, header.upid, frame) {
-            (
-                u::FrameKind::SequenceControlled,
-                _,
-                Ok(Farm1Frame::Ad {
-                    sequence_number, ..
-                }),
-            ) => sequence_number.get() == 7,
-            (u::FrameKind::Expedited, _, Ok(Farm1Frame::Bd { .. })) => true,
-            (
-                u::FrameKind::ProtocolControl,
-                u::Upid::Cop1ControlCommands,
-                Ok(Farm1Frame::Bc { command }),
-            ) => command == Some(set),
-            (u::FrameKind::ProtocolControl, _, Ok(Farm1Frame::Bc { command })) => command.is_none(),
-            _ => false,
-        });
-        t.check(matches!(
-            Farm1Input::from_uslp(&checked, bb(true)),
-            Ok(Farm1Input::Frame { vc_id, buffer_available: true, .. }) if vc_id.get() == 5
-        ));
+        check_uslp_farm1(t, kind, header.upid, set, &checked);
     }
+}
+
+/// Checks `Farm1Frame::from_uslp` and `Farm1Input::from_uslp` on one checked USLP frame.
+fn check_uslp_farm1(
+    t: &mut Tally,
+    kind: aldis_uslp::FrameKind,
+    upid: aldis_uslp::Upid,
+    set: ControlCommand,
+    checked: &aldis_core::Checked<aldis_uslp::UslpFrame<'_>>,
+) {
+    use aldis_uslp as u;
+    let is_bad_bc = kind == u::FrameKind::ProtocolControl && upid != u::Upid::Cop1ControlCommands;
+    let is_reserved_cmd = |e: aldis_core::Error| {
+        e.kind() == ErrorKind::ReservedValue && e.field() == Some(field::CONTROL_COMMAND)
+    };
+    let frame = Farm1Frame::from_uslp(checked);
+    t.check(match (kind, is_bad_bc, frame) {
+        (
+            u::FrameKind::SequenceControlled,
+            _,
+            Ok(Farm1Frame::Ad {
+                sequence_number, ..
+            }),
+        ) => sequence_number.get() == 7,
+        (u::FrameKind::Expedited, _, Ok(Farm1Frame::Bd { .. })) => true,
+        (u::FrameKind::ProtocolControl, false, Ok(Farm1Frame::Bc { command })) => {
+            command == Some(set)
+        }
+        (u::FrameKind::ProtocolControl, true, Err(e)) => is_reserved_cmd(e),
+        _ => false,
+    });
+    let input = Farm1Input::from_uslp(checked, bb(true));
+    t.check(match (is_bad_bc, input) {
+        (true, Err(e)) => is_reserved_cmd(e),
+        (
+            false,
+            Ok(Farm1Input::Frame {
+                vc_id,
+                buffer_available: true,
+                ..
+            }),
+        ) => vc_id.get() == 5,
+        _ => false,
+    });
 }
 
 /// The window constructors and accessors.
