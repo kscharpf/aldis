@@ -15,7 +15,7 @@
 /**
  * ABI minor version (CABI-060).
  */
-#define ALDIS_ABI_VERSION_MINOR 13
+#define ALDIS_ABI_VERSION_MINOR 14
 
 /**
  * ABI patch version (CABI-060).
@@ -254,9 +254,10 @@
 /**
  * 64-bit words of one `aldis_farm1_t` (CABI-031; 232.1 §6).
  *
- * The tag and the engine state; the build fails when the state outgrows it.
+ * The tag, the engine state, and its TC channel table for Frame Validation Checks (TC-021,
+ * TC-023); the build fails when the state outgrows it.
  */
-#define ALDIS_FARM1_WORDS 8
+#define ALDIS_FARM1_WORDS 20
 
 /**
  * Spacecraft Identifier.
@@ -2288,38 +2289,24 @@ enum aldis_farm1_input
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   /**
-   * A valid Type-AD frame: E1 to E5 (`sequence_number`, `data`, `buffer_available`).
+   * A raw TC Transfer Frame in `data`/`data_len` (`buffer_available`), validated with TC Frame
+   * Validation Checks (232.0 §4.4.9.3.3; TC-021, TC-023) before FARM-1 runs: E1 to E8, or E9
+   * for a valid Type-BC frame with an unrecognised Control Command.
    */
-  ALDIS_FARM1_INPUT_FRAME_AD = 0,
-  /**
-   * A valid Type-BD frame: E6 (`data`).
-   */
-  ALDIS_FARM1_INPUT_FRAME_BD = 1,
-  /**
-   * A valid Type-BC frame carrying the Unlock command: E7.
-   */
-  ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK = 2,
-  /**
-   * A valid Type-BC frame carrying the Set V(R) command: E8 (`v_star`).
-   */
-  ALDIS_FARM1_INPUT_FRAME_BC_SET_VR = 3,
-  /**
-   * A valid Type-BC frame whose data field is neither Unlock nor Set V(R): E9.
-   */
-  ALDIS_FARM1_INPUT_FRAME_BC_OTHER = 4,
+  ALDIS_FARM1_INPUT_FRAME = 0,
   /**
    * A frame that failed the Frame Validation Checks: E9.
    */
-  ALDIS_FARM1_INPUT_INVALID_FRAME = 5,
+  ALDIS_FARM1_INPUT_INVALID_FRAME = 1,
   /**
    * The Buffer Release Signal: E10.
    */
-  ALDIS_FARM1_INPUT_BUFFER_RELEASED = 6,
+  ALDIS_FARM1_INPUT_BUFFER_RELEASED = 2,
   /**
    * Sets the No RF Available and No Bit Lock Flags of the CLCW (`no_rf_available`,
    * `no_bit_lock`); not a COP-1 event (232.0 §4.2.1.8).
    */
-  ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS = 7,
+  ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS = 3,
 };
 #ifndef __cplusplus
 #if __STDC_VERSION__ >= 202311L
@@ -5320,14 +5307,27 @@ typedef struct {
 } aldis_farm1_t;
 
 /**
- * The managed parameters of one FARM-1 and its start (232.1 §6.1, §7.3 Table 7-2; COP-030,
- * COP-035).
+ * The managed parameters of one FARM-1, its TC channel, and its start (232.0 §4.4.9, §5;
+ * 232.1 §6.1, §7.3 Table 7-2; TC-021, COP-030, COP-035).
  */
 typedef struct {
   /**
-   * The Virtual Channel Identifier the CLCW reports, 0 to 63 (232.0 §4.2.1.6).
+   * The Spacecraft Identifier, 0 to 1023 (232.0 §4.1.2.5).
+   */
+  uint16_t scid;
+  /**
+   * The Virtual Channel Identifier the CLCW reports and frames must match, 0 to 63 (232.0
+   * §4.1.2.6, §4.2.1.6).
    */
   uint8_t vc_id;
+  /**
+   * 1 when the frames carry the Frame Error Control Field, 0 when not (232.0 §4.1.4).
+   */
+  uint8_t fecf;
+  /**
+   * The Maximum Transfer Frame Length, 6 to 1024 octets (232.0 §5, TC-021).
+   */
+  size_t max_frame_len;
   /**
    * The Status Field of the CLCW, 0 to 7, passed through (232.0 §4.2.1.4).
    */
@@ -5362,20 +5362,6 @@ typedef struct {
    */
   uint32_t kind;
   /**
-   * N(S) of the Type-AD frame (232.0 §4.1.2.8).
-   */
-  uint8_t sequence_number;
-  /**
-   * V*(R) of the Set V(R) command (232.0 §4.1.3.3).
-   */
-  uint8_t v_star;
-  /**
-   * The Virtual Channel Identifier of a frame input (`FRAME_*`), 0 to 63; a value other than
-   * the `vc_id` of the configuration is refused with `ALDIS_ERR_UNKNOWN_CHANNEL` (232.1
-   * §3.3.1; COP-037). Not read by the other kinds.
-   */
-  uint8_t vc_id;
-  /**
    * 1 when the caller has a buffer for the FDU of a Type-AD frame, 0 when not; it selects E1
    * or E2 for N(S) = V(R) (232.1 §6.3.2.3; COP-033).
    */
@@ -5389,8 +5375,9 @@ typedef struct {
    */
   uint8_t no_bit_lock;
   /**
-   * The data field of a Type-AD or Type-BD frame, read once and copied to `out` when accepted
-   * (API-060); `NULL` only with `data_len` 0.
+   * For `ALDIS_FARM1_INPUT_FRAME`: the raw TC Transfer Frame octets, validated with TC Frame
+   * Validation Checks before FARM-1 runs (232.0 §4.4.9.3.3; TC-021, TC-023, API-060); `NULL`
+   * only with `data_len` 0.
    */
   const uint8_t *data;
   /**
@@ -9876,9 +9863,10 @@ uint32_t aldis_epp_config_check(const aldis_epp_config_t *cfg, aldis_error_detai
  *
  * # Errors
  * `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, or a flag that is not 0
- * or 1; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `clcw_status`); `ALDIS_ERR_INVALID_CONFIG`
- * (`farm_sliding_window_w`, `farm_positive_window_pw`, `farm_negative_window_nw`) for a window
- * that 232.1 §6.1.8.3 and Table 7-2 do not allow.
+ * or 1; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `clcw_status`);
+ * `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`, `farm_sliding_window_w`,
+ * `farm_positive_window_pw`, `farm_negative_window_nw`) for a channel or window that 232.0 §5 or
+ * 232.1 §6.1.8.3 and Table 7-2 do not allow.
  *
  * # Safety
  * `storage` is valid for writes of one `aldis_farm1_t` and outlives its use; `cfg` is valid for

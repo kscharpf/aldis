@@ -575,7 +575,11 @@ static int run_farm1(const jval *file) {
         cfgj = jget(sc, "config");
         memset(&err, 0, sizeof err);
         memset(&storage, 0xA5, sizeof storage);
+        memset(&cfg, 0, sizeof cfg);
+        cfg.scid = (uint16_t)jnum(cfgj, "scid");
         cfg.vc_id = (uint8_t)jnum(cfgj, "vcid");
+        cfg.fecf = (uint8_t)jnum(cfgj, "fecf");
+        cfg.max_frame_len = 1024;
         cfg.status = (uint8_t)jnum(cfgj, "status_field");
         cfg.retransmission_allowed = (uint8_t)jnum(jget(cfgj, "window"), "retransmission_allowed");
         cfg.window = (uint16_t)jnum(jget(cfgj, "window"), "w");
@@ -608,20 +612,16 @@ static int run_farm1(const jval *file) {
                 const jval *frame = jget(in, "frame");
                 const jval *dl = jget(e0, "deliver");
                 size_t flen = 0;
-                size_t dlen = 0;
                 uint8_t *fr = hex_to_heap(jstr(frame, "frame_hex"), &flen);
-                uint8_t *data = hex_to_heap(jstr(dl, "data_hex"), &dlen);
                 uint8_t out[16];
                 aldis_farm1_input_t input;
                 aldis_farm1_actions_t actions;
                 memset(&input, 0, sizeof input);
                 memset(&actions, 0, sizeof actions);
-                input.kind = ALDIS_FARM1_INPUT_FRAME_AD;
-                input.sequence_number = flen > 4 ? fr[4] : 0;
-                input.vc_id = cfg.vc_id;
+                input.kind = ALDIS_FARM1_INPUT_FRAME;
                 input.buffer_available = (uint8_t)jnum(frame, "buffer_available");
-                input.data = data;
-                input.data_len = dlen;
+                input.data = fr;
+                input.data_len = flen;
                 if (aldis_farm1_step(&storage, &input, now, out, sizeof out, &actions, &err) !=
                     ALDIS_OK) {
                     fail("aldis_farm1_step");
@@ -640,7 +640,6 @@ static int run_farm1(const jval *file) {
                     }
                 }
                 free(fr);
-                free(data);
             } else {
                 fail("a farm1 input this harness does not handle");
             }

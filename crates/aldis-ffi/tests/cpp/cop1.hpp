@@ -285,31 +285,14 @@ inline aldis_farm1_input_t farm1_blank() {
     return in;
 }
 
-/// The input of a TC Transfer Frame that passed the Frame Validation Checks (232.0 §4.1.2,
-/// §4.1.3.3, §4.1.4): the bypass and control command flags give the type, the data field follows
-/// the five-octet header and precedes the FECF.
-inline aldis_farm1_input_t farm1_frame(bool fecf, const std::vector<std::uint8_t>& octets,
-                                       bool buffer_available, std::vector<std::uint8_t>& data) {
-    const std::size_t trailer = fecf ? 2 : 0;
-    data.assign(octets.begin() + 5, octets.end() - static_cast<std::ptrdiff_t>(trailer));
-    const bool bypass = (octets[0] & 0x20) != 0;
-    const bool control = (octets[0] & 0x10) != 0;
+/// The input of a raw TC Transfer Frame: `aldis_farm1_step` runs the Frame Validation Checks
+/// before FARM-1 sees it (232.0 §4.4.9.3.3; TC-021, TC-023).
+inline aldis_farm1_input_t farm1_frame(std::vector<std::uint8_t> octets, bool buffer_available,
+                                       std::vector<std::uint8_t>& data) {
+    data = std::move(octets);
     aldis_farm1_input_t in = farm1_blank();
-    in.vc_id = (octets[2] >> 2) & 0x3F;
+    in.kind = ALDIS_FARM1_INPUT_FRAME;
     in.buffer_available = buffer_available ? 1 : 0;
-    if (!bypass) {
-        in.kind = ALDIS_FARM1_INPUT_FRAME_AD;
-        in.sequence_number = octets[4];
-    } else if (!control) {
-        in.kind = ALDIS_FARM1_INPUT_FRAME_BD;
-    } else if (data.size() == 1 && data[0] == 0x00) {
-        in.kind = ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK;
-    } else if (data.size() == 3 && data[0] == 0x82 && data[1] == 0x00) {
-        in.kind = ALDIS_FARM1_INPUT_FRAME_BC_SET_VR;
-        in.v_star = data[2];
-    } else {
-        in.kind = ALDIS_FARM1_INPUT_FRAME_BC_OTHER;
-    }
     return in;
 }
 
@@ -378,7 +361,10 @@ inline Tally run_farm1(const std::string& path) {
         const Value& w = c.at("window");
         const bool allowed = w.at("retransmission_allowed").flag();
         aldis_farm1_config_t cfg{};
+        cfg.scid = static_cast<std::uint16_t>(c.at("scid").num());
         cfg.vc_id = byte(c.at("vcid"));
+        cfg.fecf = c.at("fecf").flag() ? 1 : 0;
+        cfg.max_frame_len = 1024;
         cfg.status = byte(c.at("status_field"));
         cfg.retransmission_allowed = allowed ? 1 : 0;
         cfg.window = static_cast<std::uint16_t>(w.at("w").num());
@@ -405,7 +391,7 @@ inline Tally run_farm1(const std::string& path) {
             } else {
                 aldis_farm1_input_t in = farm1_blank();
                 if (key == "frame") {
-                    in = farm1_frame(c.at("fecf").flag(), unhex(v.at("frame_hex").str()),
+                    in = farm1_frame(unhex(v.at("frame_hex").str()),
                                      v.at("buffer_available").flag(), data);
                 } else if (key == "invalid_frame") {
                     in.kind = ALDIS_FARM1_INPUT_INVALID_FRAME;
