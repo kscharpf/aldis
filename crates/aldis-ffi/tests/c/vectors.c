@@ -554,9 +554,9 @@ static int run_tm(const jval *c) {
     return 1;
 }
 
-/* FARM-1 (232.1 §6): the scenario "cop1-farm1-clcw-fields" only. An AD frame is driven by its
- * sequence number N(S) (octet 4 of the frame) and the data its expectation delivers; a query
- * compares the CLCW the engine reports (COP-035) with the vector's clcw_hex. */
+/* FARM-1 (232.1 §6): the scenario "cop1-farm1-clcw-fields" only. Each frame step passes the raw
+ * TC Transfer Frame bytes (`frame_hex`) via `ALDIS_FARM1_INPUT_FRAME`, where `aldis_farm1_step`
+ * validates the frame before FARM-1 runs; a query compares the reported CLCW with `clcw_hex`. */
 static int run_farm1(const jval *file) {
     const jval *scenarios = jget(file, "scenarios");
     const jval *cfgj;

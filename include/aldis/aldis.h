@@ -9888,12 +9888,14 @@ uint32_t aldis_farm1_init(aldis_farm1_t *storage,
  * `ALDIS_ERR_INVALID_STATE` for the one cell Table 6-1 marks "Not applicable" (a Type-AD frame
  * with N(S) = V(R) and a buffer available in S2: feed `BUFFER_RELEASED` first, COP-033);
  * `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) if the FDU does not fit `out_cap`;
- * `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`) for a frame input of another VC than the configured one
- * (COP-037); `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`) for a frame input with a `vc_id` above 63;
- * `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input `kind` with no constant, a
- * flag that is not 0 or 1, or a CABI-022 violation (`NULL`, misalignment, a wrapping range, or
- * `out` or `actions` overlapping the storage, `input->data`, or each other). On an error the state
- * is unchanged and `actions` is not written (API-058).
+ * for `ALDIS_FARM1_INPUT_FRAME`, any TC Frame Validation Check error (232.0 §4.4.9.3.3; TC-021):
+ * `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for another spacecraft or VC than the
+ * configured one (COP-037), `ALDIS_ERR_CRC_MISMATCH` for a bad FECF, `ALDIS_ERR_INCOMPLETE` /
+ * `ALDIS_ERR_LENGTH_MISMATCH` / `ALDIS_ERR_MALFORMED` / `ALDIS_ERR_RESERVED_VALUE` for a
+ * malformed or invalid frame; `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input
+ * `kind` with no constant, a flag that is not 0 or 1, or a CABI-022 violation (`NULL`,
+ * misalignment, a wrapping range, or `out` or `actions` overlapping the storage, `input->data`,
+ * or each other). On an error the state is unchanged and `actions` is not written (API-058).
  *
  * # Safety
  * `h` is a handle from `aldis_farm1_init` whose storage is still valid, or detectably invalid

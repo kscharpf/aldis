@@ -1731,7 +1731,6 @@ fn uslp(t: &mut Tally) {
 
 // ---- end USLP
 
-/// The FARM-1 handle (M3 WP-6): init, a step that delivers an FDU, a step that refuses, the
 /// Builds a frame input for `farm1_handle`.
 const fn farm1_frame_in(wire: &[u8]) -> aldis_farm1_input_t {
     aldis_farm1_input_t {
@@ -1744,6 +1743,7 @@ const fn farm1_frame_in(wire: &[u8]) -> aldis_farm1_input_t {
     }
 }
 
+/// The FARM-1 handle (M3 WP-6): init, a step that delivers an FDU, a step that refuses, the
 /// read-only status, and deinit.
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
 fn farm1_handle(t: &mut Tally) {

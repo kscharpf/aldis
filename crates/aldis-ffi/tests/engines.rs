@@ -210,7 +210,11 @@ fn configurations_are_checked_once() {
     // SAFETY: every pointer is to a live local.
     unsafe {
         for (cfg, want) in [
+            (farm(|c| c.scid = 1024), ALDIS_ERR_OUT_OF_RANGE),
             (farm(|c| c.vc_id = 64), ALDIS_ERR_OUT_OF_RANGE),
+            (farm(|c| c.fecf = 2), ALDIS_ERR_INVALID_FIELD),
+            (farm(|c| c.max_frame_len = 5), ALDIS_ERR_INVALID_CONFIG),
+            (farm(|c| c.max_frame_len = 1025), ALDIS_ERR_INVALID_CONFIG),
             (farm(|c| c.status = 8), ALDIS_ERR_OUT_OF_RANGE),
             (farm(|c| c.window = 7), ALDIS_ERR_INVALID_CONFIG),
             (
