@@ -229,8 +229,8 @@ pub enum FduKind {
 /// TC-021, USLP-014, COP-031), reduced to what FARM-1 reads (COP-002).
 ///
 /// This type is opaque: it can only be built from a [`Checked`] frame via
-/// [`Farm1Frame::from_tc`] or [`Farm1Frame::from_uslp`], so an unchecked frame cannot reach
-/// FARM-1 (RS-020, TC-023, USLP-014).
+/// [`Farm1Frame::from_tc`] or (with feature `uslp`) `Farm1Frame::from_uslp`, so an unchecked
+/// frame cannot reach FARM-1 (RS-020, TC-023, USLP-014).
 ///
 /// ```compile_fail
 /// use aldis_cop1::Farm1Frame;
@@ -432,7 +432,7 @@ fn uslp_control_command(header: TfdfHeader, tfdz: &[u8]) -> Option<ControlComman
 /// inside [`Farm1Input::Frame`] (COP-031, COP-033, COP-037).
 ///
 /// Its fields are private so a frame input can only be built from a [`Checked`] frame via
-/// [`Farm1Input::from_tc`] or [`Farm1Input::from_uslp`] (RS-020).
+/// [`Farm1Input::from_tc`] or (with feature `uslp`) `Farm1Input::from_uslp` (RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckedFarm1Frame<'a> {
     pub(crate) vc_id: TcVcId,
@@ -463,8 +463,8 @@ impl<'a> CheckedFarm1Frame<'a> {
 /// One input of FARM-1 (API-057; COP-033, COP-035).
 ///
 /// A frame input can only be built from a [`Checked`] frame via [`Farm1Input::from_tc`] or
-/// [`Farm1Input::from_uslp`], so unchecked frames and hand-supplied VCIDs cannot reach FARM-1
-/// (RS-020, TC-023, USLP-014, COP-037).
+/// (with feature `uslp`) `Farm1Input::from_uslp`, so unchecked frames and hand-supplied VCIDs
+/// cannot reach FARM-1 (RS-020, TC-023, USLP-014, COP-037).
 ///
 /// ```compile_fail
 /// use aldis_cop1::{Farm1Frame, Farm1Input};
@@ -503,7 +503,7 @@ impl<'a> CheckedFarm1Frame<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Farm1Input<'a> {
     /// A valid checked frame arrives: E1 to E8, or E9 for a Type-BC frame with an unknown command.
-    /// Built only by [`Farm1Input::from_tc`] or [`Farm1Input::from_uslp`].
+    /// Built only by [`Farm1Input::from_tc`] or (with feature `uslp`) `Farm1Input::from_uslp`.
     Frame(CheckedFarm1Frame<'a>),
     /// An invalid frame arrives, E9 (232.1 Table 6-1).
     InvalidFrame,
