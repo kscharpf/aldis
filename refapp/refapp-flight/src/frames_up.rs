@@ -30,9 +30,7 @@
 
 use core::fmt::Debug;
 
-use aldis::cop1::farm1::{
-    Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Notify, Farm1Output, Farm1Window,
-};
+use aldis::cop1::farm1::{Farm1, Farm1Config, Farm1Input, Farm1Notify, Farm1Output, Farm1Window};
 use aldis::cop1::farm1_table::{Farm1Event, Farm1State};
 use aldis::core::ids::FrameSeqNum;
 use aldis::core::time::Instant as CoreInstant;
@@ -167,10 +165,8 @@ pub struct Refusal {
 pub struct Admitted<'a, P: UpProtocol> {
     /// The frame, for the receiver (LNK-050).
     plain: <P as ReceiveProtocol>::Plain<'a>,
-    /// The VCID of the frame, as FARM-1 reads it (COP-037).
-    vc_id: TcVcId,
-    /// The frame FARM-1 reads (COP-031, D7 of the A4 plan).
-    frame: Farm1Frame<'a>,
+    /// The frame input FARM-1 reads, built from the checked frame (COP-031, COP-037).
+    farm: Farm1Input<'a>,
     /// What the reassembler needs of the frame besides what FARM-1 delivers.
     info: P::Info,
 }
@@ -217,6 +213,7 @@ pub trait UpProtocol: ReceiveProtocol + ReassemblerProtocol {
     fn admit<'a>(
         table: &Self::Table,
         octets: &'a [u8],
+        buffer_available: bool,
     ) -> core::result::Result<Admitted<'a, Self>, Refusal>;
 
     /// The FDU for the reassembler from `data`, which FARM-1 delivered (a range of the node's
@@ -306,7 +303,7 @@ impl<P: UpProtocol> FrameUplink<P> {
         deliver: &mut dyn FnMut(&[u8], &mut dyn Output),
     ) {
         let now = CoreInstant::from_micros(now.as_micros());
-        let admitted = match P::admit(&self.table, octets) {
+        let admitted = match P::admit(&self.table, octets, self.delivery.has_room()) {
             Ok(admitted) => admitted,
             Err(refusal) => {
                 // The FECF failure is the caller's discard (LNK-080). A rejected frame (232.0
@@ -327,12 +324,7 @@ impl<P: UpProtocol> FrameUplink<P> {
             }
             Err(e) => return self.reject_frame(now, false, e.kind(), out),
         }
-        let input = Farm1Input::Frame {
-            vc_id: admitted.vc_id,
-            frame: admitted.frame,
-            buffer_available: self.delivery.has_room(),
-        };
-        let (farm, actions) = match self.farm.step(input, now, &mut area) {
+        let (farm, actions) = match self.farm.step(admitted.farm, now, &mut area) {
             Ok(stepped) => stepped,
             Err(e) => return self.reject_frame(now, false, e.kind(), out),
         };

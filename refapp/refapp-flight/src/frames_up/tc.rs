@@ -6,7 +6,7 @@
 //!
 //! Requirements: APP-040…APP-043, APP-139.
 
-use aldis::cop1::farm1::Farm1Frame;
+use aldis::cop1::farm1::Farm1Input;
 use aldis::core::security::{NoSecurity, SecurityLayout};
 use aldis::core::{DecodeMode, Error, ErrorKind, Result, SecuritySlices};
 use aldis::link::protocol::Tc;
@@ -81,6 +81,7 @@ impl UpProtocol for Tc {
     fn admit<'a>(
         table: &Self::Table,
         octets: &'a [u8],
+        buffer_available: bool,
     ) -> core::result::Result<Admitted<'a, Self>, Refusal> {
         let validated = check_frame(octets, table, DecodeMode::Strict)
             .map_err(|rejection| Refusal {
@@ -97,8 +98,7 @@ impl UpProtocol for Tc {
             })?;
         Ok(Admitted {
             plain,
-            vc_id: validated.as_frame().vc_id(),
-            frame: Farm1Frame::from_tc(&validated),
+            farm: Farm1Input::from_tc(&validated, buffer_available),
             info: validated.segment_header(),
         })
     }
