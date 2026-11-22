@@ -10,13 +10,17 @@
 //! (CABI-040), and the engine has no timer, so there is no `next_deadline`.
 
 use aldis::cop1::{
-    FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Event, Farm1Frame, Farm1Input, Farm1Notify,
+    FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Event, Farm1Input, Farm1Notify,
     Farm1Output, Farm1State, Farm1Window, FduKind,
 };
-use aldis::core::Result;
 use aldis::core::ids::FrameSeqNum;
+use aldis::core::security::SecurityLayout;
 use aldis::core::time::Instant;
-use aldis::tc::{ClcwStatus, ControlCommand, TcVcId};
+use aldis::core::{DecodeMode, Error, ErrorKind, Result};
+use aldis::tc::{
+    ClcwStatus, ControlCommand, FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId,
+    TcVcId, VcConfig, VcTable, check_frame,
+};
 
 use crate::abi::{self, Out, flag};
 use crate::handle::{self, Storage};
@@ -342,38 +346,155 @@ fn config(cfg: &aldis_farm1_config_t) -> Result<Farm1Config> {
     })
 }
 
-/// The engine input of `input`, with the FDU it borrows (CABI-040: parsed once).
-fn engine_input<'a>(input: &aldis_farm1_input_t, data: &'a [u8]) -> Result<Farm1Input<'a>> {
-    let frame = |frame| {
-        Ok(Farm1Input::Frame {
-            vc_id: TcVcId::try_from(input.vc_id)?,
-            frame,
-            buffer_available: flag(input.buffer_available)?,
-        })
+/// Parameters for the temporary R2a TC frame bridge.
+#[derive(Clone, Copy)]
+struct TcFrameSpec<'a> {
+    frame_type: FrameType,
+    vc_id: TcVcId,
+    sequence_number: u8,
+    payload: &'a [u8],
+    buffer_available: bool,
+}
+
+/// Temporary R2a bridge until R2b replaces the C ABI with raw frame bytes (#718): builds a
+/// minimal TC Transfer Frame (232.0 §4.1.2, no FECF, no Segment Header) and validates it
+/// through `check_frame` so `Farm1Input::from_tc` is the only entry to FARM-1.
+fn step_tc_frame(
+    farm: &Farm1,
+    spec: TcFrameSpec<'_>,
+    now: Instant,
+    area: &mut [u8],
+) -> Result<(Farm1, Farm1Actions)> {
+    const MAX_TC: usize = 1024;
+    let total = 5usize
+        .checked_add(spec.payload.len())
+        .filter(|&n| (6..=MAX_TC).contains(&n))
+        .ok_or(Error::new(ErrorKind::InvalidField))?;
+    let mut wire = [0u8; MAX_TC];
+    let flags = match spec.frame_type {
+        FrameType::Ad => 0x00,
+        FrameType::Bd => 0x20,
+        FrameType::Bc => 0x30,
     };
+    let len_minus_1 =
+        u16::try_from(total.saturating_sub(1)).map_err(|_| Error::new(ErrorKind::InternalError))?;
+    let vc_len = (u16::from(spec.vc_id.get()) << 10) | len_minus_1;
+    let [hi, lo] = vc_len.to_be_bytes();
+    if let Some(hdr) = wire.get_mut(..5) {
+        hdr.copy_from_slice(&[flags, 0, hi, lo, spec.sequence_number]);
+    }
+    if let Some(dst) = wire.get_mut(5..total) {
+        dst.copy_from_slice(spec.payload);
+    }
+    let scid = TcSpacecraftId::new(0).ok_or(Error::new(ErrorKind::InternalError))?;
+    let pc = PhysicalChannelConfig::new(MAX_TC, false)?;
+    let vcc = VcConfig::new(
+        scid,
+        spec.vc_id,
+        MAX_TC,
+        SegmentHeaderUse::Absent(SecurityLayout::NONE),
+    )?;
+    let table = VcTable::<1, 0>::new(pc, &[vcc], &[])?;
+    let slice = wire
+        .get(..total)
+        .ok_or(Error::new(ErrorKind::InternalError))?;
+    let checked = check_frame(slice, &table, DecodeMode::Lenient).map_err(|r| r.error())?;
+    farm.step(
+        Farm1Input::from_tc(&checked, spec.buffer_available),
+        now,
+        area,
+    )
+}
+
+/// Steps `farm` with the C ABI `input` and `data` (CABI-040: parsed once).
+fn step_engine(
+    farm: &Farm1,
+    input: &aldis_farm1_input_t,
+    now: Instant,
+    data: &[u8],
+    area: &mut [u8],
+) -> Result<(Farm1, Farm1Actions)> {
     match parse::<aldis_farm1_input>(input.kind)? {
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_AD => frame(Farm1Frame::Ad {
-            sequence_number: FrameSeqNum::new(input.sequence_number),
-            data,
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BD => frame(Farm1Frame::Bd { data }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK => frame(Farm1Frame::Bc {
-            command: Some(ControlCommand::Unlock),
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_SET_VR => frame(Farm1Frame::Bc {
-            command: Some(ControlCommand::SetVr(FrameSeqNum::new(input.v_star))),
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_OTHER => {
-            frame(Farm1Frame::Bc { command: None })
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_AD => step_tc_frame(
+            farm,
+            TcFrameSpec {
+                frame_type: FrameType::Ad,
+                vc_id: TcVcId::try_from(input.vc_id)?,
+                sequence_number: input.sequence_number,
+                payload: data,
+                buffer_available: flag(input.buffer_available)?,
+            },
+            now,
+            area,
+        ),
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BD => step_tc_frame(
+            farm,
+            TcFrameSpec {
+                frame_type: FrameType::Bd,
+                vc_id: TcVcId::try_from(input.vc_id)?,
+                sequence_number: 0,
+                payload: data,
+                buffer_available: flag(input.buffer_available)?,
+            },
+            now,
+            area,
+        ),
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK => {
+            let cmd = ControlCommand::Unlock.to_octets();
+            step_tc_frame(
+                farm,
+                TcFrameSpec {
+                    frame_type: FrameType::Bc,
+                    vc_id: TcVcId::try_from(input.vc_id)?,
+                    sequence_number: 0,
+                    payload: cmd.as_slice(),
+                    buffer_available: flag(input.buffer_available)?,
+                },
+                now,
+                area,
+            )
         }
-        aldis_farm1_input::ALDIS_FARM1_INPUT_INVALID_FRAME => Ok(Farm1Input::InvalidFrame),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_BUFFER_RELEASED => Ok(Farm1Input::BufferReleased),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS => {
-            Ok(Farm1Input::SetPhysicalFlags {
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_SET_VR => {
+            let cmd = ControlCommand::SetVr(FrameSeqNum::new(input.v_star)).to_octets();
+            step_tc_frame(
+                farm,
+                TcFrameSpec {
+                    frame_type: FrameType::Bc,
+                    vc_id: TcVcId::try_from(input.vc_id)?,
+                    sequence_number: 0,
+                    payload: cmd.as_slice(),
+                    buffer_available: flag(input.buffer_available)?,
+                },
+                now,
+                area,
+            )
+        }
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_OTHER => step_tc_frame(
+            farm,
+            TcFrameSpec {
+                frame_type: FrameType::Bc,
+                vc_id: TcVcId::try_from(input.vc_id)?,
+                sequence_number: 0,
+                payload: &[0xFF],
+                buffer_available: flag(input.buffer_available)?,
+            },
+            now,
+            area,
+        ),
+        aldis_farm1_input::ALDIS_FARM1_INPUT_INVALID_FRAME => {
+            farm.step(Farm1Input::InvalidFrame, now, area)
+        }
+        aldis_farm1_input::ALDIS_FARM1_INPUT_BUFFER_RELEASED => {
+            farm.step(Farm1Input::BufferReleased, now, area)
+        }
+        aldis_farm1_input::ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS => farm.step(
+            Farm1Input::SetPhysicalFlags {
                 no_rf_available: flag(input.no_rf_available)?,
                 no_bit_lock: flag(input.no_bit_lock)?,
-            })
-        }
+            },
+            now,
+            area,
+        ),
     }
 }
 
@@ -429,7 +550,7 @@ impl handle::TimedStep for aldis_farm1_t {
         area: &mut [u8],
         actions: Out<'_, aldis_farm1_actions_t>,
     ) -> Result<()> {
-        let (next, list) = farm.step(engine_input(input, data)?, now, area)?;
+        let (next, list) = step_engine(farm, input, now, data, area)?;
         *farm = next;
         let mut result = aldis_farm1_actions_t::default();
         for (slot, output) in result.items.iter_mut().zip(list.iter()) {

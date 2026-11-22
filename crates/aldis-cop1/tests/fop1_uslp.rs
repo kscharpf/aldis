@@ -11,9 +11,9 @@
 )]
 
 use aldis_cop1::{
-    Directive, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Output, Farm1Window, Fop1,
-    Fop1Config, Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType,
-    TransferNotification, fop1_max_actions,
+    Directive, Farm1, Farm1Config, Farm1Input, Farm1Output, Farm1Window, Fop1, Fop1Config,
+    Fop1Input, Fop1Output, Fop1State, Fop1Target, FrameKind, TimeoutType, TransferNotification,
+    fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -591,21 +591,6 @@ fn a_clcw_of_another_virtual_channel_is_refused() {
     assert!(f.decide(Fop1Input::Clcw(clcw(0)), NOW, &mut out).is_ok());
 }
 
-/// The frame FARM-1 reads from a USLP frame: the TFDZ, and N(S) from the VCF Count.
-fn farm_frame<'a>(frame: &UslpFrame<'a>) -> Farm1Frame<'a> {
-    let full = frame.full().unwrap();
-    match full.kind() {
-        UslpKind::SequenceControlled => Farm1Frame::Ad {
-            sequence_number: FrameSeqNum::new(u8::try_from(full.vcf_count().value()).unwrap()),
-            data: frame.tfdz(),
-        },
-        UslpKind::Expedited => Farm1Frame::Bd { data: frame.tfdz() },
-        UslpKind::ProtocolControl => Farm1Frame::Bc {
-            command: ControlCommand::parse(frame.tfdz()),
-        },
-    }
-}
-
 /// Feeds `input` to the ground end, then the Transmit Responses its frames cause; the frames go to
 /// `link` and the Positive Confirms to `confirmed`.
 #[expect(
@@ -697,14 +682,12 @@ fn fop1_and_farm1_deliver_over_uslp_frames_through_a_loss() {
                 dropped = true;
                 continue;
             }
-            let decoded = UslpFrame::decode(&frame, &t).unwrap();
+            let checked = aldis_uslp::check_frame(&frame, &t, aldis_core::DecodeMode::Strict)
+                .unwrap()
+                .into_view();
             let (after, actions) = farm
                 .step(
-                    Farm1Input::Frame {
-                        vc_id: TcVcId::new(vcid().get()).unwrap(),
-                        frame: farm_frame(&decoded),
-                        buffer_available: true,
-                    },
+                    Farm1Input::from_uslp(&checked, true).unwrap(),
                     NOW,
                     &mut out,
                 )
@@ -712,7 +695,8 @@ fn fop1_and_farm1_deliver_over_uslp_frames_through_a_loss() {
             farm = after;
             for a in actions.iter() {
                 if let Farm1Output::Deliver { data, .. } = a {
-                    delivered.push(data.slice(&out).unwrap().to_vec());
+                    // `from_uslp` delivers the TFDF (1-octet TFDF header + TFDZ).
+                    delivered.push(data.slice(&out).unwrap()[1..].to_vec());
                 }
             }
         }

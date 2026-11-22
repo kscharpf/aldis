@@ -20,9 +20,9 @@
 )]
 
 use aldis_cop1::{
-    Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config, Farm1Frame,
-    Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target,
-    FrameKind, HeldKind, TimeoutType, fop1_max_actions,
+    Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config, Farm1Input,
+    Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1Target, FrameKind,
+    HeldKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -332,9 +332,9 @@ fn farm_op() -> impl Strategy<Value = FarmOp> {
         6 => (
             prop_oneof![3 => (0u8..5).prop_map(Ok), 1 => frame_seq_num().prop_map(Err)],
             any::<bool>(),
-            octets(0..=8),
+            octets(1..=8),
         ).prop_map(|(n, b, d)| FarmOp::Ad(n, b, d)),
-        2 => octets(0..=8).prop_map(FarmOp::Bd),
+        2 => octets(1..=8).prop_map(FarmOp::Bd),
         1 => control_command().prop_map(|c| FarmOp::Bc(Some(c))),
         1 => Just(FarmOp::Bc(None)),
         1 => Just(FarmOp::Invalid),
@@ -376,25 +376,60 @@ proptest! {
         );
         for op in &ops {
             let mut area = [0u8; 8];
-            let input = match op {
-                FarmOp::Ad(n, buffer_available, data) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(),
-                    frame: Farm1Frame::Ad {
-                        sequence_number: match n {
-                            Ok(o) => FrameSeqNum::new(f.v_r().get().wrapping_add(*o)),
-                            Err(abs) => *abs,
-                        },
-                        data,
-                    },
-                    buffer_available: *buffer_available,
-                },
-                FarmOp::Bd(data) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(), frame: Farm1Frame::Bd { data }, buffer_available: true },
-                FarmOp::Bc(command) => Farm1Input::Frame { vc_id: TcVcId::new(VCID).unwrap(), frame: Farm1Frame::Bc { command: *command }, buffer_available: true },
-                FarmOp::Invalid => Farm1Input::InvalidFrame,
-                FarmOp::Release => Farm1Input::BufferReleased,
-                FarmOp::Physical(a, b) => Farm1Input::SetPhysicalFlags { no_rf_available: *a, no_bit_lock: *b },
+            let vc = TcVcId::new(VCID).unwrap();
+            let scid = aldis_tc::TcSpacecraftId::new(0).unwrap();
+            let pc = aldis_tc::PhysicalChannelConfig::new(1024, false).unwrap();
+            let vcc = aldis_tc::VcConfig::new(
+                scid,
+                vc,
+                1024,
+                aldis_tc::SegmentHeaderUse::Absent(aldis_core::security::SecurityLayout::NONE),
+            )
+            .unwrap();
+            let table = aldis_tc::VcTable::<1, 0>::new(pc, &[vcc], &[]).unwrap();
+            let build = |flags: u8, n_s: u8, payload: &[u8]| {
+                let len_minus_1 = u16::try_from(5 + payload.len() - 1).unwrap();
+                let vc_len = (u16::from(vc.get()) << 10) | len_minus_1;
+                let mut buf = Vec::with_capacity(5 + payload.len());
+                buf.push(flags);
+                buf.push(0);
+                buf.extend_from_slice(&vc_len.to_be_bytes());
+                buf.push(n_s);
+                buf.extend_from_slice(payload);
+                buf
             };
             let before = f.state();
-            let (after, actions) = match f.step(input, Instant::from_micros(0), &mut area) {
+            let stepped = match op {
+                FarmOp::Ad(n, buffer_available, data) => {
+                    let seq = match n {
+                        Ok(o) => f.v_r().get().wrapping_add(*o),
+                        Err(abs) => abs.get(),
+                    };
+                    let wire = build(0x00, seq, data);
+                    let checked = aldis_tc::check_frame(&wire, &table, aldis_core::DecodeMode::Lenient).unwrap();
+                    f.step(Farm1Input::from_tc(&checked, *buffer_available), Instant::from_micros(0), &mut area)
+                }
+                FarmOp::Bd(data) => {
+                    let wire = build(0x20, 0, data);
+                    let checked = aldis_tc::check_frame(&wire, &table, aldis_core::DecodeMode::Lenient).unwrap();
+                    f.step(Farm1Input::from_tc(&checked, true), Instant::from_micros(0), &mut area)
+                }
+                FarmOp::Bc(command) => {
+                    let cmd = command.map(ControlCommand::to_octets);
+                    let payload = cmd.as_ref().map_or(&[0xFF][..], |c| c.as_slice());
+                    let wire = build(0x30, 0, payload);
+                    let checked = aldis_tc::check_frame(&wire, &table, aldis_core::DecodeMode::Lenient).unwrap();
+                    f.step(Farm1Input::from_tc(&checked, true), Instant::from_micros(0), &mut area)
+                }
+                FarmOp::Invalid => f.step(Farm1Input::InvalidFrame, Instant::from_micros(0), &mut area),
+                FarmOp::Release => f.step(Farm1Input::BufferReleased, Instant::from_micros(0), &mut area),
+                FarmOp::Physical(a, b) => f.step(
+                    Farm1Input::SetPhysicalFlags { no_rf_available: *a, no_bit_lock: *b },
+                    Instant::from_micros(0),
+                    &mut area,
+                ),
+            };
+            let (after, actions) = match stepped {
                 Ok(ok) => ok,
                 Err(e) => {
                     // The cell "Not applicable" (S2 with E1), or an FDU longer than the area.

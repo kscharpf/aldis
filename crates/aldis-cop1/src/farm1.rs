@@ -226,9 +226,34 @@ pub enum FduKind {
 }
 
 /// A frame the Lower Procedures passed with the Frame Validation Checks (232.1 §6.3.2.1;
-/// TC-021, COP-031), reduced to what FARM-1 reads (COP-002).
+/// TC-021, USLP-014, COP-031), reduced to what FARM-1 reads (COP-002).
+///
+/// This type is opaque: it can only be built from a [`Checked`] frame via
+/// [`Farm1Frame::from_tc`] or (with feature `uslp`) `Farm1Frame::from_uslp`, so an unchecked
+/// frame cannot reach FARM-1 (RS-020, TC-023, USLP-014).
+///
+/// ```compile_fail
+/// use aldis_cop1::Farm1Frame;
+/// use aldis_core::ids::FrameSeqNum;
+/// // Direct construction without a checked frame is forbidden:
+/// let _ = Farm1Frame::Ad { sequence_number: FrameSeqNum::new(0), data: &[1, 2] };
+/// ```
+///
+/// ```compile_fail
+/// use aldis_cop1::Farm1Frame;
+/// use aldis_tc::TcFrame;
+/// // Passing an unchecked `TcFrame` does not compile:
+/// fn bad(frame: &TcFrame<'_>) {
+///     let _ = Farm1Frame::from_tc(frame);
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Farm1Frame<'a> {
+pub struct Farm1Frame<'a>(pub(crate) FrameBody<'a>);
+
+/// The frame fields FARM-1 reads, hidden inside [`Farm1Frame`] so only checked constructors can
+/// build one (RS-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrameBody<'a> {
     /// A valid Type-AD frame with Frame Sequence Number N(S) and its Frame Data Unit.
     Ad {
         /// N(S) (232.0 §4.1.2.8).
@@ -250,28 +275,69 @@ pub enum Farm1Frame<'a> {
 }
 
 impl<'a> Farm1Frame<'a> {
+    /// The frame kind (`Ad`, `Bd`, or `Bc`; 232.0 §4.1.2.3; COP-031).
+    #[must_use]
+    pub const fn kind(&self) -> FrameType {
+        match self.0 {
+            FrameBody::Ad { .. } => FrameType::Ad,
+            FrameBody::Bd { .. } => FrameType::Bd,
+            FrameBody::Bc { .. } => FrameType::Bc,
+        }
+    }
+
+    /// The Frame Sequence Number N(S) of a Type-AD frame, or `None` for Type-BD and Type-BC
+    /// (232.0 §4.1.2.8; COP-031).
+    #[must_use]
+    pub const fn sequence_number(&self) -> Option<FrameSeqNum> {
+        match self.0 {
+            FrameBody::Ad {
+                sequence_number, ..
+            } => Some(sequence_number),
+            FrameBody::Bd { .. } | FrameBody::Bc { .. } => None,
+        }
+    }
+
+    /// The Frame Data Unit of a Type-AD or Type-BD frame, or `None` for Type-BC (COP-031).
+    #[must_use]
+    pub const fn data(&self) -> Option<&'a [u8]> {
+        match self.0 {
+            FrameBody::Ad { data, .. } | FrameBody::Bd { data } => Some(data),
+            FrameBody::Bc { .. } => None,
+        }
+    }
+
+    /// The Control Command of a Type-BC frame, or `None` for Type-AD, Type-BD, or an
+    /// unrecognised Type-BC command (232.0 §4.1.3.3; COP-031).
+    #[must_use]
+    pub const fn control_command(&self) -> Option<ControlCommand> {
+        match self.0 {
+            FrameBody::Bc { command } => command,
+            FrameBody::Ad { .. } | FrameBody::Bd { .. } => None,
+        }
+    }
+
     /// The frame FARM-1 reads from a checked TC frame (232.0 §4.1.2.3; COP-031, API-016).
     ///
     /// It takes a [`Checked`] frame, so that TC-023 (every frame is checked before any
     /// FARM-1 processing) cannot be skipped by passing a frame from `TcFrame::decode`.
     ///
     /// A Type-BC frame whose Control Command the decoder did not recognise, which only lenient
-    /// decoding passes, has `command: None`.
+    /// decoding passes, has `control_command() == None`.
     #[must_use]
     pub const fn from_tc(checked: &Checked<TcFrame<'a>>) -> Self {
         let frame = checked.as_frame();
-        match frame.frame_type() {
-            FrameType::Ad => Farm1Frame::Ad {
+        Self(match frame.frame_type() {
+            FrameType::Ad => FrameBody::Ad {
                 sequence_number: frame.sequence_number(),
                 data: frame.data_field(),
             },
-            FrameType::Bd => Farm1Frame::Bd {
+            FrameType::Bd => FrameBody::Bd {
                 data: frame.data_field(),
             },
-            FrameType::Bc => Farm1Frame::Bc {
+            FrameType::Bc => FrameBody::Bc {
                 command: frame.control_command(),
             },
-        }
+        })
     }
 
     /// The frame FARM-1 reads from a checked USLP frame (732.1 §4.1.2.8 Table 4-1, §4.2.7.4 notes
@@ -280,16 +346,25 @@ impl<'a> Farm1Frame<'a> {
     /// It takes a [`Checked`] frame, so that the USLP Frame Validation Checks (USLP-014) cannot
     /// be skipped by passing a frame from the decoder. The frame kind decides the variant:
     ///
-    /// - Sequence-Controlled (Bypass/Sequence Control Flag 0) is [`Ad`](Farm1Frame::Ad): N(S) is
-    ///   the VCF Count, which must be one octet long (OI-101), and the data is the TFDF (the
-    ///   TFDF Header and the TFDZ), the unit a `MapReassembler` reads on USLP (LNK-070).
-    /// - Expedited (flags `1` and `0`) is [`Bd`](Farm1Frame::Bd) with the TFDF.
-    /// - Protocol Control (flags `1` and `1`) is [`Bc`](Farm1Frame::Bc). The TFDZ must be exactly
-    ///   one COP-1 Control Command under the UPID "COP-1 Control Commands" and the rule `111`, no
+    /// - Sequence-Controlled (Bypass/Sequence Control Flag 0) is Type-AD: N(S) is the VCF Count,
+    ///   which must be one octet long (OI-101), and the data is the TFDF (the TFDF Header and
+    ///   the TFDZ), the unit a `MapReassembler` reads on USLP (LNK-070).
+    /// - Expedited (flags `1` and `0`) is Type-BD with the TFDF.
+    /// - Protocol Control (flags `1` and `1`) is Type-BC. The TFDZ must be exactly one COP-1
+    ///   Control Command under the UPID "COP-1 Control Commands" and the rule `111`, no
     ///   segmentation, read by [`ControlCommand::parse`] (OI-100 (a)); any other TFDZ, another
     ///   UPID or rule, or two commands is refused with [`ReservedValue`](ErrorKind::ReservedValue)
     ///   (`control_command`), matching strict TC decoding so the caller rejects the frame and
     ///   gives FARM-1 [`Farm1Input::InvalidFrame`] (E9, 232.1 §6.3.2.1; COP-031).
+    ///
+    /// ```compile_fail
+    /// use aldis_cop1::Farm1Frame;
+    /// use aldis_uslp::UslpFrame;
+    /// // Passing an unchecked `UslpFrame` does not compile:
+    /// fn bad(frame: &UslpFrame<'_>) {
+    ///     let _ = Farm1Frame::from_uslp(frame);
+    /// }
+    /// ```
     ///
     /// # Errors
     /// - [`InvalidField`](ErrorKind::InvalidField), naming `end_of_frame_primary_header_flag`,
@@ -323,19 +398,19 @@ impl<'a> Farm1Frame<'a> {
                     .then(|| u8::try_from(count.value()).ok())
                     .flatten()
                     .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::VCF_COUNT_LEN))?;
-                Ok(Farm1Frame::Ad {
+                Ok(Self(FrameBody::Ad {
                     sequence_number: FrameSeqNum::new(n_s),
                     data: tfdf,
-                })
+                }))
             }
-            FrameKind::Expedited => Ok(Farm1Frame::Bd { data: tfdf }),
+            FrameKind::Expedited => Ok(Self(FrameBody::Bd { data: tfdf })),
             FrameKind::ProtocolControl => {
                 let command = uslp_control_command(full.tfdf_header(), full.tfdz()).ok_or(
                     Error::new(ErrorKind::ReservedValue).with_field(field::CONTROL_COMMAND),
                 )?;
-                Ok(Farm1Frame::Bc {
+                Ok(Self(FrameBody::Bc {
                     command: Some(command),
-                })
+                }))
             }
         }
     }
@@ -353,21 +428,83 @@ fn uslp_control_command(header: TfdfHeader, tfdz: &[u8]) -> Option<ControlComman
     }
 }
 
+/// A checked frame paired with its Virtual Channel Identifier and delivery buffer status, carried
+/// inside [`Farm1Input::Frame`] (COP-031, COP-033, COP-037).
+///
+/// Its fields are private so a frame input can only be built from a [`Checked`] frame via
+/// [`Farm1Input::from_tc`] or (with feature `uslp`) `Farm1Input::from_uslp` (RS-020).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckedFarm1Frame<'a> {
+    pub(crate) vc_id: TcVcId,
+    pub(crate) frame: Farm1Frame<'a>,
+    pub(crate) buffer_available: bool,
+}
+
+impl<'a> CheckedFarm1Frame<'a> {
+    /// The Virtual Channel Identifier taken from the checked frame (COP-037).
+    #[must_use]
+    pub const fn vc_id(&self) -> TcVcId {
+        self.vc_id
+    }
+
+    /// The checked frame FARM-1 will process (COP-031).
+    #[must_use]
+    pub const fn frame(&self) -> Farm1Frame<'a> {
+        self.frame
+    }
+
+    /// Whether the caller has a buffer for the FDU of an accepted Type-AD frame (COP-033).
+    #[must_use]
+    pub const fn buffer_available(&self) -> bool {
+        self.buffer_available
+    }
+}
+
 /// One input of FARM-1 (API-057; COP-033, COP-035).
+///
+/// A frame input can only be built from a [`Checked`] frame via [`Farm1Input::from_tc`] or
+/// (with feature `uslp`) `Farm1Input::from_uslp`, so unchecked frames and hand-supplied VCIDs
+/// cannot reach FARM-1 (RS-020, TC-023, USLP-014, COP-037).
+///
+/// ```compile_fail
+/// use aldis_cop1::{Farm1Frame, Farm1Input};
+/// use aldis_tc::TcVcId;
+/// // Direct construction of `Farm1Input::Frame` with raw fields does not compile:
+/// fn bad(frame: Farm1Frame<'_>) {
+///     let _ = Farm1Input::Frame {
+///         vc_id: TcVcId::new(1).unwrap(),
+///         frame,
+///         buffer_available: true,
+///     };
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use aldis_cop1::{CheckedFarm1Frame, Farm1Frame, Farm1Input};
+/// use aldis_tc::TcVcId;
+/// // `CheckedFarm1Frame` has private fields and cannot be constructed outside `aldis-cop1`:
+/// fn bad(frame: Farm1Frame<'_>) {
+///     let _ = Farm1Input::Frame(CheckedFarm1Frame {
+///         vc_id: TcVcId::new(1).unwrap(),
+///         frame,
+///         buffer_available: true,
+///     });
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use aldis_cop1::Farm1Input;
+/// use aldis_tc::TcFrame;
+/// // Passing an unchecked `TcFrame` does not compile:
+/// fn bad(frame: &TcFrame<'_>) {
+///     let _ = Farm1Input::from_tc(frame, true);
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Farm1Input<'a> {
-    /// A valid frame arrives: E1 to E8, or E9 for a Type-BC frame with an unknown command.
-    Frame {
-        /// The Virtual Channel Identifier of the frame; FARM-1 refuses a frame whose VCID is not
-        /// that of its [`Farm1Config::vc_id`] (232.1 §3.3.1, §6.1.1; COP-037).
-        vc_id: TcVcId,
-        /// The frame.
-        frame: Farm1Frame<'a>,
-        /// Whether the caller has a buffer for the FDU of an accepted Type-AD frame; it
-        /// selects E1 (`true`) or E2 (`false`) for N(S) = V(R) and is read for no other event
-        /// (COP-033).
-        buffer_available: bool,
-    },
+    /// A valid checked frame arrives: E1 to E8, or E9 for a Type-BC frame with an unknown command.
+    /// Built only by [`Farm1Input::from_tc`] or (with feature `uslp`) `Farm1Input::from_uslp`.
+    Frame(CheckedFarm1Frame<'a>),
     /// An invalid frame arrives, E9 (232.1 Table 6-1).
     InvalidFrame,
     /// The Buffer Release Signal, E10: buffer space for at least one more maximum-size frame
@@ -391,11 +528,11 @@ impl<'a> Farm1Input<'a> {
     /// Taking the VCID from the checked frame keeps it from being supplied by hand.
     #[must_use]
     pub const fn from_tc(checked: &Checked<TcFrame<'a>>, buffer_available: bool) -> Self {
-        Farm1Input::Frame {
+        Farm1Input::Frame(CheckedFarm1Frame {
             vc_id: checked.as_frame().vc_id(),
             frame: Farm1Frame::from_tc(checked),
             buffer_available,
-        }
+        })
     }
 
     /// The frame input of a checked USLP frame: its Virtual Channel Identifier as a TC one, the
@@ -405,6 +542,15 @@ impl<'a> Farm1Input<'a> {
     /// Taking the VCID from the checked frame keeps it from being supplied by hand; FARM-1
     /// refuses a frame whose VCID is not that of its [`Farm1Config::vc_id`] (COP-037).
     ///
+    /// ```compile_fail
+    /// use aldis_cop1::Farm1Input;
+    /// use aldis_uslp::UslpFrame;
+    /// // Passing an unchecked `UslpFrame` does not compile:
+    /// fn bad(frame: &UslpFrame<'_>) {
+    ///     let _ = Farm1Input::from_uslp(frame, true);
+    /// }
+    /// ```
+    ///
     /// # Errors
     /// Those of [`Farm1Frame::from_uslp`]. The VCID cannot fail: a USLP and a TC VCID are both 6
     /// bits (732.1 §4.1.2.4; 232.0 §4.1.2.6).
@@ -412,11 +558,11 @@ impl<'a> Farm1Input<'a> {
     pub fn from_uslp(checked: &Checked<UslpFrame<'a>>, buffer_available: bool) -> Result<Self> {
         let frame = Farm1Frame::from_uslp(checked)?;
         let vc_id: TcVcId = checked.as_frame().vc_id();
-        Ok(Farm1Input::Frame {
+        Ok(Farm1Input::Frame(CheckedFarm1Frame {
             vc_id,
             frame,
             buffer_available,
-        })
+        }))
     }
 }
 
@@ -626,15 +772,15 @@ impl Farm1 {
             fdu: &[],
         };
         match input {
-            Farm1Input::Frame { vc_id, .. } if vc_id != self.config.vc_id => {
+            Farm1Input::Frame(checked) if checked.vc_id != self.config.vc_id => {
                 Err(Error::new(ErrorKind::UnknownChannel).with_field(field::VC_ID))
             }
-            Farm1Input::Frame {
+            Farm1Input::Frame(CheckedFarm1Frame {
                 vc_id: _,
-                frame,
+                frame: Farm1Frame(body),
                 buffer_available,
-            } => match frame {
-                Farm1Frame::Ad {
+            }) => match body {
+                FrameBody::Ad {
                     sequence_number,
                     data,
                 } => self.apply(
@@ -647,7 +793,7 @@ impl Farm1 {
                     },
                     out,
                 ),
-                Farm1Frame::Bd { data } => self.apply(
+                FrameBody::Bd { data } => self.apply(
                     Farm1Event::E6,
                     &Context {
                         kind: FduKind::Bd,
@@ -657,13 +803,13 @@ impl Farm1 {
                     },
                     out,
                 ),
-                Farm1Frame::Bc {
+                FrameBody::Bc {
                     command: Some(ControlCommand::Unlock),
                 } => self.apply(Farm1Event::E7, &idle, out),
-                Farm1Frame::Bc {
+                FrameBody::Bc {
                     command: Some(ControlCommand::SetVr(v_star)),
                 } => self.apply(Farm1Event::E8, &Context { v_star, ..idle }, out),
-                Farm1Frame::Bc { command: None } => self.apply(Farm1Event::E9, &idle, out),
+                FrameBody::Bc { command: None } => self.apply(Farm1Event::E9, &idle, out),
             },
             Farm1Input::InvalidFrame => self.apply(Farm1Event::E9, &idle, out),
             Farm1Input::BufferReleased => self.apply(Farm1Event::E10, &idle, out),
