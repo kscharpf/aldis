@@ -17,8 +17,8 @@ pub mod notify;
 
 pub use aldis_core::engine::{Actions, OutRange};
 pub use farm1::{
-    FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Frame, Farm1Input, Farm1Notify,
-    Farm1Output, Farm1Window, FduKind,
+    CheckedFarm1Frame, FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Frame, Farm1Input,
+    Farm1Notify, Farm1Output, Farm1Window, FduKind,
 };
 pub use farm1_table::{
     EVENT_COUNT as FARM1_EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State,

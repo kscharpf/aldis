@@ -98,16 +98,30 @@ fn check<'a>(table: &VcTable<1, 1>, octets: &'a [u8]) -> Checked<UslpFrame<'a>> 
 /// (`refapp-flight`, `frames_up/uslp.rs`, issue #718): the kind decides the variant, N(S) is the
 /// VCF Count, the data is the TFDF, and a Type-BC frame that is not one Control Command under UPID
 /// "COP-1 Control Commands" and rule `111` is refused (`None`, matching `ReservedValue`).
-fn by_hand<'a>(checked: &Checked<UslpFrame<'a>>) -> Option<Farm1Frame<'a>> {
+#[derive(Debug, PartialEq, Eq)]
+enum HandFrame<'a> {
+    Ad {
+        sequence_number: FrameSeqNum,
+        data: &'a [u8],
+    },
+    Bd {
+        data: &'a [u8],
+    },
+    Bc {
+        command: ControlCommand,
+    },
+}
+
+fn by_hand<'a>(checked: &Checked<UslpFrame<'a>>) -> Option<HandFrame<'a>> {
     let frame = checked.as_frame();
     let full = frame.full()?;
     let tfdf = full.octets().get(full.layout().data())?;
     Some(match full.kind() {
-        FrameKind::SequenceControlled => Farm1Frame::Ad {
+        FrameKind::SequenceControlled => HandFrame::Ad {
             sequence_number: FrameSeqNum::new(u8::try_from(full.vcf_count().value()).ok()?),
             data: tfdf,
         },
-        FrameKind::Expedited => Farm1Frame::Bd { data: tfdf },
+        FrameKind::Expedited => HandFrame::Bd { data: tfdf },
         FrameKind::ProtocolControl => {
             let command = if full.tfdf_header().upid == Upid::Cop1ControlCommands
                 && full.tfdf_header().rule == TfdzRule::NoSegmentation
@@ -116,11 +130,24 @@ fn by_hand<'a>(checked: &Checked<UslpFrame<'a>>) -> Option<Farm1Frame<'a>> {
             } else {
                 None
             }?;
-            Farm1Frame::Bc {
-                command: Some(command),
-            }
+            HandFrame::Bc { command }
         }
     })
+}
+
+const fn as_hand(frame: Farm1Frame<'_>) -> HandFrame<'_> {
+    match frame.kind() {
+        aldis_tc::FrameType::Ad => HandFrame::Ad {
+            sequence_number: frame.sequence_number().unwrap(),
+            data: frame.data().unwrap(),
+        },
+        aldis_tc::FrameType::Bd => HandFrame::Bd {
+            data: frame.data().unwrap(),
+        },
+        aldis_tc::FrameType::Bc => HandFrame::Bc {
+            command: frame.control_command().unwrap(),
+        },
+    }
 }
 
 fn bc_frame(header: TfdfHeader, tfdz: &[u8]) -> std::vec::Vec<u8> {
@@ -157,20 +184,18 @@ fn a_sequence_controlled_frame_is_a_type_ad_frame_with_the_vcf_count_as_n_s() {
     );
     let checked = check(&table, &octets);
     let tfdf_octets: &[u8] = octets.get(7 + 1..octets.len() - 2).unwrap();
-    let want = Farm1Frame::Ad {
-        sequence_number: FrameSeqNum::new(7),
-        data: tfdf_octets,
-    };
-    assert_eq!(Farm1Frame::from_uslp(&checked).unwrap(), want);
+    let got = Farm1Frame::from_uslp(&checked).unwrap();
+    assert_eq!(got.kind(), aldis_tc::FrameType::Ad);
+    assert_eq!(got.sequence_number(), Some(FrameSeqNum::new(7)));
+    assert_eq!(got.data(), Some(tfdf_octets));
+    assert_eq!(got.control_command(), None);
     assert_eq!(tfdf_octets.len(), 1 + 3, "the TFDF Header and the TFDZ");
-    assert_eq!(
-        Farm1Input::from_uslp(&checked, true).unwrap(),
-        Farm1Input::Frame {
-            vc_id: TcVcId::new(VC).unwrap(),
-            frame: want,
-            buffer_available: true,
-        }
-    );
+    let Farm1Input::Frame(checked_input) = Farm1Input::from_uslp(&checked, true).unwrap() else {
+        panic!("expected Frame input");
+    };
+    assert_eq!(checked_input.vc_id(), TcVcId::new(VC).unwrap());
+    assert_eq!(checked_input.frame(), got);
+    assert!(checked_input.buffer_available());
     // The frame is accepted at N(S) = V(R), E1, and the input of E2 differs by the flag only.
     let mut out = [0_u8; 16];
     let (next, actions) = farm()
@@ -188,10 +213,7 @@ fn a_sequence_controlled_frame_is_a_type_ad_frame_with_the_vcf_count_as_n_s() {
     assert_eq!(next.state(), Farm1State::Open);
     assert!(matches!(
         Farm1Input::from_uslp(&checked, false).unwrap(),
-        Farm1Input::Frame {
-            buffer_available: false,
-            ..
-        }
+        Farm1Input::Frame(f) if !f.buffer_available()
     ));
 }
 
@@ -207,10 +229,11 @@ fn an_expedited_frame_is_a_type_bd_frame_with_the_tfdf() {
     );
     let checked = check(&table, &octets);
     let tfdf_octets: &[u8] = octets.get(7..octets.len() - 2).unwrap();
-    assert_eq!(
-        Farm1Frame::from_uslp(&checked).unwrap(),
-        Farm1Frame::Bd { data: tfdf_octets }
-    );
+    let got = Farm1Frame::from_uslp(&checked).unwrap();
+    assert_eq!(got.kind(), aldis_tc::FrameType::Bd);
+    assert_eq!(got.sequence_number(), None);
+    assert_eq!(got.data(), Some(tfdf_octets));
+    assert_eq!(got.control_command(), None);
     let mut out = [0_u8; 16];
     let (_, actions) = farm()
         .step(
@@ -236,12 +259,11 @@ fn a_protocol_control_frame_with_one_command_is_a_type_bc_frame() {
     ] {
         let octets = bc_frame(cop1(), command.to_octets().as_slice());
         let checked = check(&table, &octets);
-        assert_eq!(
-            Farm1Frame::from_uslp(&checked).unwrap(),
-            Farm1Frame::Bc {
-                command: Some(command)
-            }
-        );
+        let got = Farm1Frame::from_uslp(&checked).unwrap();
+        assert_eq!(got.kind(), aldis_tc::FrameType::Bc);
+        assert_eq!(got.sequence_number(), None);
+        assert_eq!(got.data(), None);
+        assert_eq!(got.control_command(), Some(command));
     }
 }
 
@@ -324,7 +346,7 @@ fn a_foreign_vcid_is_refused_by_farm1() {
     };
     let other = Farm1::new(config, FrameSeqNum::new(0));
     let input = Farm1Input::from_uslp(&checked, true).unwrap();
-    assert!(matches!(input, Farm1Input::Frame { vc_id, .. } if vc_id == TcVcId::new(VC).unwrap()));
+    assert!(matches!(input, Farm1Input::Frame(f) if f.vc_id() == TcVcId::new(VC).unwrap()));
     let mut out = [0_u8; 16];
     let err = other.step(input, NOW, &mut out).unwrap_err();
     assert_eq!(
@@ -420,14 +442,21 @@ fn the_constructor_equals_the_input_built_by_hand() {
     for octets in &frames {
         let checked = check(&table, octets);
         let hand = by_hand(&checked);
-        assert_eq!(Farm1Frame::from_uslp(&checked).ok(), hand);
+        assert_eq!(Farm1Frame::from_uslp(&checked).ok().map(as_hand), hand);
         assert_eq!(
-            Farm1Input::from_uslp(&checked, false).ok(),
-            hand.map(|frame| Farm1Input::Frame {
-                vc_id: TcVcId::new(checked.as_frame().vc_id().get()).unwrap(),
+            Farm1Input::from_uslp(&checked, false)
+                .ok()
+                .map(|i| match i {
+                    Farm1Input::Frame(f) => (f.vc_id(), as_hand(f.frame()), f.buffer_available()),
+                    Farm1Input::InvalidFrame
+                    | Farm1Input::BufferReleased
+                    | Farm1Input::SetPhysicalFlags { .. } => panic!("expected Frame input"),
+                }),
+            hand.map(|frame| (
+                TcVcId::new(checked.as_frame().vc_id().get()).unwrap(),
                 frame,
-                buffer_available: false,
-            })
+                false,
+            ))
         );
     }
 }
