@@ -90,6 +90,126 @@ fn tc_group(t: &mut Tally) {
     }
 }
 
+/// A Type-AD, Type-BD, and Type-BC USLP frame mapped to FARM-1 inputs (`from_uslp`; #718).
+fn uslp_group(t: &mut Tally) {
+    use aldis_uslp as u;
+    let (Some(scid), Some(vc), Some(map), Ok(count_len)) = (
+        u::UslpSpacecraftId::new(bb(0x155)),
+        u::UslpVcId::new(bb(5)),
+        u::UslpMapId::new(bb(2)),
+        u::VcfCountLen::new(bb(1)),
+    ) else {
+        t.check(false);
+        return;
+    };
+    let params = u::VcParams {
+        vcf_count_len_sequence: count_len,
+        ..u::VcParams::new(u::TransferFrameType::Variable)
+    };
+    let (Ok(pc), Ok(vcc)) = (
+        u::PhysicalChannelConfig::new(u::TransferFrameType::Variable, 64, 0, true),
+        u::VcConfig::new(scid, vc, params),
+    ) else {
+        t.check(false);
+        return;
+    };
+    let mc = u::MapConfig::new(scid, vc, map, SecurityLayout::NONE);
+    let Ok(table) = u::VcTable::<1, 1>::new(pc, &[vcc], &[mc]) else {
+        t.check(false);
+        return;
+    };
+    let set = ControlCommand::SetVr(FrameSeqNum::new(bb(3)));
+    let set_octets = set.to_octets();
+    let cop1 = u::TfdfHeader {
+        rule: u::TfdzRule::NoSegmentation,
+        upid: u::Upid::Cop1ControlCommands,
+    };
+    let stream = u::TfdfHeader {
+        rule: u::TfdzRule::NoSegmentation,
+        upid: u::Upid::OctetStream,
+    };
+    let mut buf = [0u8; 64];
+    for (kind, header, tfdz) in [
+        (u::FrameKind::SequenceControlled, stream, &[1u8, 2, 3][..]),
+        (u::FrameKind::Expedited, stream, &[4, 5][..]),
+        (u::FrameKind::ProtocolControl, cop1, set_octets.as_slice()),
+        (u::FrameKind::ProtocolControl, stream, set_octets.as_slice()),
+    ] {
+        let fields = u::FrameFields {
+            spacecraft_id: scid,
+            source_or_destination: u::SourceOrDestination::Destination,
+            vc_id: vc,
+            map_id: map,
+            kind,
+            vcf_count: if kind == u::FrameKind::SequenceControlled {
+                bb(7)
+            } else {
+                bb(0)
+            },
+        };
+        let content = u::FrameContent {
+            tfdf: header,
+            insert_zone: &[],
+            ocf: None,
+        };
+        let Ok(n) = u::encode(&table, fields, content, bb(tfdz), &mut buf) else {
+            t.check(false);
+            continue;
+        };
+        let octets = buf.get(..n).unwrap_or_default();
+        let Ok(checked) = u::check_frame(bb(octets), &table, DecodeMode::Strict) else {
+            t.check(false);
+            continue;
+        };
+        let checked = checked.into_view();
+        check_uslp_farm1(t, kind, header.upid, set, &checked);
+    }
+}
+
+/// Checks `Farm1Frame::from_uslp` and `Farm1Input::from_uslp` on one checked USLP frame.
+fn check_uslp_farm1(
+    t: &mut Tally,
+    kind: aldis_uslp::FrameKind,
+    upid: aldis_uslp::Upid,
+    set: ControlCommand,
+    checked: &aldis_core::Checked<aldis_uslp::UslpFrame<'_>>,
+) {
+    use aldis_uslp as u;
+    let is_bad_bc = kind == u::FrameKind::ProtocolControl && upid != u::Upid::Cop1ControlCommands;
+    let is_reserved_cmd = |e: aldis_core::Error| {
+        e.kind() == ErrorKind::ReservedValue && e.field() == Some(field::CONTROL_COMMAND)
+    };
+    let frame = Farm1Frame::from_uslp(checked);
+    t.check(match (kind, is_bad_bc, frame) {
+        (
+            u::FrameKind::SequenceControlled,
+            _,
+            Ok(Farm1Frame::Ad {
+                sequence_number, ..
+            }),
+        ) => sequence_number.get() == 7,
+        (u::FrameKind::Expedited, _, Ok(Farm1Frame::Bd { .. })) => true,
+        (u::FrameKind::ProtocolControl, false, Ok(Farm1Frame::Bc { command })) => {
+            command == Some(set)
+        }
+        (u::FrameKind::ProtocolControl, true, Err(e)) => is_reserved_cmd(e),
+        _ => false,
+    });
+    let input = Farm1Input::from_uslp(checked, bb(true));
+    t.check(match (is_bad_bc, input) {
+        (true, Err(e)) => is_reserved_cmd(e),
+        (
+            false,
+            Ok(Farm1Input::Frame {
+                vc_id,
+                buffer_available: true,
+                ..
+            }),
+        ) => vc_id.get() == 5,
+        _ => false,
+    });
+}
+
 /// The window constructors and accessors.
 fn window_group(t: &mut Tally) {
     let allowed = Farm1Window::retransmission_allowed(bb(16));
@@ -251,6 +371,7 @@ fn other_events(t: &mut Tally, f: &Farm1) {
 pub fn run(t: &mut Tally) {
     window_group(t);
     tc_group(t);
+    uslp_group(t);
     let (Some(vc_id), Some(status), Ok(window)) = (
         TcVcId::new(bb(5)),
         ClcwStatus::new(bb(3)),

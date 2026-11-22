@@ -21,6 +21,8 @@
 //!
 //! [`Farm1Input::SetPhysicalFlags`] sets the No RF Available and No Bit Lock Flags of the CLCW,
 //! which are not part of COP-1 (232.0 §4.2.1.8) and take no cell.
+//! A frame comes from the codec as a `Checked` frame: [`Farm1Input::from_tc`] for TC and, with the
+//! feature `uslp`, `Farm1Input::from_uslp` for USLP (COP-031, COP-037, USLP-014, API-016).
 //!
 //! # Delivery and the output area
 //!
@@ -44,6 +46,8 @@ use aldis_core::{Checked, Error, ErrorKind, Result, field};
 use aldis_tc::{
     Clcw, ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, FrameType, TcFrame, TcVcId,
 };
+#[cfg(feature = "uslp")]
+use aldis_uslp::{FrameKind, TfdfHeader, TfdzRule, Upid, UslpFrame};
 
 use crate::farm1_table::{
     EVENT_COUNT, FARM1_TABLE, Farm1Action, Farm1Cell, Farm1Event, Farm1State, STATE_COUNT,
@@ -269,6 +273,84 @@ impl<'a> Farm1Frame<'a> {
             },
         }
     }
+
+    /// The frame FARM-1 reads from a checked USLP frame (732.1 §4.1.2.8 Table 4-1, §4.2.7.4 notes
+    /// 2 and 3; 232.0 §4.1.2.8, §4.1.3.3; COP-031, USLP-013, USLP-014, API-016).
+    ///
+    /// It takes a [`Checked`] frame, so that the USLP Frame Validation Checks (USLP-014) cannot
+    /// be skipped by passing a frame from the decoder. The frame kind decides the variant:
+    ///
+    /// - Sequence-Controlled (Bypass/Sequence Control Flag 0) is [`Ad`](Farm1Frame::Ad): N(S) is
+    ///   the VCF Count, which must be one octet long (OI-101), and the data is the TFDF (the
+    ///   TFDF Header and the TFDZ), the unit a `MapReassembler` reads on USLP (LNK-070).
+    /// - Expedited (flags `1` and `0`) is [`Bd`](Farm1Frame::Bd) with the TFDF.
+    /// - Protocol Control (flags `1` and `1`) is [`Bc`](Farm1Frame::Bc). The TFDZ must be exactly
+    ///   one COP-1 Control Command under the UPID "COP-1 Control Commands" and the rule `111`, no
+    ///   segmentation, read by [`ControlCommand::parse`] (OI-100 (a)); any other TFDZ, another
+    ///   UPID or rule, or two commands is refused with [`ReservedValue`](ErrorKind::ReservedValue)
+    ///   (`control_command`), matching strict TC decoding so the caller rejects the frame and
+    ///   gives FARM-1 [`Farm1Input::InvalidFrame`] (E9, 232.1 §6.3.2.1; COP-031).
+    ///
+    /// # Errors
+    /// - [`InvalidField`](ErrorKind::InvalidField), naming `end_of_frame_primary_header_flag`,
+    ///   for a truncated frame, which has no VCF Count and no Frame Sequence Number (USLP-002).
+    /// - [`InvalidField`](ErrorKind::InvalidField), naming `vcf_count_len`, for a
+    ///   Sequence-Controlled frame whose VCF Count is not one octet long, so that no count of
+    ///   another length, absent or over 255, is turned into an N(S) (OI-101).
+    /// - [`ReservedValue`](ErrorKind::ReservedValue), naming `control_command`, for a Type-BC
+    ///   frame whose TFDF is not exactly one COP-1 Control Command under UPID "COP-1 Control
+    ///   Commands" and rule `111` (OI-100 (a); USLP-013, COP-031).
+    /// - [`InternalError`](ErrorKind::InternalError) if the frame's layout does not lie in its
+    ///   octets, which the codec rules out.
+    #[cfg(feature = "uslp")]
+    pub fn from_uslp(checked: &Checked<UslpFrame<'a>>) -> Result<Self> {
+        let frame = checked.as_frame();
+        let full = frame.full().ok_or_else(|| {
+            Error::new(ErrorKind::InvalidField).with_field(field::END_OF_FRAME_PRIMARY_HEADER_FLAG)
+        })?;
+        // The TFDF Header and the TFDZ: the data field of the frame (732.1 §4.1.4).
+        let tfdf = full
+            .octets()
+            .get(full.layout().data())
+            .ok_or(Error::new(ErrorKind::InternalError))?;
+        match full.kind() {
+            FrameKind::SequenceControlled => {
+                // N(S) is the 8-bit Frame Sequence Number of 232.0 §4.1.2.8, which goes in the
+                // VCF Count (732.1 §4.2.7.4 note 3); the clauses do not say how a count of
+                // another length maps to it, so only a one-octet count is read (OI-101, OI-66).
+                let count = full.vcf_count();
+                let n_s = (count.len().octets() == 1)
+                    .then(|| u8::try_from(count.value()).ok())
+                    .flatten()
+                    .ok_or(Error::new(ErrorKind::InvalidField).with_field(field::VCF_COUNT_LEN))?;
+                Ok(Farm1Frame::Ad {
+                    sequence_number: FrameSeqNum::new(n_s),
+                    data: tfdf,
+                })
+            }
+            FrameKind::Expedited => Ok(Farm1Frame::Bd { data: tfdf }),
+            FrameKind::ProtocolControl => {
+                let command = uslp_control_command(full.tfdf_header(), full.tfdz()).ok_or(
+                    Error::new(ErrorKind::ReservedValue).with_field(field::CONTROL_COMMAND),
+                )?;
+                Ok(Farm1Frame::Bc {
+                    command: Some(command),
+                })
+            }
+        }
+    }
+}
+
+/// The Control Command of a USLP Type-BC frame: the TFDZ is exactly one COP-1 Control Command
+/// under the UPID of that name and the rule `111`, no segmentation (232.0 §4.1.3.3; 732.1
+/// §4.1.4.2.2.2.8 d; OI-100 (a); USLP-013, COP-031); `None` for any other content.
+#[cfg(feature = "uslp")]
+fn uslp_control_command(header: TfdfHeader, tfdz: &[u8]) -> Option<ControlCommand> {
+    if header.upid == Upid::Cop1ControlCommands && header.rule == TfdzRule::NoSegmentation {
+        ControlCommand::parse(tfdz)
+    } else {
+        None
+    }
 }
 
 /// One input of FARM-1 (API-057; COP-033, COP-035).
@@ -314,6 +396,27 @@ impl<'a> Farm1Input<'a> {
             frame: Farm1Frame::from_tc(checked),
             buffer_available,
         }
+    }
+
+    /// The frame input of a checked USLP frame: its Virtual Channel Identifier as a TC one, the
+    /// frame FARM-1 reads from it ([`Farm1Frame::from_uslp`]), and `buffer_available` (732.1
+    /// §4.1.2.4; 232.0 §4.1.2.6; COP-037, COP-033, USLP-014, API-016).
+    ///
+    /// Taking the VCID from the checked frame keeps it from being supplied by hand; FARM-1
+    /// refuses a frame whose VCID is not that of its [`Farm1Config::vc_id`] (COP-037).
+    ///
+    /// # Errors
+    /// Those of [`Farm1Frame::from_uslp`]. The VCID cannot fail: a USLP and a TC VCID are both 6
+    /// bits (732.1 §4.1.2.4; 232.0 §4.1.2.6).
+    #[cfg(feature = "uslp")]
+    pub fn from_uslp(checked: &Checked<UslpFrame<'a>>, buffer_available: bool) -> Result<Self> {
+        let frame = Farm1Frame::from_uslp(checked)?;
+        let vc_id: TcVcId = checked.as_frame().vc_id();
+        Ok(Farm1Input::Frame {
+            vc_id,
+            frame,
+            buffer_available,
+        })
     }
 }
 
