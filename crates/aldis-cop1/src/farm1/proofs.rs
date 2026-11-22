@@ -21,8 +21,8 @@ use aldis_core::time::Instant;
 use aldis_tc::{ClcwStatus, ControlCommand, FarmBCounter, TcVcId};
 
 use super::{
-    Context, FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Frame, Farm1Input, Farm1Notify,
-    Farm1Output, Farm1Window, FduKind,
+    CheckedFarm1Frame, Context, FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Frame, Farm1Input,
+    Farm1Notify, Farm1Output, Farm1Window, FduKind, FrameBody,
 };
 use crate::farm1_table::{EVENT_COUNT, Farm1Event, Farm1State, STATE_COUNT};
 
@@ -349,33 +349,35 @@ fn step_obeys_table_6_1() {
         5
     };
     // The input and its event; `None` for the physical-flag input, which is no event.
-    let frame = |frame| Farm1Input::Frame {
-        vc_id,
-        frame,
-        buffer_available,
+    let frame = |body| {
+        Farm1Input::Frame(CheckedFarm1Frame {
+            vc_id,
+            frame: Farm1Frame(body),
+            buffer_available,
+        })
     };
     let (input, event): (Farm1Input<'_>, Option<u8>) = match which {
         0 => (
-            frame(Farm1Frame::Ad {
+            frame(FrameBody::Ad {
                 sequence_number: FrameSeqNum::new(n_s),
                 data,
             }),
             Some(ad_event),
         ),
-        1 => (frame(Farm1Frame::Bd { data }), Some(6)),
+        1 => (frame(FrameBody::Bd { data }), Some(6)),
         2 => (
-            frame(Farm1Frame::Bc {
+            frame(FrameBody::Bc {
                 command: Some(ControlCommand::Unlock),
             }),
             Some(7),
         ),
         3 => (
-            frame(Farm1Frame::Bc {
+            frame(FrameBody::Bc {
                 command: Some(ControlCommand::SetVr(FrameSeqNum::new(v_star))),
             }),
             Some(8),
         ),
-        4 => (frame(Farm1Frame::Bc { command: None }), Some(9)),
+        4 => (frame(FrameBody::Bc { command: None }), Some(9)),
         5 => (Farm1Input::InvalidFrame, Some(9)),
         6 => (Farm1Input::BufferReleased, Some(10)),
         _ => (

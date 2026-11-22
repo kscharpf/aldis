@@ -443,7 +443,10 @@ mod farm1_runner {
             let w = c["window"].as_object().unwrap();
             let allowed = w["retransmission_allowed"].as_bool().unwrap();
             let cfg = aldis_farm1_config_t {
+                scid: u16::try_from(num(&c["scid"])).unwrap(),
                 vc_id: byte(&c["vcid"]),
+                fecf: u8::from(c["fecf"].as_bool().unwrap()),
+                max_frame_len: 1024,
                 status: byte(&c["status_field"]),
                 retransmission_allowed: u8::from(allowed),
                 window: u16::try_from(num(&w["w"])).unwrap(),
@@ -511,53 +514,12 @@ mod farm1_runner {
     const fn blank() -> aldis_farm1_input_t {
         aldis_farm1_input_t {
             kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
-            sequence_number: 0,
-            v_star: 0,
-            vc_id: 0,
             buffer_available: 0,
             no_rf_available: 0,
             no_bit_lock: 0,
             data: core::ptr::null(),
             data_len: 0,
         }
-    }
-
-    /// The C input of a TC Transfer Frame that passed the Frame Validation Checks, read from its
-    /// octets (232.0 §4.1.2, §4.1.3.3, §4.1.4): the bypass and control command flags give the
-    /// type, and the data field follows the five-octet header, before the FECF if there is one.
-    fn frame(
-        config: &Map<String, Value>,
-        octets: &[u8],
-        buffer_available: bool,
-    ) -> (aldis_farm1_input_t, Vec<u8>) {
-        let trailer = if config["fecf"].as_bool().unwrap() {
-            2
-        } else {
-            0
-        };
-        let data = octets[5..octets.len() - trailer].to_vec();
-        let (bypass, control) = (octets[0] & 0x20 != 0, octets[0] & 0x10 != 0);
-        let mut input = aldis_farm1_input_t {
-            vc_id: (octets[2] >> 2) & 0x3F,
-            buffer_available: u8::from(buffer_available),
-            ..blank()
-        };
-        match (bypass, control) {
-            (false, _) => {
-                input.kind = ALDIS_FARM1_INPUT_FRAME_AD;
-                input.sequence_number = octets[4];
-            }
-            (true, false) => input.kind = ALDIS_FARM1_INPUT_FRAME_BD,
-            (true, true) => match data.as_slice() {
-                [0x00] => input.kind = ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK,
-                [0x82, 0x00, v_star] => {
-                    input.kind = ALDIS_FARM1_INPUT_FRAME_BC_SET_VR;
-                    input.v_star = *v_star;
-                }
-                _ => input.kind = ALDIS_FARM1_INPUT_FRAME_BC_OTHER,
-            },
-        }
-        (input, data)
     }
 
     fn state_name(n: u8) -> String {
@@ -636,17 +598,15 @@ mod farm1_runner {
                 } else {
                     let input = match key.as_str() {
                         "frame" => {
-                            let octets = hex::decode(v["frame_hex"].as_str().unwrap()).unwrap();
-                            let (input, data) = frame(
-                                scenario.config,
-                                &octets,
-                                v["buffer_available"].as_bool().unwrap(),
-                            );
-                            keep = data;
+                            keep = hex::decode(v["frame_hex"].as_str().unwrap()).unwrap();
                             aldis_farm1_input_t {
+                                kind: ALDIS_FARM1_INPUT_FRAME,
+                                buffer_available: u8::from(
+                                    v["buffer_available"].as_bool().unwrap(),
+                                ),
                                 data: keep.as_ptr(),
                                 data_len: keep.len(),
-                                ..input
+                                ..blank()
                             }
                         }
                         "invalid_frame" => aldis_farm1_input_t {

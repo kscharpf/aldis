@@ -11,8 +11,8 @@
 
 use aldis_cop1::{
     AlertReason, Directive, FARM1_MAX_ACTIONS, FARM1_TABLE, FOP1_TABLE, Farm1, Farm1Config,
-    Farm1Frame, Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output,
-    Fop1State, Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
+    Farm1Input, Farm1State, Farm1Window, Fop1, Fop1Config, Fop1Input, Fop1Output, Fop1State,
+    Fop1Target, FrameKind, TimeoutType, fop1_max_actions,
 };
 use aldis_core::ErrorKind;
 use aldis_core::ids::FrameSeqNum;
@@ -204,6 +204,35 @@ fn fop1(u: &mut Unstructured<'_>) -> Result<()> {
     Ok(())
 }
 
+/// Builds a minimal TC Transfer Frame (no FECF) and validates it in lenient mode.
+fn check_tc_frame<'a>(
+    wire: &'a mut [u8; 32],
+    vc: TcVcId,
+    flags: u8,
+    seq: u8,
+    payload: &[u8],
+) -> aldis_core::Checked<aldis_tc::TcFrame<'a>> {
+    let total = 5 + payload.len();
+    let len_minus_1 = u16::try_from(total - 1).unwrap();
+    let vc_len = (u16::from(vc.get()) << 10) | len_minus_1;
+    let [hi, lo] = vc_len.to_be_bytes();
+    wire[..5].copy_from_slice(&[flags, 0, hi, lo, seq]);
+    wire[5..total].copy_from_slice(payload);
+    let scid = aldis_tc::TcSpacecraftId::new(0).unwrap();
+    let pc = aldis_tc::PhysicalChannelConfig::new(1024, false).unwrap();
+    let vcc = aldis_tc::VcConfig::new(
+        scid,
+        vc,
+        1024,
+        aldis_tc::SegmentHeaderUse::Absent(aldis_core::security::SecurityLayout::NONE),
+    )
+    .unwrap();
+    let table = aldis_tc::VcTable::<1, 0>::new(pc, &[vcc], &[]).unwrap();
+    aldis_tc::check_frame(&wire[..total], &table, aldis_core::DecodeMode::Lenient)
+        .unwrap()
+        .into_view()
+}
+
 fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
     let window = Farm1Window::retransmission_allowed(2 * u.int_in_range(1..=127)?).unwrap();
     let mut f = Farm1::new(
@@ -216,8 +245,12 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
     );
     // bound: each pass consumes at least one octet of the input, and `u` is finite
     while !u.is_empty() {
-        let data_len = u.int_in_range(0..=8)?;
-        let data = u.bytes(data_len.min(u.len()))?.to_vec();
+        let data_len = u.int_in_range(1..=16)?;
+        let data = if u.len() >= data_len {
+            u.bytes(data_len)?.to_vec()
+        } else {
+            vec![0xA5]
+        };
         let n_s = if u.arbitrary()? {
             f.v_r().get().wrapping_add(u.int_in_range(0..=4)?)
         } else {
@@ -229,32 +262,25 @@ fn farm1(u: &mut Unstructured<'_>) -> Result<()> {
         // One frame in eight comes from another Virtual Channel (COP-037).
         let foreign = u.ratio(1, 8)?;
         let vc = TcVcId::new(if foreign { VCID + 1 } else { VCID }).unwrap();
+        let mut wire = [0u8; 32];
+        let checked_tc = match class {
+            0 | 1 => Some(check_tc_frame(&mut wire, vc, 0x00, n_s, &data)),
+            2 => Some(check_tc_frame(&mut wire, vc, 0x20, 0, &data)),
+            3 => {
+                let cmd = match u.int_in_range(0..=2)? {
+                    0 => Some(ControlCommand::Unlock),
+                    1 => Some(ControlCommand::SetVr(FrameSeqNum::new(u.arbitrary()?))),
+                    _ => None,
+                }
+                .inspect(|_| bc_known = true);
+                let octets = cmd.map(ControlCommand::to_octets);
+                let payload = octets.as_ref().map_or(&[0xFF][..], |c| c.as_slice());
+                Some(check_tc_frame(&mut wire, vc, 0x30, 0, payload))
+            }
+            _ => None,
+        };
         let input = match class {
-            0 | 1 => Farm1Input::Frame {
-                vc_id: vc,
-                frame: Farm1Frame::Ad {
-                    sequence_number: FrameSeqNum::new(n_s),
-                    data: &data,
-                },
-                buffer_available,
-            },
-            2 => Farm1Input::Frame {
-                vc_id: vc,
-                frame: Farm1Frame::Bd { data: &data },
-                buffer_available,
-            },
-            3 => Farm1Input::Frame {
-                vc_id: vc,
-                frame: Farm1Frame::Bc {
-                    command: match u.int_in_range(0..=2)? {
-                        0 => Some(ControlCommand::Unlock),
-                        1 => Some(ControlCommand::SetVr(FrameSeqNum::new(u.arbitrary()?))),
-                        _ => None,
-                    }
-                    .inspect(|_| bc_known = true),
-                },
-                buffer_available,
-            },
+            0..=3 => Farm1Input::from_tc(checked_tc.as_ref().unwrap(), buffer_available),
             4 => Farm1Input::InvalidFrame,
             5 => Farm1Input::BufferReleased,
             _ => Farm1Input::SetPhysicalFlags {

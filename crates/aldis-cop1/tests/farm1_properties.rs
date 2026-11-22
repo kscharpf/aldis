@@ -11,9 +11,13 @@ use aldis_cop1::{
     Farm1Window, FduKind,
 };
 use aldis_core::ids::FrameSeqNum;
+use aldis_core::security::SecurityLayout;
 use aldis_core::time::Instant;
 use aldis_core::{DecodeMode, ErrorKind};
-use aldis_tc::{ClcwStatus, ControlCommand, FrameType, TcVcId, check_frame};
+use aldis_tc::{
+    ClcwStatus, ControlCommand, FrameType, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId,
+    TcVcId, VcConfig, VcTable, check_frame,
+};
 use aldis_testkit::strategies::common::frame_seq_num;
 use aldis_testkit::strategies::proptest::prelude::*;
 use aldis_testkit::strategies::tc::{control_command, tc_frame};
@@ -67,8 +71,8 @@ fn op(near: FrameSeqNum) -> impl Strategy<Value = Op> {
         1 => frame_seq_num(),
     ];
     prop_oneof![
-        6 => (ns, any::<bool>(), octets(0..=16)).prop_map(|(n, b, d)| Op::Ad(n, b, d)),
-        2 => octets(0..=16).prop_map(Op::Bd),
+        6 => (ns, any::<bool>(), octets(1..=16)).prop_map(|(n, b, d)| Op::Ad(n, b, d)),
+        2 => octets(1..=16).prop_map(Op::Bd),
         1 => control_command().prop_map(|c| Op::Bc(Some(c))),
         1 => Just(Op::Bc(None)),
         1 => Just(Op::Invalid),
@@ -77,32 +81,63 @@ fn op(near: FrameSeqNum) -> impl Strategy<Value = Op> {
     ]
 }
 
-fn input(op: &Op) -> Farm1Input<'_> {
+fn tc_table(vc_id: TcVcId) -> VcTable<1, 0> {
+    let scid = TcSpacecraftId::new(0).unwrap();
+    let pc = PhysicalChannelConfig::new(1024, false).unwrap();
+    let vc = VcConfig::new(
+        scid,
+        vc_id,
+        1024,
+        SegmentHeaderUse::Absent(SecurityLayout::NONE),
+    )
+    .unwrap();
+    VcTable::new(pc, &[vc], &[]).unwrap()
+}
+
+fn build_tc(frame_type: FrameType, vc_id: TcVcId, n_s: u8, payload: &[u8]) -> Vec<u8> {
+    let flags = match frame_type {
+        FrameType::Ad => 0x00,
+        FrameType::Bd => 0x20,
+        FrameType::Bc => 0x30,
+    };
+    let len_minus_1 = u16::try_from(5 + payload.len() - 1).unwrap();
+    let vc_len = (u16::from(vc_id.get()) << 10) | len_minus_1;
+    let mut buf = Vec::with_capacity(5 + payload.len());
+    buf.push(flags);
+    buf.push(0);
+    buf.extend_from_slice(&vc_len.to_be_bytes());
+    buf.push(n_s);
+    buf.extend_from_slice(payload);
+    buf
+}
+
+fn with_input<R>(op: &Op, f: impl FnOnce(Farm1Input<'_>) -> R) -> R {
+    let vc = TcVcId::new(2).unwrap();
+    let table = tc_table(vc);
     match op {
-        Op::Ad(n, buffer_available, data) => Farm1Input::Frame {
-            vc_id: TcVcId::new(2).unwrap(),
-            frame: Farm1Frame::Ad {
-                sequence_number: *n,
-                data,
-            },
-            buffer_available: *buffer_available,
-        },
-        Op::Bd(data) => Farm1Input::Frame {
-            vc_id: TcVcId::new(2).unwrap(),
-            frame: Farm1Frame::Bd { data },
-            buffer_available: true,
-        },
-        Op::Bc(command) => Farm1Input::Frame {
-            vc_id: TcVcId::new(2).unwrap(),
-            frame: Farm1Frame::Bc { command: *command },
-            buffer_available: true,
-        },
-        Op::Invalid => Farm1Input::InvalidFrame,
-        Op::Release => Farm1Input::BufferReleased,
-        Op::Physical(no_rf_available, no_bit_lock) => Farm1Input::SetPhysicalFlags {
+        Op::Ad(n, buffer_available, data) => {
+            let wire = build_tc(FrameType::Ad, vc, n.get(), data);
+            let checked = check_frame(&wire, &table, DecodeMode::Lenient).unwrap();
+            f(Farm1Input::from_tc(&checked, *buffer_available))
+        }
+        Op::Bd(data) => {
+            let wire = build_tc(FrameType::Bd, vc, 0, data);
+            let checked = check_frame(&wire, &table, DecodeMode::Lenient).unwrap();
+            f(Farm1Input::from_tc(&checked, true))
+        }
+        Op::Bc(command) => {
+            let cmd = command.map(ControlCommand::to_octets);
+            let payload = cmd.as_ref().map_or(&[0xFF][..], |c| c.as_slice());
+            let wire = build_tc(FrameType::Bc, vc, 0, payload);
+            let checked = check_frame(&wire, &table, DecodeMode::Lenient).unwrap();
+            f(Farm1Input::from_tc(&checked, true))
+        }
+        Op::Invalid => f(Farm1Input::InvalidFrame),
+        Op::Release => f(Farm1Input::BufferReleased),
+        Op::Physical(no_rf_available, no_bit_lock) => f(Farm1Input::SetPhysicalFlags {
             no_rf_available: *no_rf_available,
             no_bit_lock: *no_bit_lock,
-        },
+        }),
     }
 }
 
@@ -120,7 +155,7 @@ proptest! {
         for op in &ops {
             let mut out = [0u8; 16];
             let before = f;
-            let result = f.step(input(op), NOW, &mut out);
+            let result = with_input(op, |inp| f.step(inp, NOW, &mut out));
             // The only error with an area of 16 octets is the "not applicable" cell S2 E1.
             let na = matches!(op, Op::Ad(n, true, _) if *n == before.v_r())
                 && before.state() == Farm1State::Wait;
@@ -135,7 +170,7 @@ proptest! {
             prop_assert!(actions.len() <= FARM1_MAX_ACTIONS);
             // The pure function: the same state and input give the same result.
             let mut again = [0u8; 16];
-            prop_assert_eq!(before.step(input(op), NOW, &mut again).unwrap(), (after, actions));
+            prop_assert_eq!(with_input(op, |inp| before.step(inp, NOW, &mut again)).unwrap(), (after, actions));
             prop_assert_eq!(out, again);
 
             // State and flags (232.1 §6.1.2 to §6.1.5, Table 6-1).
@@ -196,10 +231,11 @@ proptest! {
         let f = Farm1::new(config(w), v_r);
         let data = [1u8, 2];
         let mut out = [0u8; 2];
-        let ad = |buffer_available| Farm1Input::Frame { vc_id: TcVcId::new(2).unwrap(),
-            frame: Farm1Frame::Ad { sequence_number: n_s, data: &data },
-            buffer_available,
-        };
+        let vc = TcVcId::new(2).unwrap();
+        let table = tc_table(vc);
+        let wire = build_tc(FrameType::Ad, vc, n_s.get(), &data);
+        let checked = check_frame(&wire, &table, DecodeMode::Strict).unwrap();
+        let ad = |buffer_available| Farm1Input::from_tc(&checked, buffer_available);
         // 232.1 §6.1.8.3 on N(S) read in the circular sequence space around V(R).
         let ahead = (i32::from(n_s.get()) - i32::from(v_r.get())).rem_euclid(256);
         let (pw, nw) = (i32::from(w.positive()), i32::from(w.negative()));
@@ -240,17 +276,25 @@ proptest! {
     fn tc_frames_map_to_farm1_frames(f in tc_frame()) {
         // req: COP-031, COP-002, VER-023
         let frame = check_frame(&f.octets, &f.channels.table, DecodeMode::Strict).unwrap();
-        match (frame.frame_type(), Farm1Frame::from_tc(&frame)) {
-            (FrameType::Ad, Farm1Frame::Ad { sequence_number, data }) => {
-                prop_assert_eq!(sequence_number, frame.sequence_number());
-                prop_assert_eq!(data, f.user_data.as_slice());
+        let mapped = Farm1Frame::from_tc(&frame);
+        prop_assert_eq!(mapped.kind(), frame.frame_type());
+        match frame.frame_type() {
+            FrameType::Ad => {
+                prop_assert_eq!(mapped.sequence_number(), Some(frame.sequence_number()));
+                prop_assert_eq!(mapped.data(), Some(f.user_data.as_slice()));
+                prop_assert_eq!(mapped.control_command(), None);
             }
-            (FrameType::Bd, Farm1Frame::Bd { data }) => prop_assert_eq!(data, f.user_data.as_slice()),
-            (FrameType::Bc, Farm1Frame::Bc { command }) => {
-                prop_assert_eq!(command, f.control);
-                prop_assert!(command.is_some());
+            FrameType::Bd => {
+                prop_assert_eq!(mapped.sequence_number(), None);
+                prop_assert_eq!(mapped.data(), Some(f.user_data.as_slice()));
+                prop_assert_eq!(mapped.control_command(), None);
             }
-            (t, other) => prop_assert!(false, "{t:?} became {other:?}"),
+            FrameType::Bc => {
+                prop_assert_eq!(mapped.sequence_number(), None);
+                prop_assert_eq!(mapped.data(), None);
+                prop_assert_eq!(mapped.control_command(), f.control);
+                prop_assert!(mapped.control_command().is_some());
+            }
         }
     }
 }

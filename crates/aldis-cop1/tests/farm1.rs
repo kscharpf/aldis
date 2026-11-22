@@ -11,13 +11,17 @@
 )]
 
 use aldis_cop1::{
-    FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Event, Farm1Frame, Farm1Input, Farm1Notify,
+    FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Event, Farm1Input, Farm1Notify,
     Farm1Output, Farm1State, Farm1Window, FduKind, OutRange,
 };
 use aldis_core::ids::FrameSeqNum;
+use aldis_core::security::SecurityLayout;
 use aldis_core::time::Instant;
-use aldis_core::{ErrorDetail, ErrorKind, field};
-use aldis_tc::{ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, TcVcId};
+use aldis_core::{DecodeMode, ErrorDetail, ErrorKind, Result, field};
+use aldis_tc::{
+    ClcwStatus, ControlCommand, CopInEffect, FarmBCounter, PhysicalChannelConfig, SegmentHeaderUse,
+    TcSpacecraftId, TcVcId, VcConfig, VcTable, check_frame,
+};
 
 const DATA: [u8; 3] = [0xA1, 0xB2, 0xC3];
 const NOW: Instant = Instant::from_micros(0);
@@ -43,42 +47,173 @@ fn fresh(v_r: u8) -> Farm1 {
     Farm1::new(config(window16()), seq(v_r))
 }
 
-const fn ad(n_s: u8, buffer_available: bool) -> Farm1Input<'static> {
-    Farm1Input::Frame {
+/// Owned test input that converts into a checked [`Farm1Input`] via `check_frame` + `from_tc`.
+#[derive(Debug, Clone, Copy)]
+enum TestInput {
+    Ad {
+        vc_id: TcVcId,
+        n_s: u8,
+        buffer_available: bool,
+    },
+    Bd {
+        vc_id: TcVcId,
+    },
+    Bc {
+        vc_id: TcVcId,
+        command: Option<ControlCommand>,
+    },
+    InvalidFrame,
+    BufferReleased,
+    SetPhysicalFlags {
+        no_rf_available: bool,
+        no_bit_lock: bool,
+    },
+}
+
+impl TestInput {
+    const fn with_vc(self, vc_id: TcVcId) -> Self {
+        match self {
+            Self::Ad {
+                n_s,
+                buffer_available,
+                ..
+            } => Self::Ad {
+                vc_id,
+                n_s,
+                buffer_available,
+            },
+            Self::Bd { .. } => Self::Bd { vc_id },
+            Self::Bc { command, .. } => Self::Bc { vc_id, command },
+            Self::InvalidFrame => Self::InvalidFrame,
+            Self::BufferReleased => Self::BufferReleased,
+            Self::SetPhysicalFlags {
+                no_rf_available,
+                no_bit_lock,
+            } => Self::SetPhysicalFlags {
+                no_rf_available,
+                no_bit_lock,
+            },
+        }
+    }
+}
+
+impl From<Farm1Input<'static>> for TestInput {
+    fn from(input: Farm1Input<'static>) -> Self {
+        match input {
+            Farm1Input::InvalidFrame => Self::InvalidFrame,
+            Farm1Input::BufferReleased => Self::BufferReleased,
+            Farm1Input::SetPhysicalFlags {
+                no_rf_available,
+                no_bit_lock,
+            } => Self::SetPhysicalFlags {
+                no_rf_available,
+                no_bit_lock,
+            },
+            Farm1Input::Frame(f) => match f.frame().kind() {
+                aldis_tc::FrameType::Ad => Self::Ad {
+                    vc_id: f.vc_id(),
+                    n_s: f.frame().sequence_number().map_or(0, FrameSeqNum::get),
+                    buffer_available: f.buffer_available(),
+                },
+                aldis_tc::FrameType::Bd => Self::Bd { vc_id: f.vc_id() },
+                aldis_tc::FrameType::Bc => Self::Bc {
+                    vc_id: f.vc_id(),
+                    command: f.frame().control_command(),
+                },
+            },
+        }
+    }
+}
+
+const fn ad(n_s: u8, buffer_available: bool) -> TestInput {
+    TestInput::Ad {
         vc_id: TcVcId::new(5).unwrap(),
-        frame: Farm1Frame::Ad {
-            sequence_number: seq(n_s),
-            data: &DATA,
-        },
+        n_s,
         buffer_available,
     }
 }
 
-const fn bd() -> Farm1Input<'static> {
-    Farm1Input::Frame {
+const fn bd() -> TestInput {
+    TestInput::Bd {
         vc_id: TcVcId::new(5).unwrap(),
-        frame: Farm1Frame::Bd { data: &DATA },
-        buffer_available: true,
     }
 }
 
-const fn bc(command: Option<ControlCommand>) -> Farm1Input<'static> {
-    Farm1Input::Frame {
+const fn bc(command: Option<ControlCommand>) -> TestInput {
+    TestInput::Bc {
         vc_id: TcVcId::new(5).unwrap(),
-        frame: Farm1Frame::Bc { command },
-        buffer_available: true,
+        command,
+    }
+}
+
+fn step_in(
+    f: &Farm1,
+    input: impl Into<TestInput>,
+    now: Instant,
+    out: &mut [u8],
+) -> Result<(Farm1, Farm1Actions)> {
+    let mut build_and_step =
+        |vc_id: TcVcId, flags: u8, n_s: u8, payload: &[u8], buffer_available: bool| {
+            let mut wire = [0_u8; 32];
+            let total = 5usize.saturating_add(payload.len());
+            let len_minus_1 = u16::try_from(total.saturating_sub(1)).unwrap();
+            let vc_len = (u16::from(vc_id.get()) << 10) | len_minus_1;
+            let [hi, lo] = vc_len.to_be_bytes();
+            wire.get_mut(..5)
+                .unwrap()
+                .copy_from_slice(&[flags, 0, hi, lo, n_s]);
+            wire.get_mut(5..total).unwrap().copy_from_slice(payload);
+            let scid = TcSpacecraftId::new(0).unwrap();
+            let pc = PhysicalChannelConfig::new(1024, false).unwrap();
+            let vcc = VcConfig::new(
+                scid,
+                vc_id,
+                1024,
+                SegmentHeaderUse::Absent(SecurityLayout::NONE),
+            )
+            .unwrap();
+            let table = VcTable::<1, 0>::new(pc, &[vcc], &[]).unwrap();
+            let checked =
+                check_frame(wire.get(..total).unwrap(), &table, DecodeMode::Lenient).unwrap();
+            f.step(Farm1Input::from_tc(&checked, buffer_available), now, out)
+        };
+    match input.into() {
+        TestInput::Ad {
+            vc_id,
+            n_s,
+            buffer_available,
+        } => build_and_step(vc_id, 0x00, n_s, &DATA, buffer_available),
+        TestInput::Bd { vc_id } => build_and_step(vc_id, 0x20, 0, &DATA, true),
+        TestInput::Bc { vc_id, command } => {
+            let octets = command.map(ControlCommand::to_octets);
+            let payload = octets.as_ref().map_or(&[0xFF][..], |c| c.as_slice());
+            build_and_step(vc_id, 0x30, 0, payload, true)
+        }
+        TestInput::InvalidFrame => f.step(Farm1Input::InvalidFrame, now, out),
+        TestInput::BufferReleased => f.step(Farm1Input::BufferReleased, now, out),
+        TestInput::SetPhysicalFlags {
+            no_rf_available,
+            no_bit_lock,
+        } => f.step(
+            Farm1Input::SetPhysicalFlags {
+                no_rf_available,
+                no_bit_lock,
+            },
+            now,
+            out,
+        ),
     }
 }
 
 /// A successful step: the next state and the actions as a vector.
-fn go(f: &Farm1, input: Farm1Input<'_>) -> (Farm1, Vec<Farm1Output>) {
+fn go(f: &Farm1, input: impl Into<TestInput>) -> (Farm1, Vec<Farm1Output>) {
     let mut out = [0u8; 16];
-    let (next, actions) = f.step(input, NOW, &mut out).unwrap();
+    let (next, actions) = step_in(f, input, NOW, &mut out).unwrap();
     assert!(actions.len() <= FARM1_MAX_ACTIONS);
     (next, actions.iter().copied().collect())
 }
 
-fn apply(f: &Farm1, inputs: &[Farm1Input<'_>]) -> Farm1 {
+fn apply(f: &Farm1, inputs: &[TestInput]) -> Farm1 {
     inputs.iter().fold(*f, |f, i| go(&f, *i).0)
 }
 
@@ -99,7 +234,7 @@ const EVENTS: [Farm1Event; 10] = [
 
 /// The input that raises `event` (E1 to E10) in `f`, with V*(R) = 77 for Set V(R).
 #[expect(clippy::unreachable, reason = "E11 is a query, not an input")]
-fn input_for(f: &Farm1, event: Farm1Event) -> Farm1Input<'static> {
+fn input_for(f: &Farm1, event: Farm1Event) -> TestInput {
     let v = f.v_r().get();
     match event {
         Farm1Event::E1 => ad(v, true),
@@ -110,8 +245,8 @@ fn input_for(f: &Farm1, event: Farm1Event) -> Farm1Input<'static> {
         Farm1Event::E6 => bd(),
         Farm1Event::E7 => bc(Some(ControlCommand::Unlock)),
         Farm1Event::E8 => bc(Some(ControlCommand::SetVr(seq(77)))),
-        Farm1Event::E9 => Farm1Input::InvalidFrame,
-        Farm1Event::E10 => Farm1Input::BufferReleased,
+        Farm1Event::E9 => TestInput::InvalidFrame,
+        Farm1Event::E10 => TestInput::BufferReleased,
         Farm1Event::E11 => unreachable!("E11 is the query clcw"),
     }
 }
@@ -127,7 +262,7 @@ fn starts(state: Farm1State) -> Vec<Farm1> {
             vec![
                 apply(&f, &[ad(110, true)]),
                 waiting,
-                apply(&waiting, &[Farm1Input::BufferReleased]),
+                apply(&waiting, &[TestInput::BufferReleased]),
             ]
         }
     }
@@ -301,13 +436,13 @@ fn every_cell_of_table_6_1_through_step() {
                 let mut out = [0u8; 16];
                 let Some(next) = want.next else {
                     // Not applicable: InvalidState, nothing changed, nothing written (COP-005).
-                    let e = before.step(input, NOW, &mut out).unwrap_err();
+                    let e = step_in(&before, input, NOW, &mut out).unwrap_err();
                     assert_eq!(e.kind(), ErrorKind::InvalidState, "{state:?} {event:?}");
                     assert_eq!(out, [0u8; 16]);
                     cells += 1;
                     continue;
                 };
-                let (after, actions) = before.step(input, NOW, &mut out).unwrap();
+                let (after, actions) = step_in(&before, input, NOW, &mut out).unwrap();
                 let at = format!("{state:?} {event:?} from {before:?}");
                 assert_eq!(after.state(), next, "{at}");
                 let v_star = 77;
@@ -398,21 +533,9 @@ fn a_frame_of_another_virtual_channel_is_refused_and_changes_nothing() {
                 .map(|event| input_for(&f, *event))
                 .chain([bc(None)]);
             for input in frames {
-                let Farm1Input::Frame {
-                    frame,
-                    buffer_available,
-                    ..
-                } = input
-                else {
-                    panic!("E1 to E9 here are frames");
-                };
-                let foreign = Farm1Input::Frame {
-                    vc_id: other,
-                    frame,
-                    buffer_available,
-                };
+                let foreign = input.with_vc(other);
                 let mut out = [0u8; 16];
-                let err = f.step(foreign, NOW, &mut out).unwrap_err();
+                let err = step_in(&f, foreign, NOW, &mut out).unwrap_err();
                 assert_eq!(
                     (err.kind(), err.field()),
                     (ErrorKind::UnknownChannel, Some(field::VC_ID))
@@ -678,7 +801,7 @@ fn buffer_availability_is_the_callers_input() {
     }
     // A buffer the caller has not announced with E10 is the "not applicable" cell (COP-005).
     let mut out = [0u8; 8];
-    let e = w.step(ad(0, true), NOW, &mut out).unwrap_err();
+    let e = step_in(&w, ad(0, true), NOW, &mut out).unwrap_err();
     assert_eq!(e.kind(), ErrorKind::InvalidState);
     // A Type-BD frame is accepted in Wait.
     let (_, a) = go(&w, bd());
@@ -718,8 +841,8 @@ fn lockout_is_left_only_by_unlock() {
         ad(6, false),
         ad(7, true),
         bc(Some(ControlCommand::SetVr(seq(40)))),
-        Farm1Input::BufferReleased,
-        Farm1Input::InvalidFrame,
+        TestInput::BufferReleased,
+        TestInput::InvalidFrame,
         bd(),
     ] {
         let (g, _) = go(&f, input);
@@ -796,7 +919,7 @@ fn errors_leave_the_state_unchanged_and_write_nothing() {
     // BufferTooSmall: a Type-AD and a Type-BD FDU of three octets in an area of two.
     for input in [ad(0, true), bd()] {
         let mut out = [0xEE; 2];
-        let e = f.step(input, NOW, &mut out).unwrap_err();
+        let e = step_in(&f, input, NOW, &mut out).unwrap_err();
         assert_eq!(e.kind(), ErrorKind::BufferTooSmall);
         assert_eq!(e.detail(), ErrorDetail::Needed(3));
         assert_eq!(out, [0xEE; 2]);
@@ -807,18 +930,18 @@ fn errors_leave_the_state_unchanged_and_write_nothing() {
         ad(0, false),
         ad(5, true),
         bc(None),
-        Farm1Input::BufferReleased,
+        TestInput::BufferReleased,
     ] {
-        assert!(f.step(input, NOW, &mut []).is_ok());
+        assert!(step_in(&f, input, NOW, &mut []).is_ok());
     }
     // An FDU exactly as long as the area fits.
     let mut out = [0u8; 3];
-    assert!(f.step(ad(0, true), NOW, &mut out).is_ok());
+    assert!(step_in(&f, ad(0, true), NOW, &mut out).is_ok());
     assert_eq!(out, DATA);
     // Not applicable: the same state, nothing written.
     let w = go(&f, ad(0, false)).0;
     let mut out = [0xEE; 3];
-    assert!(w.step(ad(0, true), NOW, &mut out).is_err());
+    assert!(step_in(&w, ad(0, true), NOW, &mut out).is_err());
     assert_eq!((out, w), ([0xEE; 3], go(&f, ad(0, false)).0));
 }
 
@@ -826,13 +949,11 @@ fn errors_leave_the_state_unchanged_and_write_nothing() {
 fn step_is_deterministic_and_independent_of_the_clock() {
     // req: API-057, GEN-030, GEN-032
     let f = apply(&fresh(9), &[ad(11, true)]);
-    for input in [ad(9, true), bd(), Farm1Input::BufferReleased] {
+    for input in [ad(9, true), bd(), TestInput::BufferReleased] {
         let mut a = [0u8; 8];
         let mut b = [0u8; 8];
-        let x = f.step(input, Instant::from_micros(0), &mut a).unwrap();
-        let y = f
-            .step(input, Instant::from_micros(u64::MAX), &mut b)
-            .unwrap();
+        let x = step_in(&f, input, Instant::from_micros(0), &mut a).unwrap();
+        let y = step_in(&f, input, Instant::from_micros(u64::MAX), &mut b).unwrap();
         assert_eq!((x, a), (y, b));
     }
 }
@@ -842,7 +963,7 @@ fn delivered_range_addresses_the_output_area() {
     // req: API-061, API-054
     let f = fresh(0);
     let mut out = [0u8; 8];
-    let (_, actions) = f.step(ad(0, true), NOW, &mut out).unwrap();
+    let (_, actions) = step_in(&f, ad(0, true), NOW, &mut out).unwrap();
     let Some(Farm1Output::Deliver {
         data,
         kind,
@@ -879,40 +1000,38 @@ fn the_input_of_a_validated_frame_carries_its_type_vcid_and_data() {
         // N(S) is all zeros in a Type-B frame (232.0 §4.1.2.8 note 3).
         sequence_number: seq(if frame_type == FrameType::Ad { 4 } else { 0 }),
     };
-    let check = |frame_type, data: FrameData<'_>, buffer_available, expected: Farm1Frame<'_>| {
+    let check = |frame_type,
+                 data: FrameData<'_>,
+                 buffer_available,
+                 expected_ns: Option<FrameSeqNum>,
+                 expected_data: Option<&[u8]>,
+                 expected_cmd: Option<ControlCommand>| {
         let mut bytes = [0_u8; F];
         let n = encode(&channels, fields(frame_type), data, &mut bytes).unwrap();
         let valid = check_frame(&bytes[..n], &channels, DecodeMode::Strict).unwrap();
-        // The frame borrows `bytes`, so it is compared inside the closure.
-        assert_eq!(
-            Farm1Input::from_tc(&valid, buffer_available),
-            Farm1Input::Frame {
-                vc_id: vc,
-                frame: expected,
-                buffer_available
-            }
-        );
+        let Farm1Input::Frame(checked) = Farm1Input::from_tc(&valid, buffer_available) else {
+            panic!("expected Frame input");
+        };
+        assert_eq!(checked.vc_id(), vc);
+        assert_eq!(checked.buffer_available(), buffer_available);
+        let frame = checked.frame();
+        assert_eq!(frame.kind(), frame_type);
+        assert_eq!(frame.sequence_number(), expected_ns);
+        assert_eq!(frame.data(), expected_data);
+        assert_eq!(frame.control_command(), expected_cmd);
     };
     let fdu = FrameData::Fdu {
         segment_header: None,
         user_data: &DATA,
     };
-    check(
-        FrameType::Ad,
-        fdu,
-        true,
-        Farm1Frame::Ad {
-            sequence_number: seq(4),
-            data: &DATA,
-        },
-    );
-    check(FrameType::Bd, fdu, false, Farm1Frame::Bd { data: &DATA });
+    check(FrameType::Ad, fdu, true, Some(seq(4)), Some(&DATA), None);
+    check(FrameType::Bd, fdu, false, None, Some(&DATA), None);
     check(
         FrameType::Bc,
         FrameData::Control(ControlCommand::SetVr(seq(9))),
         true,
-        Farm1Frame::Bc {
-            command: Some(ControlCommand::SetVr(seq(9))),
-        },
+        None,
+        None,
+        Some(ControlCommand::SetVr(seq(9))),
     );
 }

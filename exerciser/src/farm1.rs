@@ -75,17 +75,17 @@ fn tc_group(t: &mut Tally) {
             t.check(false);
             continue;
         };
-        t.check(match (frame_type, Farm1Frame::from_tc(&frame)) {
-            (
-                FrameType::Ad,
-                Farm1Frame::Ad {
-                    sequence_number,
-                    data,
-                },
-            ) => sequence_number.get() == 7 && data == [1, 2, 3],
-            (FrameType::Bd, Farm1Frame::Bd { data }) => data == [4, 5],
-            (FrameType::Bc, Farm1Frame::Bc { command }) => command == Some(set),
-            _ => false,
+        let mapped = Farm1Frame::from_tc(&frame);
+        t.check(match frame_type {
+            FrameType::Ad => {
+                mapped.kind() == FrameType::Ad
+                    && mapped.sequence_number() == Some(FrameSeqNum::new(7))
+                    && mapped.data() == Some(&[1, 2, 3][..])
+            }
+            FrameType::Bd => mapped.kind() == FrameType::Bd && mapped.data() == Some(&[4, 5][..]),
+            FrameType::Bc => {
+                mapped.kind() == FrameType::Bc && mapped.control_command() == Some(set)
+            }
         });
     }
 }
@@ -181,16 +181,12 @@ fn check_uslp_farm1(
     };
     let frame = Farm1Frame::from_uslp(checked);
     t.check(match (kind, is_bad_bc, frame) {
-        (
-            u::FrameKind::SequenceControlled,
-            _,
-            Ok(Farm1Frame::Ad {
-                sequence_number, ..
-            }),
-        ) => sequence_number.get() == 7,
-        (u::FrameKind::Expedited, _, Ok(Farm1Frame::Bd { .. })) => true,
-        (u::FrameKind::ProtocolControl, false, Ok(Farm1Frame::Bc { command })) => {
-            command == Some(set)
+        (u::FrameKind::SequenceControlled, _, Ok(f)) => {
+            f.kind() == FrameType::Ad && f.sequence_number() == Some(FrameSeqNum::new(7))
+        }
+        (u::FrameKind::Expedited, _, Ok(f)) => f.kind() == FrameType::Bd,
+        (u::FrameKind::ProtocolControl, false, Ok(f)) => {
+            f.kind() == FrameType::Bc && f.control_command() == Some(set)
         }
         (u::FrameKind::ProtocolControl, true, Err(e)) => is_reserved_cmd(e),
         _ => false,
@@ -198,14 +194,7 @@ fn check_uslp_farm1(
     let input = Farm1Input::from_uslp(checked, bb(true));
     t.check(match (is_bad_bc, input) {
         (true, Err(e)) => is_reserved_cmd(e),
-        (
-            false,
-            Ok(Farm1Input::Frame {
-                vc_id,
-                buffer_available: true,
-                ..
-            }),
-        ) => vc_id.get() == 5,
+        (false, Ok(Farm1Input::Frame(f))) => f.vc_id().get() == 5 && f.buffer_available(),
         _ => false,
     });
 }
@@ -230,19 +219,66 @@ fn window_group(t: &mut Tally) {
     );
 }
 
+/// Steps `f` with a checked TC frame built from raw fields (no FECF, lenient decode).
+fn step_tc(
+    f: &Farm1,
+    frame_type: FrameType,
+    vc_id: TcVcId,
+    n_s: u8,
+    payload: &[u8],
+    buffer_available: bool,
+    out: &mut [u8],
+) -> aldis_core::Result<Step> {
+    let mut wire = [0_u8; 32];
+    let total = 5usize.saturating_add(payload.len());
+    let flags = match frame_type {
+        FrameType::Ad => 0x00,
+        FrameType::Bd => 0x20,
+        FrameType::Bc => 0x30,
+    };
+    let len_minus_1 = u16::try_from(total.saturating_sub(1))
+        .map_err(|_| aldis_core::Error::new(ErrorKind::InternalError))?;
+    let vc_len = (u16::from(vc_id.get()) << 10) | len_minus_1;
+    let [hi, lo] = vc_len.to_be_bytes();
+    if let Some(hdr) = wire.get_mut(..5) {
+        hdr.copy_from_slice(&[flags, 0, hi, lo, n_s]);
+    }
+    if let Some(dst) = wire.get_mut(5..total) {
+        dst.copy_from_slice(payload);
+    }
+    let scid = TcSpacecraftId::new(0).ok_or(aldis_core::Error::new(ErrorKind::InternalError))?;
+    let pc = PhysicalChannelConfig::new(1024, false)?;
+    let vcc = VcConfig::new(
+        scid,
+        vc_id,
+        1024,
+        SegmentHeaderUse::Absent(SecurityLayout::NONE),
+    )?;
+    let table = VcTable::<1, 0>::new(pc, &[vcc], &[])?;
+    let slice = wire
+        .get(..total)
+        .ok_or(aldis_core::Error::new(ErrorKind::InternalError))?;
+    let checked = check_frame(bb(slice), &table, DecodeMode::Lenient).map_err(|r| r.error())?;
+    f.step(
+        bb(Farm1Input::from_tc(&checked, buffer_available)),
+        NOW,
+        out,
+    )
+}
+
 /// The accepted FDU: E1.
 fn accept_group(t: &mut Tally, f: &Farm1) {
     let data = bb([0xA1_u8, 0xB2, 0xC3]);
     let mut out = [0_u8; 8];
-    let input = Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Ad {
-            sequence_number: FrameSeqNum::new(bb(10)),
-            data: &data,
-        },
-        buffer_available: bb(true),
-    };
-    let Some((next, acts)) = step(f, input, &mut out) else {
+    let Ok((next, acts)) = step_tc(
+        f,
+        FrameType::Ad,
+        f.config().vc_id,
+        bb(10),
+        &data,
+        bb(true),
+        &mut out,
+    ) else {
         t.check(false);
         return;
     };
@@ -258,8 +294,16 @@ fn accept_group(t: &mut Tally, f: &Farm1) {
     // The area is too short for the FDU.
     let short = out.get_mut(..2).unwrap_or_default();
     t.check(
-        f.step(bb(input), NOW, short)
-            .is_err_and(|e| e.kind() == ErrorKind::BufferTooSmall),
+        step_tc(
+            f,
+            FrameType::Ad,
+            f.config().vc_id,
+            bb(10),
+            &data,
+            bb(true),
+            short,
+        )
+        .is_err_and(|e| e.kind() == ErrorKind::BufferTooSmall),
     );
 }
 
@@ -267,28 +311,28 @@ fn accept_group(t: &mut Tally, f: &Farm1) {
 fn window_events(t: &mut Tally, f: &Farm1) {
     let data = bb([1_u8]);
     let mut out = [0_u8; 8];
-    let ad = |n: u8, buffer_available: bool| Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Ad {
-            sequence_number: FrameSeqNum::new(n),
-            data: &data,
-        },
-        buffer_available,
+    let ad = |farm: &Farm1, n: u8, buffer_available: bool, out: &mut [u8]| {
+        step_tc(
+            farm,
+            FrameType::Ad,
+            f.config().vc_id,
+            n,
+            &data,
+            buffer_available,
+            out,
+        )
     };
-    let Some((wait, _)) = step(f, ad(bb(10), false), &mut out) else {
+    let Ok((wait, _)) = ad(f, bb(10), false, &mut out) else {
         t.check(false);
         return;
     };
     t.check(wait.state() == Farm1State::Wait && wait.wait_flag() && wait.retransmit_flag());
-    t.check(
-        wait.step(bb(ad(10, true)), NOW, &mut out)
-            .is_err_and(|e| e.kind() == ErrorKind::InvalidState),
-    );
+    t.check(ad(&wait, 10, true, &mut out).is_err_and(|e| e.kind() == ErrorKind::InvalidState));
     let buffer = step(&wait, Farm1Input::BufferReleased, &mut out);
     t.check(buffer.is_some_and(|(g, _)| !g.wait_flag() && g.state() == Farm1State::Open));
-    t.check(step(f, ad(bb(13), true), &mut out).is_some_and(|(g, _)| g.retransmit_flag()));
-    t.check(step(f, ad(bb(8), true), &mut out).is_some_and(|(g, _)| !g.retransmit_flag()));
-    let Some((lock, a)) = step(f, ad(bb(110), true), &mut out) else {
+    t.check(ad(f, bb(13), true, &mut out).is_ok_and(|(g, _)| g.retransmit_flag()));
+    t.check(ad(f, bb(8), true, &mut out).is_ok_and(|(g, _)| !g.retransmit_flag()));
+    let Ok((lock, a)) = ad(f, bb(110), true, &mut out) else {
         t.check(false);
         return;
     };
@@ -308,54 +352,63 @@ fn window_events(t: &mut Tally, f: &Farm1) {
             to: Farm1State::Lockout
         }))
     ));
-    let unlock = Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Bc {
-            command: Some(ControlCommand::Unlock),
-        },
-        buffer_available: true,
-    };
-    t.check(step(&lock, unlock, &mut out).is_some_and(|(g, a)| {
-        g.state() == Farm1State::Open
-            && a.iter()
-                .any(|x| *x == Farm1Output::Notify(Farm1Notify::Unlocked))
-    }));
+    let unlock = ControlCommand::Unlock.to_octets();
+    t.check(
+        step_tc(
+            &lock,
+            FrameType::Bc,
+            f.config().vc_id,
+            0,
+            unlock.as_slice(),
+            true,
+            &mut out,
+        )
+        .is_ok_and(|(g, a)| {
+            g.state() == Farm1State::Open
+                && a.iter()
+                    .any(|x| *x == Farm1Output::Notify(Farm1Notify::Unlocked))
+        }),
+    );
 }
 
 /// E6, E8, E9, and the physical flags.
 fn other_events(t: &mut Tally, f: &Farm1) {
     let data = bb([1_u8]);
     let mut out = [0_u8; 8];
-    let bd = Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Bd { data: &data },
-        buffer_available: true,
-    };
-    t.check(step(f, bd, &mut out).is_some_and(|(g, _)| g.farm_b_counter().get() == 1));
-    let set = Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Bc {
-            command: Some(ControlCommand::SetVr(FrameSeqNum::new(bb(77)))),
-        },
-        buffer_available: true,
-    };
-    t.check(step(f, set, &mut out).is_some_and(|(g, _)| g.v_r().get() == 77));
-    let unknown = Farm1Input::Frame {
-        vc_id: f.config().vc_id,
-        frame: Farm1Frame::Bc { command: None },
-        buffer_available: true,
-    };
-    t.check(step(f, unknown, &mut out).is_some_and(|(g, a)| g == *f && a.len() == 1));
+    t.check(
+        step_tc(f, FrameType::Bd, f.config().vc_id, 0, &data, true, &mut out)
+            .is_ok_and(|(g, _)| g.farm_b_counter().get() == 1),
+    );
+    let set = ControlCommand::SetVr(FrameSeqNum::new(bb(77))).to_octets();
+    t.check(
+        step_tc(
+            f,
+            FrameType::Bc,
+            f.config().vc_id,
+            0,
+            set.as_slice(),
+            true,
+            &mut out,
+        )
+        .is_ok_and(|(g, _)| g.v_r().get() == 77),
+    );
+    t.check(
+        step_tc(
+            f,
+            FrameType::Bc,
+            f.config().vc_id,
+            0,
+            &[0xFF],
+            true,
+            &mut out,
+        )
+        .is_ok_and(|(g, a)| g == *f && a.len() == 1),
+    );
     t.check(step(f, Farm1Input::InvalidFrame, &mut out).is_some_and(|(_, a)| a.len() == 1));
     // A frame of another Virtual Channel is refused (COP-037).
     let other = TcVcId::new(bb(6));
     t.check(other.is_some_and(|vc_id| {
-        let foreign = Farm1Input::Frame {
-            vc_id,
-            frame: Farm1Frame::Bc { command: None },
-            buffer_available: true,
-        };
-        f.step(bb(foreign), NOW, &mut out)
+        step_tc(f, FrameType::Bc, vc_id, 0, &[0xFF], true, &mut out)
             .is_err_and(|e| e.kind() == ErrorKind::UnknownChannel)
     }));
     let flags = Farm1Input::SetPhysicalFlags {

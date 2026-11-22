@@ -29,7 +29,7 @@ use aldis_ffi::error::{
     ALDIS_ERR_INVALID_FIELD, ALDIS_ERR_INVALID_HANDLE, ALDIS_ERR_UNKNOWN_CHANNEL, ALDIS_OK,
 };
 use aldis_ffi::farm1::{
-    ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME_AD,
+    ALDIS_FARM1_ACTION_DELIVER, ALDIS_FARM1_INPUT_BUFFER_RELEASED, ALDIS_FARM1_INPUT_FRAME,
     ALDIS_FARM1_WORDS, aldis_farm1_actions_t, aldis_farm1_config_t, aldis_farm1_deinit,
     aldis_farm1_init, aldis_farm1_input_t, aldis_farm1_status, aldis_farm1_status_t,
     aldis_farm1_step, aldis_farm1_t,
@@ -1731,6 +1731,18 @@ fn uslp(t: &mut Tally) {
 
 // ---- end USLP
 
+/// Builds a frame input for `farm1_handle`.
+const fn farm1_frame_in(wire: &[u8]) -> aldis_farm1_input_t {
+    aldis_farm1_input_t {
+        kind: ALDIS_FARM1_INPUT_FRAME,
+        buffer_available: 1,
+        no_rf_available: 0,
+        no_bit_lock: 0,
+        data: wire.as_ptr(),
+        data_len: wire.len(),
+    }
+}
+
 /// The FARM-1 handle (M3 WP-6): init, a step that delivers an FDU, a step that refuses, the
 /// read-only status, and deinit.
 #[expect(unsafe_code, reason = "calls the C ABI with valid pointers")]
@@ -1741,7 +1753,10 @@ fn farm1_handle(t: &mut Tally) {
     };
     let h = &raw mut storage;
     let cfg = aldis_farm1_config_t {
+        scid: bb(42),
         vc_id: bb(1),
+        fecf: 0,
+        max_frame_len: 64,
         status: 0,
         retransmission_allowed: 1,
         window: bb(8),
@@ -1749,26 +1764,19 @@ fn farm1_handle(t: &mut Tally) {
         v_r: 0,
     };
     let fdu = bb([1_u8, 2, 3]);
-    let ad = aldis_farm1_input_t {
-        kind: ALDIS_FARM1_INPUT_FRAME_AD,
-        sequence_number: 0,
-        v_star: 0,
-        vc_id: bb(1),
-        buffer_available: 1,
-        no_rf_available: 0,
-        no_bit_lock: 0,
-        data: fdu.as_ptr(),
-        data_len: fdu.len(),
-    };
-    let foreign = aldis_farm1_input_t { vc_id: bb(2), ..ad };
+    // Minimal 8-octet TC Type-AD frames (5-octet header + 3-octet FDU, SCID 42, no FECF).
+    let ad_wire = bb([0x00_u8, 42, 0x04, 0x07, 0, fdu[0], fdu[1], fdu[2]]);
+    let foreign_wire = bb([0x00_u8, 42, 0x08, 0x07, 0, fdu[0], fdu[1], fdu[2]]);
+    let ahead_wire = bb([0x00_u8, 42, 0x04, 0x07, bb(5), fdu[0], fdu[1], fdu[2]]);
+    let (ad, foreign, ahead) = (
+        farm1_frame_in(&ad_wire),
+        farm1_frame_in(&foreign_wire),
+        farm1_frame_in(&ahead_wire),
+    );
     let release = aldis_farm1_input_t {
         kind: ALDIS_FARM1_INPUT_BUFFER_RELEASED,
         data: null(),
         data_len: 0,
-        ..ad
-    };
-    let ahead = aldis_farm1_input_t {
-        sequence_number: bb(5),
         ..ad
     };
     let mut out = [0_u8; 8];

@@ -10,13 +10,17 @@
 //! (CABI-040), and the engine has no timer, so there is no `next_deadline`.
 
 use aldis::cop1::{
-    FARM1_MAX_ACTIONS, Farm1, Farm1Config, Farm1Event, Farm1Frame, Farm1Input, Farm1Notify,
+    FARM1_MAX_ACTIONS, Farm1, Farm1Actions, Farm1Config, Farm1Event, Farm1Input, Farm1Notify,
     Farm1Output, Farm1State, Farm1Window, FduKind,
 };
-use aldis::core::Result;
 use aldis::core::ids::FrameSeqNum;
+use aldis::core::security::SecurityLayout;
 use aldis::core::time::Instant;
-use aldis::tc::{ClcwStatus, ControlCommand, TcVcId};
+use aldis::core::{DecodeMode, Result};
+use aldis::tc::{
+    ClcwStatus, PhysicalChannelConfig, SegmentHeaderUse, TcSpacecraftId, TcVcId, VcConfig, VcTable,
+    check_frame,
+};
 
 use crate::abi::{self, Out, flag};
 use crate::handle::{self, Storage};
@@ -35,8 +39,9 @@ const _: () = assert!(ALDIS_FARM1_MAX_ACTIONS == FARM1_MAX_ACTIONS);
 
 /// 64-bit words of one `aldis_farm1_t` (CABI-031; 232.1 §6).
 ///
-/// The tag and the engine state; the build fails when the state outgrows it.
-pub const ALDIS_FARM1_WORDS: usize = 8;
+/// The tag, the engine state, and its TC channel table for Frame Validation Checks (TC-021,
+/// TC-023); the build fails when the state outgrows it.
+pub const ALDIS_FARM1_WORDS: usize = 20;
 
 /// The kind of an `aldis_farm1_input_t` (232.1 §6.3.2, Table 6-1; COP-033, COP-035).
 ///
@@ -52,30 +57,20 @@ pub const ALDIS_FARM1_WORDS: usize = 8;
     reason = "the variants are the C constants (OI-57 convention 2)"
 )]
 pub enum aldis_farm1_input {
-    /// A valid Type-AD frame: E1 to E5 (`sequence_number`, `data`, `buffer_available`).
-    ALDIS_FARM1_INPUT_FRAME_AD = 0,
-    /// A valid Type-BD frame: E6 (`data`).
-    ALDIS_FARM1_INPUT_FRAME_BD = 1,
-    /// A valid Type-BC frame carrying the Unlock command: E7.
-    ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK = 2,
-    /// A valid Type-BC frame carrying the Set V(R) command: E8 (`v_star`).
-    ALDIS_FARM1_INPUT_FRAME_BC_SET_VR = 3,
-    /// A valid Type-BC frame whose data field is neither Unlock nor Set V(R): E9.
-    ALDIS_FARM1_INPUT_FRAME_BC_OTHER = 4,
+    /// A raw TC Transfer Frame in `data`/`data_len` (`buffer_available`), validated with TC Frame
+    /// Validation Checks (232.0 §4.4.9.3.3; TC-021, TC-023) before FARM-1 runs: E1 to E8, or E9
+    /// for a valid Type-BC frame with an unrecognised Control Command.
+    ALDIS_FARM1_INPUT_FRAME = 0,
     /// A frame that failed the Frame Validation Checks: E9.
-    ALDIS_FARM1_INPUT_INVALID_FRAME = 5,
+    ALDIS_FARM1_INPUT_INVALID_FRAME = 1,
     /// The Buffer Release Signal: E10.
-    ALDIS_FARM1_INPUT_BUFFER_RELEASED = 6,
+    ALDIS_FARM1_INPUT_BUFFER_RELEASED = 2,
     /// Sets the No RF Available and No Bit Lock Flags of the CLCW (`no_rf_available`,
     /// `no_bit_lock`); not a COP-1 event (232.0 §4.2.1.8).
-    ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS = 7,
+    ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS = 3,
 }
 mirror!(pub aldis_farm1_input: u32 {
-    ALDIS_FARM1_INPUT_FRAME_AD,
-    ALDIS_FARM1_INPUT_FRAME_BD,
-    ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK,
-    ALDIS_FARM1_INPUT_FRAME_BC_SET_VR,
-    ALDIS_FARM1_INPUT_FRAME_BC_OTHER,
+    ALDIS_FARM1_INPUT_FRAME,
     ALDIS_FARM1_INPUT_INVALID_FRAME,
     ALDIS_FARM1_INPUT_BUFFER_RELEASED,
     ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS
@@ -133,6 +128,13 @@ pub enum aldis_farm1_fdu {
 }
 mirror!(pub aldis_farm1_fdu: u32 { ALDIS_FARM1_FDU_AD, ALDIS_FARM1_FDU_BD });
 
+/// The state stored inside [`aldis_farm1_t`]: the FARM-1 engine and the single-VC TC channel
+/// table used to validate incoming frames before FARM-1 processes them (TC-021, TC-023, COP-037).
+pub struct Farm1Handle {
+    farm: Farm1,
+    table: VcTable<1, 0>,
+}
+
 /// FARM-1 in caller storage: the caller declares an object of this type, and the pointer to it is
 /// the handle (232.1 §6; COP-002, CABI-031, CABI-032).
 ///
@@ -144,17 +146,24 @@ pub struct aldis_farm1_t {
 }
 
 impl Storage for aldis_farm1_t {
-    type State = Farm1;
+    type State = Farm1Handle;
     const MAGIC: u32 = 0x414C_4631; // "ALF1"
 }
 
-/// The managed parameters of one FARM-1 and its start (232.1 §6.1, §7.3 Table 7-2; COP-030,
-/// COP-035).
+/// The managed parameters of one FARM-1, its TC channel, and its start (232.0 §4.4.9, §5;
+/// 232.1 §6.1, §7.3 Table 7-2; TC-021, COP-030, COP-035).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct aldis_farm1_config_t {
-    /// The Virtual Channel Identifier the CLCW reports, 0 to 63 (232.0 §4.2.1.6).
+    /// The Spacecraft Identifier, 0 to 1023 (232.0 §4.1.2.5).
+    pub scid: u16,
+    /// The Virtual Channel Identifier the CLCW reports and frames must match, 0 to 63 (232.0
+    /// §4.1.2.6, §4.2.1.6).
     pub vc_id: u8,
+    /// 1 when the frames carry the Frame Error Control Field, 0 when not (232.0 §4.1.4).
+    pub fecf: u8,
+    /// The Maximum Transfer Frame Length, 6 to 1024 octets (232.0 §5, TC-021).
+    pub max_frame_len: usize,
     /// The Status Field of the CLCW, 0 to 7, passed through (232.0 §4.2.1.4).
     pub status: u8,
     /// 1 when Type-AD retransmission is allowed (PW = NW = `window` / 2, `window` even from 2 to
@@ -176,14 +185,6 @@ pub struct aldis_farm1_config_t {
 pub struct aldis_farm1_input_t {
     /// `ALDIS_FARM1_INPUT_*`.
     pub kind: u32,
-    /// N(S) of the Type-AD frame (232.0 §4.1.2.8).
-    pub sequence_number: u8,
-    /// V*(R) of the Set V(R) command (232.0 §4.1.3.3).
-    pub v_star: u8,
-    /// The Virtual Channel Identifier of a frame input (`FRAME_*`), 0 to 63; a value other than
-    /// the `vc_id` of the configuration is refused with `ALDIS_ERR_UNKNOWN_CHANNEL` (232.1
-    /// §3.3.1; COP-037). Not read by the other kinds.
-    pub vc_id: u8,
     /// 1 when the caller has a buffer for the FDU of a Type-AD frame, 0 when not; it selects E1
     /// or E2 for N(S) = V(R) (232.1 §6.3.2.3; COP-033).
     pub buffer_available: u8,
@@ -191,8 +192,9 @@ pub struct aldis_farm1_input_t {
     pub no_rf_available: u8,
     /// The No Bit Lock Flag, 0 or 1.
     pub no_bit_lock: u8,
-    /// The data field of a Type-AD or Type-BD frame, read once and copied to `out` when accepted
-    /// (API-060); `NULL` only with `data_len` 0.
+    /// For `ALDIS_FARM1_INPUT_FRAME`: the raw TC Transfer Frame octets, validated with TC Frame
+    /// Validation Checks before FARM-1 runs (232.0 §4.4.9.3.3; TC-021, TC-023, API-060); `NULL`
+    /// only with `data_len` 0.
     pub data: *const u8,
     /// The octets at `data`.
     pub data_len: usize,
@@ -328,52 +330,67 @@ const fn action(output: &Farm1Output) -> aldis_farm1_action_t {
     }
 }
 
-/// The engine configuration of `cfg` (232.1 §6.1.8, §7.3; COP-030).
-fn config(cfg: &aldis_farm1_config_t) -> Result<Farm1Config> {
+/// The engine configuration and TC channel table of `cfg` (232.0 §4.4.9, §5; 232.1 §6.1.8,
+/// §7.3; TC-021, COP-030).
+fn handle_state(cfg: &aldis_farm1_config_t) -> Result<Farm1Handle> {
+    let scid = TcSpacecraftId::try_from(cfg.scid)?;
+    let vc_id = TcVcId::try_from(cfg.vc_id)?;
+    let fecf = flag(cfg.fecf)?;
+    let pc = PhysicalChannelConfig::new(cfg.max_frame_len, fecf)?;
+    let vcc = VcConfig::new(
+        scid,
+        vc_id,
+        cfg.max_frame_len,
+        SegmentHeaderUse::Absent(SecurityLayout::NONE),
+    )?;
+    let table = VcTable::<1, 0>::new(pc, &[vcc], &[])?;
     let window = if flag(cfg.retransmission_allowed)? {
         Farm1Window::retransmission_allowed(cfg.window)?
     } else {
         Farm1Window::retransmission_not_allowed(cfg.window, cfg.positive_window)?
     };
-    Ok(Farm1Config {
-        vc_id: TcVcId::try_from(cfg.vc_id)?,
+    let farm_cfg = Farm1Config {
+        vc_id,
         status: ClcwStatus::try_from(cfg.status)?,
         window,
+    };
+    Ok(Farm1Handle {
+        farm: Farm1::new(farm_cfg, FrameSeqNum::new(cfg.v_r)),
+        table,
     })
 }
 
-/// The engine input of `input`, with the FDU it borrows (CABI-040: parsed once).
-fn engine_input<'a>(input: &aldis_farm1_input_t, data: &'a [u8]) -> Result<Farm1Input<'a>> {
-    let frame = |frame| {
-        Ok(Farm1Input::Frame {
-            vc_id: TcVcId::try_from(input.vc_id)?,
-            frame,
-            buffer_available: flag(input.buffer_available)?,
-        })
-    };
+/// Steps `state` with the C ABI `input` and `data` (CABI-040: parsed once).
+fn step_engine(
+    state: &Farm1Handle,
+    input: &aldis_farm1_input_t,
+    now: Instant,
+    data: &[u8],
+    area: &mut [u8],
+) -> Result<(Farm1, Farm1Actions)> {
     match parse::<aldis_farm1_input>(input.kind)? {
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_AD => frame(Farm1Frame::Ad {
-            sequence_number: FrameSeqNum::new(input.sequence_number),
-            data,
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BD => frame(Farm1Frame::Bd { data }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_UNLOCK => frame(Farm1Frame::Bc {
-            command: Some(ControlCommand::Unlock),
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_SET_VR => frame(Farm1Frame::Bc {
-            command: Some(ControlCommand::SetVr(FrameSeqNum::new(input.v_star))),
-        }),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME_BC_OTHER => {
-            frame(Farm1Frame::Bc { command: None })
+        aldis_farm1_input::ALDIS_FARM1_INPUT_FRAME => {
+            let buffer_available = flag(input.buffer_available)?;
+            let checked =
+                check_frame(data, &state.table, DecodeMode::Lenient).map_err(|r| r.error())?;
+            state
+                .farm
+                .step(Farm1Input::from_tc(&checked, buffer_available), now, area)
         }
-        aldis_farm1_input::ALDIS_FARM1_INPUT_INVALID_FRAME => Ok(Farm1Input::InvalidFrame),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_BUFFER_RELEASED => Ok(Farm1Input::BufferReleased),
-        aldis_farm1_input::ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS => {
-            Ok(Farm1Input::SetPhysicalFlags {
+        aldis_farm1_input::ALDIS_FARM1_INPUT_INVALID_FRAME => {
+            state.farm.step(Farm1Input::InvalidFrame, now, area)
+        }
+        aldis_farm1_input::ALDIS_FARM1_INPUT_BUFFER_RELEASED => {
+            state.farm.step(Farm1Input::BufferReleased, now, area)
+        }
+        aldis_farm1_input::ALDIS_FARM1_INPUT_SET_PHYSICAL_FLAGS => state.farm.step(
+            Farm1Input::SetPhysicalFlags {
                 no_rf_available: flag(input.no_rf_available)?,
                 no_bit_lock: flag(input.no_bit_lock)?,
-            })
-        }
+            },
+            now,
+            area,
+        ),
     }
 }
 
@@ -381,9 +398,10 @@ fn engine_input<'a>(input: &aldis_farm1_input_t, data: &'a [u8]) -> Result<Farm1
 ///
 /// # Errors
 /// `ALDIS_ERR_INVALID_FIELD` for `NULL` or misaligned `storage` or `cfg`, or a flag that is not 0
-/// or 1; `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`, `clcw_status`); `ALDIS_ERR_INVALID_CONFIG`
-/// (`farm_sliding_window_w`, `farm_positive_window_pw`, `farm_negative_window_nw`) for a window
-/// that 232.1 §6.1.8.3 and Table 7-2 do not allow.
+/// or 1; `ALDIS_ERR_OUT_OF_RANGE` (`spacecraft_id`, `vc_id`, `clcw_status`);
+/// `ALDIS_ERR_INVALID_CONFIG` (`max_frame_len`, `farm_sliding_window_w`,
+/// `farm_positive_window_pw`, `farm_negative_window_nw`) for a channel or window that 232.0 §5 or
+/// 232.1 §6.1.8.3 and Table 7-2 do not allow.
 ///
 /// # Safety
 /// `storage` is valid for writes of one `aldis_farm1_t` and outlives its use; `cfg` is valid for
@@ -402,8 +420,8 @@ pub unsafe extern "C" fn aldis_farm1_init(
     unsafe {
         abi::call(err, || {
             let cfg = abi::read(cfg)?;
-            let engine = Farm1::new(config(&cfg)?, FrameSeqNum::new(cfg.v_r));
-            handle::init(storage, engine)
+            let state = handle_state(&cfg)?;
+            handle::init(storage, state)
         })
     }
 }
@@ -413,7 +431,7 @@ pub unsafe extern "C" fn aldis_farm1_init(
 /// # Safety
 /// As for `handle::get`.
 #[expect(unsafe_code, reason = "checks a caller handle (CABI-032, GEN-071)")]
-unsafe fn engine(h: *mut aldis_farm1_t) -> Result<handle::Handle<Farm1>> {
+unsafe fn engine(h: *mut aldis_farm1_t) -> Result<handle::Handle<Farm1Handle>> {
     // SAFETY: forwarded from the caller.
     unsafe { handle::get(h) }
 }
@@ -422,15 +440,15 @@ handle::step_io!(aldis_farm1_t, aldis_farm1_input_t, aldis_farm1_actions_t);
 
 impl handle::TimedStep for aldis_farm1_t {
     fn step(
-        farm: &mut Farm1,
+        state: &mut Farm1Handle,
         input: &aldis_farm1_input_t,
         now: Instant,
         data: &[u8],
         area: &mut [u8],
         actions: Out<'_, aldis_farm1_actions_t>,
     ) -> Result<()> {
-        let (next, list) = farm.step(engine_input(input, data)?, now, area)?;
-        *farm = next;
+        let (next, list) = step_engine(state, input, now, data, area)?;
+        state.farm = next;
         let mut result = aldis_farm1_actions_t::default();
         for (slot, output) in result.items.iter_mut().zip(list.iter()) {
             *slot = action(output);
@@ -453,12 +471,14 @@ impl handle::TimedStep for aldis_farm1_t {
 /// `ALDIS_ERR_INVALID_STATE` for the one cell Table 6-1 marks "Not applicable" (a Type-AD frame
 /// with N(S) = V(R) and a buffer available in S2: feed `BUFFER_RELEASED` first, COP-033);
 /// `ALDIS_ERR_BUFFER_TOO_SMALL` (with `needed`) if the FDU does not fit `out_cap`;
-/// `ALDIS_ERR_UNKNOWN_CHANNEL` (`vc_id`) for a frame input of another VC than the configured one
-/// (COP-037); `ALDIS_ERR_OUT_OF_RANGE` (`vc_id`) for a frame input with a `vc_id` above 63;
-/// `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input `kind` with no constant, a
-/// flag that is not 0 or 1, or a CABI-022 violation (`NULL`, misalignment, a wrapping range, or
-/// `out` or `actions` overlapping the storage, `input->data`, or each other). On an error the state
-/// is unchanged and `actions` is not written (API-058).
+/// for `ALDIS_FARM1_INPUT_FRAME`, any TC Frame Validation Check error (232.0 §4.4.9.3.3; TC-021):
+/// `ALDIS_ERR_UNKNOWN_CHANNEL` (`spacecraft_id` or `vc_id`) for another spacecraft or VC than the
+/// configured one (COP-037), `ALDIS_ERR_CRC_MISMATCH` for a bad FECF, `ALDIS_ERR_INCOMPLETE` /
+/// `ALDIS_ERR_LENGTH_MISMATCH` / `ALDIS_ERR_MALFORMED` / `ALDIS_ERR_RESERVED_VALUE` for a
+/// malformed or invalid frame; `ALDIS_ERR_INVALID_HANDLE`; `ALDIS_ERR_INVALID_FIELD` for an input
+/// `kind` with no constant, a flag that is not 0 or 1, or a CABI-022 violation (`NULL`,
+/// misalignment, a wrapping range, or `out` or `actions` overlapping the storage, `input->data`,
+/// or each other). On an error the state is unchanged and `actions` is not written (API-058).
 ///
 /// # Safety
 /// `h` is a handle from `aldis_farm1_init` whose storage is still valid, or detectably invalid
@@ -506,14 +526,14 @@ pub unsafe extern "C" fn aldis_farm1_status(
         abi::call(err, || {
             let h = engine(h)?;
             let status = abi::out_disjoint(status, &[h.range()])?;
-            let snapshot = h.read(|engine| aldis_farm1_status_t {
-                state: state_number(engine.state()),
-                v_r: engine.v_r().get(),
-                lockout: u8::from(engine.lockout_flag()),
-                wait: u8::from(engine.wait_flag()),
-                retransmit: u8::from(engine.retransmit_flag()),
-                farm_b_counter: engine.farm_b_counter().get(),
-                clcw: engine.clcw().to_word(),
+            let snapshot = h.read(|state| aldis_farm1_status_t {
+                state: state_number(state.farm.state()),
+                v_r: state.farm.v_r().get(),
+                lockout: u8::from(state.farm.lockout_flag()),
+                wait: u8::from(state.farm.wait_flag()),
+                retransmit: u8::from(state.farm.retransmit_flag()),
+                farm_b_counter: state.farm.farm_b_counter().get(),
+                clcw: state.farm.clcw().to_word(),
             });
             status.write(snapshot);
             Ok(())
