@@ -7,21 +7,19 @@
 //!
 //! Requirements: APP-181, APP-183, APP-185, APP-186; USLP-013, USLP-014, COP-031.
 //!
-//! **FARM-1 over USLP (D7).** The library has no `Farm1Input::from_uslp`, so the node reads the
-//! checked frame itself: a Type-AD frame (Bypass/Sequence Control Flag 0) is `Ad` with N(S) the
-//! VCF Count; the flags `1` and `0` are `Bd`; the flags `1` and `1` are `Bc`, whose TFDZ is
-//! exactly one Control Command, read as for TC (232.0 §4.1.3.3). Any other TFDZ makes the frame
-//! invalid, which the node refuses as it refuses a TC frame whose Control Command the decoder
-//! does not know (OI-100 (a), APP-183, APP-186). The workaround for the missing
-//! `Farm1Input::from_uslp` is issue #718, and the single MAP of the uplink (the FOP-1 target takes
-//! one, D6) is issue #719, with #235, OI-71 and #661 behind it.
+//! **FARM-1 over USLP (D7).** `Farm1Input::from_uslp` converts the checked USLP frame directly
+//! into the FARM-1 frame input (issue #718): a Sequence-Controlled frame becomes Type-AD with its
+//! one-octet VCF Count as N(S) (OI-101 (a)), an Expedited frame becomes Type-BD, and a Protocol
+//! Control frame becomes Type-BC carrying a single COP-1 Control Command (OI-100 (a), APP-183,
+//! APP-186); any other control frame is refused with `ReservedValue` and fed to FARM-1 as
+//! `InvalidFrame` (E9). The single MAP of the uplink (the FOP-1 target takes one, D6) is issue
+//! #719, with #235, OI-71 and #661 behind it.
 //!
 //! **The data FARM-1 delivers** is the whole TFDF, the TFDF Header and the TFDZ, which is what
 //! the `MapReassembler` reads on USLP (LNK-070); with the rule `111` it parses the TFDZ as one
 //! unit of whole packets, blocked (LNK-071).
 
-use aldis::cop1::farm1::Farm1Frame;
-use aldis::core::ids::FrameSeqNum;
+use aldis::cop1::farm1::Farm1Input;
 use aldis::core::security::{NoSecurity, SecurityLayout};
 use aldis::core::{DecodeMode, Error, ErrorKind, Result, SecuritySlices};
 use aldis::link::protocol::{Protocol, Uslp};
@@ -29,11 +27,9 @@ use aldis::link::reassembler::{MapReassemblerConfig, ReassemblerMap, UslpFdu};
 use aldis::link::receiver::{
     DeliveryService, FrameReceiver, FrameReceiverConfig, MapSet, UslpChannel, UslpVc, VcEntry,
 };
-use aldis::tc::{ControlCommand, TcVcId};
 use aldis::uslp::{
-    FrameKind, MapConfig, OcfUse, PhysicalChannelConfig, Reason, TfdfHeader, TfdzRule,
-    TransferFrameType, Upid, UslpMapId, UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable,
-    VcfCountLen, check_frame,
+    MapConfig, OcfUse, PhysicalChannelConfig, Reason, TransferFrameType, UslpMapId,
+    UslpSpacecraftId, UslpVcId, VcConfig, VcParams, VcTable, VcfCountLen, check_frame,
 };
 use refapp_scenario::generated::{SPACECRAFT_ID, uslp_up as up};
 
@@ -132,56 +128,31 @@ impl UpProtocol for Uslp {
     fn admit<'a>(
         table: &Self::Table,
         octets: &'a [u8],
+        buffer_available: bool,
     ) -> core::result::Result<Admitted<'a, Self>, Refusal> {
-        // The conversion `Farm1Input::from_tc` does for TC, by hand: no `Farm1Input::from_uslp`
-        // exists (issue #718).
         let refuse = |kind| Refusal { fecf: false, kind };
-        let frame = check_frame(octets, table, DecodeMode::Strict)
+        let validated = check_frame(octets, table, DecodeMode::Strict)
             .map_err(|rejection| Refusal {
                 fecf: rejection.reason() == Reason::FecfMismatch,
                 kind: rejection.error().kind(),
             })?
-            .into_view()
-            .into_frame();
-        // The scenario has no truncated frames, and the table refuses them (APP-181).
-        let full = frame
+            .into_view();
+        let farm =
+            Farm1Input::from_uslp(&validated, buffer_available).map_err(|e| refuse(e.kind()))?;
+        let full = validated
+            .as_frame()
             .full()
             .ok_or_else(|| refuse(ErrorKind::InvalidField))?;
-        // The TFDF, the TFDF Header and the TFDZ: the data field of the frame (732.1 §4.1.4).
-        let tfdf = full
-            .octets()
-            .get(full.layout().data())
-            .ok_or_else(|| refuse(ErrorKind::InternalError))?;
-        let farm = match full.kind() {
-            FrameKind::SequenceControlled => Farm1Frame::Ad {
-                sequence_number: FrameSeqNum::new(
-                    u8::try_from(full.vcf_count().value())
-                        .map_err(|_| refuse(ErrorKind::InternalError))?,
-                ),
-                data: tfdf,
-            },
-            FrameKind::Expedited => Farm1Frame::Bd { data: tfdf },
-            FrameKind::ProtocolControl => Farm1Frame::Bc {
-                command: Some(
-                    control_command(full.tfdf_header(), full.tfdz())
-                        .ok_or_else(|| refuse(ErrorKind::ReservedValue))?,
-                ),
-            },
-        };
-        let vc_id = TcVcId::new(full.header().vc_id().get())
-            .ok_or_else(|| refuse(ErrorKind::InternalError))?;
         let info = UslpFdu {
             map: full.header().map_id(),
             // FARM-1 lets no gap through, so no frame follows a gap (APP-186).
             gap: false,
         };
-        let plain = frame.into_plain(NoSecurity).map_err(|e| refuse(e.kind()))?;
-        Ok(Admitted {
-            plain,
-            vc_id,
-            frame: farm,
-            info,
-        })
+        let plain = validated
+            .into_frame()
+            .into_plain(NoSecurity)
+            .map_err(|e| refuse(e.kind()))?;
+        Ok(Admitted { plain, farm, info })
     }
 
     /// FARM-1 delivered the TFDF, which is the FDU of the reassembler as it is.
@@ -191,16 +162,5 @@ impl UpProtocol for Uslp {
         _buf: &'b mut [u8],
     ) -> Option<(Self::Meta, &'b [u8])> {
         Some((info, data))
-    }
-}
-
-/// The Control Command of a Type-BC frame: the TFDZ is exactly one COP-1 Control Command under
-/// the UPID of that name and the rule `111`, no segmentation (232.0 §4.1.3.3; 732.1
-/// §4.1.4.2.2.2.8 d; OI-100 (a); APP-183, APP-185); `None` for any other content.
-fn control_command(header: TfdfHeader, tfdz: &[u8]) -> Option<ControlCommand> {
-    if header.upid == Upid::Cop1ControlCommands && header.rule == TfdzRule::NoSegmentation {
-        ControlCommand::parse(tfdz)
-    } else {
-        None
     }
 }
