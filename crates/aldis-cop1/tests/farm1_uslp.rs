@@ -96,7 +96,8 @@ fn check<'a>(table: &VcTable<1, 1>, octets: &'a [u8]) -> Checked<UslpFrame<'a>> 
 
 /// What the flight node of the reference application built by hand before `from_uslp`
 /// (`refapp-flight`, `frames_up/uslp.rs`, issue #718): the kind decides the variant, N(S) is the
-/// VCF Count, the data is the TFDF, and a Type-BC frame is a command or an error.
+/// VCF Count, the data is the TFDF, and a Type-BC frame that is not one Control Command under UPID
+/// "COP-1 Control Commands" and rule `111` is refused (`None`, matching `ReservedValue`).
 fn by_hand<'a>(checked: &Checked<UslpFrame<'a>>) -> Option<Farm1Frame<'a>> {
     let frame = checked.as_frame();
     let full = frame.full()?;
@@ -107,15 +108,18 @@ fn by_hand<'a>(checked: &Checked<UslpFrame<'a>>) -> Option<Farm1Frame<'a>> {
             data: tfdf,
         },
         FrameKind::Expedited => Farm1Frame::Bd { data: tfdf },
-        FrameKind::ProtocolControl => Farm1Frame::Bc {
-            command: if full.tfdf_header().upid == Upid::Cop1ControlCommands
+        FrameKind::ProtocolControl => {
+            let command = if full.tfdf_header().upid == Upid::Cop1ControlCommands
                 && full.tfdf_header().rule == TfdzRule::NoSegmentation
             {
                 ControlCommand::parse(full.tfdz())
             } else {
                 None
-            },
-        },
+            }?;
+            Farm1Frame::Bc {
+                command: Some(command),
+            }
+        }
     })
 }
 
@@ -242,7 +246,7 @@ fn a_protocol_control_frame_with_one_command_is_a_type_bc_frame() {
 }
 
 #[test]
-fn a_type_bc_frame_that_is_not_one_command_is_event_e9() {
+fn a_type_bc_frame_that_is_not_one_command_is_refused_and_gives_event_e9() {
     // req: COP-031, USLP-013, USLP-014
     let table = channels(1);
     let unlock = ControlCommand::Unlock.to_octets();
@@ -258,21 +262,30 @@ fn a_type_bc_frame_that_is_not_one_command_is_event_e9() {
         ),
         // Two commands.
         (cop1(), two),
+        // The UPID of Control Commands under another rule.
+        (
+            tfdf(TfdzRule::OctetStream, Upid::Cop1ControlCommands),
+            unlock.to_vec(),
+        ),
     ];
     for (header, tfdz) in cases {
         let octets = bc_frame(header, &tfdz);
         let checked = check(&table, &octets);
-        let input = Farm1Input::from_uslp(&checked, true).unwrap();
-        assert!(matches!(
-            input,
-            Farm1Input::Frame {
-                frame: Farm1Frame::Bc { command: None },
-                ..
-            }
-        ));
-        assert_eq!(by_hand(&checked), Some(Farm1Frame::Bc { command: None }));
+        for err in [
+            Farm1Frame::from_uslp(&checked).unwrap_err(),
+            Farm1Input::from_uslp(&checked, true).unwrap_err(),
+        ] {
+            assert_eq!(
+                (err.kind(), err.field()),
+                (ErrorKind::ReservedValue, Some(field::CONTROL_COMMAND))
+            );
+        }
+        assert_eq!(by_hand(&checked), None);
+        // Rejecting the frame feeds FARM-1 the invalid-frame input (E9; OI-100 (a)).
         let mut out = [0_u8; 16];
-        let (next, actions) = farm().step(input, NOW, &mut out).unwrap();
+        let (next, actions) = farm()
+            .step(Farm1Input::InvalidFrame, NOW, &mut out)
+            .unwrap();
         assert!(actions.iter().any(|a| matches!(
             a,
             Farm1Output::Notify(Farm1Notify::FrameDiscarded {
@@ -406,14 +419,15 @@ fn the_constructor_equals_the_input_built_by_hand() {
     ];
     for octets in &frames {
         let checked = check(&table, octets);
-        assert_eq!(Farm1Frame::from_uslp(&checked).ok(), by_hand(&checked));
+        let hand = by_hand(&checked);
+        assert_eq!(Farm1Frame::from_uslp(&checked).ok(), hand);
         assert_eq!(
-            Farm1Input::from_uslp(&checked, false).unwrap(),
-            Farm1Input::Frame {
+            Farm1Input::from_uslp(&checked, false).ok(),
+            hand.map(|frame| Farm1Input::Frame {
                 vc_id: TcVcId::new(checked.as_frame().vc_id().get()).unwrap(),
-                frame: by_hand(&checked).unwrap(),
+                frame,
                 buffer_available: false,
-            }
+            })
         );
     }
 }

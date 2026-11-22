@@ -284,11 +284,12 @@ impl<'a> Farm1Frame<'a> {
     ///   the VCF Count, which must be one octet long (OI-101), and the data is the TFDF (the
     ///   TFDF Header and the TFDZ), the unit a `MapReassembler` reads on USLP (LNK-070).
     /// - Expedited (flags `1` and `0`) is [`Bd`](Farm1Frame::Bd) with the TFDF.
-    /// - Protocol Control (flags `1` and `1`) is [`Bc`](Farm1Frame::Bc). The TFDZ is exactly one
-    ///   COP-1 Control Command under the UPID "COP-1 Control Commands" and the rule `111`, no
+    /// - Protocol Control (flags `1` and `1`) is [`Bc`](Farm1Frame::Bc). The TFDZ must be exactly
+    ///   one COP-1 Control Command under the UPID "COP-1 Control Commands" and the rule `111`, no
     ///   segmentation, read by [`ControlCommand::parse`] (OI-100 (a)); any other TFDZ, another
-    ///   UPID or rule, or two commands, gives `command: None`, which is event E9 (232.1 §6.3.2.1;
-    ///   COP-031).
+    ///   UPID or rule, or two commands is refused with [`ReservedValue`](ErrorKind::ReservedValue)
+    ///   (`control_command`), matching strict TC decoding so the caller rejects the frame and
+    ///   gives FARM-1 [`Farm1Input::InvalidFrame`] (E9, 232.1 §6.3.2.1; COP-031).
     ///
     /// # Errors
     /// - [`InvalidField`](ErrorKind::InvalidField), naming `end_of_frame_primary_header_flag`,
@@ -296,6 +297,9 @@ impl<'a> Farm1Frame<'a> {
     /// - [`InvalidField`](ErrorKind::InvalidField), naming `vcf_count_len`, for a
     ///   Sequence-Controlled frame whose VCF Count is not one octet long, so that no count of
     ///   another length, absent or over 255, is turned into an N(S) (OI-101).
+    /// - [`ReservedValue`](ErrorKind::ReservedValue), naming `control_command`, for a Type-BC
+    ///   frame whose TFDF is not exactly one COP-1 Control Command under UPID "COP-1 Control
+    ///   Commands" and rule `111` (OI-100 (a); USLP-013, COP-031).
     /// - [`InternalError`](ErrorKind::InternalError) if the frame's layout does not lie in its
     ///   octets, which the codec rules out.
     #[cfg(feature = "uslp")]
@@ -325,9 +329,14 @@ impl<'a> Farm1Frame<'a> {
                 })
             }
             FrameKind::Expedited => Ok(Farm1Frame::Bd { data: tfdf }),
-            FrameKind::ProtocolControl => Ok(Farm1Frame::Bc {
-                command: uslp_control_command(full.tfdf_header(), full.tfdz()),
-            }),
+            FrameKind::ProtocolControl => {
+                let command = uslp_control_command(full.tfdf_header(), full.tfdz()).ok_or(
+                    Error::new(ErrorKind::ReservedValue).with_field(field::CONTROL_COMMAND),
+                )?;
+                Ok(Farm1Frame::Bc {
+                    command: Some(command),
+                })
+            }
         }
     }
 }
