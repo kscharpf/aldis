@@ -2,7 +2,7 @@
 
 An end-to-end flight↔ground application that uses Aldis only through its public API, as an integrator would. The scenario is specified in [docs/reference-application.md](../docs/reference-application.md) (requirement area APP); the plan for each milestone is in [docs/milestones/](../docs/milestones/) (`a0-…` to `a6-…`). Track A owns this directory ([roadmap](../docs/08-roadmap.md) §3, §6).
 
-**Status: A4 variants, A3 COP-1 and AINT interoperability complete.** The flight node produces the telemetry packets and executes the commands of the scenario, and the ground node decodes them with the strict codecs; the two nodes exchange TM and TC frames built and received with the `aldis-link` engines, and since A3 the uplink is the Sequence-Controlled service of COP-1: the ground node runs `Fop1` and the flight node `Farm1`, which reports its state in the CLCW of every frame. The harness, trace writer, canonical-form check, comparator, and scenario generator work, and the golden traces of `a0-empty`, the four `a1-*` cases, the four `a2-*` cases, the five `a3-*` cases, and the two `a4-*` cases are reproduced in CI; since A4 the nodes also run the `aos` variant (AOS downlink, TC uplink with COP-1) and the `uslp` variant (USLP downlink and uplink, COP-1 over USLP), and the `a4-*` traces are frozen too; the `a3-*` traces are frozen (APP-004). Since AINT the flight node has also run against an independent ground system, YAMCS 5.14.0, through the driver `refapp-interop`: the nominal and the lossy-link COP-1 cases met their criteria with a 100-octet table (YAMCS does not segment), and every discrepancy is filed ([record](../docs/verification/records/APP-155.md)). The manually dispatched workflow `interop-yamcs.yml` repeats the run.
+**Status: A6 bare-metal target, A4 variants, A3 COP-1, and AINT interoperability complete.** The flight node produces the telemetry packets and executes the commands of the scenario, and the ground node decodes them with the strict codecs; the two nodes exchange TM and TC frames built and received with the `aldis-link` engines, and since A3 the uplink is the Sequence-Controlled service of COP-1: the ground node runs `Fop1` and the flight node `Farm1`, which reports its state in the CLCW of every frame. The harness, trace writer, canonical-form check, comparator, and scenario generator work, and the golden traces of `a0-empty`, the four `a1-*` cases, the four `a2-*` cases, the five `a3-*` cases, and the two `a4-*` cases are reproduced in CI both in-process and on the bare-metal Cortex-M4F QEMU flight node (`refapp/qemu/`, A6); since A4 the nodes also run the `aos` variant (AOS downlink, TC uplink with COP-1) and the `uslp` variant (USLP downlink and uplink, COP-1 over USLP), and the `a4-*` traces are frozen too; the `a3-*` traces are frozen (APP-004). Since AINT the flight node has also run against an independent ground system, YAMCS 5.14.0, through the driver `refapp-interop`: the nominal and the lossy-link COP-1 cases met their criteria with a 100-octet table (YAMCS does not segment), and every discrepancy is filed ([record](../docs/verification/records/APP-155.md)). The manually dispatched workflow `interop-yamcs.yml` repeats the run.
 
 The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0x155`) is **fictional**, confirmed by the maintainer on 2026-10-19 ([OI-26](../docs/09-open-issues.md)).
 
@@ -15,6 +15,7 @@ The spacecraft ID in [scenario/scenario.json](scenario/scenario.json) (`341`, `0
 | `refapp-ground/` | The ground node; flight lint set's restriction lints (APP-103) |
 | `refapp-harness/` | `std` tool: scheduler and link model, trace writer, canonical-form check, comparator, scenario generator; the harness side of the node protocol over a child's stdin and stdout and over loopback TCP, the cFS launcher, and the test node `refapp-test-node` (§8.2, §10.6) |
 | `refapp-interop/` | `std` tool, no third-party dependency of its own (std plus workspace crates): the transport driver of the interoperability milestone (AINT): steps the flight node against a UDP socket and a clock, the loss script, the run log, and the self-test over loopback in virtual time (APP-157…APP-163) |
+| `qemu/` | Standalone `no_std`/`no_main` Cortex-M4F binary (`thumbv7em-none-eabihf`, QEMU `mps2-an386`) running `refapp-flight` over CMSDK UART0 with the §8.2 node protocol and the APP-102 panic-freedom link check (A6, APP-004, APP-102) |
 | `scenario/scenario.json` | The one scenario file every implementation reads (APP-107); `scenario.schema.json` is generated from the harness's model |
 | `golden/<case>.jsonl` | Golden traces (§7); `golden/CHANGES.md` records every trace-version change (APP-087) |
 
@@ -66,6 +67,11 @@ cargo clippy --workspace --all-targets
 cargo test --workspace
 cargo build -p refapp-flight --target thumbv7em-none-eabihf
 cargo clippy -p refapp-flight --target thumbv7em-none-eabihf
+cargo build --manifest-path qemu/Cargo.toml --release --target thumbv7em-none-eabihf
+cargo run -p refapp-harness -- run-node a3-uplink-loss stdio qemu-system-arm \
+    -cpu cortex-m4 -machine mps2-an386 -nographic -monitor none -serial stdio \
+    -semihosting-config enable=on,target=native \
+    -kernel qemu/target/thumbv7em-none-eabihf/release/refapp-qemu
 ```
 
 Tests carry `// req: APP-…` annotations, and every golden-trace header lists the requirements its case verifies; `cargo xtask trace` reads both (APP-108). API pain points become GitHub issues labelled `api-feedback` for track R, and the workaround cites the issue (APP-101).
