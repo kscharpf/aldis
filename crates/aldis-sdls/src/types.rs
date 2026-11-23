@@ -100,6 +100,10 @@ impl IvLen {
     pub const fn get(self) -> usize {
         u8_to_usize(self.0)
     }
+
+    pub(crate) const fn as_u8(self) -> u8 {
+        self.0
+    }
 }
 
 /// Transmitted Sequence Number length in octets, 0 or 2..=8 (355.0-B-2 §4.1.1.4, Table 6-1).

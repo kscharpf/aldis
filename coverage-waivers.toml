@@ -82,17 +82,11 @@ justification = "src/writer.rs — the error return of `?` on `EncapsulationHead
 [[waiver]]
 crate = "aldis-sdls"
 metric = "regions"
-count = 11
-justification = "src/aad.rs (1) and src/engine.rs (10) — arms and `?` error returns that no input reaches, each an explicit error return and not a default (GEN-020): in `aad.rs`, the `_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`; in `engine.rs`, the `else` of `self.header.security_layout(self.mac_len)` in `const fn SaConfig::validate` (`HeaderFormat::total_len() <= 44 <= 64` and `MacLen <= 64`, so `SecurityLayout::new` always succeeds), and the `?` error returns in `protect_in` and `verify_in` on `SequenceNumber::encode_be`/`decode_be`, `encode_header`, `SecurityHeaderView::decode`, and `build_aad` after earlier checks already verified the exact header, trailer, SPI, and counter lengths (each helper is unit-tested directly on its error paths)."
+count = 10
+justification = "src/aad.rs (1), src/provider.rs (1), and src/engine.rs (8) — arms and `?` error returns that no input reaches, each an explicit error return and not a default (GEN-020): in `aad.rs`, the `_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`; in `provider.rs`, `sn.encode_be(dst)?` inside `FreshNonce::from_counter` (called only with `iv_len` in `1..=16` validated by `SaConfig::new`); in `engine.rs`, the 8 `?` error returns in `protect_in` and `verify_in` on `FreshNonce::from_counter` (1), `SequenceNumber::encode_be` (2), `encode_header` (2), `SecurityHeaderView::decode` (1), and `SequenceNumber::decode_be` (2) after `SaConfig::new` and earlier length/SPI checks already proved the exact header, trailer, SPI, and counter bounds (each helper is unit-tested directly on its error paths)."
 
 [[waiver]]
 crate = "aldis-sdls"
 metric = "lines"
-count = 2
-justification = "src/aad.rs:92 (`_` arm on `#[non_exhaustive] Protocol`) and src/engine.rs:67 (`else` of `self.header.security_layout(self.mac_len)` in `const fn SaConfig::validate`, which cannot use `?` and never fails because `HeaderFormat::total_len() <= 44 <= 64` and `MacLen <= 64`)."
-
-[[waiver]]
-crate = "aldis-sdls"
-metric = "branches"
 count = 1
-justification = "src/engine.rs:66 (`let Ok(layout) = self.header.security_layout(self.mac_len) else` in `const fn SaConfig::validate`): `HeaderFormat::total_len() <= 44 <= 64` and `MacLen <= 64`, so the `Err` branch is unreachable."
+justification = "src/aad.rs:92 (`_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`)."

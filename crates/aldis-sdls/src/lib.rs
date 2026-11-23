@@ -26,7 +26,7 @@ pub mod types;
 pub use aad::{MAX_AAD_LEN, build_aad};
 pub use engine::{SaConfig, SdlsEngine};
 pub use header::{HeaderFormat, SecurityHeaderView, encode_header};
-pub use provider::{AeadProvider, NoOpProvider};
+pub use provider::{AeadProvider, FreshNonce, NoOpProvider};
 pub use types::{
     AntiReplayWindow, IvLen, KeyId, MacLen, PlLen, SequenceNumber, ServiceType, SnLen, Spi,
     VerificationStatus,

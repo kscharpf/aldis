@@ -63,8 +63,21 @@ pub fn run(t: &mut Tally) {
         return;
     };
     let ctx = FrameCtx::Tm { scid, vcid };
-    let mut cfg = SaConfig::baseline_gcm(spi, ctx, KeyId::new(bb(1)), win);
-    cfg.service = ServiceType::ClearMode;
+    let Ok(cfg) = SaConfig::clear_mode(spi, ctx, fmt, mac_len, win) else {
+        t.check(false);
+        return;
+    };
+    let gcm = SaConfig::baseline_gcm(spi, ctx, KeyId::new(bb(1)), win);
+    t.check(
+        gcm.spi() == spi
+            && gcm.ctx() == ctx
+            && gcm.service() == ServiceType::AuthenticatedEncryption
+            && gcm.key() == KeyId::new(1)
+            && gcm.header() == fmt
+            && gcm.mac_len() == mac_len
+            && gcm.window() == win
+            && gcm.initial_sn() == SequenceNumber::ZERO,
+    );
 
     let mut tx: SdlsEngine<NoOpProvider, 2> = SdlsEngine::new(NoOpProvider);
     let mut rx: SdlsEngine<NoOpProvider, 2> = SdlsEngine::new(NoOpProvider);

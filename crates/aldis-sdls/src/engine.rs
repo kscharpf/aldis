@@ -4,37 +4,84 @@ use core::ops::Range;
 
 use aldis_core::error::{Error, ErrorKind, Result};
 use aldis_core::field;
-use aldis_core::security::{FrameCtx, HookLayout, SecuredFields, SecurityHook, SecurityLayout};
+use aldis_core::security::{FrameCtx, HookLayout, SecuredFields, SecurityHook};
 
 use crate::aad::{MAX_AAD_LEN, build_aad};
 use crate::header::{HeaderFormat, SecurityHeaderView, decode_spi, encode_header};
-use crate::provider::AeadProvider;
+use crate::provider::{AeadProvider, FreshNonce};
 use crate::types::{
     AntiReplayWindow, KeyId, MacLen, SequenceNumber, ServiceType, Spi, VerificationStatus,
 };
 
-/// Static and initial dynamic parameters of one Security Association (355.0-B-2 §4.2.2, Table 6-1).
+/// Validated static and initial dynamic parameters of one Security Association
+/// (355.0-B-2 §4.2.2, Table 6-1; RS-020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaConfig {
-    /// Unique Security Parameter Index (1..=65534, §4.2.2.3).
-    pub spi: Spi,
-    /// Global Virtual Channel or MAP bound to this SA (§4.2.2.2).
-    pub ctx: FrameCtx,
-    /// Cryptographic service type (§4.2.2.4).
-    pub service: ServiceType,
-    /// Opaque cryptographic key handle passed to the [`AeadProvider`] (OI-84).
-    pub key: KeyId,
-    /// Security Header field lengths (§4.1.1).
-    pub header: HeaderFormat,
-    /// Security Trailer (MAC) length (§4.1.2).
-    pub mac_len: MacLen,
-    /// Anti-replay sequence number window width (`> 0`, §4.2.4.4 i).
-    pub window: AntiReplayWindow,
-    /// Initial managed sequence number / IV counter (§4.2.3.4, §4.2.4.4).
-    pub initial_sn: SequenceNumber,
+    spi: Spi,
+    ctx: FrameCtx,
+    service: ServiceType,
+    key: KeyId,
+    header: HeaderFormat,
+    mac_len: MacLen,
+    window: AntiReplayWindow,
+    initial_sn: SequenceNumber,
 }
 
 impl SaConfig {
+    /// Constructs a validated Security Association configuration (355.0-B-2 §4.2.2.5–8; RS-020).
+    ///
+    /// # Errors
+    /// `InvalidConfig` if:
+    /// - `header.pl_len() > 0` (block-cipher padding is not supported in this phase);
+    /// - `header.sn_len() == 0` and `header.iv_len() > 16` (counter-mode IV exceeds the 128-bit
+    ///   [`SequenceNumber`] width);
+    /// - `service` is [`ServiceType::AuthenticatedEncryption`] and `mac_len == 0`, `iv_len == 0`
+    ///   (AEAD requires a nonce), or `sn_len > 0` (Annex E AEAD uses the IV as the anti-replay
+    ///   counter; a separate SN field would leave the AEAD nonce unpopulated).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "complete SA parameter set (Table 6-1)"
+    )]
+    pub const fn new(
+        spi: Spi,
+        ctx: FrameCtx,
+        service: ServiceType,
+        key: KeyId,
+        header: HeaderFormat,
+        mac_len: MacLen,
+        window: AntiReplayWindow,
+        initial_sn: SequenceNumber,
+    ) -> Result<Self> {
+        if header.pl_len().get() > 0 {
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
+        }
+        if header.sn_len().get() == 0 && header.iv_len().get() > 16 {
+            return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
+        }
+        if matches!(service, ServiceType::AuthenticatedEncryption) {
+            if mac_len.get() == 0 {
+                return Err(
+                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_TRAILER_LEN)
+                );
+            }
+            if header.iv_len().get() == 0 || header.sn_len().get() > 0 {
+                return Err(
+                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN)
+                );
+            }
+        }
+        Ok(Self {
+            spi,
+            ctx,
+            service,
+            key,
+            header,
+            mac_len,
+            window,
+            initial_sn,
+        })
+    }
+
     /// Baseline AES-GCM Authenticated Encryption SA (355.0-B-2 Annex E1/E3/E4):
     /// 14-octet Security Header (2 SPI + 12 IV), 16-octet Security Trailer (128-bit MAC).
     #[must_use]
@@ -56,39 +103,83 @@ impl SaConfig {
         }
     }
 
-    /// Validates that the SA configuration is internally consistent (355.0-B-2 §4.2.2.5–8).
+    /// Clear Mode SA (355.0-B-2 §4.2.2.4) with no cryptographic transformation.
     ///
     /// # Errors
-    /// `InvalidConfig` if an `AuthenticatedEncryption` SA has `mac_len == 0`, has `iv_len == 0`
-    /// (AEAD requires a nonce), has `iv_len > 16` when `sn_len == 0` (counter-mode IV exceeds
-    /// 128-bit counter width), or has `pl_len > 0` (AEAD uses no padding).
-    pub const fn validate(&self) -> Result<SecurityLayout> {
-        let Ok(layout) = self.header.security_layout(self.mac_len) else {
-            return Err(Error::new(ErrorKind::InvalidConfig));
-        };
-        if matches!(self.service, ServiceType::AuthenticatedEncryption) {
-            if self.mac_len.get() == 0 {
-                return Err(
-                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_TRAILER_LEN)
-                );
-            }
-            if self.header.iv_len().get() == 0 {
-                return Err(
-                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN)
-                );
-            }
-            if self.header.pl_len().get() > 0 {
-                return Err(
-                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN)
-                );
-            }
-            if self.header.sn_len().get() == 0 && self.header.iv_len().get() > 16 {
-                return Err(
-                    Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN)
-                );
-            }
-        }
-        Ok(layout)
+    /// `InvalidConfig` if `header.pl_len() > 0`, or if `header.sn_len() == 0` and
+    /// `header.iv_len() > 16`.
+    pub const fn clear_mode(
+        spi: Spi,
+        ctx: FrameCtx,
+        header: HeaderFormat,
+        mac_len: MacLen,
+        window: AntiReplayWindow,
+    ) -> Result<Self> {
+        Self::new(
+            spi,
+            ctx,
+            ServiceType::ClearMode,
+            KeyId::new(0),
+            header,
+            mac_len,
+            window,
+            SequenceNumber::ZERO,
+        )
+    }
+
+    /// Returns a copy of this SA configuration with `initial_sn` as the starting counter.
+    #[must_use]
+    pub const fn with_initial_sn(mut self, initial_sn: SequenceNumber) -> Self {
+        self.initial_sn = initial_sn;
+        self
+    }
+
+    /// Security Parameter Index (`1..=65534`, §4.2.2.3).
+    #[must_use]
+    pub const fn spi(self) -> Spi {
+        self.spi
+    }
+
+    /// Global Virtual Channel or MAP bound to this SA (§4.2.2.2).
+    #[must_use]
+    pub const fn ctx(self) -> FrameCtx {
+        self.ctx
+    }
+
+    /// Cryptographic service type (§4.2.2.4).
+    #[must_use]
+    pub const fn service(self) -> ServiceType {
+        self.service
+    }
+
+    /// Opaque cryptographic key handle passed to the [`AeadProvider`] (OI-84).
+    #[must_use]
+    pub const fn key(self) -> KeyId {
+        self.key
+    }
+
+    /// Security Header field lengths (§4.1.1).
+    #[must_use]
+    pub const fn header(self) -> HeaderFormat {
+        self.header
+    }
+
+    /// Security Trailer (MAC) length (§4.1.2).
+    #[must_use]
+    pub const fn mac_len(self) -> MacLen {
+        self.mac_len
+    }
+
+    /// Anti-replay sequence number window width (`> 0`, §4.2.4.4 i).
+    #[must_use]
+    pub const fn window(self) -> AntiReplayWindow {
+        self.window
+    }
+
+    /// Initial managed sequence number / IV counter (§4.2.3.4, §4.2.4.4).
+    #[must_use]
+    pub const fn initial_sn(self) -> SequenceNumber {
+        self.initial_sn
     }
 
     /// Length in octets of the anti-replay counter field (SN if present, else IV; §4.1.1.4 Note).
@@ -104,7 +195,6 @@ impl SaConfig {
 #[derive(Debug, Clone, Copy)]
 struct SaSlot {
     config: SaConfig,
-    layout: SecurityLayout,
     sn: SequenceNumber,
 }
 
@@ -187,7 +277,6 @@ impl<P: AeadProvider, const N: usize> SecurityHook for SdlsEngine<P, N> {
 }
 
 fn add_sa_slot(sas: &mut [Option<SaSlot>], config: SaConfig) -> Result<()> {
-    let layout = config.validate()?;
     // bound: `sas.len() == N`.
     for entry in sas.iter().flatten() {
         if entry.config.spi == config.spi || entry.config.ctx == config.ctx {
@@ -199,7 +288,6 @@ fn add_sa_slot(sas: &mut [Option<SaSlot>], config: SaConfig) -> Result<()> {
         if slot.is_none() {
             *slot = Some(SaSlot {
                 config,
-                layout,
                 sn: config.initial_sn,
             });
             return Ok(());
@@ -233,9 +321,8 @@ fn protect_in(
         return Err(Error::new(ErrorKind::Security));
     };
     let config = sa.config;
-    let layout = sa.layout;
-    if fields.header().len() != layout.header_len()
-        || fields.trailer().len() != layout.trailer_len()
+    if fields.header().len() != config.header.total_len()
+        || fields.trailer().len() != config.mac_len.get()
     {
         return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
     }
@@ -247,27 +334,43 @@ fn protect_in(
         sa.sn
     };
 
-    let mut iv_buf = [0_u8; 32];
-    let mut sn_buf = [0_u8; 8];
-    let iv_len = config.header.iv_len().get();
-    let sn_len = config.header.sn_len().get();
-    let iv_slice = iv_buf.get_mut(..iv_len).unwrap_or_default();
-    let sn_slice = sn_buf.get_mut(..sn_len).unwrap_or_default();
-    if sn_len > 0 {
-        next_sn.encode_be(sn_slice)?;
-    } else if iv_len > 0 {
-        next_sn.encode_be(iv_slice)?;
-    } else {
-        // ClearMode SA with neither IV nor SN.
-    }
-
-    // Write the Security Header into `frame` before computing AAD (§4.2.3.4 c–d).
-    {
+    let fresh_nonce = {
         let Some(sh_dst) = frame.get_mut(fields.header()) else {
             return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
         };
-        encode_header(sh_dst, config.header, config.spi, iv_slice, sn_slice, &[])?;
-    }
+        match config.service {
+            ServiceType::AuthenticatedEncryption => {
+                // Mint a single-use FreshNonce from the incremented counter (355.0-B-2 Annex E).
+                let nonce = FreshNonce::from_counter(next_sn, config.header.iv_len().as_u8())?;
+                encode_header(
+                    sh_dst,
+                    config.header,
+                    config.spi,
+                    nonce.as_bytes(),
+                    &[],
+                    &[],
+                )?;
+                Some(nonce)
+            }
+            ServiceType::ClearMode => {
+                let mut iv_buf = [0_u8; 32];
+                let mut sn_buf = [0_u8; 8];
+                let iv_len = config.header.iv_len().get();
+                let sn_len = config.header.sn_len().get();
+                let iv_slice = iv_buf.get_mut(..iv_len).unwrap_or_default();
+                let sn_slice = sn_buf.get_mut(..sn_len).unwrap_or_default();
+                if sn_len > 0 {
+                    next_sn.encode_be(sn_slice)?;
+                } else if iv_len > 0 {
+                    next_sn.encode_be(iv_slice)?;
+                } else {
+                    // ClearMode SA with neither IV nor SN.
+                }
+                encode_header(sh_dst, config.header, config.spi, iv_slice, sn_slice, &[])?;
+                None
+            }
+        }
+    };
 
     let mut aad_buf = [0_u8; MAX_AAD_LEN];
     let aad_len = build_aad(&ctx, frame, fields, config.header.iv_range(), &mut aad_buf)?;
@@ -283,21 +386,19 @@ fn protect_in(
         return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
     };
 
-    match config.service {
-        ServiceType::AuthenticatedEncryption => {
-            provider.seal_in_place(config.key, iv_slice, aad, data, tag_out)?;
-        }
-        ServiceType::ClearMode => {
-            tag_out.fill(0);
-        }
-    }
-
-    // Commit the incremented sequence number only after sealing succeeds.
+    // Commit the incremented sequence number BEFORE sealing so that even if the provider
+    // returns an error, the minted FreshNonce counter value can never be reused.
     // bound: `sas.len() == N`.
     for entry in sas.iter_mut().flatten() {
         if entry.config.spi == config.spi {
             entry.sn = next_sn;
         }
+    }
+
+    if let Some(nonce) = fresh_nonce {
+        provider.seal_in_place(config.key, nonce, aad, data, tag_out)?;
+    } else {
+        tag_out.fill(0);
     }
     Ok(())
 }
@@ -335,11 +436,10 @@ fn verify_in(
         return Err(Error::new(ErrorKind::Security));
     }
     let config = sa.config;
-    let layout = sa.layout;
     let managed_sn = sa.sn;
 
-    if fields.header().len() != layout.header_len()
-        || fields.trailer().len() != layout.trailer_len()
+    if fields.header().len() != config.header.total_len()
+        || fields.trailer().len() != config.mac_len.get()
     {
         *last_status = VerificationStatus::InvalidSpi;
         return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));

@@ -17,9 +17,9 @@ use aldis_core::ids::{FrameSeqNum, SpacecraftId, VcId};
 use aldis_core::plain::Plain;
 use aldis_core::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook, SecurityLayout};
 use aldis_sdls::{
-    AeadProvider, AntiReplayWindow, HeaderFormat, IvLen, KeyId, MAX_AAD_LEN, MacLen, NoOpProvider,
-    PlLen, SaConfig, SdlsEngine, SecurityHeaderView, SequenceNumber, ServiceType, SnLen, Spi,
-    VerificationStatus, build_aad, encode_header,
+    AeadProvider, AntiReplayWindow, FreshNonce, HeaderFormat, IvLen, KeyId, MAX_AAD_LEN, MacLen,
+    NoOpProvider, PlLen, SaConfig, SdlsEngine, SecurityHeaderView, SequenceNumber, ServiceType,
+    SnLen, Spi, VerificationStatus, build_aad, encode_header,
 };
 use aldis_tc::{
     FrameFields as TcFrameFields, FrameType, MapConfig as TcMapConfig,
@@ -79,11 +79,12 @@ impl AeadProvider for XorMacProvider {
     fn seal_in_place(
         &self,
         key: KeyId,
-        nonce: &[u8],
+        nonce: FreshNonce,
         aad: &[u8],
         data: &mut [u8],
         tag_out: &mut [u8],
     ) -> Result<()> {
+        let nonce = nonce.as_bytes();
         if key != self.key_id || nonce.is_empty() {
             return Err(Error::new(ErrorKind::Security));
         }
@@ -493,10 +494,27 @@ fn sdls_header_vectors_and_edge_cases() {
         scid: SpacecraftId::<10>::new(1).unwrap(),
         vcid: VcId::<3>::new(0).unwrap(),
     };
-    let mut cfg = SaConfig::baseline_gcm(spi, ctx, KeyId::new(0), win);
-    cfg.service = ServiceType::ClearMode;
+    let cfg = SaConfig::clear_mode(
+        spi,
+        ctx,
+        HeaderFormat::BASELINE_GCM,
+        MacLen::BASELINE_GCM,
+        win,
+    )
+    .unwrap();
+    assert_eq!(cfg.spi(), spi);
+    assert_eq!(cfg.ctx(), ctx);
+    assert_eq!(cfg.service(), ServiceType::ClearMode);
+    assert_eq!(cfg.key(), KeyId::new(0));
+    assert_eq!(cfg.header(), HeaderFormat::BASELINE_GCM);
+    assert_eq!(cfg.mac_len(), MacLen::BASELINE_GCM);
+    assert_eq!(cfg.window(), win);
+    assert_eq!(cfg.initial_sn(), SequenceNumber::ZERO);
     let mut eng: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
     eng.add_sa(cfg).unwrap();
+    let mut cm_frame = [0_u8; 40];
+    eng.protect(&ctx, &mut cm_frame, &SecuredFields::adjacent(6, 14, 4, 16))
+        .unwrap();
     assert_eq!(
         eng.add_sa(cfg).unwrap_err().kind(),
         ErrorKind::InvalidConfig
@@ -505,17 +523,35 @@ fn sdls_header_vectors_and_edge_cases() {
         scid: SpacecraftId::<10>::new(1).unwrap(),
         vcid: VcId::<3>::new(1).unwrap(),
     };
-    let mut cfg2 = SaConfig::baseline_gcm(Spi::new(2).unwrap(), ctx2, KeyId::new(0), win);
-    cfg2.service = ServiceType::ClearMode;
+    let cfg2 = SaConfig::clear_mode(
+        Spi::new(2).unwrap(),
+        ctx2,
+        HeaderFormat::BASELINE_GCM,
+        MacLen::BASELINE_GCM,
+        win,
+    )
+    .unwrap();
     assert_eq!(
         eng.add_sa(cfg2).unwrap_err().kind(),
         ErrorKind::CapacityExceeded
     );
 
-    // Invalid SA configs.
-    let mut bad = SaConfig::baseline_gcm(spi, ctx, KeyId::new(1), win);
-    bad.mac_len = MacLen::NONE;
-    assert_eq!(bad.validate().unwrap_err().kind(), ErrorKind::InvalidConfig);
+    // Invalid SA config: AEAD with mac_len == 0.
+    assert_eq!(
+        SaConfig::new(
+            spi,
+            ctx,
+            ServiceType::AuthenticatedEncryption,
+            KeyId::new(1),
+            HeaderFormat::BASELINE_GCM,
+            MacLen::NONE,
+            win,
+            SequenceNumber::ZERO,
+        )
+        .unwrap_err()
+        .kind(),
+        ErrorKind::InvalidConfig
+    );
 
     // AAD buffer check.
     let mut aad = [0_u8; MAX_AAD_LEN];
@@ -640,16 +676,31 @@ fn sdls_exhaustive_error_and_branch_coverage() {
         ErrorKind::LengthMismatch
     );
 
-    // NoOpProvider direct seal_in_place / open_in_place
-    let mut data = [1_u8, 2, 3];
-    let mut tag = [0xFF_u8; 16];
-    NoOpProvider
-        .seal_in_place(KeyId::new(1), &[], &[], &mut data, &mut tag)
+    // NoOpProvider seal_in_place / open_in_place exercised through SdlsEngine
+    let noop_ctx = FrameCtx::Tm {
+        scid: SpacecraftId::<10>::new(1).unwrap(),
+        vcid: VcId::<3>::new(0).unwrap(),
+    };
+    let noop_sa = SaConfig::baseline_gcm(
+        spi,
+        noop_ctx,
+        KeyId::new(1),
+        AntiReplayWindow::new(4).unwrap(),
+    );
+    let mut noop_tx: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
+    let mut noop_rx: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
+    noop_tx.add_sa(noop_sa).unwrap();
+    noop_rx.add_sa(noop_sa).unwrap();
+    let mut noop_frame = [0xFF_u8; 40];
+    let noop_fields = SecuredFields::adjacent(6, 14, 4, 16);
+    noop_tx
+        .protect(&noop_ctx, &mut noop_frame, &noop_fields)
         .unwrap();
-    assert_eq!(tag, [0_u8; 16]);
-    NoOpProvider
-        .open_in_place(KeyId::new(1), &[], &[], &mut data, &tag)
-        .unwrap();
+    assert_eq!(&noop_frame[24..40], &[0_u8; 16]);
+    assert_eq!(
+        noop_rx.verify(&noop_ctx, &mut noop_frame, &noop_fields),
+        Ok(20..24)
+    );
 
     // AAD error paths: too large, short frame, short headers for all 4 protocols, bad iv_range
     let mut aad = [0_u8; MAX_AAD_LEN];
@@ -751,34 +802,97 @@ fn sdls_exhaustive_error_and_branch_coverage() {
         ErrorKind::InvalidField
     );
 
-    // SaConfig::validate error cases
+    // SaConfig::new / SaConfig::clear_mode checked-constructor error cases (RS-020).
     let win = AntiReplayWindow::new(4).unwrap();
-    let mut cfg_no_iv = SaConfig::baseline_gcm(spi, tm_ctx, KeyId::new(1), win);
-    cfg_no_iv.header = HeaderFormat::new(IvLen::NONE, SnLen::new(4).unwrap(), PlLen::NONE);
     assert_eq!(
-        cfg_no_iv.validate().unwrap_err().kind(),
+        HeaderFormat::BASELINE_GCM
+            .security_layout(MacLen::BASELINE_GCM)
+            .unwrap(),
+        SecurityLayout::new(14, 16).unwrap()
+    );
+    assert_eq!(
+        SaConfig::new(
+            spi,
+            tm_ctx,
+            ServiceType::AuthenticatedEncryption,
+            KeyId::new(1),
+            HeaderFormat::BASELINE_GCM,
+            MacLen::BASELINE_GCM,
+            win,
+            SequenceNumber::ZERO,
+        )
+        .unwrap(),
+        SaConfig::baseline_gcm(spi, tm_ctx, KeyId::new(1), win)
+    );
+    // AEAD with iv_len == 0
+    assert_eq!(
+        SaConfig::new(
+            spi,
+            tm_ctx,
+            ServiceType::AuthenticatedEncryption,
+            KeyId::new(1),
+            HeaderFormat::new(IvLen::NONE, SnLen::NONE, PlLen::NONE),
+            MacLen::BASELINE_GCM,
+            win,
+            SequenceNumber::ZERO,
+        )
+        .unwrap_err()
+        .kind(),
         ErrorKind::InvalidConfig
     );
-
-    let mut cfg_pl = SaConfig::baseline_gcm(spi, tm_ctx, KeyId::new(1), win);
-    cfg_pl.header = HeaderFormat::new(IvLen::BASELINE_GCM, SnLen::NONE, PlLen::new(1).unwrap());
+    // AEAD with sn_len > 0 (Annex E AEAD uses IV as counter; separate SN would leave IV zero)
     assert_eq!(
-        cfg_pl.validate().unwrap_err().kind(),
+        SaConfig::new(
+            spi,
+            tm_ctx,
+            ServiceType::AuthenticatedEncryption,
+            KeyId::new(1),
+            HeaderFormat::new(IvLen::BASELINE_GCM, SnLen::new(4).unwrap(), PlLen::NONE),
+            MacLen::BASELINE_GCM,
+            win,
+            SequenceNumber::ZERO,
+        )
+        .unwrap_err()
+        .kind(),
         ErrorKind::InvalidConfig
     );
-
-    let mut cfg_big_iv = SaConfig::baseline_gcm(spi, tm_ctx, KeyId::new(1), win);
-    cfg_big_iv.header = HeaderFormat::new(IvLen::new(17).unwrap(), SnLen::NONE, PlLen::NONE);
+    // pl_len > 0 rejected for both AEAD and ClearMode
     assert_eq!(
-        cfg_big_iv.validate().unwrap_err().kind(),
+        SaConfig::clear_mode(
+            spi,
+            tm_ctx,
+            HeaderFormat::new(IvLen::BASELINE_GCM, SnLen::NONE, PlLen::new(1).unwrap()),
+            MacLen::NONE,
+            win,
+        )
+        .unwrap_err()
+        .kind(),
         ErrorKind::InvalidConfig
     );
-
-    // AuthenticatedEncryption with separate SN and >16-byte IV is valid.
-    let mut cfg_sn_iv = SaConfig::baseline_gcm(spi, tm_ctx, KeyId::new(1), win);
-    cfg_sn_iv.header =
-        HeaderFormat::new(IvLen::new(17).unwrap(), SnLen::new(4).unwrap(), PlLen::NONE);
-    assert!(cfg_sn_iv.validate().is_ok());
+    // sn_len == 0 && iv_len > 16 rejected for both AEAD and ClearMode
+    assert_eq!(
+        SaConfig::clear_mode(
+            spi,
+            tm_ctx,
+            HeaderFormat::new(IvLen::new(17).unwrap(), SnLen::NONE, PlLen::NONE),
+            MacLen::NONE,
+            win,
+        )
+        .unwrap_err()
+        .kind(),
+        ErrorKind::InvalidConfig
+    );
+    // ClearMode with separate SN and >16-byte IV is valid (SN is the counter).
+    assert!(
+        SaConfig::clear_mode(
+            spi,
+            tm_ctx,
+            HeaderFormat::new(IvLen::new(17).unwrap(), SnLen::new(4).unwrap(), PlLen::NONE),
+            MacLen::NONE,
+            win,
+        )
+        .is_ok()
+    );
 
     // SdlsEngine edge cases: unknown ctx, unknown SPI, wrong ctx, layout mismatch, ClearMode
     // with separate SN and with neither IV nor SN, provider(), sequence_number(unknown)
@@ -797,25 +911,37 @@ fn sdls_exhaustive_error_and_branch_coverage() {
     assert_eq!(eng.last_status(), VerificationStatus::InvalidSpi);
 
     // Short buffer for header/trailer in verify & protect
-    let mut cm_sn = SaConfig {
+    let cm_sn = SaConfig::clear_mode(
         spi,
-        ctx: tm_ctx,
-        service: ServiceType::ClearMode,
-        key: KeyId::new(1),
-        header: HeaderFormat::new(IvLen::NONE, SnLen::new(4).unwrap(), PlLen::NONE),
-        mac_len: MacLen::NONE,
-        window: win,
-        initial_sn: SequenceNumber::ZERO,
-    };
+        tm_ctx,
+        HeaderFormat::new(IvLen::NONE, SnLen::new(4).unwrap(), PlLen::NONE),
+        MacLen::NONE,
+        win,
+    )
+    .unwrap();
     eng.add_sa(cm_sn).unwrap();
     // Duplicate ctx with different SPI is rejected.
-    let mut dup_ctx = cm_sn;
-    dup_ctx.spi = Spi::new(99).unwrap();
+    let dup_ctx = SaConfig::clear_mode(
+        Spi::new(99).unwrap(),
+        tm_ctx,
+        HeaderFormat::new(IvLen::NONE, SnLen::new(4).unwrap(), PlLen::NONE),
+        MacLen::NONE,
+        win,
+    )
+    .unwrap();
     assert_eq!(
         eng.add_sa(dup_ctx).unwrap_err().kind(),
         ErrorKind::InvalidConfig
     );
     let sn_fields = SecuredFields::adjacent(6, 6, 4, 0);
+    // build_aad error propagation on protect (TM hdr_start = 2 < 6)
+    let short_hdr_fields = SecuredFields::adjacent(2, 6, 4, 0);
+    assert_eq!(
+        eng.protect(&tm_ctx, &mut f, &short_hdr_fields)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidField
+    );
     // Layout mismatch on protect (header mismatch AND trailer mismatch)
     assert_eq!(
         eng.protect(&tm_ctx, &mut f, &ok_f).unwrap_err().kind(),
@@ -845,6 +971,16 @@ fn sdls_exhaustive_error_and_branch_coverage() {
     assert_eq!(eng.sequence_number(spi), Some(SequenceNumber::new(1)));
     let mut rx_eng: SdlsEngine<NoOpProvider, 3> = SdlsEngine::new(NoOpProvider);
     rx_eng.add_sa(cm_sn).unwrap();
+    // build_aad error propagation on verify (TM hdr_start = 2 < 6, valid SPI at bytes 2..4)
+    let mut f_short_hdr = [0_u8; 40];
+    f_short_hdr[2..4].copy_from_slice(&spi.get().to_be_bytes());
+    assert_eq!(
+        rx_eng
+            .verify(&tm_ctx, &mut f_short_hdr, &short_hdr_fields)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidField
+    );
     // Header out of bounds on verify
     assert_eq!(
         rx_eng
@@ -901,12 +1037,16 @@ fn sdls_exhaustive_error_and_branch_coverage() {
     assert_eq!(rx_eng.verify(&tm_ctx, &mut f, &sn_fields), Ok(12..16));
 
     // ClearMode with neither IV nor SN (0-byte counter)
-    cm_sn.spi = Spi::new(6).unwrap();
-    cm_sn.ctx = aos_ctx;
-    cm_sn.header = HeaderFormat::new(IvLen::NONE, SnLen::NONE, PlLen::NONE);
-    cm_sn.mac_len = MacLen::BASELINE_GCM;
-    eng.add_sa(cm_sn).unwrap();
-    rx_eng.add_sa(cm_sn).unwrap();
+    let cm_bare = SaConfig::clear_mode(
+        Spi::new(6).unwrap(),
+        aos_ctx,
+        HeaderFormat::new(IvLen::NONE, SnLen::NONE, PlLen::NONE),
+        MacLen::BASELINE_GCM,
+        win,
+    )
+    .unwrap();
+    eng.add_sa(cm_bare).unwrap();
+    rx_eng.add_sa(cm_bare).unwrap();
     assert_eq!(
         eng.sequence_number(Spi::new(6).unwrap()),
         Some(SequenceNumber::ZERO)
@@ -935,8 +1075,8 @@ fn sdls_exhaustive_error_and_branch_coverage() {
     // plus protect rollover failure and provider seal failure.
     let mut rx2 = SdlsEngine::<_, 2>::new(XorMacProvider::new(KeyId::new(9), 0x11));
     let mut tx2 = SdlsEngine::<_, 2>::new(XorMacProvider::new(KeyId::new(9), 0x11));
-    let mut sa_a = SaConfig::baseline_gcm(Spi::new(10).unwrap(), tm_ctx, KeyId::new(9), win);
-    sa_a.initial_sn = SequenceNumber::new(0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF);
+    let sa_a = SaConfig::baseline_gcm(Spi::new(10).unwrap(), tm_ctx, KeyId::new(9), win)
+        .with_initial_sn(SequenceNumber::new(0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF));
     tx2.add_sa(sa_a).unwrap();
     // Rollover during protect fails with Security.
     let mut f3 = [0_u8; 40];
@@ -944,12 +1084,17 @@ fn sdls_exhaustive_error_and_branch_coverage() {
         tx2.protect(&tm_ctx, &mut f3, &ok_f).unwrap_err().kind(),
         ErrorKind::Security
     );
-    // Provider key mismatch during protect fails with Security.
+    // Provider key mismatch during protect fails with Security, and the minted FreshNonce
+    // counter is still burned so it can never be reused on a subsequent call.
     let sa_bad_key = SaConfig::baseline_gcm(Spi::new(11).unwrap(), aos_ctx, KeyId::new(999), win);
     tx2.add_sa(sa_bad_key).unwrap();
     assert_eq!(
         tx2.protect(&aos_ctx, &mut f3, &ok_f).unwrap_err().kind(),
         ErrorKind::Security
+    );
+    assert_eq!(
+        tx2.sequence_number(Spi::new(11).unwrap()),
+        Some(SequenceNumber::new(1))
     );
 
     // 2 SAs in rx2: verify frame for 2nd SA so the sn-update loop skips the 1st SA.
