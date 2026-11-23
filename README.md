@@ -153,7 +153,7 @@ The crates are not on crates.io. From Rust, depend on the facade crate `aldis` f
 
 ```toml
 [dependencies]
-aldis = { git = "https://github.com/kscharpf/aldis", tag = "v0.8.0-a4", default-features = false, features = ["core", "spp"] }
+aldis = { git = "https://github.com/kscharpf/aldis", tag = "v0.9.0", default-features = false, features = ["core", "spp"] }
 ```
 
 From C or C++, build the static library `libaldis_ffi.a` from a clone of the repository; Cargo writes it to `target/release/`. The header `include/aldis/aldis.h` is generated and committed, and `include/aldis/aldis.hpp` is the header-only C++ wrapper of the engine handles. Add `include/` to the include path and link the library:

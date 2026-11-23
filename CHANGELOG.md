@@ -6,7 +6,20 @@ All notable changes to Aldis are recorded here. The format follows [Keep a Chang
 
 Generated at release: `cargo xtask changelog` lists the pull requests merged after the base commit below, from their titles (conventional commits: `feat` is Added, `fix` is Fixed, `perf`, `refactor`, and any `!` are Changed, with **Breaking:** for `!`; `docs`, `chore`, `test`, `ci`, and `build` are not listed); `cargo xtask changelog release <version> <YYYY-MM-DD>` writes the section.
 
-<!-- changelog-base: c15c046a32bd17e07bfd0ec6deba2de5050a62e5 -->
+<!-- changelog-base: 8d4863ebb4889f9e65fc01e300f832ca9e7cd8a1 -->
+
+## [0.9.0] — 2026-11-23
+
+Completes the former v1.0 scope (renamed to `v0.9.0` so the Rust API and C ABI remain unfrozen with `ALDIS_ABI_VERSION_MAJOR = 0`; [roadmap §5](docs/08-roadmap.md#5-releases)): FARM-1 checked-frame lock-down and USLP support (#718), and the A6 bare-metal Cortex-M4F QEMU flight node (#754). Two breaking API changes since `0.8.0-a4`, marked below.
+
+### Added
+- cop1: Build the FARM-1 frame input from a checked USLP frame (#718) (#747)
+- a6: bare-metal Cortex-M4F QEMU flight node and APP-102 link check (#754)
+
+### Changed
+- a4: Adopt Farm1Input::from_uslp and from_tc in refapp-flight (#718) (#749)
+- **Breaking:** cop1: Require checked frames for Farm1Frame and Farm1Input (#718) (#751)
+- **Breaking:** ffi: Pass raw TC frame bytes to aldis_farm1_step and validate inside (#718) (#752)
 
 ## [0.8.0-a4] — 2026-11-21
 
