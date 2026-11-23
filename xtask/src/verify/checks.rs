@@ -896,10 +896,32 @@ cargo clippy -p refapp-flight --target thumbv7em-none-eabihf --locked
         let _ = writeln!(s, "cargo {}", args.join(" "));
     }
     s.push_str(
-        "cd ..
-# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl and its demo
-# output from a fresh run compared with that trace (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).
-cargo xtask readme-diagram
+        "# Bare-metal Cortex-M4F flight node under QEMU (A6, APP-004, APP-102).\n\
+cargo fmt --manifest-path qemu/Cargo.toml --check\n\
+cargo clippy --manifest-path qemu/Cargo.toml --release --locked --target thumbv7em-none-eabihf\n\
+# Panic-freedom link check for refapp-flight (APP-102, VER-010 method).\n\
+cargo build --manifest-path qemu/Cargo.toml --release --locked --target thumbv7em-none-eabihf\n\
+if cargo build --manifest-path qemu/Cargo.toml --release --locked --target thumbv7em-none-eabihf \\\n\
+     --features inject-panic 2> \"$RUNNER_TEMP/refapp-qemu-canary.log\"; then\n\
+  echo 'refapp-qemu linked with a reachable panic; the APP-102 check is broken' >&2\n\
+  exit 1\n\
+fi\n\
+grep -q aldis_panic_is_unreachable \"$RUNNER_TEMP/refapp-qemu-canary.log\"\n\
+# Reproduce every golden trace byte-for-byte on bare-metal Cortex-M4F QEMU (APP-004).\n\
+qemu_elf=\"${CARGO_TARGET_DIR:-qemu/target}/thumbv7em-none-eabihf/release/refapp-qemu\"\n\
+harness=\"${CARGO_TARGET_DIR:-target}/debug/refapp-harness\"\n\
+for f in golden/*.jsonl; do\n\
+  case_id=\"$(basename \"$f\" .jsonl)\"\n\
+  timeout 60 \"$harness\" run-node \"$case_id\" --out \"$RUNNER_TEMP/qemu-runs\" stdio qemu-system-arm \\\n\
+    -cpu cortex-m4 -machine mps2-an386 -nographic -monitor none -serial stdio \\\n\
+    -semihosting-config enable=on,target=native \\\n\
+    -kernel \"$qemu_elf\" >/dev/null\n\
+  cmp -s \"$f\" \"$RUNNER_TEMP/qemu-runs/${case_id}.jsonl\"\n\
+done\n\
+cd ..\n\
+# The sequence diagram of README.md is decoded from the golden trace refapp/golden/a3-uplink-loss.jsonl and its demo\n\
+# output from a fresh run compared with that trace (APP-153, APP-154). Inputs: that trace (under `refapp/**`) and README.md (`README_DIAGRAM`).\n\
+cargo xtask readme-diagram\n\
 ",
     );
     s
