@@ -254,7 +254,23 @@ impl<P: AeadProvider, const N: usize> SecurityHook for SdlsEngine<P, N> {
 
     /// `ApplySecurity` (355.0-B-2 §4.2.3).
     fn protect(&mut self, ctx: &FrameCtx, frame: &mut [u8], fields: &SecuredFields) -> Result<()> {
-        protect_in(&self.provider, &mut self.sas, *ctx, frame, fields)
+        let mut aad_buf = [0_u8; MAX_AAD_LEN];
+        let plan = prepare_protect(&mut self.sas, *ctx, frame, fields, &mut aad_buf)?;
+        let aad = aad_buf.get(..plan.aad_len).unwrap_or_default();
+        let (before_trailer, trailer_and_after) = frame
+            .split_at_mut_checked(fields.trailer().start)
+            .unwrap_or((&mut [], &mut []));
+        let data = before_trailer.get_mut(fields.data()).unwrap_or_default();
+        let tag_out = trailer_and_after
+            .get_mut(..fields.trailer().len())
+            .unwrap_or_default();
+        if let Some(nonce) = plan.fresh_nonce {
+            self.provider
+                .seal_in_place(plan.key, nonce, aad, data, tag_out)
+        } else {
+            tag_out.fill(0);
+            Ok(())
+        }
     }
 
     /// `ProcessSecurity` (355.0-B-2 §4.2.4).
@@ -264,15 +280,63 @@ impl<P: AeadProvider, const N: usize> SecurityHook for SdlsEngine<P, N> {
         frame: &mut [u8],
         fields: &SecuredFields,
     ) -> Result<Range<usize>> {
-        verify_in(
-            &self.provider,
-            &mut self.sas,
+        let mut iv_buf = [0_u8; 32];
+        let mut aad_buf = [0_u8; MAX_AAD_LEN];
+        let plan = prepare_verify(
+            &self.sas,
             &mut self.last_status,
             *ctx,
             frame,
             fields,
-        )
+            &mut iv_buf,
+            &mut aad_buf,
+        )?;
+        let (before_trailer, trailer_and_after) = frame
+            .split_at_mut_checked(fields.trailer().start)
+            .unwrap_or((&mut [], &mut []));
+        let data = before_trailer.get_mut(fields.data()).unwrap_or_default();
+        let tag = trailer_and_after
+            .get(..fields.trailer().len())
+            .unwrap_or_default();
+
+        // §4.2.4.4 a–e: verify MAC / AEAD tag before checking or advancing anti-replay.
+        let open_res = if matches!(plan.service, ServiceType::AuthenticatedEncryption) {
+            let iv = iv_buf.get(..plan.iv_len).unwrap_or_default();
+            let aad = aad_buf.get(..plan.aad_len).unwrap_or_default();
+            self.provider.open_in_place(plan.key, iv, aad, data, tag)
+        } else {
+            Ok(())
+        };
+
+        finish_verify(
+            &mut self.sas,
+            &mut self.last_status,
+            plan.spi,
+            plan.managed_sn,
+            plan.window,
+            plan.received_sn,
+            open_res,
+            data,
+        )?;
+        Ok(fields.data())
     }
+}
+
+struct ProtectPlan {
+    key: KeyId,
+    fresh_nonce: Option<FreshNonce>,
+    aad_len: usize,
+}
+
+struct VerifyPlan {
+    spi: Spi,
+    key: KeyId,
+    service: ServiceType,
+    iv_len: usize,
+    aad_len: usize,
+    managed_sn: SequenceNumber,
+    window: AntiReplayWindow,
+    received_sn: Option<SequenceNumber>,
 }
 
 fn add_sa_slot(sas: &mut [Option<SaSlot>], config: SaConfig) -> Result<()> {
@@ -305,13 +369,13 @@ fn sequence_number_in(sas: &[Option<SaSlot>], spi: Spi) -> Option<SequenceNumber
     None
 }
 
-fn protect_in(
-    provider: &dyn AeadProvider,
+fn prepare_protect(
     sas: &mut [Option<SaSlot>],
     ctx: FrameCtx,
     frame: &mut [u8],
     fields: &SecuredFields,
-) -> Result<()> {
+    aad_buf: &mut [u8; MAX_AAD_LEN],
+) -> Result<ProtectPlan> {
     let Some(sa) = sas
         .iter_mut()
         .flatten()
@@ -371,19 +435,11 @@ fn protect_in(
         }
     };
 
-    let mut aad_buf = [0_u8; MAX_AAD_LEN];
-    let aad_len = build_aad(&ctx, frame, fields, config.header.iv_range(), &mut aad_buf)?;
-    let aad = aad_buf.get(..aad_len).unwrap_or_default();
-
-    let data_range = fields.data();
+    let aad_len = build_aad(&ctx, frame, fields, config.header.iv_range(), aad_buf)?;
     let trailer_range = fields.trailer();
-    let (before_trailer, trailer_and_after) = frame
-        .split_at_mut_checked(trailer_range.start)
-        .ok_or_else(|| Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS))?;
-    let data = before_trailer.get_mut(data_range).unwrap_or_default();
-    let Some(tag_out) = trailer_and_after.get_mut(..trailer_range.len()) else {
+    if trailer_range.start > frame.len() || trailer_range.end > frame.len() {
         return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
-    };
+    }
 
     // Commit the incremented sequence number BEFORE sealing so that even if the provider
     // returns an error, the minted FreshNonce counter value can never be reused.
@@ -394,22 +450,22 @@ fn protect_in(
         }
     }
 
-    if let Some(nonce) = fresh_nonce {
-        provider.seal_in_place(config.key, nonce, aad, data, tag_out)?;
-    } else {
-        tag_out.fill(0);
-    }
-    Ok(())
+    Ok(ProtectPlan {
+        key: config.key,
+        fresh_nonce,
+        aad_len,
+    })
 }
 
-fn verify_in(
-    provider: &dyn AeadProvider,
-    sas: &mut [Option<SaSlot>],
+fn prepare_verify(
+    sas: &[Option<SaSlot>],
     last_status: &mut VerificationStatus,
     ctx: FrameCtx,
-    frame: &mut [u8],
+    frame: &[u8],
     fields: &SecuredFields,
-) -> Result<Range<usize>> {
+    iv_buf: &mut [u8; 32],
+    aad_buf: &mut [u8; MAX_AAD_LEN],
+) -> Result<VerifyPlan> {
     *last_status = VerificationStatus::NoFailure;
 
     let Some(sh_bytes) = frame.get(fields.header()) else {
@@ -422,11 +478,7 @@ fn verify_in(
     };
 
     // §4.2.4.3: verify SPI maps to an SA bound to this GVCID/GMAP_ID.
-    let Some(sa) = sas
-        .iter_mut()
-        .flatten()
-        .find(|entry| entry.config.spi == spi)
-    else {
+    let Some(sa) = sas.iter().flatten().find(|entry| entry.config.spi == spi) else {
         *last_status = VerificationStatus::InvalidSpi;
         return Err(Error::new(ErrorKind::Security));
     };
@@ -445,9 +497,8 @@ fn verify_in(
     }
 
     let hdr = SecurityHeaderView::decode(sh_bytes, config.header)?;
-
-    let mut iv_buf = [0_u8; 32];
-    let iv_slice = iv_buf.get_mut(..hdr.iv().len()).unwrap_or_default();
+    let iv_len = hdr.iv().len();
+    let iv_slice = iv_buf.get_mut(..iv_len).unwrap_or_default();
     for (d, &s) in iv_slice.iter_mut().zip(hdr.iv().iter()) {
         *d = s;
     }
@@ -460,39 +511,45 @@ fn verify_in(
         None
     };
 
-    let mut aad_buf = [0_u8; MAX_AAD_LEN];
-    let aad_len = build_aad(&ctx, frame, fields, config.header.iv_range(), &mut aad_buf)?;
-    let aad = aad_buf.get(..aad_len).unwrap_or_default();
-
-    let data_range = fields.data();
+    let aad_len = build_aad(&ctx, frame, fields, config.header.iv_range(), aad_buf)?;
     let trailer_range = fields.trailer();
-    let (before_trailer, trailer_and_after) = frame
-        .split_at_mut_checked(trailer_range.start)
-        .ok_or_else(|| Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS))?;
-    let data = before_trailer
-        .get_mut(data_range.clone())
-        .unwrap_or_default();
-    let Some(tag) = trailer_and_after.get(..trailer_range.len()) else {
+    if trailer_range.start > frame.len() || trailer_range.end > frame.len() {
         return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
-    };
-
-    // §4.2.4.4 a–e: verify MAC / AEAD tag before checking or advancing anti-replay.
-    match config.service {
-        ServiceType::AuthenticatedEncryption => {
-            if provider
-                .open_in_place(config.key, iv_slice, aad, data, tag)
-                .is_err()
-            {
-                *last_status = VerificationStatus::MacFailure;
-                return Err(Error::new(ErrorKind::Security));
-            }
-        }
-        ServiceType::ClearMode => {}
     }
 
+    Ok(VerifyPlan {
+        spi,
+        key: config.key,
+        service: config.service,
+        iv_len,
+        aad_len,
+        managed_sn,
+        window: config.window,
+        received_sn,
+    })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal post-AEAD verification step"
+)]
+fn finish_verify(
+    sas: &mut [Option<SaSlot>],
+    last_status: &mut VerificationStatus,
+    spi: Spi,
+    managed_sn: SequenceNumber,
+    window: AntiReplayWindow,
+    received_sn: Option<SequenceNumber>,
+    open_res: Result<()>,
+    data: &mut [u8],
+) -> Result<()> {
+    if open_res.is_err() {
+        *last_status = VerificationStatus::MacFailure;
+        return Err(Error::new(ErrorKind::Security));
+    }
     // §4.2.4.4 f–i: anti-replay sequence number window check.
     if let Some(rx_sn) = received_sn {
-        if !managed_sn.accepts(rx_sn, config.window) {
+        if !managed_sn.accepts(rx_sn, window) {
             // Scrub decrypted plaintext before rejecting the replayed frame.
             data.fill(0);
             *last_status = VerificationStatus::AntiReplayFailure;
@@ -506,6 +563,5 @@ fn verify_in(
             }
         }
     }
-
-    Ok(data_range)
+    Ok(())
 }

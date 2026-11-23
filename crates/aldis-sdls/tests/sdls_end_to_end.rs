@@ -512,9 +512,6 @@ fn sdls_header_vectors_and_edge_cases() {
     assert_eq!(cfg.initial_sn(), SequenceNumber::ZERO);
     let mut eng: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
     eng.add_sa(cfg).unwrap();
-    let mut cm_frame = [0_u8; 40];
-    eng.protect(&ctx, &mut cm_frame, &SecuredFields::adjacent(6, 14, 4, 16))
-        .unwrap();
     assert_eq!(
         eng.add_sa(cfg).unwrap_err().kind(),
         ErrorKind::InvalidConfig
@@ -687,8 +684,8 @@ fn sdls_exhaustive_error_and_branch_coverage() {
         KeyId::new(1),
         AntiReplayWindow::new(4).unwrap(),
     );
-    let mut noop_tx: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
-    let mut noop_rx: SdlsEngine<NoOpProvider, 1> = SdlsEngine::new(NoOpProvider);
+    let mut noop_tx: SdlsEngine<NoOpProvider, 3> = SdlsEngine::new(NoOpProvider);
+    let mut noop_rx: SdlsEngine<NoOpProvider, 3> = SdlsEngine::new(NoOpProvider);
     noop_tx.add_sa(noop_sa).unwrap();
     noop_rx.add_sa(noop_sa).unwrap();
     let mut noop_frame = [0xFF_u8; 40];
@@ -699,6 +696,54 @@ fn sdls_exhaustive_error_and_branch_coverage() {
     assert_eq!(&noop_frame[24..40], &[0_u8; 16]);
     assert_eq!(
         noop_rx.verify(&noop_ctx, &mut noop_frame, &noop_fields),
+        Ok(20..24)
+    );
+    // Replay on NoOpProvider engine covers finish_verify error path for this instantiation.
+    assert_eq!(
+        noop_rx
+            .verify(&noop_ctx, &mut noop_frame, &noop_fields)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::Security
+    );
+    // ClearMode with IV counter (iv_len = 12, sn_len = 0) on the same N = 3 engine.
+    let cm_iv_ctx = FrameCtx::Tm {
+        scid: SpacecraftId::<10>::new(1).unwrap(),
+        vcid: VcId::<3>::new(1).unwrap(),
+    };
+    let cm_iv_sa = SaConfig::clear_mode(
+        Spi::new(2).unwrap(),
+        cm_iv_ctx,
+        HeaderFormat::BASELINE_GCM,
+        MacLen::BASELINE_GCM,
+        AntiReplayWindow::new(4).unwrap(),
+    )
+    .unwrap();
+    noop_tx.add_sa(cm_iv_sa).unwrap();
+    noop_tx
+        .protect(&cm_iv_ctx, &mut noop_frame, &noop_fields)
+        .unwrap();
+    // Cover ClearMode on XorMacProvider as well as AEAD on NoOpProvider.
+    let mut xm_cm_tx: SdlsEngine<XorMacProvider, 2> =
+        SdlsEngine::new(XorMacProvider::new(KeyId::new(1), 0x55));
+    let mut xm_cm_rx: SdlsEngine<XorMacProvider, 2> =
+        SdlsEngine::new(XorMacProvider::new(KeyId::new(1), 0x55));
+    let xm_sa = SaConfig::clear_mode(
+        spi,
+        noop_ctx,
+        HeaderFormat::BASELINE_GCM,
+        MacLen::BASELINE_GCM,
+        AntiReplayWindow::new(4).unwrap(),
+    )
+    .unwrap();
+    xm_cm_tx.add_sa(xm_sa).unwrap();
+    xm_cm_rx.add_sa(xm_sa).unwrap();
+    let mut xm_frame = [0_u8; 40];
+    xm_cm_tx
+        .protect(&noop_ctx, &mut xm_frame, &noop_fields)
+        .unwrap();
+    assert_eq!(
+        xm_cm_rx.verify(&noop_ctx, &mut xm_frame, &noop_fields),
         Ok(20..24)
     );
 

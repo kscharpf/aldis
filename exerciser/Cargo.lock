@@ -11,6 +11,7 @@ dependencies = [
  "aldis-core",
  "aldis-epp",
  "aldis-link",
+ "aldis-sdls",
  "aldis-spp",
  "aldis-sync",
  "aldis-tc",
