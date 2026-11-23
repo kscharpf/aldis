@@ -80,18 +80,25 @@ pub extern "C" fn refapp_qemu_fault() -> ! {
     semihosting::exit(false)
 }
 
+/// Canary for the APP-102 link check: a panic the optimizer cannot remove (feature `inject-panic`).
+#[cfg(feature = "inject-panic")]
+#[expect(
+    clippy::panic,
+    clippy::manual_assert,
+    reason = "deliberate if-then panic: the APP-102 link check must fail with this feature"
+)]
+fn canary() {
+    if core::hint::black_box(false) {
+        panic!("canary");
+    }
+}
+
 /// Reset entry point referenced by `link-cortex-m.x` and `.vector_table.exceptions`.
 #[expect(unsafe_code, reason = "reset entry point named in linker script")]
 #[unsafe(no_mangle)]
 pub extern "C" fn refapp_qemu_main() -> ! {
     #[cfg(feature = "inject-panic")]
-    #[expect(
-        clippy::panic,
-        reason = "canary feature proving the APP-102 panic-freedom link check catches a panic"
-    )]
-    {
-        panic!("inject-panic canary");
-    }
+    canary();
 
     uart::init();
 
