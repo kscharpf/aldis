@@ -44,6 +44,7 @@ tc = ["core", "aldis/tc"]
 aos = ["core", "aldis/aos"]
 uslp = ["core", "aldis/uslp"]
 sync = ["core", "aldis/sync"]
+sdls = ["core", "aldis/sdls"]
 link = ["core", "aldis/link"]
 # COP-1 uses the TC types (FOP-1, FARM-1).
 cop1 = ["core", "tc", "aldis/cop1"]
@@ -58,6 +59,7 @@ full = [
     "aos",
     "uslp",
     "sync",
+    "sdls",
     "link",
     "cop1",
 ]
