@@ -56,6 +56,7 @@ dependencies = [
  "aldis-epp",
  "aldis-ffi",
  "aldis-link",
+ "aldis-sdls",
  "aldis-spp",
  "aldis-sync",
  "aldis-tc",
@@ -84,6 +85,13 @@ dependencies = [
  "aldis-tc",
  "aldis-tm",
  "aldis-uslp",
+]
+
+[[package]]
+name = "aldis-sdls"
+version = "0.9.0"
+dependencies = [
+ "aldis-core",
 ]
 
 [[package]]

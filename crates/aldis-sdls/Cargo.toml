@@ -1,0 +1,24 @@
+[package]
+name = "aldis-sdls"
+description = "CCSDS 355.0-B-2 Space Data Link Security Protocol (no_std, pluggable crypto)"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false }
+
+[dev-dependencies]
+aldis-aos = { path = "../aldis-aos", default-features = false }
+aldis-tc = { path = "../aldis-tc", default-features = false }
+aldis-testkit = { path = "../aldis-testkit" }
+aldis-tm = { path = "../aldis-tm", default-features = false }
+aldis-uslp = { path = "../aldis-uslp", default-features = false }
+serde_json = "1.0.154"
+
+[lints]
+workspace = true

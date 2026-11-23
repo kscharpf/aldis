@@ -24,6 +24,7 @@ pub const LAYERS: &[(&str, u8)] = &[
     ("aldis-aos", 1),
     ("aldis-uslp", 1),
     ("aldis-sync", 1),
+    ("aldis-sdls", 1),
     ("aldis-link", 2),
     ("aldis-cop1", 2),
 ];
