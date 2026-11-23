@@ -180,8 +180,8 @@ The [aldis-ffi README](crates/aldis-ffi/README.md) has the conventions, the bare
 | COP-1 (FOP-1 and FARM-1) and frame synchronization | Released |
 | Link engines: packet and frame generators, multiplexing, reception, segmentation, CLTU packing | Released |
 | C ABI and C++ header over all of the above | Released |
-| Reference application: flight and ground nodes with packets, TM and TC frames, COP-1 over a lossy link, and the AOS and USLP variants, golden traces | Complete |
-| Reference application: C and C++ flight side, bare-metal target | Planned |
+| Reference application: flight and ground nodes with packets, TM and TC frames, COP-1 over a lossy link, AOS and USLP variants, bare-metal Cortex-M4F QEMU flight node, golden traces | Complete |
+| Reference application: C and C++ flight side | Deferred past `v0.9.0` |
 | Simplifying the crate architecture | Released |
 | Interoperability against an independent ground system (YAMCS 5.14.0, black box): TM frames, TC frames, and COP-1, nominal and lossy-link cases | Complete (no release; no new vectors or hazards) |
 
@@ -189,7 +189,7 @@ Each released row has its tests, test vectors, and hazard analysis. The [roadmap
 
 ## Limits
 
-- v1.0 is not released: it waits on the last reference-application milestone ([roadmap §5](docs/08-roadmap.md#5-releases)).
+- v1.0 is not released: `v0.9.0` keeps `ALDIS_ABI_VERSION_MAJOR = 0` and defers the stable 1.0 API/ABI freeze to a future maintainer decision ([roadmap §5](docs/08-roadmap.md#5-releases)).
 - Aldis has not been qualified against any standard and claims compliance with none. It is designed so that a later qualification (for example NASA NPR 7150.2 Class B/C, ECSS-E-ST-40C/Q-80C, or DO-178C) needs evidence collection rather than redesign ([assurance target](docs/06-verification.md)).
 - Its wire behaviour has been exercised against one independent implementation, YAMCS 5.14.0, in the nominal and lossy-link COP-1 cases (AINT, [record](docs/verification/records/APP-155.md)); YAMCS cannot send the scenario's segmented table upload, so the YAMCS runs use a 100-octet table. Other ground systems and the other cases are not exercised.
 - Its API may change in any 0.x release (pre-1.0 versions promise no stability); the [changelog](CHANGELOG.md) lists the breaking changes.
