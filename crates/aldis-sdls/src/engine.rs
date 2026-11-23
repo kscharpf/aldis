@@ -222,9 +222,8 @@ impl<P, const N: usize> SdlsEngine<P, N> {
     /// Inserts a Security Association into the engine's table (355.0-B-2 §4.2.2.1–3).
     ///
     /// # Errors
-    /// `InvalidConfig` if `config` fails validation, its SPI is already registered, or another SA
-    /// is already active for `config.ctx` (§4.2.2.2.2); `CapacityExceeded` if all `N` slots are
-    /// full.
+    /// `InvalidConfig` if `config.spi()` is already registered or another SA is already active
+    /// for `config.ctx()` (§4.2.2.2.2); `CapacityExceeded` if all `N` slots are full.
     pub fn add_sa(&mut self, config: SaConfig) -> Result<()> {
         add_sa_slot(&mut self.sas, config)
     }
