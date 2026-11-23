@@ -19,7 +19,7 @@ use core::ops::Deref;
 
 use crate::checked::Checked;
 use crate::crc::{verify_fecf, write_fecf};
-use crate::error::{Error, ErrorKind, Result};
+use crate::error::{Error, ErrorDetail, ErrorKind, Result};
 use crate::field;
 use crate::finishing::{require_layout, require_unsecured};
 use crate::security::{FrameCtx, NoSecurity, SecuredFields, SecurityHook, SecurityLayout};
@@ -104,13 +104,34 @@ fn verify_buffer(
     Ok(expected)
 }
 
+#[expect(
+    clippy::as_conversions,
+    reason = "usize widens losslessly to u64 on 32- and 64-bit targets"
+)]
+const fn usize_to_u64(v: usize) -> u64 {
+    v as u64
+}
+
 const fn check_decoded_security(
     header_len: usize,
     trailer_len: usize,
     expected: SecurityLayout,
 ) -> Result<()> {
-    if header_len != expected.header_len() || trailer_len != expected.trailer_len() {
-        return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
+    if header_len != expected.header_len() {
+        return Err(Error::new(ErrorKind::InvalidField)
+            .with_field(field::SECURITY_HEADER_LEN)
+            .with_detail(ErrorDetail::Expected {
+                expected: usize_to_u64(expected.header_len()),
+                found: usize_to_u64(header_len),
+            }));
+    }
+    if trailer_len != expected.trailer_len() {
+        return Err(Error::new(ErrorKind::InvalidField)
+            .with_field(field::SECURITY_TRAILER_LEN)
+            .with_detail(ErrorDetail::Expected {
+                expected: usize_to_u64(expected.trailer_len()),
+                found: usize_to_u64(trailer_len),
+            }));
     }
     Ok(())
 }
@@ -180,7 +201,8 @@ impl<F: SecuritySlices> SecuritySlices for Checked<F> {
 mod tests {
     use super::{Plain, SecuritySlices};
     use crate::checked::{Check, Checked, Rejection};
-    use crate::error::ErrorKind;
+    use crate::error::{ErrorDetail, ErrorKind};
+    use crate::field;
     use crate::security::NoSecurity;
 
     /// A frame of a header and a trailer.
@@ -247,6 +269,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "full verify_with error-path test matrix"
+    )]
     fn verify_with_checks_fecf_and_hook() {
         // req: RS-023, API-070, API-074
         use crate::crc::{verify_fecf, write_fecf};
@@ -322,20 +348,32 @@ mod tests {
             Plain::verify_with(&mut FlipHook, &ctx, &mut buf, &fields, true, decode_fn).unwrap();
         assert_eq!(p.as_frame(), &Demo(&[1, 2], &[3, 4]));
 
-        // Decoded header/trailer length mismatch is rejected (with fecf = false).
+        // Decoded header/trailer length mismatch is rejected with distinct field and detail
+        // (with fecf = false).
         decode_outcome.set(Ok(Demo(&[1], &[3, 4])));
+        let hdr_err = Plain::verify_with(&mut FlipHook, &ctx, &mut buf, &fields, false, decode_fn)
+            .unwrap_err();
+        assert_eq!(hdr_err.kind(), ErrorKind::InvalidField);
+        assert_eq!(hdr_err.field(), Some(field::SECURITY_HEADER_LEN));
         assert_eq!(
-            Plain::verify_with(&mut FlipHook, &ctx, &mut buf, &fields, false, decode_fn)
-                .unwrap_err()
-                .kind(),
-            ErrorKind::InvalidField
+            hdr_err.detail(),
+            ErrorDetail::Expected {
+                expected: 2,
+                found: 1,
+            }
         );
+
         decode_outcome.set(Ok(Demo(&[1, 2], &[3])));
+        let trl_err = Plain::verify_with(&mut FlipHook, &ctx, &mut buf, &fields, false, decode_fn)
+            .unwrap_err();
+        assert_eq!(trl_err.kind(), ErrorKind::InvalidField);
+        assert_eq!(trl_err.field(), Some(field::SECURITY_TRAILER_LEN));
         assert_eq!(
-            Plain::verify_with(&mut FlipHook, &ctx, &mut buf, &fields, false, decode_fn)
-                .unwrap_err()
-                .kind(),
-            ErrorKind::InvalidField
+            trl_err.detail(),
+            ErrorDetail::Expected {
+                expected: 2,
+                found: 1,
+            }
         );
 
         // Decode error propagates.

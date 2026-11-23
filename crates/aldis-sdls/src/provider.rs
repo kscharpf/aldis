@@ -28,14 +28,14 @@ use crate::types::{KeyId, SequenceNumber};
 /// ```
 #[derive(Debug)]
 pub struct FreshNonce {
-    bytes: [u8; 16],
+    bytes: [u8; SequenceNumber::MAX_OCTETS],
     len: u8,
 }
 
 impl FreshNonce {
     /// Mints a `FreshNonce` by encoding `sn` into `len` big-endian octets (`1..=16`).
     pub(crate) fn from_counter(sn: SequenceNumber, len: u8) -> Result<Self> {
-        let mut bytes = [0_u8; 16];
+        let mut bytes = [0_u8; SequenceNumber::MAX_OCTETS];
         let dst = bytes.get_mut(..usize::from(len)).unwrap_or_default();
         sn.encode_be(dst)?;
         Ok(Self { bytes, len })

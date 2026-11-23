@@ -26,6 +26,39 @@ use aldis_core::security::{FrameCtx, Protocol, SecuredFields};
 /// Security Header, ≤ 256 octets).
 pub const MAX_AAD_LEN: usize = 256;
 
+/// TM Transfer Frame Primary Header length in octets (132.0-B-3 §4.1.2).
+const TM_PRIMARY_HEADER_LEN: usize = 6;
+/// Octet offset and bit mask of TM VCID (bits 12–14; 132.0-B-3 §4.1.2.3).
+const TM_VCID_OCTET: usize = 1;
+const TM_VCID_MASK: u8 = 0x0E;
+
+/// TC Transfer Frame Primary Header length in octets (232.0-B-4 §4.1.2).
+const TC_PRIMARY_HEADER_LEN: usize = 5;
+/// TC Segment Header length in octets when present (232.0-B-4 §4.1.3.2).
+const TC_SEGMENT_HEADER_LEN: usize = 1;
+/// Offset of the TC Security Header when a Segment Header is present.
+const TC_HEADER_WITH_SEGMENT_LEN: usize = TC_PRIMARY_HEADER_LEN + TC_SEGMENT_HEADER_LEN;
+/// Octet offset and bit mask of TC VCID (bits 16–21; 232.0-B-4 §4.1.2.6).
+const TC_VCID_OCTET: usize = 2;
+const TC_VCID_MASK: u8 = 0xFC;
+/// Octet offset and bit mask of TC Segment Header (355.0-B-2 §4.2.2.6.2 f).
+const TC_SEGMENT_HEADER_OCTET: usize = TC_PRIMARY_HEADER_LEN;
+const TC_SEGMENT_HEADER_MASK: u8 = 0xFF;
+
+/// AOS Transfer Frame Primary Header length in octets (732.0-B-5 §4.1.2).
+const AOS_PRIMARY_HEADER_LEN: usize = 6;
+/// Octet offset and bit mask of AOS VCID (bits 10–15; 732.0-B-5 §4.1.2.3).
+const AOS_VCID_OCTET: usize = 1;
+const AOS_VCID_MASK: u8 = 0x3F;
+
+/// USLP minimum Transfer Frame Primary Header length in octets (truncated header, 732.1-B-3 §4.1.2).
+const USLP_MIN_PRIMARY_HEADER_LEN: usize = 4;
+/// Octet offsets and bit masks of USLP VCID (bits 21–26) and MAP ID (bits 27–30; 732.1-B-3 §4.1.2.5–6).
+const USLP_VCID_HI_OCTET: usize = 2;
+const USLP_VCID_HI_MASK: u8 = 0x07;
+const USLP_VCID_LO_MAP_OCTET: usize = 3;
+const USLP_VCID_LO_MAP_MASK: u8 = 0xFE;
+
 /// Builds the masked Additional Authenticated Data (AAD) for `frame` into `out` and returns its
 /// length (355.0-B-2 §4.2.2.6.2, §4.2.3.2.2.3 a.2).
 ///
@@ -57,37 +90,32 @@ pub fn build_aad(
     // Apply the normative Transfer Frame header mask (§4.2.2.6.2 b–g).
     match ctx.protocol() {
         Protocol::Tm => {
-            if hdr_start < 6 {
+            if hdr_start < TM_PRIMARY_HEADER_LEN {
                 return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
             }
-            // TM VCID: bits 12–14 -> octet 1 mask 0x0E (132.0 §4.1.2.3).
-            copy_masked(prefix, dst, 1, 0x0E);
+            copy_masked(prefix, dst, TM_VCID_OCTET, TM_VCID_MASK);
         }
         Protocol::Tc => {
-            if hdr_start < 5 {
+            if hdr_start < TC_PRIMARY_HEADER_LEN {
                 return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
             }
-            // TC VCID: bits 16–21 -> octet 2 mask 0xFC (232.0 §4.1.2.6).
-            copy_masked(prefix, dst, 2, 0xFC);
-            // TC Segment Header: 1 octet at index 5 when present (§4.2.2.6.2 f).
-            if hdr_start == 6 {
-                copy_masked(prefix, dst, 5, 0xFF);
+            copy_masked(prefix, dst, TC_VCID_OCTET, TC_VCID_MASK);
+            if hdr_start == TC_HEADER_WITH_SEGMENT_LEN {
+                copy_masked(prefix, dst, TC_SEGMENT_HEADER_OCTET, TC_SEGMENT_HEADER_MASK);
             }
         }
         Protocol::Aos => {
-            if hdr_start < 6 {
+            if hdr_start < AOS_PRIMARY_HEADER_LEN {
                 return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
             }
-            // AOS VCID: bits 10–15 -> octet 1 mask 0x3F (732.0 §4.1.2.3).
-            copy_masked(prefix, dst, 1, 0x3F);
+            copy_masked(prefix, dst, AOS_VCID_OCTET, AOS_VCID_MASK);
         }
         Protocol::Uslp => {
-            if hdr_start < 4 {
+            if hdr_start < USLP_MIN_PRIMARY_HEADER_LEN {
                 return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS));
             }
-            // USLP VCID (bits 21–26) + MAP ID (bits 27–30): octet 2 mask 0x07, octet 3 mask 0xFE.
-            copy_masked(prefix, dst, 2, 0x07);
-            copy_masked(prefix, dst, 3, 0xFE);
+            copy_masked(prefix, dst, USLP_VCID_HI_OCTET, USLP_VCID_HI_MASK);
+            copy_masked(prefix, dst, USLP_VCID_LO_MAP_OCTET, USLP_VCID_LO_MAP_MASK);
         }
         _ => return Err(Error::new(ErrorKind::InvalidField).with_field(field::SECURED_FIELDS)),
     }

@@ -89,4 +89,4 @@ justification = "src/aad.rs (1), src/provider.rs (1), and src/engine.rs (8) — 
 crate = "aldis-sdls"
 metric = "lines"
 count = 1
-justification = "src/aad.rs:92 (`_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`)."
+justification = "src/aad.rs:120 (`_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`)."

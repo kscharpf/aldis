@@ -254,6 +254,8 @@ pub struct SequenceNumber(u128);
 impl SequenceNumber {
     /// Initial counter value 0.
     pub const ZERO: Self = Self(0);
+    /// Maximum encoded counter width in octets (128 bits).
+    pub const MAX_OCTETS: usize = 16;
 
     /// Wraps a raw counter value.
     #[must_use]
@@ -330,11 +332,11 @@ impl SequenceNumber {
     /// # Errors
     /// `Security` if `bytes.len()` is outside `1..=16`.
     pub fn decode_be(bytes: &[u8]) -> Result<Self> {
-        if bytes.is_empty() || bytes.len() > 16 {
+        if bytes.is_empty() || bytes.len() > Self::MAX_OCTETS {
             return Err(Error::new(ErrorKind::Security));
         }
-        let mut full = [0_u8; 16];
-        // bound: `bytes.len() <= 16`.
+        let mut full = [0_u8; Self::MAX_OCTETS];
+        // bound: `bytes.len() <= Self::MAX_OCTETS`.
         for (dst, &src) in full.iter_mut().rev().zip(bytes.iter().rev()) {
             *dst = src;
         }

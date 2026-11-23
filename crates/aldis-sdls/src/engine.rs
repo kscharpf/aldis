@@ -55,7 +55,7 @@ impl SaConfig {
         if header.pl_len().get() > 0 {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
         }
-        if header.sn_len().get() == 0 && header.iv_len().get() > 16 {
+        if header.sn_len().get() == 0 && header.iv_len().get() > SequenceNumber::MAX_OCTETS {
             return Err(Error::new(ErrorKind::InvalidConfig).with_field(field::SECURITY_HEADER_LEN));
         }
         if matches!(service, ServiceType::AuthenticatedEncryption) {
