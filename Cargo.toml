@@ -13,7 +13,6 @@ members = [
     "crates/aldis-aos",
     "crates/aldis-uslp",
     "crates/aldis-sync",
-    "crates/aldis-sdls",
     "crates/aldis-link",
     "crates/aldis-cop1",
     "crates/aldis",

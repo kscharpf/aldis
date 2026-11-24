@@ -50,7 +50,6 @@ Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Lay
 | `aldis-aos` | 1 | 732.0 AOS Transfer Frame, FHEC, M_PDU, B_PDU | core |
 | `aldis-uslp` | 1 | 732.1 USLP Transfer Frame (incl. truncated), TFDF header | core |
 | `aldis-sync` | 1 | 131.0 §9–§10 ASM and CADU, pseudo-randomizer, ASM search engine ([tm-sync](standards/tm-sync.md)) | core |
-| `aldis-sdls` | 1 | 355.0-B-2 Space Data Link Security Protocol (Security Header/Trailer, SA table, AAD masking, pluggable AEAD) | core |
 | `aldis-link` | 2 | Sending and receiving engines for packets over TM/AOS/USLP and TC/USLP MAPs ([04](04-engines.md)) | core, spp, epp, tm, tc, aos, uslp (each behind a feature; GEN-009) |
 | `aldis-cop1` | 2 | 232.1 FOP-1, FARM-1 ([COP-1](standards/cop1.md)) | core, tc, (uslp feature) |
 | `aldis-framework` (planned, not in the workspace) | 3 | [05 Framework](05-framework.md) | core, link, cop1 |

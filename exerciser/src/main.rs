@@ -32,7 +32,6 @@ mod link;
 mod link_map;
 mod link_send;
 mod ocf;
-mod sdls;
 mod spp;
 mod sync;
 mod target;
