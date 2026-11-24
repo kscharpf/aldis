@@ -17,7 +17,7 @@ aes-gcm = ["dep:aldis-core", "dep:aldis-sdls", "dep:aes-gcm", "dep:zeroize"]
 [dependencies]
 aldis-core = { path = "../aldis-core", default-features = false, optional = true }
 aldis-sdls = { path = "../aldis-sdls", default-features = false, optional = true }
-aes-gcm = { version = "0.10.3", default-features = false, features = ["aes"], optional = true }
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "zeroize"], optional = true }
 zeroize = { version = "1.8.1", default-features = false, optional = true }
 
 [dev-dependencies]
