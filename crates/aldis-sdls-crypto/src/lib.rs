@@ -5,7 +5,6 @@
 //! enabled only behind the non-default `aes-gcm` feature.
 #![no_std]
 #![forbid(unsafe_code)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 #[cfg(feature = "aes-gcm")]
 mod aes_gcm_store;
