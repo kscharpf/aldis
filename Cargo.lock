@@ -11,6 +11,7 @@ dependencies = [
  "aldis-core",
  "aldis-epp",
  "aldis-link",
+ "aldis-sdls",
  "aldis-spp",
  "aldis-sync",
  "aldis-tc",
@@ -75,6 +76,19 @@ dependencies = [
  "aldis-core",
  "aldis-epp",
  "aldis-spp",
+ "aldis-tc",
+ "aldis-testkit",
+ "aldis-tm",
+ "aldis-uslp",
+ "serde_json",
+]
+
+[[package]]
+name = "aldis-sdls"
+version = "0.9.0"
+dependencies = [
+ "aldis-aos",
+ "aldis-core",
  "aldis-tc",
  "aldis-testkit",
  "aldis-tm",

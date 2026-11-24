@@ -78,3 +78,15 @@ crate = "aldis-epp"
 metric = "regions"
 count = 1
 justification = "src/writer.rs — the error return of `?` on `EncapsulationHeader::packet_len_of` in `EncapsulationWriter::finish`: `begin` checked the header against `max_data_len` and `finish` checks `data_len <= max_data_len`, so the total fits the 32-bit field and no input reaches the error, which replaces a clamp to `u32::MAX` (GEN-020). `packet_len_of` is unit-tested directly with a length above `u32::MAX`."
+
+[[waiver]]
+crate = "aldis-sdls"
+metric = "regions"
+count = 10
+justification = "src/aad.rs (1), src/provider.rs (1), and src/engine.rs (8) — arms and `?` error returns that no input reaches, each an explicit error return and not a default (GEN-020): in `aad.rs`, the `_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`; in `provider.rs`, `sn.encode_be(dst)?` inside `FreshNonce::from_counter` (called only with `iv_len` in `1..=16` validated by `SaConfig::new`); in `engine.rs`, the 8 `?` error returns in `prepare_protect` and `prepare_verify` on `FreshNonce::from_counter` (1), `SequenceNumber::encode_be` (2), `encode_header` (2), `SecurityHeaderView::decode` (1), and `SequenceNumber::decode_be` (2) after `SaConfig::new` and earlier length/SPI checks already proved the exact header, trailer, SPI, and counter bounds (each helper is unit-tested directly on its error paths)."
+
+[[waiver]]
+crate = "aldis-sdls"
+metric = "lines"
+count = 1
+justification = "src/aad.rs:120 (`_` arm of `match ctx.protocol` on `#[non_exhaustive] Protocol`)."

@@ -266,6 +266,7 @@ jobs:
           - { crate: aldis-tc, shard: 0, shards: 1 }
           - { crate: aldis-uslp, shard: 0, shards: 1 }
           - { crate: aldis-sync, shard: 0, shards: 1 }
+          - { crate: aldis-sdls, shard: 0, shards: 1 }
           - { crate: aldis-cop1, shard: 0, shards: 1 }
           - { crate: aldis-link, shard: 0, shards: 4 }
           - { crate: aldis-link, shard: 1, shards: 4 }

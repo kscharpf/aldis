@@ -344,6 +344,7 @@ fn main() {
         ("cop1", "Cop1"),
         ("link", "Link"),
         ("sync", "Sync"),
+        ("sdls", "Sdls"),
     ] {
         let dir = manifest.join("../test-vectors").join(group);
         println!("cargo:rerun-if-changed={}", dir.display());
