@@ -233,6 +233,7 @@ aldis/
 │   ├── aldis-uslp        L1  732.1 USLP frames, truncated frames, TFDF, delimiting, validation
 │   ├── aldis-sync        L1  131.0 ASM, CADU, pseudo-randomizer, ASM search
 │   ├── aldis-sdls        L1  355.0 SDLS Security Header/Trailer, SA table, AAD masking, pluggable AEAD
+│   ├── aldis-sdls-crypto L3  352.0 / 355.0 Annex E AES-256-GCM provider (optional `aes-gcm` feature)
 │   ├── aldis-link        L2  sans-I/O generators, mux, receiver, extraction, segmentation
 │   ├── aldis-cop1        L2  232.1 FOP-1 / FARM-1
 │   ├── aldis             facade (feature-gated re-exports)
@@ -247,7 +248,7 @@ aldis/
 └── test-vectors/         shared, language-neutral conformance vectors
 ```
 
-Each crate has a README with its purpose, status, and layer, and an example for the implemented crates: [aldis-core](crates/aldis-core/README.md), [aldis-time](crates/aldis-time/README.md), [aldis-spp](crates/aldis-spp/README.md), [aldis-epp](crates/aldis-epp/README.md), [aldis-tm](crates/aldis-tm/README.md), [aldis-tc](crates/aldis-tc/README.md), [aldis-aos](crates/aldis-aos/README.md), [aldis-uslp](crates/aldis-uslp/README.md), [aldis-sync](crates/aldis-sync/README.md), [aldis-sdls](crates/aldis-sdls/README.md), [aldis-link](crates/aldis-link/README.md), [aldis-cop1](crates/aldis-cop1/README.md), [aldis](crates/aldis/README.md), [aldis-ffi](crates/aldis-ffi/README.md), [aldis-testkit](crates/aldis-testkit/README.md).
+Each crate has a README with its purpose, status, and layer, and an example for the implemented crates: [aldis-core](crates/aldis-core/README.md), [aldis-time](crates/aldis-time/README.md), [aldis-spp](crates/aldis-spp/README.md), [aldis-epp](crates/aldis-epp/README.md), [aldis-tm](crates/aldis-tm/README.md), [aldis-tc](crates/aldis-tc/README.md), [aldis-aos](crates/aldis-aos/README.md), [aldis-uslp](crates/aldis-uslp/README.md), [aldis-sync](crates/aldis-sync/README.md), [aldis-sdls](crates/aldis-sdls/README.md), [aldis-sdls-crypto](crates/aldis-sdls-crypto/README.md), [aldis-link](crates/aldis-link/README.md), [aldis-cop1](crates/aldis-cop1/README.md), [aldis](crates/aldis/README.md), [aldis-ffi](crates/aldis-ffi/README.md), [aldis-testkit](crates/aldis-testkit/README.md).
 
 ## Building
 

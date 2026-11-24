@@ -22,6 +22,7 @@ aldis-sync = { path = "../aldis-sync", default-features = false, optional = true
 aldis-sdls = { path = "../aldis-sdls", default-features = false, optional = true }
 aldis-link = { path = "../aldis-link", default-features = false, optional = true }
 aldis-cop1 = { path = "../aldis-cop1", default-features = false, optional = true }
+aldis-sdls-crypto = { path = "../aldis-sdls-crypto", default-features = false, optional = true }
 
 [features]
 # The codec features also forward to the engines that serve the standard, through weak
@@ -39,6 +40,7 @@ aos = ["dep:aldis-aos", "aldis-link?/aos"]
 uslp = ["dep:aldis-uslp", "aldis-link?/uslp", "aldis-cop1?/uslp"]
 sync = ["dep:aldis-sync"]
 sdls = ["dep:aldis-sdls"]
+sdls-crypto = ["dep:aldis-sdls-crypto"]
 link = ["dep:aldis-link"]
 cop1 = ["dep:aldis-cop1"]
 full = [
@@ -53,6 +55,7 @@ full = [
     "uslp",
     "sync",
     "sdls",
+    "sdls-crypto",
     "link",
     "cop1",
 ]

@@ -27,6 +27,7 @@ pub const LAYERS: &[(&str, u8)] = &[
     ("aldis-sdls", 1),
     ("aldis-link", 2),
     ("aldis-cop1", 2),
+    ("aldis-sdls-crypto", 3),
 ];
 /// Whether a source file declares a function outside comments.
 pub(crate) fn has_code(text: &str) -> bool {

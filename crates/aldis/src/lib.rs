@@ -20,6 +20,7 @@
 //! | `uslp` | `aldis::uslp` (`aldis-uslp`): USLP Transfer Frames, truncated frames, delimiting, validation | 732.1 | USLP-001…USLP-017 |
 //! | `sync` | `aldis::sync` (`aldis-sync`): ASM attach, pseudo-randomizer, ASM search engine | 131.0 §9, §10 | SYNC-001…SYNC-020 |
 //! | `sdls` | `aldis::sdls` (`aldis-sdls`): SDLS Security Header/Trailer, SA table, AAD masking, `ApplySecurity`/`ProcessSecurity`, pluggable AEAD | 355.0-B-2 | API-070…API-075 |
+//! | `sdls-crypto` | `aldis::sdls_crypto` (`aldis-sdls-crypto`): Layer 3 AES-256-GCM provider (enable `aldis-sdls-crypto/aes-gcm` for crypto deps, GEN-004) | 352.0-B-2, 355.0-B-2 Annex E | OI-84, GEN-004 |
 //! | `link` | `aldis::link` (`aldis-link`): sending and receiving engines | `docs/04-engines.md` | LNK-001…LNK-082 |
 //! | `cop1` | `aldis::cop1` (`aldis-cop1`): FOP-1 and FARM-1 | 232.1 | COP-001…COP-041 |
 //! | `spp`, `epp`, `tm`, `tc`, `aos`, `uslp` with `link` or `cop1` | The same feature of `aldis-link`, and of `aldis-cop1` for `uslp`: the engines of that standard | — | GEN-008 |
@@ -62,6 +63,10 @@ pub use aldis_link as link;
 /// Space Data Link Security Protocol (355.0-B-2; API-070…API-075). Feature `sdls`.
 #[cfg(feature = "sdls")]
 pub use aldis_sdls as sdls;
+/// Layer 3 AES-256-GCM provider for `aldis-sdls` (352.0-B-2; OI-84, GEN-004). Feature
+/// `sdls-crypto`.
+#[cfg(feature = "sdls-crypto")]
+pub use aldis_sdls_crypto as sdls_crypto;
 /// Space Packet Protocol (133.0 §3.4, §4.1–4.3, §5.2; SPP-001…SPP-013). Feature `spp`; the
 /// time secondary header (133.0 §4.1.4.2.2, SPP-008) also needs feature `spp-time`.
 #[cfg(feature = "spp")]

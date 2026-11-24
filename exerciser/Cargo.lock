@@ -12,6 +12,7 @@ dependencies = [
  "aldis-epp",
  "aldis-link",
  "aldis-sdls",
+ "aldis-sdls-crypto",
  "aldis-spp",
  "aldis-sync",
  "aldis-tc",
@@ -94,6 +95,10 @@ version = "0.9.0"
 dependencies = [
  "aldis-core",
 ]
+
+[[package]]
+name = "aldis-sdls-crypto"
+version = "0.9.0"
 
 [[package]]
 name = "aldis-spp"

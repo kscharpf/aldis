@@ -53,6 +53,7 @@ Retransmission logic (FOP-1/FARM-1) lives in its own crate, `aldis-cop1`, at Lay
 | `aldis-sdls` | 1 | 355.0-B-2 Space Data Link Security Protocol (Security Header/Trailer, SA table, AAD masking, pluggable AEAD) | core |
 | `aldis-link` | 2 | Sending and receiving engines for packets over TM/AOS/USLP and TC/USLP MAPs ([04](04-engines.md)) | core, spp, epp, tm, tc, aos, uslp (each behind a feature; GEN-009) |
 | `aldis-cop1` | 2 | 232.1 FOP-1, FARM-1 ([COP-1](standards/cop1.md)) | core, tc, (uslp feature) |
+| `aldis-sdls-crypto` | 3 | 352.0-B-2 / 355.0-B-2 Annex E AES-256-GCM provider (`aes-gcm` + `zeroize` behind non-default `aes-gcm` feature, GEN-004, OI-84) | core, sdls |
 | `aldis-framework` (planned, not in the workspace) | 3 | [05 Framework](05-framework.md) | core, link, cop1 |
 | `aldis` | facade | Re-exports | all, by feature |
 | `aldis-ffi` | boundary | [C ABI profile](profiles/c-abi.md) | aldis, by feature (GEN-009) |

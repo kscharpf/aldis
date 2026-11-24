@@ -16,6 +16,7 @@ members = [
     "crates/aldis-sdls",
     "crates/aldis-link",
     "crates/aldis-cop1",
+    "crates/aldis-sdls-crypto",
     "crates/aldis",
     "crates/aldis-ffi",
     # Tooling (std, dev-only; not part of the layered library)

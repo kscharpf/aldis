@@ -1,0 +1,30 @@
+[package]
+name = "aldis-sdls-crypto"
+description = "CCSDS 352.0-B-2 / 355.0-B-2 AES-256-GCM cryptographic provider for aldis-sdls"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+# GEN-004: Layer 3 third-party runtime dependencies are gated behind non-default features.
+default = []
+aes-gcm = ["dep:aldis-core", "dep:aldis-sdls", "dep:aes-gcm", "dep:zeroize"]
+
+[dependencies]
+aldis-core = { path = "../aldis-core", default-features = false, optional = true }
+aldis-sdls = { path = "../aldis-sdls", default-features = false, optional = true }
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes"], optional = true }
+zeroize = { version = "1.8.1", default-features = false, optional = true }
+
+[dev-dependencies]
+aldis-aos = { path = "../aldis-aos", default-features = false }
+aldis-tc = { path = "../aldis-tc", default-features = false }
+aldis-tm = { path = "../aldis-tm", default-features = false }
+aldis-uslp = { path = "../aldis-uslp", default-features = false }
+
+[lints]
+workspace = true
