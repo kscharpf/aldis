@@ -52,7 +52,6 @@ pub enum Group {
     )]
     Link,
     Sync,
-    Sdls,
 }
 
 /// The expected outcome of a case.
@@ -491,7 +490,6 @@ pub fn run(t: &mut Tally) {
             Group::Cop1 => crate::farm1::vector(case),
             Group::Link => crate::link::vector(case),
             Group::Sync => crate::sync::vector(case, &mut out, &mut scratch),
-            Group::Sdls => crate::sdls::vector(case, &mut out),
         };
         let passed = match (result, &case.expect) {
             (Err(Fail::NotRepresentable), _) => {

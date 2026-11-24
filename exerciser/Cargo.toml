@@ -27,7 +27,6 @@ aldis-epp = { path = "../crates/aldis-epp", default-features = false }
 # aldis_panic_is_unreachable (VER-010), and is the only panic handler of the image.
 aldis-ffi = { path = "../crates/aldis-ffi", default-features = false, features = ["panic-unreachable", "full"] }
 aldis-link = { path = "../crates/aldis-link", default-features = false, features = ["spp", "epp", "tm", "tc", "aos", "uslp"] }
-aldis-sdls = { path = "../crates/aldis-sdls", default-features = false }
 aldis-spp = { path = "../crates/aldis-spp", default-features = false, features = ["time"] }
 aldis-sync = { path = "../crates/aldis-sync", default-features = false }
 aldis-tc = { path = "../crates/aldis-tc", default-features = false }
